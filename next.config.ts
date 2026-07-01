@@ -1,4 +1,11 @@
 import type { NextConfig } from "next";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// Turbopack walks up for lockfiles; on this machine a stray
+// package-lock.json in C:\Users\Windows\ was picked as the monorepo
+// root, so /login and every app route 404'd. Pin the root here.
+const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Baseline security headers applied to every response.
@@ -61,6 +68,9 @@ const SECURITY_HEADERS = [
 ] as const;
 
 const nextConfig: NextConfig = {
+  turbopack: {
+    root: projectRoot,
+  },
   /**
    * Cache-Control policy.
    *

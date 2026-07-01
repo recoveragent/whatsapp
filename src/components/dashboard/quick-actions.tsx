@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { UserPlus, Briefcase, Radio, Zap } from 'lucide-react'
 import type { ComponentType } from 'react'
+import { useAuth } from '@/hooks/use-auth'
 
 // Quick-action shortcuts. Each navigates to the page that owns the
 // relevant "create" flow. We deliberately don't try to auto-open any
@@ -23,9 +24,14 @@ const ACTIONS: Action[] = [
 ]
 
 export function QuickActions() {
+  const { isLeadGenBrand } = useAuth()
+  const actions = ACTIONS.filter(
+    (a) => a.href !== '/pipelines' || isLeadGenBrand,
+  )
+
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {ACTIONS.map((a) => {
+      {actions.map((a) => {
         const Icon = a.icon
         return (
           <Link

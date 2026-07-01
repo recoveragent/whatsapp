@@ -18,6 +18,8 @@ import {
   Square,
   X,
   Loader2,
+  Lock,
+  StickyNote,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GatedButton } from "@/components/ui/gated-button";
@@ -36,6 +38,7 @@ import {
   MEDIA_MAX_BYTES_BY_KIND,
 } from "@/lib/storage/upload-media";
 import { ReplyQuote } from "./reply-quote";
+import type { ConversationPrivateNote } from "@/types";
 
 /** Media content types an agent can send from the composer. */
 export type ComposerMediaKind = "image" | "video" | "document" | "audio";
@@ -96,9 +99,12 @@ interface MessageComposerProps {
   onSend: (text: string, replyToId?: string) => void;
   onSendMedia: (payload: SendMediaPayload) => void;
   onOpenTemplates: () => void;
+  onPrivateNoteSaved?: (note: ConversationPrivateNote) => void;
   replyTo?: ReplyDraft | null;
   onClearReply?: () => void;
 }
+
+type ComposerMode = "message" | "note";
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -117,12 +123,17 @@ export function MessageComposer({
   onSend,
   onSendMedia,
   onOpenTemplates,
+  onPrivateNoteSaved,
   replyTo,
   onClearReply,
 }: MessageComposerProps) {
   const [text, setText] = useState("");
+  const [composerMode, setComposerMode] = useState<ComposerMode>("message");
+  const [noteText, setNoteText] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
   const [sending, setSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Media attachment state. `draft` holds an uploaded-but-not-yet-sent
   // attachment; `busy` covers the upload/transcode window.
@@ -160,6 +171,36 @@ export function MessageComposer({
   const readOnly = !canSend;
   // Media (like free-form text) is only allowed inside the 24h window.
   const inputsDisabled = readOnly || sessionExpired;
+
+  const handleSaveNote = useCallback(async () => {
+    const trimmed = noteText.trim();
+    if (!trimmed || savingNote || readOnly) return;
+
+    setSavingNote(true);
+    try {
+      const res = await fetch(`/api/inbox/conversations/${conversationId}/private-notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note_text: trimmed }),
+      });
+      const data = (await res.json()) as ConversationPrivateNote & { error?: string };
+      if (!res.ok) {
+        toast.error(data.error ?? "Could not save note");
+        return;
+      }
+      onPrivateNoteSaved?.(data);
+      setNoteText("");
+      setComposerMode("message");
+      if (noteTextareaRef.current) {
+        noteTextareaRef.current.style.height = "auto";
+      }
+      toast.success("Private note saved");
+    } catch {
+      toast.error("Could not save note");
+    } finally {
+      setSavingNote(false);
+    }
+  }, [noteText, savingNote, readOnly, conversationId, onPrivateNoteSaved]);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -379,6 +420,76 @@ export function MessageComposer({
 
   return (
     <div className="border-t border-border bg-card p-3">
+      <div className="mb-2 flex gap-1 rounded-lg bg-muted p-0.5">
+        <button
+          type="button"
+          onClick={() => setComposerMode("message")}
+          className={cn(
+            "flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+            composerMode === "message"
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          Reply
+        </button>
+        <button
+          type="button"
+          onClick={() => setComposerMode("note")}
+          className={cn(
+            "flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
+            composerMode === "note"
+              ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Lock className="h-3 w-3" />
+          Private note
+        </button>
+      </div>
+
+      {composerMode === "note" ? (
+        <div className="space-y-2">
+          <p className="text-[10px] text-amber-600 dark:text-amber-400">
+            Visible to your team only — appears in the chat timeline, not sent to the customer.
+          </p>
+          <div className="flex items-end gap-2">
+            <textarea
+              ref={noteTextareaRef}
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSaveNote();
+                }
+              }}
+              placeholder="Add an internal note for your team…"
+              disabled={readOnly}
+              rows={2}
+              className={cn(
+                "flex-1 resize-none rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-amber-500/50",
+                readOnly && "cursor-not-allowed opacity-50",
+              )}
+            />
+            <GatedButton
+              size="sm"
+              canAct={!readOnly}
+              gateReason="add private notes"
+              disabled={!noteText.trim() || savingNote}
+              onClick={() => void handleSaveNote()}
+              className="h-9 w-9 shrink-0 bg-amber-600 p-0 hover:bg-amber-600/90 disabled:opacity-40"
+            >
+              {savingNote ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <StickyNote className="h-4 w-4" />
+              )}
+            </GatedButton>
+          </div>
+        </div>
+      ) : (
+        <>
       {replyTo && (
         <div className="mb-2">
           <ReplyQuote
@@ -567,6 +678,8 @@ export function MessageComposer({
         <p className="mt-1 pl-[5.5rem] text-[10px] text-muted-foreground">
           Type &apos;/&apos; for quick replies
         </p>
+      )}
+        </>
       )}
     </div>
   );

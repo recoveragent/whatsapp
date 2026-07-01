@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { useCan } from "@/hooks/use-can";
 import { useAuth } from "@/hooks/use-auth";
 import { GatedButton } from "@/components/ui/gated-button";
+import { useRouter } from "next/navigation";
 
 // Pipeline creation is admin-class (settings-tier write under
 // the new RLS); deal creation is operational and only requires
@@ -45,10 +46,21 @@ const SPEC_DEFAULT_STAGES = [
 ];
 
 export default function PipelinesPage() {
+  const router = useRouter();
   const supabase = createClient();
   const canEditSettings = useCan("edit-settings");
   const canCreateDeals = useCan("send-messages");
-  const { accountId } = useAuth();
+  const { accountId, isLeadGenBrand, profileLoading } = useAuth();
+
+  useEffect(() => {
+    if (!profileLoading && !isLeadGenBrand) {
+      router.replace("/dashboard");
+    }
+  }, [profileLoading, isLeadGenBrand, router]);
+
+  if (profileLoading || !isLeadGenBrand) {
+    return null;
+  }
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");

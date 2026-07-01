@@ -29,6 +29,10 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
+import {
+  fetchOrganizationMembership,
+  SUPER_ADMIN_ACTING_ROLE,
+} from "./organization";
 import { hasMinRole, isAccountRole, type AccountRole } from "./roles";
 
 // ------------------------------------------------------------
@@ -54,6 +58,15 @@ export class ForbiddenError extends Error {
   }
 }
 
+/** Super admin has not picked a brand to act in yet. */
+export class BrandContextRequiredError extends ForbiddenError {
+  readonly needsBrandContext = true as const;
+  constructor(message = "Select a brand to continue") {
+    super(message);
+    this.name = "BrandContextRequiredError";
+  }
+}
+
 /**
  * Convert one of the typed errors above (or anything else) into a
  * `NextResponse`. Routes can do:
@@ -67,6 +80,12 @@ export class ForbiddenError extends Error {
  * server internals out of the wire.
  */
 export function toErrorResponse(err: unknown): NextResponse {
+  if (err instanceof BrandContextRequiredError) {
+    return NextResponse.json(
+      { error: err.message, needsBrandContext: true },
+      { status: err.status },
+    );
+  }
   if (err instanceof UnauthorizedError || err instanceof ForbiddenError) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
@@ -83,12 +102,16 @@ export interface AccountContext {
   supabase: SupabaseClient;
   /** `auth.uid()` for the caller. Always defined when this resolves. */
   userId: string;
-  /** Caller's account_id from their profile row. */
+  /** Active brand id (profile account or super-admin acting brand). */
   accountId: string;
-  /** Caller's role within their account. */
+  /** Effective role within the active brand. */
   role: AccountRole;
   /** Lightweight account meta — id + name. */
   account: { id: string; name: string };
+  /** True when the caller is a Recover Agent super admin acting in a brand. */
+  isSuperAdminActing?: boolean;
+  organizationId?: string;
+  organizationName?: string;
 }
 
 /**
@@ -124,52 +147,62 @@ export async function getCurrentAccount(): Promise<AccountContext> {
     console.error("[getCurrentAccount] profile fetch error:", error);
     throw new ForbiddenError("Could not load account context");
   }
-  if (!data || !data.account_id || !data.account_role) {
-    // Pre-migration profile, or a manual insert that skipped the
-    // signup trigger. The user is authenticated but the app has
-    // no way to scope their queries — treat as forbidden.
-    throw new ForbiddenError("Profile is not linked to an account");
-  }
-  if (!isAccountRole(data.account_role)) {
-    // The DB enum should make this impossible, but a future
-    // migration that broadens the enum without updating TS would
-    // hit this — surface it rather than silently widening.
-    throw new ForbiddenError(`Unknown account role: ${data.account_role}`);
+
+  // Super admin always uses the brand they opened — not a stale profile.account_id.
+  const org = await fetchOrganizationMembership(supabase, user.id);
+  if (org) {
+    if (!org.actingAccountId) {
+      throw new BrandContextRequiredError();
+    }
+
+    const { data: account, error: accountErr } = await supabase
+      .from("accounts")
+      .select("id, name")
+      .eq("id", org.actingAccountId)
+      .maybeSingle();
+
+    if (accountErr || !account) {
+      console.error("[getCurrentAccount] acting brand fetch error:", accountErr);
+      throw new ForbiddenError("Could not load brand context");
+    }
+
+    return {
+      supabase,
+      userId: user.id,
+      accountId: org.actingAccountId,
+      role: SUPER_ADMIN_ACTING_ROLE,
+      account: { id: account.id, name: account.name },
+      isSuperAdminActing: true,
+      organizationId: org.organizationId,
+      organizationName: org.organizationName,
+    };
   }
 
-  // Load the account with a plain point lookup by id rather than an
-  // embedded FK join (`account:accounts!inner(...)`). The embed forces
-  // PostgREST to resolve the profiles.account_id → accounts.id
-  // relationship from its schema cache; when that cache is stale — a
-  // common Supabase state right after a migration adds the FK, or when
-  // migrations are applied out of band — the embed fails hard with
-  // PGRST200 ("could not find a relationship … in the schema cache")
-  // and takes down the entire account context (issue #294). A lookup by
-  // id needs no relationship inference and is gated by the same accounts
-  // RLS, so it stays robust against cache staleness and older schemas.
-  const { data: account, error: accountErr } = await supabase
-    .from("accounts")
-    .select("id, name")
-    .eq("id", data.account_id)
-    .maybeSingle();
+  if (data?.account_id && data.account_role && isAccountRole(data.account_role)) {
+    const { data: account, error: accountErr } = await supabase
+      .from("accounts")
+      .select("id, name")
+      .eq("id", data.account_id)
+      .maybeSingle();
 
-  if (accountErr) {
-    console.error("[getCurrentAccount] account fetch error:", accountErr);
-    throw new ForbiddenError("Could not load account context");
-  }
-  if (!account) {
-    // account_id points at no readable account row — orphaned profile
-    // or an RLS gap. Same "can't scope this user" outcome as above.
-    throw new ForbiddenError("Profile is not linked to an account");
+    if (accountErr) {
+      console.error("[getCurrentAccount] account fetch error:", accountErr);
+      throw new ForbiddenError("Could not load account context");
+    }
+    if (!account) {
+      throw new ForbiddenError("Profile is not linked to an account");
+    }
+
+    return {
+      supabase,
+      userId: user.id,
+      accountId: data.account_id,
+      role: data.account_role,
+      account: { id: account.id, name: account.name },
+    };
   }
 
-  return {
-    supabase,
-    userId: user.id,
-    accountId: data.account_id,
-    role: data.account_role,
-    account: { id: account.id, name: account.name },
-  };
+  throw new ForbiddenError("Profile is not linked to an account");
 }
 
 /**

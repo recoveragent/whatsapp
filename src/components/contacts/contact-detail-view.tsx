@@ -49,7 +49,7 @@ export function ContactDetailView({
   onUpdated,
 }: ContactDetailViewProps) {
   const supabase = createClient();
-  const { accountId, defaultCurrency } = useAuth();
+  const { accountId, defaultCurrency, isLeadGenBrand } = useAuth();
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(false);
@@ -411,12 +411,14 @@ export function ContactDetailView({
                 >
                   Custom Fields
                 </TabsTrigger>
+                {isLeadGenBrand && (
                 <TabsTrigger
                   value="deals"
                   className="data-active:bg-muted data-active:text-primary text-muted-foreground"
                 >
                   Deals
                 </TabsTrigger>
+                )}
               </TabsList>
 
               {/* Details Tab */}
@@ -624,6 +626,7 @@ export function ContactDetailView({
               </TabsContent>
 
               {/* Deals Tab */}
+              {isLeadGenBrand && (
               <TabsContent value="deals" className="flex-1 overflow-y-auto px-4 py-3">
                 {loadingDeals ? (
                   <div className="flex items-center justify-center py-8">
@@ -679,6 +682,7 @@ export function ContactDetailView({
                   </div>
                 )}
               </TabsContent>
+              )}
             </Tabs>
           </div>
         )}

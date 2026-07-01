@@ -48,6 +48,19 @@ export async function middleware(request: NextRequest) {
   // they can accept the invitation in one click. Without this,
   // a forwarded invite link to someone who's already signed in
   // would silently drop them on /dashboard.
+  //
+  // Public signup is disabled — /signup without ?invite= redirects
+  // to login.
+  if (
+    request.nextUrl.pathname === "/signup" &&
+    !request.nextUrl.searchParams.get("invite")
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    url.search = "";
+    return withRefreshedCookies(NextResponse.redirect(url));
+  }
+
   if (user && (
     request.nextUrl.pathname === '/login' ||
     request.nextUrl.pathname === '/signup' ||
@@ -70,8 +83,14 @@ export async function middleware(request: NextRequest) {
   }
 
   // Protected pages - redirect to login if not authenticated
-  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings']
+  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings', '/admin']
   if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    return withRefreshedCookies(NextResponse.redirect(url))
+  }
+
+  if (!user && request.nextUrl.pathname === '/reset-password') {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return withRefreshedCookies(NextResponse.redirect(url))

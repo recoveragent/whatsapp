@@ -5,12 +5,15 @@ import {
   LayoutGrid,
   Palette,
   PlugZap,
+  ShoppingBag,
   Shield,
   Tags,
   User,
   UsersRound,
   type LucideIcon,
 } from 'lucide-react';
+import type { BrandCategory } from '@/lib/auth/brand-category';
+import { isEcommerceBrand, isLeadGenBrand } from '@/lib/auth/brand-category';
 
 /**
  * Settings information architecture for the redesigned page.
@@ -26,6 +29,7 @@ export const SETTINGS_SECTIONS = [
   'security',
   'appearance',
   'whatsapp',
+  'shopify',
   'templates',
   'fields',
   'deals',
@@ -50,7 +54,8 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   profile: { id: 'profile', label: 'Your profile', icon: User, group: 'account' },
   security: { id: 'security', label: 'Login & security', icon: Shield, group: 'account' },
   appearance: { id: 'appearance', label: 'Appearance', icon: Palette, group: 'account' },
-  whatsapp: { id: 'whatsapp', label: 'WhatsApp', icon: PlugZap, group: 'workspace' },
+  whatsapp: { id: 'whatsapp', label: 'WhatsApp number', icon: PlugZap, group: 'workspace' },
+  shopify: { id: 'shopify', label: 'Shopify', icon: ShoppingBag, group: 'workspace' },
   templates: { id: 'templates', label: 'Templates', icon: FileText, group: 'workspace' },
   fields: { id: 'fields', label: 'Fields & tags', icon: Tags, group: 'workspace' },
   deals: { id: 'deals', label: 'Deals & currency', icon: Coins, group: 'workspace' },
@@ -78,4 +83,21 @@ export function resolveSection(raw: string | null): SettingsSection {
   if (raw === 'tags' || raw === 'custom-fields') return 'fields';
   if (isSection(raw)) return raw;
   return DEFAULT_SECTION;
+}
+
+/** Workspace sections visible for the active brand category. */
+export function isSettingsSectionVisible(
+  section: SettingsSection,
+  category: BrandCategory,
+): boolean {
+  if (section === 'deals') return isLeadGenBrand(category);
+  if (section === 'shopify') return isEcommerceBrand(category);
+  return true;
+}
+
+export function filterSettingsSections(
+  sections: readonly SettingsSection[],
+  category: BrandCategory,
+): SettingsSection[] {
+  return sections.filter((s) => isSettingsSectionVisible(s, category));
 }

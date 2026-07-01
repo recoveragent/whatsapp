@@ -4,18 +4,21 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
-import type { Contact, Deal, ContactNote, Tag } from "@/types";
+import type { Contact, Deal, ContactNote, Tag, ShopifyOrder } from "@/types";
 import {
   Phone,
   Mail,
   Copy,
   Check,
-  User,
   Tag as TagIcon,
   DollarSign,
   StickyNote,
   Plus,
+  ShoppingBag,
+  Loader2,
+  ExternalLink,
 } from "lucide-react";
+import { isFulfilledStatus } from "@/lib/shopify/order-links";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
@@ -25,10 +28,12 @@ interface ContactSidebarProps {
 }
 
 export function ContactSidebar({ contact }: ContactSidebarProps) {
-  const { accountId } = useAuth();
+  const { accountId, isLeadGenBrand, isEcommerceBrand } = useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [notes, setNotes] = useState<ContactNote[]>([]);
+  const [shopifyOrders, setShopifyOrders] = useState<ShopifyOrder[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
@@ -66,6 +71,21 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           contact_tag_id: ct.id as string,
         }));
       setTags(mapped);
+    }
+
+    setOrdersLoading(true);
+    try {
+      const res = await fetch(`/api/shopify/orders?contact_id=${contact.id}`);
+      if (res.ok) {
+        const payload = (await res.json()) as { orders?: ShopifyOrder[] };
+        setShopifyOrders(payload.orders ?? []);
+      } else {
+        setShopifyOrders([]);
+      }
+    } catch {
+      setShopifyOrders([]);
+    } finally {
+      setOrdersLoading(false);
     }
   }, [contact]);
 
@@ -117,7 +137,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
   if (!contact) {
     return (
-      <div className="flex h-full w-70 items-center justify-center border-l border-border bg-card">
+      <div className="flex h-full min-h-0 w-70 items-center justify-center overflow-hidden border-l border-border bg-card">
         <p className="text-sm text-muted-foreground">Select a conversation</p>
       </div>
     );
@@ -127,8 +147,10 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const initials = displayName.charAt(0).toUpperCase();
 
   return (
-    <div className="flex h-full w-70 flex-col border-l border-border bg-card">
-      <ScrollArea className="flex-1">
+    <div className="flex h-full min-h-0 w-70 flex-col overflow-hidden border-l border-border bg-card">
+      {/* `min-h-0` lets the ScrollArea shrink inside the flex column
+          instead of growing with content and getting clipped (#inbox). */}
+      <ScrollArea className="min-h-0 flex-1">
         <div className="p-4">
           {/* Contact Info */}
           <div className="flex flex-col items-center text-center">
@@ -203,7 +225,93 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
             </div>
           </div>
 
-          {/* Divider */}
+          {isEcommerceBrand && (
+          <>
+          <div className="my-4 border-t border-border" />
+
+          {/* Shopify order history */}
+          <div>
+            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <ShoppingBag className="h-3 w-3" />
+              Shopify Orders
+            </div>
+            <div className="mt-2 space-y-2">
+              {ordersLoading ? (
+                <div className="flex items-center gap-2 px-1 py-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Loading orders…
+                </div>
+              ) : shopifyOrders.length === 0 ? (
+                <p className="px-1 text-xs text-muted-foreground">No Shopify orders</p>
+              ) : (
+                shopifyOrders.map((order) => (
+                  <div key={order.id} className="rounded-lg bg-muted px-3 py-2 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      {order.admin_url ? (
+                        <a
+                          href={order.admin_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {order.order_number}
+                        </a>
+                      ) : (
+                        <span className="font-medium text-foreground">{order.order_number}</span>
+                      )}
+                      <span className="text-muted-foreground">
+                        {order.currency ?? ""}
+                        {order.total_price ?? "—"}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 space-y-0.5 text-[11px] text-muted-foreground">
+                      <p>
+                        Payment:{" "}
+                        <span className="text-foreground">
+                          {formatPaymentLabel(order.payment_gateway, order.payment_status)}
+                        </span>
+                      </p>
+                      <p>
+                        Fulfillment:{" "}
+                        <span className="text-foreground">
+                          {formatFulfillment(order.fulfillment_status)}
+                        </span>
+                      </p>
+                      {isFulfilledStatus(order.fulfillment_status) && order.tracking_url && (
+                        <a
+                          href={order.tracking_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Track shipment
+                          {order.tracking_number ? ` (${order.tracking_number})` : ""}
+                        </a>
+                      )}
+                      {order.tags.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {order.tags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded-full bg-background px-1.5 py-0.5 text-[10px] text-foreground"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          </>
+          )}
+
+          {isLeadGenBrand && (
+          <>
           <div className="my-4 border-t border-border" />
 
           {/* Active Deals */}
@@ -247,8 +355,9 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
             </div>
           </div>
 
-          {/* Divider */}
           <div className="my-4 border-t border-border" />
+          </>
+          )}
 
           {/* Notes */}
           <div>
@@ -296,4 +405,17 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
       </ScrollArea>
     </div>
   );
+}
+
+function formatPaymentLabel(gateway: string | null | undefined, status: string | null | undefined) {
+  const parts = [gateway, status].filter(Boolean);
+  if (parts.length === 0) return "—";
+  return parts
+    .map((p) => p!.replace(/_/g, " "))
+    .join(" · ");
+}
+
+function formatFulfillment(status: string | null | undefined) {
+  if (!status) return "Unfulfilled";
+  return status.replace(/_/g, " ");
 }

@@ -3,10 +3,12 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/use-auth';
 import {
   RAIL_GROUPS,
   SECTION_META,
   SETTINGS_SECTIONS,
+  filterSettingsSections,
   type SettingsSection,
 } from './settings-sections';
 
@@ -30,6 +32,8 @@ export function SettingsRail({
   onSelect: (section: SettingsSection) => void;
   hints?: Partial<Record<SettingsSection, ReactNode>>;
 }) {
+  const { brandCategory } = useAuth();
+  const visibleSections = filterSettingsSections(SETTINGS_SECTIONS, brandCategory);
   const activeRef = useRef<HTMLButtonElement>(null);
 
   // When horizontal (mobile), keep the active chip in view. On desktop
@@ -54,7 +58,7 @@ export function SettingsRail({
       )}
     >
       {RAIL_GROUPS.map(({ label, group }) => {
-        const items = SETTINGS_SECTIONS.filter(
+        const items = visibleSections.filter(
           (s) => SECTION_META[s].group === group,
         );
         return (

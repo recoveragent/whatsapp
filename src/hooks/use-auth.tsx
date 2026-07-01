@@ -19,6 +19,14 @@ import {
   isAccountRole,
   type AccountRole,
 } from "@/lib/auth/roles";
+import {
+  DEFAULT_BRAND_CATEGORY,
+  isEcommerceBrand,
+  isLeadGenBrand,
+  type BrandCategory,
+} from "@/lib/auth/brand-category";
+import { fetchAccountWithCategory } from "@/lib/auth/brand-accounts";
+import { SUPER_ADMIN_ACTING_ROLE } from "@/lib/auth/organization";
 
 interface Profile {
   id: string;
@@ -42,6 +50,7 @@ interface AccountSummary {
   /** Default deal currency (ISO-4217). NOT NULL DEFAULT 'USD' in the
    *  DB (migration 021); narrowed to DEFAULT_CURRENCY when absent. */
   default_currency: string;
+  brand_category: BrandCategory;
 }
 
 interface AuthContextValue {
@@ -87,6 +96,12 @@ interface AuthContextValue {
    *  while loading or when no account is resolved, so callers can use
    *  it unconditionally. */
   defaultCurrency: string;
+  /** Brand vertical — set by super admin at brand creation. */
+  brandCategory: BrandCategory;
+  /** True when pipelines / deals features apply. */
+  isLeadGenBrand: boolean;
+  /** True when Shopify / order features apply. */
+  isEcommerceBrand: boolean;
   /** True if `accountRole === 'owner'`. */
   isOwner: boolean;
   /** True if `accountRole === 'admin'` (does NOT include owner — use canManageMembers for "admin or above"). */
@@ -101,6 +116,15 @@ interface AuthContextValue {
   canEditSettings: boolean;
   /** True if the caller can send messages and edit operational data (agent+). */
   canSendMessages: boolean;
+
+  /** Recover Agent company super admin. */
+  isSuperAdmin: boolean;
+  organizationName: string | null;
+  /** Super admin has not opened a brand yet. */
+  needsBrandContext: boolean;
+  /** One-time bootstrap available for configured super-admin email. */
+  canClaimSuperAdmin: boolean;
+  isSuperAdminActing: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -120,6 +144,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // settles later. Callers that gate on `profile.*` need to know which
   // window they're in — see the type doc above.
   const [profileLoading, setProfileLoading] = useState(true);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [organizationName, setOrganizationName] = useState<string | null>(null);
+  const [needsBrandContext, setNeedsBrandContext] = useState(false);
+  const [canClaimSuperAdmin, setCanClaimSuperAdmin] = useState(false);
+  const [isSuperAdminActing, setIsSuperAdminActing] = useState(false);
+  const [effectiveRole, setEffectiveRole] = useState<AccountRole | null>(null);
+  const [effectiveAccountId, setEffectiveAccountId] = useState<string | null>(null);
 
   // Shared across init, auth-state-change listener, and the exposed
   // refreshProfile() callback. Reads the current session's user id and
@@ -127,6 +158,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchProfile = useCallback(async (userId: string) => {
     const supabase = createClient();
     setProfileLoading(true);
+    setIsSuperAdmin(false);
+    setOrganizationName(null);
+    setNeedsBrandContext(false);
+    setCanClaimSuperAdmin(false);
+    setIsSuperAdminActing(false);
     try {
       const { data, error } = await supabase
         .from("profiles")
@@ -158,38 +194,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // (with account_id / account_role) still resolves even if the
         // account name lookup itself can't.
         let accountRow: AccountSummary | null = null;
-        if (data.account_id) {
-          const { data: account, error: accountErr } = await supabase
-            .from("accounts")
-            // default_currency added in migration 021; narrowed to the
-            // USD fallback below for older schemas where it reads null.
-            .select("id, name, default_currency")
-            .eq("id", data.account_id)
+        let role: AccountRole | null = isAccountRole(data.account_role)
+          ? data.account_role
+          : null;
+        let resolvedAccountId = data.account_id ?? null;
+
+        const { data: orgMember } = await supabase
+          .from("organization_members")
+          .select("organization_id")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (orgMember?.organization_id) {
+          setIsSuperAdmin(true);
+          const { data: org } = await supabase
+            .from("organizations")
+            .select("name")
+            .eq("id", orgMember.organization_id)
             .maybeSingle();
-          if (accountErr) {
-            console.error("[AuthProvider] fetchAccount error:", {
-              message: accountErr.message,
-              details: accountErr.details,
-              hint: accountErr.hint,
-              code: accountErr.code,
-            });
-          } else if (account) {
+          setOrganizationName(org?.name ?? "Recover Agent");
+
+          const { data: ctx } = await supabase
+            .from("organization_admin_context")
+            .select("acting_account_id")
+            .eq("user_id", userId)
+            .maybeSingle();
+
+          if (ctx?.acting_account_id) {
+            const acting = await fetchAccountWithCategory(supabase, ctx.acting_account_id);
+            if (acting) {
+              accountRow = {
+                id: acting.id,
+                name: acting.name,
+                default_currency: acting.default_currency ?? DEFAULT_CURRENCY,
+                brand_category: acting.brand_category,
+              };
+              role = SUPER_ADMIN_ACTING_ROLE;
+              resolvedAccountId = acting.id;
+              setIsSuperAdminActing(true);
+              setNeedsBrandContext(false);
+            }
+          } else {
+            setNeedsBrandContext(true);
+            role = null;
+            resolvedAccountId = null;
+            accountRow = null;
+          }
+        } else if (data.account_id) {
+          const account = await fetchAccountWithCategory(supabase, data.account_id);
+          if (account) {
             accountRow = {
               id: account.id,
               name: account.name,
               default_currency: account.default_currency ?? DEFAULT_CURRENCY,
+              brand_category: account.brand_category,
             };
+          }
+        } else {
+          try {
+            const res = await fetch("/api/admin/me");
+            if (res.ok) {
+              const me = await res.json();
+              setCanClaimSuperAdmin(Boolean(me.canClaimSuperAdmin));
+            }
+          } catch {
+            /* ignore */
           }
         }
 
-        // Narrow the DB enum into our AccountRole union. The DB
-        // constraint should make this unconditional, but a future
-        // migration that broadens the enum without updating TS would
-        // otherwise crash here — fall back to null and let UI gates
-        // treat the caller as least-privileged.
-        const accountRole = isAccountRole(data.account_role)
-          ? data.account_role
-          : null;
+        setEffectiveRole(role);
+        setEffectiveAccountId(resolvedAccountId);
 
         setProfile({
           id: data.id,
@@ -203,7 +277,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // opt-ins, which is the safe default for any future beta gate.
           beta_features: data.beta_features ?? [],
           account_id: data.account_id ?? null,
-          account_role: accountRole,
+          account_role: isAccountRole(data.account_role) ? data.account_role : null,
         });
         setAccount(accountRow);
       }
@@ -273,6 +347,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setProfile(null);
         setAccount(null);
+        setIsSuperAdmin(false);
+        setOrganizationName(null);
+        setNeedsBrandContext(false);
+        setCanClaimSuperAdmin(false);
+        setIsSuperAdminActing(false);
+        setEffectiveRole(null);
+        setEffectiveAccountId(null);
         setProfileLoading(false);
       }
 
@@ -292,6 +373,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setProfile(null);
     setAccount(null);
+    setIsSuperAdmin(false);
     window.location.href = "/login";
   }, []);
 
@@ -305,10 +387,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // each derived value a stable identity for React.memo / useEffect
   // dependencies downstream.
   const derived = useMemo(() => {
-    const role = profile?.account_role ?? null;
+    const role = effectiveRole;
+    const brandCategory = account?.brand_category ?? DEFAULT_BRAND_CATEGORY;
     return {
       accountRole: role,
-      accountId: profile?.account_id ?? null,
+      accountId: effectiveAccountId,
+      brandCategory,
+      isLeadGenBrand: isLeadGenBrand(brandCategory),
+      isEcommerceBrand: isEcommerceBrand(brandCategory),
       isOwner: role === "owner",
       isAdmin: role === "admin",
       isAgent: role === "agent",
@@ -317,7 +403,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canEditSettings: role ? canEditSettingsFor(role) : false,
       canSendMessages: role ? canSendMessagesFor(role) : false,
     };
-  }, [profile?.account_role, profile?.account_id]);
+  }, [effectiveRole, effectiveAccountId, account?.brand_category]);
 
   return (
     <AuthContext.Provider
@@ -330,6 +416,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshProfile,
         account,
         defaultCurrency: account?.default_currency ?? DEFAULT_CURRENCY,
+        isSuperAdmin,
+        organizationName,
+        needsBrandContext,
+        canClaimSuperAdmin,
+        isSuperAdminActing,
         ...derived,
       }}
     >
@@ -360,6 +451,9 @@ export function useAuth(): AuthContextValue {
       refreshProfile: async () => {},
       account: null,
       defaultCurrency: DEFAULT_CURRENCY,
+      brandCategory: DEFAULT_BRAND_CATEGORY,
+      isLeadGenBrand: true,
+      isEcommerceBrand: false,
       accountId: null,
       accountRole: null,
       isOwner: false,
@@ -369,6 +463,11 @@ export function useAuth(): AuthContextValue {
       canManageMembers: false,
       canEditSettings: false,
       canSendMessages: false,
+      isSuperAdmin: false,
+      organizationName: null,
+      needsBrandContext: false,
+      canClaimSuperAdmin: false,
+      isSuperAdminActing: false,
     };
   }
   return ctx;

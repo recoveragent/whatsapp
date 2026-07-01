@@ -53,9 +53,19 @@ describe('ensureImageHeaderHandle', () => {
     expect(p.header_handle).toBe('existing');
   });
 
-  it('throws an actionable error when META_APP_ID is unset', async () => {
+  it('throws an actionable error when Meta App ID is unset', async () => {
     const p = payload();
     await expect(ensureImageHeaderHandle(p, 'tok')).rejects.toThrow(/META_APP_ID/);
+  });
+
+  it('accepts NEXT_PUBLIC_META_APP_ID as well as META_APP_ID', async () => {
+    vi.stubEnv('NEXT_PUBLIC_META_APP_ID', 'app-from-public');
+    vi.stubGlobal('fetch', vi.fn(async () => imgResponse('image/jpeg', 2048)));
+    const p = payload();
+    await ensureImageHeaderHandle(p, 'tok');
+    expect(uploadResumableMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: 'app-from-public' }),
+    );
   });
 
   it('derives + sets header_handle from a valid image URL', async () => {

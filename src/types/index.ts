@@ -1,4 +1,5 @@
 import type { AccountRole } from "@/lib/auth/roles";
+import type { BrandCategory } from "@/lib/auth/brand-category";
 
 export interface Profile {
   id: string;
@@ -47,6 +48,7 @@ export interface Account {
   name: string;
   /** auth.users.id of the immutable owner. */
   owner_user_id: string;
+  brand_category?: BrandCategory;
   created_at: string;
   updated_at: string;
 }
@@ -142,6 +144,36 @@ export interface ContactNote {
   created_at: string;
 }
 
+export interface ConversationPrivateNote {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  note_text: string;
+  created_at: string;
+}
+
+export interface ShopifyOrder {
+  id: string;
+  account_id: string;
+  contact_id?: string | null;
+  customer_phone?: string | null;
+  shopify_order_id: string;
+  order_number: string;
+  total_price?: string | null;
+  currency?: string | null;
+  payment_status?: string | null;
+  payment_gateway?: string | null;
+  fulfillment_status?: string | null;
+  tracking_url?: string | null;
+  tracking_number?: string | null;
+  /** Populated by the orders API — opens the order in Shopify Admin. */
+  admin_url?: string | null;
+  tags: string[];
+  ordered_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type ConversationStatus = 'open' | 'pending' | 'closed';
 
 export interface Conversation {
@@ -224,6 +256,35 @@ export interface WhatsAppConfig {
   subscribed_apps_at?: string;
   /** Last error from /register; cleared on success. */
   last_registration_error?: string;
+}
+
+export interface ShopifyConfig {
+  id: string;
+  account_id: string;
+  user_id: string;
+  shop_domain: string;
+  access_token: string;
+  scopes: string[];
+  status: 'connected' | 'disconnected';
+  connected_at?: string | null;
+}
+
+export type ShopifyCampaignType =
+  | 'order_confirmation'
+  | 'fulfillment_update'
+  | 'abandoned_checkout';
+
+export interface ShopifyCampaign {
+  id: string;
+  account_id: string;
+  campaign_type: ShopifyCampaignType;
+  is_enabled: boolean;
+  template_name: string | null;
+  template_language: string;
+  variable_mapping: Record<string, string>;
+  delay_minutes: number;
+  created_at: string;
+  updated_at: string;
 }
 
 // Raw Meta status enum. We persist this verbatim from Meta (sync + webhook)

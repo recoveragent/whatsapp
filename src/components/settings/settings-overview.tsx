@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
-import { SECTION_META, type SettingsSection } from './settings-sections';
+import { SECTION_META, isSettingsSectionVisible, type SettingsSection } from './settings-sections';
 import { SettingsChip, StatusDot } from './settings-chip';
 import { ROLE_META } from './role-meta';
 
@@ -30,12 +30,17 @@ interface WhatsAppStatus {
   connected: boolean;
 }
 
+interface ShopifyStatus {
+  configured: boolean;
+  connected: boolean;
+}
+
 export function SettingsOverview({
   onSelect,
 }: {
   onSelect: (section: SettingsSection) => void;
 }) {
-  const { user, profile, accountId, accountRole, defaultCurrency, canManageMembers } =
+  const { user, profile, accountId, accountRole, defaultCurrency, canManageMembers, brandCategory } =
     useAuth();
   const { mode, theme } = useTheme();
 
@@ -47,13 +52,14 @@ export function SettingsOverview({
   // from blanking the rest of the landing.
   const [whatsapp, setWhatsapp] = useState<WhatsAppStatus | null>(null);
   const [whatsappLoading, setWhatsappLoading] = useState(true);
+  const [shopify, setShopify] = useState<ShopifyStatus | null>(null);
+  const [shopifyLoading, setShopifyLoading] = useState(true);
 
   useEffect(() => {
     if (!user || !accountId) return;
     let cancelled = false;
     const supabase = createClient();
     const userId = user.id;
-    const acctId = accountId;
 
     // Cheap counts — resolve fast, render immediately.
     (async () => {
@@ -113,23 +119,31 @@ export function SettingsOverview({
       setCountsLoading(false);
     })();
 
-    // WhatsApp connection status — slower, independent.
+    // WhatsApp connection status — brand-safe endpoint (no credentials).
     (async () => {
       setWhatsappLoading(true);
-      const [row, health] = await Promise.allSettled([
-        supabase
-          .from('whatsapp_config')
-          .select('phone_number_id')
-          .eq('account_id', acctId)
-          .maybeSingle(),
-        fetch('/api/whatsapp/config', { cache: 'no-store' }).then((r) => r.json()),
-      ]);
+      const health = await fetch('/api/whatsapp/connection', {
+        cache: 'no-store',
+      }).then((r) => r.json());
       if (cancelled) return;
       setWhatsapp({
-        configured: row.status === 'fulfilled' && !!row.value.data?.phone_number_id,
-        connected: health.status === 'fulfilled' && !!health.value?.connected,
+        configured: !!health?.configured,
+        connected: !!health?.connected,
       });
       setWhatsappLoading(false);
+    })();
+
+    (async () => {
+      setShopifyLoading(true);
+      const health = await fetch('/api/shopify/connection', {
+        cache: 'no-store',
+      }).then((r) => r.json());
+      if (cancelled) return;
+      setShopify({
+        configured: !!health?.configured,
+        connected: !!health?.connected,
+      });
+      setShopifyLoading(false);
     })();
 
     return () => {
@@ -149,7 +163,7 @@ export function SettingsOverview({
 
   // Per-tile loading + subtitle. `null` counts render as a graceful
   // fallback so a single failed query never blanks a tile.
-  const tiles: {
+  const allTiles: {
     section: SettingsSection;
     loading: boolean;
     subtitle: ReactNode;
@@ -158,14 +172,29 @@ export function SettingsOverview({
       section: 'whatsapp',
       loading: whatsappLoading,
       subtitle: !whatsapp?.configured ? (
-        'Not set up yet'
+        'Not connected yet'
       ) : whatsapp.connected ? (
         <>
           <StatusDot tone="ok" /> Connected
         </>
       ) : (
         <>
-          <StatusDot tone="muted" /> Needs reconnecting
+          <StatusDot tone="muted" /> Contact Recover Agent
+        </>
+      ),
+    },
+    {
+      section: 'shopify',
+      loading: shopifyLoading,
+      subtitle: !shopify?.configured ? (
+        'Not connected yet'
+      ) : shopify.connected ? (
+        <>
+          <StatusDot tone="ok" /> Connected
+        </>
+      ) : (
+        <>
+          <StatusDot tone="muted" /> Reconnect store
         </>
       ),
     },
@@ -216,6 +245,9 @@ export function SettingsOverview({
       subtitle: `${cap(mode)} mode · ${themeName} accent`,
     },
   ];
+  const tiles = allTiles.filter((tile) =>
+    isSettingsSectionVisible(tile.section, brandCategory),
+  );
 
   return (
     <section className="animate-in fade-in-50 duration-200">

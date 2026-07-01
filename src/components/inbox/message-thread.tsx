@@ -15,6 +15,7 @@ import type {
   ConversationStatus,
   MessageTemplate,
   Profile,
+  ConversationPrivateNote,
 } from "@/types";
 import {
   MessageSquare,
@@ -46,6 +47,7 @@ import {
 } from "./message-composer";
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
+import { PrivateNoteBubble } from "./private-note-bubble";
 import { buildReplyPreview } from "./reply-quote";
 import { toast } from "sonner";
 
@@ -115,17 +117,40 @@ function formatDateSeparator(dateStr: string): string {
   return format(date, "MMMM d, yyyy");
 }
 
-function groupMessagesByDate(messages: Message[]) {
-  const groups: { date: string; messages: Message[] }[] = [];
+type TimelineItem =
+  | { kind: "message"; created_at: string; message: Message }
+  | { kind: "note"; created_at: string; note: ConversationPrivateNote };
+
+function buildTimeline(messages: Message[], notes: ConversationPrivateNote[]): TimelineItem[] {
+  const items: TimelineItem[] = [
+    ...messages.map((message) => ({
+      kind: "message" as const,
+      created_at: message.created_at,
+      message,
+    })),
+    ...notes.map((note) => ({
+      kind: "note" as const,
+      created_at: note.created_at,
+      note,
+    })),
+  ];
+
+  return items.sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+}
+
+function groupTimelineByDate(items: TimelineItem[]) {
+  const groups: { date: string; items: TimelineItem[] }[] = [];
   let currentDate = "";
 
-  for (const msg of messages) {
-    const day = format(new Date(msg.created_at), "yyyy-MM-dd");
+  for (const item of items) {
+    const day = format(new Date(item.created_at), "yyyy-MM-dd");
     if (day !== currentDate) {
       currentDate = day;
-      groups.push({ date: msg.created_at, messages: [msg] });
+      groups.push({ date: item.created_at, items: [item] });
     } else {
-      groups[groups.length - 1].messages.push(msg);
+      groups[groups.length - 1].items.push(item);
     }
   }
 
@@ -195,6 +220,30 @@ export function MessageThread({
     }, 700);
   }, [isRefreshing, onRefresh]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
+  const [privateNotes, setPrivateNotes] = useState<ConversationPrivateNote[]>([]);
+
+  const fetchPrivateNotes = useCallback(async (convId: string) => {
+    try {
+      const res = await fetch(`/api/inbox/conversations/${convId}/private-notes`);
+      if (res.ok) {
+        const data = (await res.json()) as { notes?: ConversationPrivateNote[] };
+        setPrivateNotes(data.notes ?? []);
+      } else {
+        setPrivateNotes([]);
+      }
+    } catch {
+      setPrivateNotes([]);
+    }
+  }, []);
+
+  const handlePrivateNoteSaved = useCallback((note: ConversationPrivateNote) => {
+    setPrivateNotes((prev) => {
+      const next = [...prev.filter((n) => n.id !== note.id), note];
+      return next.sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      );
+    });
+  }, []);
 
   // Profiles are bounded by RLS to rows the current user is allowed to
   // see — today that's just the current user, but the dropdown keeps the
@@ -407,7 +456,12 @@ export function MessageThread({
   // a quote pulled from conversation A shouldn't bleed into conversation B.
   useEffect(() => {
     setReplyTo(null);
-  }, [conversationId]);
+    if (!conversationId) {
+      setPrivateNotes([]);
+      return;
+    }
+    void fetchPrivateNotes(conversationId);
+  }, [conversationId, resyncToken, fetchPrivateNotes]);
 
   // Reset the server-side unread_count to 0 whenever an unread count
   // surfaces on the active conversation — covers both (a) opening a
@@ -430,13 +484,13 @@ export function MessageThread({
       });
   }, [conversationId, hasUnread]);
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages or private notes
   useEffect(() => {
     if (scrollRef.current) {
       const el = scrollRef.current;
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, privateNotes]);
 
   const handleSend = useCallback(
     async (text: string, replyToId?: string) => {
@@ -778,6 +832,12 @@ export function MessageThread({
     [conversation, onAssignChange],
   );
 
+  const timeline = useMemo(
+    () => buildTimeline(messages, privateNotes),
+    [messages, privateNotes],
+  );
+  const timelineGroups = groupTimelineByDate(timeline);
+
   // Empty state — same WhatsApp-style doodle background as the active
   // thread below, so swapping between empty/selected doesn't change the
   // pattern under the user's eye.
@@ -798,7 +858,6 @@ export function MessageThread({
   }
 
   const displayName = contact.name || contact.phone;
-  const messageGroups = groupMessagesByDate(messages);
   const currentStatus = STATUS_OPTIONS.find(
     (s) => s.value === conversation.status
   );
@@ -1003,7 +1062,7 @@ export function MessageThread({
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
-        ) : messages.length === 0 ? (
+        ) : timeline.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12">
             <p className="text-sm text-muted-foreground">No messages yet</p>
             <p className="text-xs text-muted-foreground">
@@ -1012,7 +1071,7 @@ export function MessageThread({
           </div>
         ) : (
           <div className="space-y-4">
-            {messageGroups.map((group) => (
+            {timelineGroups.map((group) => (
               <div key={group.date}>
                 {/* Date separator */}
                 <div className="mb-4 flex items-center justify-center">
@@ -1020,9 +1079,13 @@ export function MessageThread({
                     {formatDateSeparator(group.date)}
                   </span>
                 </div>
-                {/* Messages */}
                 <div className="space-y-2">
-                  {group.messages.map((msg) => {
+                  {group.items.map((item) => {
+                    if (item.kind === "note") {
+                      return <PrivateNoteBubble key={`note-${item.note.id}`} note={item.note} />;
+                    }
+
+                    const msg = item.message;
                     const parent = msg.reply_to_message_id
                       ? messagesById.get(msg.reply_to_message_id)
                       : null;
@@ -1033,8 +1096,6 @@ export function MessageThread({
                         }
                       : null;
                     const msgReactions = reactionsByMessageId.get(msg.id);
-                    // Toggle is computed at the call site — `msgReactions`
-                    // and `user?.id` are already in scope, no extra hook.
                     const handlePillToggle = (emoji: string) => {
                       const own = msgReactions?.find(
                         (r) =>
@@ -1077,6 +1138,7 @@ export function MessageThread({
         onSend={handleSend}
         onSendMedia={handleSendMedia}
         onOpenTemplates={handleOpenTemplates}
+        onPrivateNoteSaved={handlePrivateNoteSaved}
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
       />

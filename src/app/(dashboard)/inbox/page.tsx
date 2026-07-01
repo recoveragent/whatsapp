@@ -156,43 +156,31 @@ export default function InboxPage() {
   }, []);
 
   // Check WhatsApp connection status on mount
+  // WhatsApp connection — use the same server check as Settings so the
+  // inbox banner matches the WhatsApp number page.
   useEffect(() => {
-    const checkConnection = async () => {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const user = session?.user;
+    let cancelled = false;
 
-      if (!user) return;
-
-      // whatsapp_config is one-row-per-account post-multi-user, so
-      // the previous `.eq('user_id', user.id)` would miss the row
-      // for any teammate who didn't personally save the config —
-      // the "WhatsApp not connected" banner would show in the
-      // shared inbox even though the admin had it configured.
-      // Resolve account_id via the profile and query by that.
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("account_id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      const accountId = profile?.account_id as string | undefined;
-      if (!accountId) {
-        setWhatsappConnected(false);
-        return;
+    (async () => {
+      try {
+        const res = await fetch("/api/whatsapp/connection", {
+          cache: "no-store",
+        });
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          setWhatsappConnected(false);
+          return;
+        }
+        setWhatsappConnected(Boolean(data.configured && data.connected));
+      } catch {
+        if (!cancelled) setWhatsappConnected(false);
       }
+    })();
 
-      const { data } = await supabase
-        .from("whatsapp_config")
-        .select("status")
-        .eq("account_id", accountId)
-        .maybeSingle();
-
-      setWhatsappConnected(data?.status === "connected");
+    return () => {
+      cancelled = true;
     };
-
-    checkConnection();
   }, []);
 
   // Handle realtime message events
@@ -471,6 +459,20 @@ export default function InboxPage() {
     [activeConversation?.id, router]
   );
 
+  const handleConversationCreated = useCallback(
+    (conv: Conversation) => {
+      setConversations((prev) => {
+        const exists = prev.some((c) => c.id === conv.id);
+        if (exists) {
+          return prev.map((c) => (c.id === conv.id ? { ...c, ...conv } : c));
+        }
+        return [conv, ...prev];
+      });
+      handleSelectConversation(conv);
+    },
+    [handleSelectConversation],
+  );
+
   // Mobile "back" — deselect the conversation so the list pane comes
   // back. Also clears the ?c= param so a refresh lands on the list
   // instead of re-opening the thread the user just backed out of.
@@ -572,6 +574,7 @@ export default function InboxPage() {
             onSelect={handleSelectConversation}
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
+            onConversationCreated={handleConversationCreated}
             resyncToken={resyncToken}
           />
         </div>
@@ -614,7 +617,7 @@ export default function InboxPage() {
             On mobile it's always hidden (the `lg:block` below), so the
             toggle — which is itself desktop-only — never affects it. */}
         {contactPanelOpen && (
-          <div className="hidden lg:block">
+          <div className="hidden h-full min-h-0 shrink-0 lg:block">
             <ContactSidebar contact={activeContact} />
           </div>
         )}

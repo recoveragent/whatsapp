@@ -1,3 +1,4 @@
+import { getMetaAppId } from '@/lib/whatsapp/embedded-signup'
 import { uploadResumableMedia } from '@/lib/whatsapp/meta-api'
 import type { TemplatePayload } from '@/lib/whatsapp/template-validators'
 
@@ -26,10 +27,10 @@ export async function ensureImageHeaderHandle(
   if (payload.header_handle) return // already have one
   if (!payload.header_media_url) return // validator already requires url-or-handle
 
-  const appId = process.env.META_APP_ID
+  const appId = getMetaAppId()
   if (!appId) {
     throw new Error(
-      'Image-header templates need META_APP_ID set (used for Meta’s Resumable Upload). Add it to your environment, or remove the image header.',
+      'Image-header templates need NEXT_PUBLIC_META_APP_ID (or META_APP_ID) set — used for Meta’s Resumable Upload. Add it to your environment, or remove the image header.',
     )
   }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
@@ -12,8 +12,18 @@ import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 // client components can't export Next's metadata object.
 
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const {
+    user,
+    loading,
+    profileLoading,
+    profile,
+    isSuperAdmin,
+    isSuperAdminActing,
+    needsBrandContext,
+    canClaimSuperAdmin,
+  } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   // Sidebar drawer state — only used on mobile. On lg+ the sidebar is
   // always visible and this stays at `false` (ignored by the component).
@@ -26,7 +36,33 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, router]);
 
-  if (loading) {
+  useEffect(() => {
+    if (loading || profileLoading || !user) return;
+    const onAdmin = pathname.startsWith("/admin");
+    if (isSuperAdmin && !isSuperAdminActing) {
+      if (!onAdmin) router.replace("/admin/brands");
+      return;
+    }
+    if (needsBrandContext || canClaimSuperAdmin) {
+      if (!onAdmin) router.replace("/admin/brands");
+    }
+  }, [
+    loading,
+    profileLoading,
+    user,
+    isSuperAdmin,
+    isSuperAdminActing,
+    needsBrandContext,
+    canClaimSuperAdmin,
+    pathname,
+    router,
+  ]);
+
+  // Full-screen gate only for the initial session/profile load.
+  // refreshProfile() also sets profileLoading — remounting the tree on
+  // every refresh caused an infinite loop on /admin/brands (clear-context
+  // → refreshProfile → spinner → remount → clear-context …).
+  if (loading || (profileLoading && !profile)) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">

@@ -37,7 +37,7 @@ import { ActivityFeed } from '@/components/dashboard/activity-feed'
 type RangeDays = 7 | 30 | 90
 
 export default function DashboardPage() {
-  const { defaultCurrency } = useAuth()
+  const { defaultCurrency, isLeadGenBrand } = useAuth()
   const [metrics, setMetrics] = useState<MetricsBundle | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(true)
 
@@ -77,10 +77,15 @@ export default function DashboardPage() {
       .catch((err) => console.error('[dashboard] series failed:', err))
       .finally(() => setSeriesLoading(false))
 
-    void loadPipelineDonut(db)
-      .then((p) => setPipeline(p))
-      .catch((err) => console.error('[dashboard] pipeline failed:', err))
-      .finally(() => setPipelineLoading(false))
+    if (isLeadGenBrand) {
+      void loadPipelineDonut(db)
+        .then((p) => setPipeline(p))
+        .catch((err) => console.error('[dashboard] pipeline failed:', err))
+        .finally(() => setPipelineLoading(false))
+    } else {
+      setPipeline(null)
+      setPipelineLoading(false)
+    }
 
     void loadResponseTime(db)
       .then((r) => setResponseTime(r))
@@ -94,7 +99,7 @@ export default function DashboardPage() {
       .then((a) => setActivity(a))
       .catch((err) => console.error('[dashboard] activity failed:', err))
       .finally(() => setActivityLoading(false))
-  }, [])
+  }, [isLeadGenBrand])
 
   useEffect(() => {
     loadAll()
@@ -156,12 +161,14 @@ export default function DashboardPage() {
                 ),
               }}
             />
-            <MetricCard
-              title="Open Deals Value"
-              value={formatCurrency(metrics.openDealsValue, defaultCurrency)}
-              icon={DollarSign}
-              subtitle={`${metrics.openDealsCount} open deal${metrics.openDealsCount === 1 ? '' : 's'}`}
-            />
+            {isLeadGenBrand && (
+              <MetricCard
+                title="Open Deals Value"
+                value={formatCurrency(metrics.openDealsValue, defaultCurrency)}
+                icon={DollarSign}
+                subtitle={`${metrics.openDealsCount} open deal${metrics.openDealsCount === 1 ? '' : 's'}`}
+              />
+            )}
             <MetricCard
               title="Messages Sent Today"
               value={metrics.messagesSentToday.current.toLocaleString()}
@@ -190,7 +197,7 @@ export default function DashboardPage() {
           this, the pipeline card rendered at its natural (shorter)
           height while the line chart drove the row height. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-        <div className="h-full lg:col-span-3">
+        <div className={isLeadGenBrand ? 'h-full lg:col-span-3' : 'h-full lg:col-span-5'}>
           <ConversationsChart
             series={series}
             loading={seriesLoading}
@@ -198,6 +205,7 @@ export default function DashboardPage() {
             onRangeChange={handleRangeChange}
           />
         </div>
+        {isLeadGenBrand && (
         <div className="h-full lg:col-span-2">
           <PipelineDonut
             data={pipeline}
@@ -205,6 +213,7 @@ export default function DashboardPage() {
             currency={defaultCurrency}
           />
         </div>
+        )}
       </div>
 
       {/* Response time */}

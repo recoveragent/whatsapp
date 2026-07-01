@@ -26,9 +26,16 @@ const pageTitles: Record<string, string> = {
   "/broadcasts": "Broadcasts",
   "/automations": "Automations",
   "/settings": "Settings",
+  "/admin/brands": "Brands",
 };
 
 function getPageTitle(pathname: string): string {
+  if (pathname.includes("/admin/brands") && pathname.includes("/whatsapp")) {
+    return "WhatsApp setup";
+  }
+  if (pathname.includes("/admin/brands") && pathname.includes("/shopify")) {
+    return "Shopify setup";
+  }
   if (pageTitles[pathname]) return pageTitles[pathname];
   const match = Object.entries(pageTitles).find(([path]) =>
     pathname.startsWith(path),
