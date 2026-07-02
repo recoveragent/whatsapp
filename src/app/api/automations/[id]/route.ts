@@ -10,6 +10,7 @@ import {
   validateStepsForActivation,
   validateTriggerForActivation,
 } from '@/lib/automations/validate'
+import { ensureWebhookTriggerConfig } from '@/lib/automations/webhook-config'
 
 async function requireUser() {
   const supabase = await createClient()
@@ -75,6 +76,25 @@ export async function PATCH(
     'is_active',
   ] as const) {
     if (k in body) update[k] = body[k]
+  }
+
+  const mergedTriggerType = (update.trigger_type ?? existing.trigger_type) as string
+  if (mergedTriggerType === 'webhook_received') {
+    const mergedConfig =
+      update.trigger_config ?? existing.trigger_config
+    const ensured = ensureWebhookTriggerConfig(
+      mergedConfig as Record<string, unknown> | undefined,
+    )
+    const existingCfg = existing.trigger_config as Record<string, unknown> | null
+    if (
+      update.trigger_config &&
+      existingCfg?.last_received_payload != null &&
+      (update.trigger_config as Record<string, unknown>).last_received_payload == null
+    ) {
+      ensured.last_received_payload = existingCfg.last_received_payload
+      ensured.last_received_at = existingCfg.last_received_at as string | undefined
+    }
+    update.trigger_config = ensured
   }
 
   // If this PATCH leaves the automation active (either explicitly

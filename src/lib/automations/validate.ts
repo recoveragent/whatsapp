@@ -174,6 +174,16 @@ export function validateTriggerForActivation(
     if (!nonEmpty(cfg.tag_id)) {
       issues.push({ path: 'trigger.tag_id', message: 'tag is required' })
     }
+  } else if (triggerType === 'webhook_received') {
+    if (!nonEmpty(cfg.webhook_token)) {
+      issues.push({ path: 'trigger.webhook_token', message: 'webhook token is required' })
+    }
+    if (!nonEmpty(cfg.phone_path)) {
+      issues.push({
+        path: 'trigger.phone_path',
+        message: 'path to phone number is required',
+      })
+    }
   }
 
   return issues

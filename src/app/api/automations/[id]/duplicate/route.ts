@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { ensureWebhookTriggerConfig } from '@/lib/automations/webhook-config'
+import { generateWebhookToken } from '@/lib/automations/webhook-token'
 
 export async function POST(
   _request: Request,
@@ -23,6 +25,14 @@ export async function POST(
   if (origErr) return NextResponse.json({ error: origErr.message }, { status: 500 })
   if (!original) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
+  let triggerConfig = original.trigger_config
+  if (original.trigger_type === 'webhook_received') {
+    const cfg = ensureWebhookTriggerConfig(
+      triggerConfig as Record<string, unknown> | undefined,
+    )
+    triggerConfig = { ...cfg, webhook_token: generateWebhookToken() }
+  }
+
   const { data: copy, error: copyErr } = await admin
     .from('automations')
     .insert({
@@ -33,7 +43,7 @@ export async function POST(
       name: `${original.name} (Copy)`,
       description: original.description,
       trigger_type: original.trigger_type,
-      trigger_config: original.trigger_config,
+      trigger_config: triggerConfig,
       is_active: false,
     })
     .select()

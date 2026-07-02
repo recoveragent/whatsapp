@@ -7,6 +7,7 @@ import {
   validateStepsForActivation,
   validateTriggerForActivation,
 } from '@/lib/automations/validate'
+import { ensureWebhookTriggerConfig } from '@/lib/automations/webhook-config'
 
 export async function GET() {
   const supabase = await createClient()
@@ -72,6 +73,12 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: 'name and trigger_type are required' },
       { status: 400 },
+    )
+  }
+
+  if (effectiveTriggerType === 'webhook_received') {
+    effectiveTriggerConfig = ensureWebhookTriggerConfig(
+      effectiveTriggerConfig as Record<string, unknown> | undefined,
     )
   }
 

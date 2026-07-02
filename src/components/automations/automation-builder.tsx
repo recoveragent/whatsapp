@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react"
@@ -30,6 +31,8 @@ import {
   Loader2,
   ArrowDown,
   ArrowUp,
+  Copy,
+  RefreshCw,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -50,9 +53,13 @@ import type {
   KeywordMatchTriggerConfig,
   MessageTemplate,
   Tag as TagRecord,
+  WebhookTriggerConfig,
 } from "@/types"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
+import { defaultWebhookTriggerConfig } from "@/lib/automations/webhook-config"
+import { generateWebhookToken } from "@/lib/automations/webhook-token"
+import { flattenPayloadKeys } from "@/lib/automations/webhook-payload"
 
 // ------------------------------------------------------------
 // Types (builder-local — mirror the flattened rows we POST)
@@ -127,6 +134,11 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType; label: string; hint: stri
   { value: "conversation_assigned", label: "Conversation Assigned", hint: "When assigned to an agent" },
   { value: "tag_added", label: "Tag Added", hint: "When a tag is added to a contact" },
   { value: "time_based", label: "Time-Based", hint: "On a recurring schedule" },
+  {
+    value: "webhook_received",
+    label: "Webhook",
+    hint: "When a third-party platform sends a POST request to your webhook URL",
+  },
 ]
 
 function cid(): string {
@@ -388,13 +400,31 @@ function AgentSelect({
 function SendTemplateFields({
   templateName,
   language,
+  variables,
   onChange,
 }: {
   templateName: string
   language: string
-  onChange: (patch: { template_name: string; language: string }) => void
+  variables?: Record<string, string>
+  onChange: (patch: {
+    template_name: string
+    language: string
+    variables?: Record<string, string>
+  }) => void
 }) {
   const { templates } = useResources()
+  const selectedTemplate = templates.find(
+    (t) => t.name === templateName && (t.language ?? "en_US") === (language || "en_US"),
+  )
+  const placeholders = useMemo(() => {
+    const text = selectedTemplate?.body_text ?? ""
+    const matches = text.match(/\{\{\d+\}\}/g) ?? []
+    return [...new Set(matches)].sort((a, b) => {
+      const na = Number(a.replace(/\D/g, ""))
+      const nb = Number(b.replace(/\D/g, ""))
+      return na - nb
+    })
+  }, [selectedTemplate?.body_text])
 
   if (templates.length === 0) {
     return (
@@ -430,31 +460,60 @@ function SendTemplateFields({
   )
 
   return (
-    <FieldBlock label="Template">
-      <select
-        value={current}
-        onChange={(e) => {
-          const [name, lang] = e.target.value.split("::")
-          onChange({ template_name: name ?? "", language: lang ?? "" })
-        }}
-        className={SELECT_CLASS}
-      >
-        <option value="">Select a template…</option>
-        {templates.map((t) => {
-          const lang = t.language ?? "en_US"
-          return (
-            <option key={t.id} value={toValue(t.name, lang)}>
-              {t.name} ({lang})
+    <>
+      <FieldBlock label="Template">
+        <select
+          value={current}
+          onChange={(e) => {
+            const [name, lang] = e.target.value.split("::")
+            onChange({ template_name: name ?? "", language: lang ?? "", variables })
+          }}
+          className={SELECT_CLASS}
+        >
+          <option value="">Select a template…</option>
+          {templates.map((t) => {
+            const lang = t.language ?? "en_US"
+            return (
+              <option key={t.id} value={toValue(t.name, lang)}>
+                {t.name} ({lang})
+              </option>
+            )
+          })}
+          {current && !hasMatch && (
+            <option value={current}>
+              {templateName} ({language || "unknown"}) — not in approved list
             </option>
-          )
-        })}
-        {current && !hasMatch && (
-          <option value={current}>
-            {templateName} ({language || "unknown"}) — not in approved list
-          </option>
-        )}
-      </select>
-    </FieldBlock>
+          )}
+        </select>
+      </FieldBlock>
+      {placeholders.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[11px] text-muted-foreground">
+            Map each template variable. Use <code className="text-primary">{"{{ vars.field }}"}</code>{" "}
+            or <code className="text-primary">{"{{ trigger.field }}"}</code> for webhook payloads.
+          </p>
+          {placeholders.map((ph) => {
+            const key = ph.replace(/^\{\{|\}\}$/g, "")
+            return (
+              <FieldBlock key={key} label={`Variable ${key}`}>
+                <Input
+                  value={variables?.[key] ?? ""}
+                  onChange={(e) =>
+                    onChange({
+                      template_name: templateName,
+                      language,
+                      variables: { ...variables, [key]: e.target.value },
+                    })
+                  }
+                  placeholder={`e.g. {{ vars.${key} }} or static text`}
+                  className="bg-muted font-mono text-xs text-foreground"
+                />
+              </FieldBlock>
+            )
+          })}
+        </div>
+      )}
+    </>
   )
 }
 
@@ -591,9 +650,19 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
         <div className="relative mx-auto flex max-w-2xl flex-col items-center gap-0 px-4 py-10">
           <ResourcesProvider>
             <TriggerCard
+              automationId={initial.id}
               type={state.trigger_type}
               config={state.trigger_config}
-              onTypeChange={(t) => patchTop("trigger_type", t)}
+              onTypeChange={(t) => {
+                setState((s) => ({
+                  ...s,
+                  trigger_type: t,
+                  trigger_config:
+                    t === "webhook_received" && !s.trigger_config?.webhook_token
+                      ? (defaultWebhookTriggerConfig() as unknown as Record<string, unknown>)
+                      : s.trigger_config,
+                }))
+              }}
               onConfigChange={(c) => patchTop("trigger_config", c)}
             />
             <StepList
@@ -618,21 +687,23 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
 // ------------------------------------------------------------
 
 function TriggerCard({
+  automationId,
   type,
   config,
   onTypeChange,
   onConfigChange,
 }: {
+  automationId?: string
   type: AutomationTriggerType
   config: Record<string, unknown>
   onTypeChange: (t: AutomationTriggerType) => void
   onConfigChange: (c: Record<string, unknown>) => void
 }) {
   const [open, setOpen] = useState(false)
+  const isWebhook = type === "webhook_received"
   return (
-    // Card width: full on mobile, fixed 320px on sm+. The canvas wrapper
-    // (max-w-2xl + px-4) keeps this tidy on tablet/desktop.
-    <div className="z-10 w-full max-w-[320px] sm:w-80">
+    // Card width: full on mobile, fixed 320px on sm+. Webhook config is wider.
+    <div className={cn("z-10 w-full", isWebhook ? "max-w-[480px] sm:w-[480px]" : "max-w-[320px] sm:w-80")}>
       <div className="rounded-lg border border-border border-l-4 border-l-blue-500 bg-card shadow-lg">
         <button
           type="button"
@@ -700,7 +771,296 @@ function TriggerCard({
                 className="bg-muted text-foreground"
               />
             )}
+            {type === "webhook_received" && (
+              <WebhookTriggerConfigPanel
+                automationId={automationId}
+                config={config as unknown as WebhookTriggerConfig}
+                onChange={onConfigChange}
+              />
+            )}
           </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function WebhookTriggerConfigPanel({
+  automationId,
+  config,
+  onChange,
+}: {
+  automationId?: string
+  config: WebhookTriggerConfig
+  onChange: (c: Record<string, unknown>) => void
+}) {
+  const [origin, setOrigin] = useState("")
+  const [checking, setChecking] = useState(false)
+  const [samplePayload, setSamplePayload] = useState<unknown>(config.last_received_payload)
+  const [sampleAt, setSampleAt] = useState<string | null>(config.last_received_at ?? null)
+  const [regenerating, setRegenerating] = useState(false)
+
+  useEffect(() => {
+    setOrigin(window.location.origin)
+  }, [])
+
+  const token = config.webhook_token ?? ""
+  const webhookUrl = token ? `${origin}/api/automations/webhook/${token}` : ""
+  const payloadKeys = samplePayload ? flattenPayloadKeys(samplePayload) : []
+
+  async function copyUrl() {
+    if (!webhookUrl) return
+    try {
+      await navigator.clipboard.writeText(webhookUrl)
+      toast.success("Webhook URL copied")
+    } catch {
+      toast.error("Could not copy URL")
+    }
+  }
+
+  async function checkReceived() {
+    if (!automationId) {
+      toast.error("Save the automation first to check for received webhooks")
+      return
+    }
+    setChecking(true)
+    try {
+      const res = await fetch(`/api/automations/${automationId}/webhook-sample`, {
+        cache: "no-store",
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(body?.error ?? "Could not check for webhooks")
+        return
+      }
+      setSamplePayload(body.payload ?? null)
+      setSampleAt(body.received_at ?? null)
+      if (!body.payload) {
+        toast.message("No webhook received yet", {
+          description: "Send a test POST request, then check again.",
+        })
+      } else {
+        toast.success("Webhook payload received")
+      }
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  async function regenerateToken() {
+    if (!automationId) {
+      onChange({ ...config, webhook_token: generateWebhookToken() })
+      toast.success("New webhook token generated — save to apply")
+      return
+    }
+    setRegenerating(true)
+    try {
+      const res = await fetch(`/api/automations/${automationId}/webhook-sample`, {
+        method: "POST",
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(body?.error ?? "Could not regenerate token")
+        return
+      }
+      onChange({ ...config, webhook_token: body.webhook_token })
+      toast.success("Webhook URL regenerated")
+    } finally {
+      setRegenerating(false)
+    }
+  }
+
+  const mappings = config.variable_mappings ?? {}
+
+  function setMapping(varName: string, path: string) {
+    onChange({
+      ...config,
+      variable_mappings: { ...mappings, [varName]: path },
+    })
+  }
+
+  function removeMapping(varName: string) {
+    const next = { ...mappings }
+    delete next[varName]
+    onChange({ ...config, variable_mappings: next })
+  }
+
+  const curlExample = webhookUrl
+    ? `curl -X POST "${webhookUrl}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"phone":"+1234567890","name":"John Doe","email":"john@example.com"}'`
+    : ""
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          Webhook URL
+        </label>
+        <div className="flex gap-1">
+          <Input
+            readOnly
+            value={webhookUrl || "Save to generate URL"}
+            className="bg-muted font-mono text-[11px] text-foreground"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={copyUrl}
+            disabled={!webhookUrl}
+            aria-label="Copy webhook URL"
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={regenerateToken}
+            disabled={regenerating}
+            aria-label="Regenerate webhook URL"
+          >
+            <RefreshCw className={cn("h-4 w-4", regenerating && "animate-spin")} />
+          </Button>
+        </div>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Send a POST request with JSON body from your third-party platform.
+        </p>
+      </div>
+
+      <FieldBlock label="Path to phone number (required)">
+        <Input
+          value={config.phone_path ?? "phone"}
+          onChange={(e) => onChange({ ...config, phone_path: e.target.value })}
+          placeholder="e.g. phone or {{trigger.phone}}"
+          className="bg-muted font-mono text-xs text-foreground"
+        />
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Phone is used to match or create the contact.
+        </p>
+      </FieldBlock>
+
+      <FieldBlock label="Path to contact name">
+        <Input
+          value={config.name_path ?? ""}
+          onChange={(e) => onChange({ ...config, name_path: e.target.value })}
+          placeholder="e.g. name or {{trigger.name}}"
+          className="bg-muted font-mono text-xs text-foreground"
+        />
+      </FieldBlock>
+
+      <FieldBlock label="Path to email (optional)">
+        <Input
+          value={config.email_path ?? ""}
+          onChange={(e) => onChange({ ...config, email_path: e.target.value })}
+          placeholder="e.g. email or {{trigger.email}}"
+          className="bg-muted font-mono text-xs text-foreground"
+        />
+      </FieldBlock>
+
+      <div>
+        <div className="mb-1 flex items-center justify-between">
+          <label className="text-xs font-medium text-muted-foreground">
+            Template variable mappings
+          </label>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setMapping(`var_${Object.keys(mappings).length + 1}`, "")}
+          >
+            <Plus className="mr-1 h-3 w-3" />
+            Add
+          </Button>
+        </div>
+        <p className="mb-2 text-[11px] text-muted-foreground">
+          Map payload fields to names used in template steps as{" "}
+          <code className="text-primary">{"{{ vars.name }}"}</code>.
+        </p>
+        {Object.entries(mappings).map(([varName, path]) => (
+          <div key={varName} className="mb-2 flex gap-1">
+            <Input
+              value={varName}
+              onChange={(e) => {
+                const next = { ...mappings }
+                delete next[varName]
+                next[e.target.value] = path
+                onChange({ ...config, variable_mappings: next })
+              }}
+              placeholder="var name"
+              className="w-28 bg-muted font-mono text-xs text-foreground"
+            />
+            <Input
+              value={path}
+              onChange={(e) => setMapping(varName, e.target.value)}
+              placeholder="payload path e.g. order_id"
+              className="flex-1 bg-muted font-mono text-xs text-foreground"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => removeMapping(varName)}
+              aria-label="Remove mapping"
+            >
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-md border border-border bg-muted/50 p-3">
+        <p className="mb-2 text-xs font-medium text-foreground">Test webhook</p>
+        {curlExample && (
+          <pre className="mb-2 max-h-24 overflow-auto rounded bg-background p-2 font-mono text-[10px] text-muted-foreground">
+            {curlExample}
+          </pre>
+        )}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="w-full"
+          onClick={checkReceived}
+          disabled={checking}
+        >
+          {checking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          Check for received requests
+        </Button>
+        {sampleAt && (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Last received: {new Date(sampleAt).toLocaleString()}
+          </p>
+        )}
+        {samplePayload != null && (
+          <div className="mt-2">
+            <p className="mb-1 text-[11px] font-medium text-muted-foreground">
+              Received payload keys
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {payloadKeys.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className="rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] text-primary hover:bg-primary/20"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(`{{trigger.${k}}}`)
+                    toast.success(`Copied {{trigger.${k}}}`)
+                  }}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+            <pre className="mt-2 max-h-32 overflow-auto rounded bg-background p-2 font-mono text-[10px] text-muted-foreground">
+              {JSON.stringify(samplePayload, null, 2)}
+            </pre>
+          </div>
+        )}
+        {!samplePayload && (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Send a test request, then click check to view and map payload fields.
+          </p>
         )}
       </div>
     </div>
@@ -1067,6 +1427,7 @@ function StepEditor({
         <SendTemplateFields
           templateName={(cfg.template_name as string) ?? ""}
           language={(cfg.language as string) ?? ""}
+          variables={(cfg.variables as Record<string, string>) ?? undefined}
           onChange={(patch) => set(patch)}
         />
       )

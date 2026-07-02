@@ -109,6 +109,49 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
 }
 
 /**
+ * Run a single automation by id — used by inbound webhook triggers where
+ * the URL token already identifies one automation row.
+ */
+export async function runSingleAutomation(input: {
+  automation: Automation
+  contactId?: string | null
+  context?: AutomationContext
+  triggerEvent?: string
+}): Promise<void> {
+  try {
+    const db = supabaseAdmin()
+    const accountId = input.automation.account_id
+    const contactId = input.contactId ?? null
+
+    if (contactId) {
+      const { data: owned, error: ownErr } = await db
+        .from('contacts')
+        .select('id')
+        .eq('id', contactId)
+        .eq('account_id', accountId)
+        .maybeSingle()
+      if (ownErr) {
+        console.error('[automations] contact ownership check failed:', ownErr)
+        return
+      }
+      if (!owned) {
+        console.warn('[automations] contact not in account, refusing dispatch', contactId)
+        return
+      }
+    }
+
+    await executeAutomation(input.automation, {
+      accountId,
+      triggerType: input.automation.trigger_type,
+      contactId,
+      context: input.context ?? {},
+    })
+  } catch (err) {
+    console.error('[automations] single run failed:', err)
+  }
+}
+
+/**
  * Resume a run that was parked at a wait step. Called from the cron
  * endpoint after it grabs a due `automation_pending_executions` row.
  */
@@ -378,7 +421,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
               if (bNum) return 1
               return a.localeCompare(b)
             })
-            .map((k) => String(cfg.variables![k]))
+            .map((k) => interpolate(String(cfg.variables![k]), args))
         : []
       const { whatsapp_message_id } = await engineSendTemplate({
         accountId: args.automation.account_id,
@@ -652,7 +695,9 @@ function interpolate(s: string, args: ExecuteArgs): string {
   return s.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => {
     const [ns, prop] = String(key).split('.')
     if (ns === 'message' && prop === 'text') return String(args.context.message_text ?? '')
-    if (ns === 'vars' && prop) return String(args.context.vars?.[prop] ?? '')
+    if ((ns === 'vars' || ns === 'trigger') && prop) {
+      return String(args.context.vars?.[prop] ?? '')
+    }
     return ''
   })
 }

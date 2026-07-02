@@ -436,7 +436,8 @@ export type AutomationTriggerType =
   | 'new_contact_created'
   | 'conversation_assigned'
   | 'tag_added'
-  | 'time_based';
+  | 'time_based'
+  | 'webhook_received';
 
 export type AutomationStepType =
   | 'send_message'
@@ -469,11 +470,35 @@ export interface TimeBasedTriggerConfig {
   timezone?: string;
 }
 
+/**
+ * Inbound webhook trigger — third parties POST JSON to a unique URL;
+ * payload fields are mapped into `context.vars` for template steps.
+ */
+export interface WebhookTriggerConfig {
+  /** Opaque secret embedded in the webhook URL path. */
+  webhook_token: string;
+  /** Dot-path into the JSON body for the contact phone (required). */
+  phone_path: string;
+  /** Dot-path for contact name (optional). */
+  name_path?: string;
+  /** Dot-path for contact email (optional). */
+  email_path?: string;
+  /**
+   * Extra template variables: key = var name used as `{{ vars.key }}`,
+   * value = dot-path or `{{trigger.field}}` into the payload.
+   */
+  variable_mappings?: Record<string, string>;
+  /** Last received payload (for test / mapping UI). */
+  last_received_payload?: unknown;
+  last_received_at?: string;
+}
+
 export type AutomationTriggerConfig =
   | Record<string, never>
   | KeywordMatchTriggerConfig
   | TagTriggerConfig
   | TimeBasedTriggerConfig
+  | WebhookTriggerConfig
   | Record<string, unknown>;
 
 export interface SendMessageStepConfig {
