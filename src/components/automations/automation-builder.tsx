@@ -598,8 +598,17 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
         return
       }
       toast.success(isEditing ? "Automation saved" : "Automation created")
-      if (!isEditing && body?.automation?.id) {
-        router.replace(`/automations/${body.automation.id}/edit`)
+
+      const savedAutomation = body?.automation
+      if (savedAutomation?.trigger_config) {
+        setState((s) => ({
+          ...s,
+          trigger_config: savedAutomation.trigger_config as Record<string, unknown>,
+        }))
+      }
+
+      if (!isEditing && savedAutomation?.id) {
+        router.replace(`/automations/${savedAutomation.id}/edit`)
       }
     } finally {
       setSaving(false)
@@ -891,6 +900,11 @@ function WebhookTriggerConfigPanel({
 
   return (
     <div className="space-y-3">
+      {!automationId && (
+        <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
+          Save this automation before using the webhook URL — the token is only registered after save.
+        </p>
+      )}
       <div>
         <label className="mb-1 block text-xs font-medium text-muted-foreground">
           Webhook URL

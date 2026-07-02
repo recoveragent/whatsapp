@@ -7,6 +7,7 @@ import {
   extractByPath,
   normalizePayloadPath,
 } from './webhook-payload'
+import { findAutomationByWebhookToken } from './webhook-lookup'
 import type { AutomationContext } from './engine'
 
 export interface WebhookHandleResult {
@@ -30,22 +31,18 @@ export async function handleInboundWebhook(
   }
 
   const db = supabaseAdmin()
-  const { data: automation, error } = await db
-    .from('automations')
-    .select('*')
-    .eq('trigger_type', 'webhook_received')
-    .contains('trigger_config', { webhook_token: token })
-    .maybeSingle()
+  const automation = await findAutomationByWebhookToken(db, token)
 
-  if (error) {
-    console.error('[automations/webhook] lookup failed:', error)
-    return { ok: false, status: 500, error: 'Lookup failed' }
-  }
   if (!automation) {
-    return { ok: false, status: 404, error: 'Webhook not found' }
+    return {
+      ok: false,
+      status: 404,
+      error:
+        'Webhook not found — save the automation and use the exact URL from the builder (token must match the database)',
+    }
   }
 
-  const row = automation as Automation
+  const row = automation
   const cfg = row.trigger_config as WebhookTriggerConfig
   const now = new Date().toISOString()
 

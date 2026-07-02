@@ -137,7 +137,13 @@ export async function PATCH(
     if (err) return NextResponse.json({ error: err }, { status: 500 })
   }
 
-  return NextResponse.json({ ok: true })
+  const { data: automation } = await admin
+    .from('automations')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+
+  return NextResponse.json({ ok: true, automation: automation ?? null })
 }
 
 export async function DELETE(
