@@ -21,6 +21,11 @@ import {
 } from '@/lib/rate-limit'
 import type { MessageTemplate } from '@/types'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
+import {
+  assertWalletCanSend,
+  debitWalletForTemplateSend,
+  InsufficientWalletBalanceError,
+} from '@/lib/wallet/billing'
 
 export async function POST(request: Request) {
   try {
@@ -271,6 +276,20 @@ export async function POST(request: Request) {
       templateRow = data ?? null
     }
 
+    if (message_type === 'template' && templateRow) {
+      try {
+        await assertWalletCanSend(accountId, templateRow.category)
+      } catch (err) {
+        if (err instanceof InsufficientWalletBalanceError) {
+          return NextResponse.json(
+            { error: err.message, code: 'insufficient_balance' },
+            { status: 402 },
+          )
+        }
+        throw err
+      }
+    }
+
     const attempt = async (phone: string): Promise<string> => {
       if (message_type === 'template') {
         const result = await sendTemplateMessage({
@@ -386,6 +405,15 @@ export async function POST(request: Request) {
         { error: `Message sent to Meta but failed to save to DB: ${msgError.message}` },
         { status: 500 }
       )
+    }
+
+    if (message_type === 'template' && templateRow) {
+      await debitWalletForTemplateSend({
+        accountId,
+        templateCategory: templateRow.category,
+        messageId: messageRecord.id,
+        templateName: template_name,
+      })
     }
 
     // Update conversation

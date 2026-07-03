@@ -51,6 +51,8 @@ import {
 } from "@/lib/flows/validate";
 import { unlinkNodeReferences } from "@/lib/flows/edges";
 import type { FlowNodeRow, FlowRow } from "@/lib/flows/types";
+import type { FlowTriggerType } from "@/lib/flows/trigger-types";
+import { defaultFlowWebhookConfig } from "@/lib/flows/webhook-config";
 import { NODE_META, slugify, type BuilderNode, type NodeType } from "./shared";
 
 // ============================================================
@@ -60,7 +62,7 @@ import { NODE_META, slugify, type BuilderNode, type NodeType } from "./shared";
 export interface BuilderState {
   name: string;
   description: string;
-  trigger_type: "keyword" | "first_inbound_message" | "manual";
+  trigger_type: FlowTriggerType;
   trigger_config: Record<string, unknown>;
   entry_node_id: string | null;
   status: FlowRow["status"];
@@ -184,6 +186,21 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
       return { mode: "add", tag_id: "", next_node_key: "" };
     case "handoff":
       return { note: "" };
+    case "send_template":
+      return { template_name: "", language: "en_US", variables: {}, next_node_key: "" };
+    case "wait":
+      return { amount: 1, unit: "hours", next_node_key: "" };
+    case "send_webhook":
+    case "http_fetch":
+      return { url: "", headers: {}, body_template: "", next_node_key: "" };
+    case "update_contact_field":
+      return { field: "name", value: "", next_node_key: "" };
+    case "assign_conversation":
+      return { mode: "round_robin", next_node_key: "" };
+    case "create_deal":
+      return { pipeline_id: "", stage_id: "", title: "", value: 0, next_node_key: "" };
+    case "close_conversation":
+      return { next_node_key: "" };
     case "end":
       return {};
   }
@@ -342,9 +359,15 @@ export function FlowEditorProvider({
           nodes: state.nodes,
         }),
       });
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
         throw new Error(json.error ?? `Save failed: ${res.status}`);
+      }
+      if (json.flow?.trigger_config) {
+        setStateRaw((s) => ({
+          ...s,
+          trigger_config: json.flow.trigger_config as Record<string, unknown>,
+        }));
       }
       setDirty(false);
       toast.success("Saved.");

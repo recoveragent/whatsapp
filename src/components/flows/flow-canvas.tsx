@@ -56,7 +56,7 @@ import {
   type OnNodeDrag,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Zap } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -88,6 +88,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useFlowEditor } from "./flow-editor-state";
 import { NodeConfigForm } from "./forms/node-config-form";
+import {
+  TRIGGER_NODE_ID,
+  TriggerPanel,
+  summarizeTrigger,
+} from "./trigger-panel";
+import { FLOW_TRIGGER_LABELS } from "@/lib/flows/trigger-types";
 
 // React-Flow node `data` payload — the bits our custom renderer needs.
 interface NodeData extends Record<string, unknown> {
@@ -98,7 +104,8 @@ interface NodeData extends Record<string, unknown> {
   isFlashed: boolean;
 }
 
-const NODE_WIDTH = 240;
+const NODE_WIDTH = 260;
+const TRIGGER_NODE_HEIGHT = 76;
 // Best-effort default; actual height varies by summary length but
 // dagre needs SOMETHING to compute rank spacing. Underestimating is
 // safer than over (tighter layout that still doesn't overlap).
@@ -203,7 +210,43 @@ function FlowNodeCard({ data, selected }: NodeProps) {
   );
 }
 
-const NODE_TYPES = { flow: FlowNodeCard };
+interface TriggerNodeData extends Record<string, unknown> {
+  label: string;
+  summary: string;
+  isFlashed: boolean;
+}
+
+function TriggerNodeCard({ data, selected }: NodeProps) {
+  const { label, summary, isFlashed } = data as TriggerNodeData;
+  return (
+    <div
+      className={cn(
+        "relative min-w-[240px] max-w-[280px] rounded-lg border border-l-4 border-l-blue-500 bg-card/95 px-3 py-2.5 text-left shadow-lg backdrop-blur transition-colors",
+        selected
+          ? "border-primary ring-1 ring-primary/40"
+          : "border-border hover:border-border",
+        isFlashed && "!border-amber-400 ring-2 ring-amber-400/60",
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <Zap className="h-3.5 w-3.5 shrink-0 text-blue-400" />
+        <span className="truncate text-[11px] font-medium uppercase tracking-wide text-blue-300">
+          Trigger
+        </span>
+      </div>
+      <div className="mt-1 truncate text-sm font-medium text-foreground">{label}</div>
+      <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{summary}</div>
+      <Handle
+        type="source"
+        id="next"
+        position={Position.Right}
+        className="!h-2.5 !w-2.5 !border-border !bg-muted"
+      />
+    </div>
+  );
+}
+
+const NODE_TYPES = { flow: FlowNodeCard, trigger: TriggerNodeCard };
 
 // ============================================================
 // Root canvas
@@ -225,8 +268,10 @@ export function FlowCanvas() {
 
 function FlowCanvasInner() {
   const {
+    flow,
     state,
     setState,
+    issues,
     updateNodeConfig,
     updateNodePosition,
     updateNodePositions,
@@ -236,11 +281,16 @@ function FlowCanvasInner() {
   const reactFlow = useReactFlow();
   const builderNodes = state.nodes;
   const entryNodeId = state.entry_node_id;
+  const triggerIssues = useMemo(
+    () => issues.filter((i) => i.scope === "trigger"),
+    [issues],
+  );
 
   // Side-panel state — which node's form is open. Canvas-only UI; the
   // list view's analogue is the per-card expanded set in
-  // flow-builder.tsx.
+  // flow-builder.tsx. `__flow_trigger__` opens the trigger sheet.
   const [selectedNodeKey, setSelectedNodeKey] = useState<string | null>(null);
+  const triggerSelected = selectedNodeKey === TRIGGER_NODE_ID;
   const selectedNode = useMemo(
     () =>
       selectedNodeKey
@@ -251,19 +301,51 @@ function FlowCanvasInner() {
 
   const autoLayoutPositions = useMemo(() => {
     const canvasEdges = deriveCanvasEdges(builderNodes);
+    const layoutNodes = builderNodes.map((n) => ({
+      id: n.node_key,
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
+    }));
+    const layoutEdges = canvasEdges.map((e) => ({
+      source: e.source,
+      target: e.target,
+    }));
+
+    if (entryNodeId && builderNodes.some((n) => n.node_key === entryNodeId)) {
+      layoutNodes.unshift({
+        id: TRIGGER_NODE_ID,
+        width: NODE_WIDTH,
+        height: TRIGGER_NODE_HEIGHT,
+      });
+      layoutEdges.unshift({
+        source: TRIGGER_NODE_ID,
+        target: entryNodeId,
+      });
+    }
 
     return shouldAutoLayout(builderNodes)
       ? autoLayout(
-          builderNodes.map((n) => ({
-            id: n.node_key,
-            width: NODE_WIDTH,
-            height: NODE_HEIGHT,
-          })),
-          canvasEdges.map((e) => ({ source: e.source, target: e.target })),
-          { direction: "TB" },
+          layoutNodes,
+          layoutEdges,
+          { direction: "TB", rankSep: 100, nodeSep: 72 },
         )
       : null;
-  }, [builderNodes]);
+  }, [builderNodes, entryNodeId]);
+
+  const triggerPosition = useMemo(() => {
+    const fromLayout = autoLayoutPositions?.get(TRIGGER_NODE_ID);
+    if (fromLayout) return fromLayout;
+
+    const entry = builderNodes.find((n) => n.node_key === entryNodeId);
+    if (entry) {
+      return {
+        x: entry.position_x ?? 0,
+        y: (entry.position_y ?? 0) - (TRIGGER_NODE_HEIGHT + 48),
+      };
+    }
+
+    return { x: 40, y: 40 };
+  }, [autoLayoutPositions, builderNodes, entryNodeId]);
 
   // If dagre had to place an all-zero flow, persist the generated
   // positions into editor state once. Otherwise the next drag would
@@ -275,13 +357,21 @@ function FlowCanvasInner() {
     persistedAutoLayoutRef.current = true;
     updateNodePositions(
       Object.fromEntries(
-        [...autoLayoutPositions].map(([key, pos]) => [key, pos]),
+        [...autoLayoutPositions]
+          .filter(([key]) => key !== TRIGGER_NODE_ID)
+          .map(([key, pos]) => [key, pos]),
       ),
     );
   }, [autoLayoutPositions, updateNodePositions]);
 
   const derivedRfNodes = useMemo(() => {
-    const nodes: RfNode<NodeData>[] = builderNodes.map((n) => {
+    const triggerLabel = FLOW_TRIGGER_LABELS[state.trigger_type];
+    const triggerSummary = summarizeTrigger(
+      state.trigger_type,
+      state.trigger_config,
+    );
+
+    const flowNodes: RfNode<NodeData>[] = builderNodes.map((n) => {
       const fallback = autoLayoutPositions?.get(n.node_key);
       return {
         id: n.node_key,
@@ -298,10 +388,31 @@ function FlowCanvasInner() {
       };
     });
 
-    return nodes;
-  }, [builderNodes, entryNodeId, flashKey, autoLayoutPositions]);
+    const triggerNode: RfNode<TriggerNodeData> = {
+      id: TRIGGER_NODE_ID,
+      type: "trigger",
+      position: triggerPosition,
+      draggable: false,
+      selectable: true,
+      data: {
+        label: triggerLabel,
+        summary: triggerSummary,
+        isFlashed: flashKey === TRIGGER_NODE_ID,
+      },
+    };
 
-  const [rfNodes, setRfNodes] = useState<RfNode<NodeData>[]>(derivedRfNodes);
+    return [triggerNode, ...flowNodes];
+  }, [
+    builderNodes,
+    entryNodeId,
+    flashKey,
+    autoLayoutPositions,
+    triggerPosition,
+    state.trigger_type,
+    state.trigger_config,
+  ]);
+
+  const [rfNodes, setRfNodes] = useState<RfNode[]>(derivedRfNodes);
 
   useEffect(() => {
     setRfNodes(derivedRfNodes);
@@ -310,16 +421,12 @@ function FlowCanvasInner() {
   const rfEdges = useMemo(() => {
     const canvasEdges = deriveCanvasEdges(builderNodes);
 
-    // sourceHandle is now wired up — the FlowNodeCard renders a Handle
-    // per slot whose id matches the scheme in edges.ts, so React-Flow
-    // can hang the arrow off the right place on each card.
     const rfEdges: RfEdge[] = canvasEdges.map((e) => ({
       id: e.id,
       source: e.source,
       target: e.target,
       sourceHandle: e.sourceHandle,
       label: e.label,
-      // Mode-aware via CSS tokens so edge chrome flips with light/dark.
       labelStyle: { fill: "var(--muted-foreground)", fontSize: 11 },
       labelBgStyle: { fill: "var(--card)" },
       labelBgPadding: [4, 2] as [number, number],
@@ -327,11 +434,30 @@ function FlowCanvasInner() {
       style: { stroke: "var(--border)", strokeWidth: 1.5 },
     }));
 
+    if (
+      entryNodeId &&
+      builderNodes.some((n) => n.node_key === entryNodeId)
+    ) {
+      rfEdges.unshift({
+        id: `${TRIGGER_NODE_ID}--next--${entryNodeId}`,
+        source: TRIGGER_NODE_ID,
+        target: entryNodeId,
+        sourceHandle: "next",
+        label: "starts",
+        labelStyle: { fill: "var(--primary)", fontSize: 11, fontWeight: 500 },
+        labelBgStyle: { fill: "var(--card)" },
+        labelBgPadding: [4, 2] as [number, number],
+        labelBgBorderRadius: 4,
+        style: { stroke: "var(--primary)", strokeWidth: 2 },
+        animated: true,
+      });
+    }
+
     return rfEdges;
-  }, [builderNodes]);
+  }, [builderNodes, entryNodeId]);
 
   const handleNodesChange = useCallback(
-    (changes: NodeChange<RfNode<NodeData>>[]) => {
+    (changes: NodeChange<RfNode>[]) => {
       setRfNodes((nodes) => applyNodeChanges(changes, nodes));
     },
     [],
@@ -344,7 +470,7 @@ function FlowCanvasInner() {
   // already destructures position_x / position_y per migration 010).
   // Writing only on dragStop (not on every position-change tick during
   // the drag) keeps state updates cheap on long drags.
-  const handleNodeDragStop = useCallback<OnNodeDrag<RfNode<NodeData>>>(
+  const handleNodeDragStop = useCallback<OnNodeDrag<RfNode>>(
     (_event, node) => {
       updateNodePosition(node.id, node.position.x, node.position.y);
     },
@@ -356,6 +482,15 @@ function FlowCanvasInner() {
   // (don't force a zoom reset — that would be jarring mid-edit).
   useEffect(() => {
     if (!flashKey) return;
+    if (flashKey === TRIGGER_NODE_ID) {
+      setSelectedNodeKey(TRIGGER_NODE_ID);
+      reactFlow.setCenter(
+        triggerPosition.x + NODE_WIDTH / 2,
+        triggerPosition.y + TRIGGER_NODE_HEIGHT / 2,
+        { zoom: reactFlow.getZoom(), duration: 400 },
+      );
+      return;
+    }
     const node = builderNodes.find((n) => n.node_key === flashKey);
     if (!node) return;
     const x = (node.position_x ?? 0) + NODE_WIDTH / 2;
@@ -364,10 +499,10 @@ function FlowCanvasInner() {
       zoom: reactFlow.getZoom(),
       duration: 400,
     });
-  }, [flashKey, builderNodes, reactFlow]);
+  }, [flashKey, builderNodes, reactFlow, triggerPosition]);
 
   const handleNodeClick = useCallback(
-    (_event: React.MouseEvent, node: RfNode<NodeData>) => {
+    (_event: React.MouseEvent, node: RfNode) => {
       setSelectedNodeKey(node.id);
     },
     [],
@@ -409,8 +544,9 @@ function FlowCanvasInner() {
   // side panel on delete keeps the UI honest if the user deleted the
   // node currently being edited.
   const handleNodesDelete = useCallback(
-    (deleted: RfNode<NodeData>[]) => {
+    (deleted: RfNode[]) => {
       for (const n of deleted) {
+        if (n.id === TRIGGER_NODE_ID) continue;
         removeNode(n.id);
         if (selectedNodeKey === n.id) setSelectedNodeKey(null);
       }
@@ -445,34 +581,26 @@ function FlowCanvasInner() {
   );
 
   const handleDeleteSelected = useCallback(() => {
-    if (!selectedNodeKey) return;
+    if (!selectedNodeKey || selectedNodeKey === TRIGGER_NODE_ID) return;
     removeNode(selectedNodeKey);
     setSelectedNodeKey(null);
   }, [selectedNodeKey, removeNode]);
 
   const handleSetEntry = useCallback(() => {
-    if (!selectedNodeKey) return;
+    if (!selectedNodeKey || selectedNodeKey === TRIGGER_NODE_ID) return;
     setState((s) => ({ ...s, entry_node_id: selectedNodeKey }));
   }, [selectedNodeKey, setState]);
 
-  if (rfNodes.length === 0) {
-    return (
-      <div className="flex h-[60vh] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border bg-background text-sm text-muted-foreground">
-        <p>No nodes yet.</p>
-        <CanvasAddNodeButton />
-      </div>
-    );
-  }
-
   return (
-    <>
-      <div className="h-[70vh] w-full overflow-hidden rounded-lg border border-border bg-background">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-background">
         <ReactFlow
+          className="h-full w-full"
           nodes={rfNodes}
           edges={rfEdges}
           nodeTypes={NODE_TYPES}
           fitView
-          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+          fitViewOptions={{ padding: 0.25, maxZoom: 1.1, minZoom: 0.45 }}
           proOptions={{ hideAttribution: true }}
           onNodesChange={handleNodesChange}
           onNodeDragStop={handleNodeDragStop}
@@ -489,8 +617,8 @@ function FlowCanvasInner() {
           // Lower default min/max zoom than the lib's defaults; the
           // tiles already truncate their summary at a reasonable
           // size, so we don't need to zoom past 1.5x.
-          minZoom={0.2}
-          maxZoom={1.5}
+          minZoom={0.25}
+          maxZoom={1.75}
         >
           <Background gap={24} size={1} color="var(--border)" />
           <Controls
@@ -504,11 +632,20 @@ function FlowCanvasInner() {
             maskColor="color-mix(in oklch, var(--background) 70%, transparent)"
             className="!border !border-border !bg-card"
           />
-          <Panel position="bottom-right" className="!bottom-4 !right-4">
+          <Panel position="bottom-center" className="!bottom-4">
             <CanvasAddNodeButton />
           </Panel>
         </ReactFlow>
       </div>
+
+      <TriggerEditSheet
+        open={triggerSelected}
+        flowId={flow.id}
+        state={state}
+        setState={setState}
+        triggerIssues={triggerIssues}
+        onClose={() => setSelectedNodeKey(null)}
+      />
 
       <NodeEditSheet
         node={selectedNode}
@@ -519,7 +656,57 @@ function FlowCanvasInner() {
         onDelete={handleDeleteSelected}
         onSetEntry={handleSetEntry}
       />
-    </>
+    </div>
+  );
+}
+
+// ============================================================
+// Trigger side panel — same config as list view TriggerPanel.
+// ============================================================
+
+function TriggerEditSheet({
+  open,
+  flowId,
+  state,
+  setState,
+  triggerIssues,
+  onClose,
+}: {
+  open: boolean;
+  flowId: string;
+  state: import("./flow-editor-state").BuilderState;
+  setState: React.Dispatch<
+    React.SetStateAction<import("./flow-editor-state").BuilderState>
+  >;
+  triggerIssues: import("@/lib/flows/validate").ValidationIssue[];
+  onClose: () => void;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+      <SheetContent
+        side="right"
+        className="flex w-full flex-col gap-0 border-l border-border bg-popover p-0 sm:max-w-lg"
+      >
+        <SheetHeader className="border-b border-border px-5 py-4">
+          <SheetTitle className="flex items-center gap-2 text-popover-foreground">
+            <Zap className="h-4 w-4 shrink-0 text-blue-400" />
+            <span>Trigger</span>
+          </SheetTitle>
+          <SheetDescription className="text-xs text-muted-foreground">
+            When this flow starts
+          </SheetDescription>
+        </SheetHeader>
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <TriggerPanel
+            flowId={flowId}
+            state={state}
+            setState={setState}
+            triggerIssues={triggerIssues}
+            embedded
+          />
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -624,9 +811,16 @@ const ADD_NODE_TYPES: NodeType[] = [
   "send_list",
   "send_message",
   "send_media",
+  "send_template",
   "collect_input",
   "condition",
   "set_tag",
+  "wait",
+  "send_webhook",
+  "update_contact_field",
+  "assign_conversation",
+  "create_deal",
+  "close_conversation",
   "handoff",
   "end",
 ];

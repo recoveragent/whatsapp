@@ -26,8 +26,15 @@ import {
   Paperclip,
   PlayCircle,
   Tag,
+  UserCheck,
   UserPlus,
   Workflow,
+  FileText,
+  Hourglass,
+  Webhook,
+  PencilLine,
+  Briefcase,
+  CircleSlash,
 } from "lucide-react";
 
 // ============================================================
@@ -44,10 +51,18 @@ export type NodeType =
   | "send_buttons"
   | "send_list"
   | "send_media"
+  | "send_template"
   | "collect_input"
   | "condition"
   | "set_tag"
   | "handoff"
+  | "wait"
+  | "send_webhook"
+  | "http_fetch"
+  | "update_contact_field"
+  | "assign_conversation"
+  | "create_deal"
+  | "close_conversation"
   | "end";
 
 export interface BuilderNode {
@@ -109,6 +124,46 @@ export const NODE_META: Record<
     label: "Handoff to agent",
     icon: UserPlus,
     color: "text-amber-400",
+  },
+  send_template: {
+    label: "Send template",
+    icon: FileText,
+    color: "text-violet-400",
+  },
+  wait: {
+    label: "Wait",
+    icon: Hourglass,
+    color: "text-slate-400",
+  },
+  send_webhook: {
+    label: "Send webhook",
+    icon: Webhook,
+    color: "text-orange-400",
+  },
+  http_fetch: {
+    label: "HTTP request",
+    icon: Webhook,
+    color: "text-orange-300",
+  },
+  update_contact_field: {
+    label: "Update contact field",
+    icon: PencilLine,
+    color: "text-lime-400",
+  },
+  assign_conversation: {
+    label: "Assign conversation",
+    icon: UserCheck,
+    color: "text-cyan-400",
+  },
+  create_deal: {
+    label: "Create deal",
+    icon: Briefcase,
+    color: "text-yellow-400",
+  },
+  close_conversation: {
+    label: "Close conversation",
+    icon: CircleSlash,
+    color: "text-red-400",
   },
   end: { label: "End", icon: Flag, color: "text-muted-foreground" },
 };
@@ -251,5 +306,31 @@ export function summarizeNode(node: BuilderNode): string | null {
       const note = typeof cfg.note === "string" ? cfg.note : "";
       return note.length > 0 ? truncate(note) : null;
     }
+    case "send_template": {
+      const name = typeof cfg.template_name === "string" ? cfg.template_name : "";
+      return name ? `Template: ${truncate(name, 50)}` : null;
+    }
+    case "wait": {
+      const amount = cfg.amount ?? 1;
+      const unit = typeof cfg.unit === "string" ? cfg.unit : "hours";
+      return `Wait ${amount} ${unit}`;
+    }
+    case "send_webhook":
+    case "http_fetch": {
+      const url = typeof cfg.url === "string" ? cfg.url : "";
+      return url ? truncate(url, 60) : null;
+    }
+    case "update_contact_field": {
+      const field = typeof cfg.field === "string" ? cfg.field : "";
+      return field ? `Set ${field}` : null;
+    }
+    case "assign_conversation":
+      return "Assign conversation";
+    case "create_deal":
+      return "Create deal";
+    case "close_conversation":
+      return "Close conversation";
+    default:
+      return null;
   }
 }

@@ -1,6 +1,10 @@
 import { sendTextMessage, sendTemplateMessage } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
+  assertWalletCanSend,
+  debitWalletForTemplateSend,
+} from '@/lib/wallet/billing'
+import {
   sanitizePhoneForMeta,
   isValidE164,
   phoneVariants,
@@ -94,6 +98,19 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
 
   const accessToken = decrypt(config.access_token)
 
+  let templateCategory: string | null = null
+  if (input.kind === 'template') {
+    const { data: templateRow } = await db
+      .from('message_templates')
+      .select('category')
+      .eq('account_id', input.accountId)
+      .eq('name', input.templateName)
+      .eq('language', input.language ?? 'en_US')
+      .maybeSingle()
+    templateCategory = (templateRow?.category as string) ?? null
+    await assertWalletCanSend(input.accountId, templateCategory)
+  }
+
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
       const r = await sendTemplateMessage({
@@ -160,6 +177,15 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     // Meta already has the message; record the DB error but don't pretend
     // the send failed. The engine wraps this in a log line.
     throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
+  }
+
+  if (input.kind === 'template') {
+    await debitWalletForTemplateSend({
+      accountId: input.accountId,
+      templateCategory,
+      messageId: waMessageId,
+      templateName: input.templateName,
+    })
   }
 
   await db

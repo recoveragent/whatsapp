@@ -2,6 +2,8 @@ import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { resolveFallbackPolicy } from '@/lib/flows/fallback'
+import { resumeFlowPendingExecutions } from '@/lib/flows/engine'
+import { runTimeBasedFlowTriggers } from '@/lib/flows/dispatch-external'
 
 /**
  * Sweep abandoned active flow runs.
@@ -109,4 +111,25 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({ swept })
+}
+
+/** Also drain wait-node queue and time-based flow triggers. */
+export async function POST(request: Request) {
+  const expected = process.env.AUTOMATION_CRON_SECRET
+  if (!expected) {
+    return NextResponse.json({ error: 'cron not configured' }, { status: 503 })
+  }
+  const supplied = request.headers.get('x-cron-secret') ?? ''
+  const suppliedBuf = Buffer.from(supplied)
+  const expectedBuf = Buffer.from(expected)
+  if (
+    suppliedBuf.length !== expectedBuf.length ||
+    !timingSafeEqual(suppliedBuf, expectedBuf)
+  ) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const resumed = await resumeFlowPendingExecutions()
+  const scheduled = await runTimeBasedFlowTriggers()
+  return NextResponse.json({ resumed, scheduled })
 }

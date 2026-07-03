@@ -5,16 +5,21 @@ import { decrypt } from '@/lib/whatsapp/encryption'
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
 import {
+  checkRateLimit,
+  rateLimitResponse,
+  RATE_LIMITS,
+} from '@/lib/rate-limit'
+import {
+  assertWalletCanSendBatch,
+  debitWalletForTemplateSend,
+  InsufficientWalletBalanceError,
+} from '@/lib/wallet/billing'
+import {
   sanitizePhoneForMeta,
   isValidE164,
   phoneVariants,
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils'
-import {
-  checkRateLimit,
-  rateLimitResponse,
-  RATE_LIMITS,
-} from '@/lib/rate-limit'
 
 interface BroadcastResult {
   phone: string
@@ -175,6 +180,22 @@ export async function POST(request: Request) {
     }
     const templateRow = rawTemplateRow ?? null
 
+    try {
+      await assertWalletCanSendBatch(
+        accountId,
+        templateRow?.category,
+        recipients.length,
+      )
+    } catch (err) {
+      if (err instanceof InsufficientWalletBalanceError) {
+        return NextResponse.json(
+          { error: err.message, code: 'insufficient_balance' },
+          { status: 402 },
+        )
+      }
+      throw err
+    }
+
     const results: BroadcastResult[] = []
     let sentCount = 0
     let failedCount = 0
@@ -226,6 +247,12 @@ export async function POST(request: Request) {
       }
 
       if (sentMessageId) {
+        await debitWalletForTemplateSend({
+          accountId,
+          templateCategory: templateRow?.category,
+          messageId: sentMessageId,
+          templateName: template_name,
+        })
         results.push({
           phone: recipient.phone,
           status: 'sent',

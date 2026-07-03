@@ -198,6 +198,124 @@ export function NodeConfigForm({
         />
       );
 
+    case "send_template":
+      return (
+        <>
+          <TextRow
+            label="Template name"
+            value={(cfg as { template_name?: string }).template_name ?? ""}
+            onChange={(v) => onUpdateConfig({ template_name: v })}
+          />
+          <TextRow
+            label="Language"
+            value={(cfg as { language?: string }).language ?? "en_US"}
+            onChange={(v) => onUpdateConfig({ language: v })}
+          />
+          <NextNodeRow
+            value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
+            allNodes={allNodes}
+            currentKey={node.node_key}
+            onChange={(v) => onUpdateConfig({ next_node_key: v })}
+            label="Advances to"
+          />
+        </>
+      );
+
+    case "wait":
+      return (
+        <>
+          <TextRow
+            label="Amount"
+            value={String((cfg as { amount?: number }).amount ?? 1)}
+            onChange={(v) => onUpdateConfig({ amount: Math.max(1, Number(v) || 1) })}
+          />
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">Unit</label>
+            <Select
+              value={(cfg as { unit?: string }).unit ?? "hours"}
+              onValueChange={(v) => onUpdateConfig({ unit: v })}
+            >
+              <SelectTrigger className="bg-muted">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="minutes">Minutes</SelectItem>
+                <SelectItem value="hours">Hours</SelectItem>
+                <SelectItem value="days">Days</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <NextNodeRow
+            value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
+            allNodes={allNodes}
+            currentKey={node.node_key}
+            onChange={(v) => onUpdateConfig({ next_node_key: v })}
+            label="Advances to after wait"
+          />
+        </>
+      );
+
+    case "send_webhook":
+    case "http_fetch":
+      return (
+        <>
+          <TextRow
+            label="URL"
+            value={(cfg as { url?: string }).url ?? ""}
+            onChange={(v) => onUpdateConfig({ url: v })}
+          />
+          <TextRow
+            label="Body template (JSON)"
+            value={(cfg as { body_template?: string }).body_template ?? ""}
+            onChange={(v) => onUpdateConfig({ body_template: v })}
+            rows={3}
+          />
+          <NextNodeRow
+            value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
+            allNodes={allNodes}
+            currentKey={node.node_key}
+            onChange={(v) => onUpdateConfig({ next_node_key: v })}
+            label="Advances to"
+          />
+        </>
+      );
+
+    case "update_contact_field":
+      return (
+        <>
+          <TextRow
+            label="Field"
+            value={(cfg as { field?: string }).field ?? "name"}
+            onChange={(v) => onUpdateConfig({ field: v })}
+          />
+          <TextRow
+            label="Value (supports {{vars.x}})"
+            value={(cfg as { value?: string }).value ?? ""}
+            onChange={(v) => onUpdateConfig({ value: v })}
+          />
+          <NextNodeRow
+            value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
+            allNodes={allNodes}
+            currentKey={node.node_key}
+            onChange={(v) => onUpdateConfig({ next_node_key: v })}
+            label="Advances to"
+          />
+        </>
+      );
+
+    case "assign_conversation":
+    case "create_deal":
+    case "close_conversation":
+      return (
+        <NextNodeRow
+          value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
+          allNodes={allNodes}
+          currentKey={node.node_key}
+          onChange={(v) => onUpdateConfig({ next_node_key: v })}
+          label="Advances to"
+        />
+      );
+
     case "end":
       return (
         <p className="text-xs text-muted-foreground">

@@ -84,5 +84,9 @@ export default function FlowEditorPage() {
     );
   }
 
-  return <FlowEditorShell initialFlow={flow} initialNodes={nodes} />;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <FlowEditorShell initialFlow={flow} initialNodes={nodes} />
+    </div>
+  );
 }

@@ -18,6 +18,8 @@
  * references in JSONB.
  */
 
+import type { FlowTriggerType } from './trigger-types'
+
 // ============================================================
 // Node configs (discriminated union by node_type)
 // ============================================================
@@ -176,13 +178,65 @@ export interface SetTagNodeConfig {
 // Terminal nodes carry no config — they just stop the run.
 export type EndNodeConfig = Record<string, never>;
 
+export interface SendTemplateNodeConfig {
+  template_name: string;
+  language?: string;
+  variables?: Record<string, string>;
+  next_node_key: string;
+}
+
+export interface WaitNodeConfig {
+  amount: number;
+  unit: "minutes" | "hours" | "days";
+  next_node_key: string;
+}
+
+export interface SendWebhookNodeConfig {
+  url: string;
+  headers?: Record<string, string>;
+  body_template?: string;
+  next_node_key: string;
+}
+
+export interface UpdateContactFieldNodeConfig {
+  field: string;
+  value: string;
+  next_node_key: string;
+}
+
+export interface AssignConversationNodeConfig {
+  mode: "specific" | "round_robin";
+  agent_id?: string;
+  next_node_key: string;
+}
+
+export interface CreateDealNodeConfig {
+  pipeline_id: string;
+  stage_id: string;
+  title: string;
+  value?: number;
+  next_node_key: string;
+}
+
+export interface CloseConversationNodeConfig {
+  next_node_key: string;
+}
+
+export interface TagAddedTriggerConfig {
+  tag_id: string;
+}
+
+export interface TimeBasedTriggerConfig {
+  schedule: string;
+  timezone?: string;
+}
+
+// ============================================================
+// Triggers (matches `flows.trigger_type` + `trigger_config`)
+// ============================================================
+
 /**
- * Total union — every concrete node_type the v1 engine understands.
- * Add new node types here and the engine's switch will flag missing
- * cases via TypeScript's exhaustiveness check.
- *
- * v1.5+ additions (collect_input, condition, set_tag, http_fetch) will
- * extend this union — out-of-scope for the v1 engine PR.
+ * Total union — every concrete node_type the engine understands.
  */
 export type FlowNodeConfig =
   | { node_type: "start"; config: StartNodeConfig }
@@ -194,13 +248,17 @@ export type FlowNodeConfig =
   | { node_type: "condition"; config: ConditionNodeConfig }
   | { node_type: "set_tag"; config: SetTagNodeConfig }
   | { node_type: "handoff"; config: HandoffNodeConfig }
+  | { node_type: "send_template"; config: SendTemplateNodeConfig }
+  | { node_type: "wait"; config: WaitNodeConfig }
+  | { node_type: "send_webhook"; config: SendWebhookNodeConfig }
+  | { node_type: "http_fetch"; config: SendWebhookNodeConfig }
+  | { node_type: "update_contact_field"; config: UpdateContactFieldNodeConfig }
+  | { node_type: "assign_conversation"; config: AssignConversationNodeConfig }
+  | { node_type: "create_deal"; config: CreateDealNodeConfig }
+  | { node_type: "close_conversation"; config: CloseConversationNodeConfig }
   | { node_type: "end"; config: EndNodeConfig };
 
 export type FlowNodeType = FlowNodeConfig["node_type"];
-
-// ============================================================
-// Triggers (matches `flows.trigger_type` + `trigger_config`)
-// ============================================================
 
 export interface KeywordTriggerConfig {
   /** One or more keywords. Match is case-insensitive by default. */
@@ -234,7 +292,7 @@ export interface FlowRow {
   name: string;
   description: string | null;
   status: "draft" | "active" | "archived";
-  trigger_type: "keyword" | "first_inbound_message" | "manual";
+  trigger_type: FlowTriggerType;
   trigger_config: KeywordTriggerConfig | FirstInboundTriggerConfig | Record<string, unknown>;
   entry_node_id: string | null;
   fallback_policy: FlowFallbackPolicy;
@@ -266,6 +324,7 @@ export interface FlowRunRow {
   conversation_id: string | null;
   status:
     | "active"
+    | "waiting"
     | "completed"
     | "handed_off"
     | "timed_out"

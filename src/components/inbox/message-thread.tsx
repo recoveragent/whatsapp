@@ -190,7 +190,7 @@ export function MessageThread({
   contactPanelOpen,
   onToggleContactPanel,
 }: MessageThreadProps) {
-  const { user } = useAuth();
+  const { user, accountId } = useAuth();
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -828,8 +828,21 @@ export function MessageThread({
       }
 
       onAssignChange(conversation.id, agentId);
+
+      if (agentId && contact?.id && accountId) {
+        void fetch("/api/crm/triggers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trigger_type: "conversation_assigned",
+            contact_id: contact.id,
+            conversation_id: conversation.id,
+            agent_id: agentId,
+          }),
+        });
+      }
     },
-    [conversation, onAssignChange],
+    [conversation, contact, accountId, onAssignChange],
   );
 
   const timeline = useMemo(

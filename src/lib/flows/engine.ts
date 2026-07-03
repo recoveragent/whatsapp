@@ -57,6 +57,11 @@ import {
   type StartNodeConfig,
   type KeywordTriggerConfig,
 } from "./types";
+import {
+  executeExtendedNode,
+  enqueueFlowWait,
+  isExtendedNodeType,
+} from "./extended-nodes";
 
 // ============================================================
 // Pure helpers — extracted so engine.test.ts can exercise them
@@ -116,7 +121,14 @@ export function isAutoAdvancing(node_type: string): boolean {
     node_type === "send_message" ||
     node_type === "send_media" ||
     node_type === "condition" ||
-    node_type === "set_tag"
+    node_type === "set_tag" ||
+    node_type === "send_template" ||
+    node_type === "send_webhook" ||
+    node_type === "http_fetch" ||
+    node_type === "update_contact_field" ||
+    node_type === "assign_conversation" ||
+    node_type === "create_deal" ||
+    node_type === "close_conversation"
   );
 }
 
@@ -339,6 +351,8 @@ async function findEntryFlow(
         return flow;
       }
     } else if (flow.trigger_type === "first_inbound_message" && isFirstInbound) {
+      return flow;
+    } else if (flow.trigger_type === "new_message_received") {
       return flow;
     }
     // 'manual' triggers do not auto-start from inbound messages.
@@ -714,6 +728,13 @@ async function advanceFromNodeKey(
               { contact_id: run.contact_id!, tag_id: cfg.tag_id },
               { onConflict: "contact_id,tag_id" },
             );
+          const { dispatchTagAdded } = await import("@/lib/crm/dispatch-triggers");
+          dispatchTagAdded({
+            accountId: run.account_id,
+            contactId: run.contact_id!,
+            tagId: cfg.tag_id,
+            conversationId: run.conversation_id ?? undefined,
+          });
         } else {
           await db
             .from("contact_tags")
@@ -766,6 +787,23 @@ async function advanceFromNodeKey(
     if (node.node_type === "handoff") {
       await executeHandoff(db, run, node);
       return { outcome: "handed_off" };
+    }
+    if (isExtendedNodeType(node.node_type)) {
+      const ext = await executeExtendedNode(db, run, node);
+      if (ext.kind === "error") {
+        await logEvent(db, run.id, "error", node.node_key, { reason: ext.message });
+        await endRun(db, run.id, "failed", "extended_node_failed");
+        return { outcome: "completed" };
+      }
+      if (ext.kind === "wait") {
+        await enqueueFlowWait(db, run, ext.nextKey, ext.runAt);
+        await logEvent(db, run.id, "node_entered", node.node_key, {
+          waiting_until: ext.runAt,
+        });
+        return { outcome: "advanced" };
+      }
+      currentKey = ext.nextKey;
+      continue;
     }
     if (node.node_type === "end") {
       await logEvent(db, run.id, "completed", node.node_key);
@@ -1114,4 +1152,108 @@ async function startNewRun(
     flow_run_id: run.id,
     outcome: outcome.outcome === "advanced" ? "started" : outcome.outcome,
   };
+}
+
+/**
+ * Start a flow from an external trigger (webhook, Shopify, tag, etc.).
+ */
+export async function startFlowForExternalEvent(input: {
+  flow: FlowRow;
+  contactId: string;
+  conversationId: string;
+  initialVars?: Record<string, unknown>;
+  messageText?: string;
+}): Promise<{ ok: boolean; flow_run_id?: string }> {
+  const db = supabaseAdmin();
+  const nodes = await loadAllNodes(db, input.flow.id);
+  if (!input.flow.entry_node_id || !nodes.has(input.flow.entry_node_id)) {
+    return { ok: false };
+  }
+
+  const { data: inserted, error: insErr } = await db
+    .from("flow_runs")
+    .insert({
+      flow_id: input.flow.id,
+      account_id: input.flow.account_id,
+      user_id: input.flow.user_id,
+      contact_id: input.contactId,
+      conversation_id: input.conversationId,
+      status: "active",
+      current_node_key: input.flow.entry_node_id,
+      vars: input.initialVars ?? {},
+    })
+    .select("*")
+    .maybeSingle();
+
+  if (insErr || !inserted) {
+    if (insErr?.message?.includes("23505")) return { ok: true }
+    console.error("[flows] startFlowForExternalEvent:", insErr?.message);
+    return { ok: false };
+  }
+
+  const run = inserted as FlowRunRow;
+  await logEvent(db, run.id, "started", input.flow.entry_node_id, {
+    flow_id: input.flow.id,
+    trigger_type: input.flow.trigger_type,
+    source: "external",
+  });
+
+  await db.rpc("increment_flow_execution_count", { p_flow_id: input.flow.id });
+
+  await advanceFromNodeKey(db, run, input.flow.entry_node_id!, nodes);
+  return { ok: true, flow_run_id: run.id };
+}
+
+/**
+ * Resume flow runs parked at wait nodes. Called from flows cron.
+ */
+export async function resumeFlowPendingExecutions(): Promise<number> {
+  const db = supabaseAdmin();
+  const now = new Date().toISOString();
+  const { data: pending } = await db
+    .from("flow_pending_executions")
+    .select("*")
+    .eq("status", "pending")
+    .lte("run_at", now)
+    .limit(50);
+
+  let resumed = 0;
+  for (const row of pending ?? []) {
+    const p = row as {
+      id: string
+      flow_run_id: string
+      flow_id: string
+      next_node_key: string
+      vars: Record<string, unknown>
+    }
+
+    const { data: runRow } = await db
+      .from("flow_runs")
+      .select("*")
+      .eq("id", p.flow_run_id)
+      .eq("status", "waiting")
+      .maybeSingle();
+
+    if (!runRow) {
+      await db.from("flow_pending_executions").update({ status: "failed" }).eq("id", p.id);
+      continue;
+    }
+
+    const run = { ...(runRow as FlowRunRow), vars: p.vars, status: "active" as const };
+    await db
+      .from("flow_runs")
+      .update({
+        status: "active",
+        vars: p.vars,
+        current_node_key: p.next_node_key,
+        last_advanced_at: now,
+      })
+      .eq("id", p.flow_run_id);
+
+    const nodes = await loadAllNodes(db, p.flow_id);
+    await advanceFromNodeKey(db, run, p.next_node_key, nodes);
+    await db.from("flow_pending_executions").update({ status: "done" }).eq("id", p.id);
+    resumed += 1;
+  }
+  return resumed;
 }

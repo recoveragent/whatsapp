@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { getFlowTemplate } from '@/lib/flows/templates'
+import { ensureFlowWebhookConfig } from '@/lib/flows/webhook-config'
+import type { FlowTriggerType } from '@/lib/flows/trigger-types'
 
 /**
  * GET /api/flows — list the caller's flows.
@@ -71,7 +73,7 @@ export async function POST(request: Request) {
     | {
         name?: string
         description?: string | null
-        trigger_type?: 'keyword' | 'first_inbound_message' | 'manual'
+        trigger_type?: FlowTriggerType
         trigger_config?: Record<string, unknown>
         /**
          * If set, clone the matching template's name + trigger +
@@ -145,6 +147,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 })
   }
   const trigger_type = body.trigger_type ?? 'keyword'
+  let trigger_config = body.trigger_config ?? {}
+  if (trigger_type === 'webhook_received') {
+    trigger_config = { ...ensureFlowWebhookConfig(trigger_config) }
+  }
 
   const { data, error } = await admin
     .from('flows')
@@ -155,7 +161,7 @@ export async function POST(request: Request) {
       description: body.description ?? null,
       status: 'draft',
       trigger_type,
-      trigger_config: body.trigger_config ?? {},
+      trigger_config,
     })
     .select()
     .single()

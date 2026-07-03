@@ -37,7 +37,7 @@ export interface ValidationIssue {
 
 interface FlowInput {
   name: string;
-  trigger_type: "keyword" | "first_inbound_message" | "manual";
+  trigger_type: import("@/lib/flows/trigger-types").FlowTriggerType;
   trigger_config: Record<string, unknown>;
   entry_node_id: string | null;
 }
@@ -173,7 +173,53 @@ function validateTrigger(
       }
     }
   }
-  // first_inbound_message / manual have no config; nothing to validate.
+  if (trigger_type === "tag_added") {
+    if (!nonEmpty(trigger_config.tag_id)) {
+      issues.push({
+        severity: "error",
+        scope: "trigger",
+        field: "trigger_config.tag_id",
+        message: "Tag triggers need a tag id.",
+      });
+    }
+  }
+  if (trigger_type === "webhook_received") {
+    if (!nonEmpty(trigger_config.webhook_token)) {
+      issues.push({
+        severity: "error",
+        scope: "trigger",
+        field: "trigger_config.webhook_token",
+        message: "Webhook triggers need a token — save the flow first.",
+      });
+    }
+    if (!nonEmpty(trigger_config.phone_path)) {
+      issues.push({
+        severity: "error",
+        scope: "trigger",
+        field: "trigger_config.phone_path",
+        message: "Webhook triggers need a phone path.",
+      });
+    }
+  }
+  if (trigger_type === "time_based") {
+    if (!nonEmpty(trigger_config.schedule)) {
+      issues.push({
+        severity: "error",
+        scope: "trigger",
+        field: "trigger_config.schedule",
+        message: "Time-based triggers need a schedule.",
+      });
+    }
+    if (!nonEmpty(trigger_config.tag_id)) {
+      issues.push({
+        severity: "error",
+        scope: "trigger",
+        field: "trigger_config.tag_id",
+        message: "Time-based triggers need a tag id (audience).",
+      });
+    }
+  }
+  // first_inbound_message / manual / shopify / message triggers — no extra config.
 
   return issues;
 }
@@ -701,6 +747,76 @@ function validateNode(
       break;
     }
 
+    case "send_template": {
+      const cfg = node.config as { template_name?: string; next_node_key?: string };
+      if (!cfg.template_name?.trim()) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "template_name",
+          message: "Send-template node needs a template name.",
+        });
+      }
+      if (!cfg.next_node_key) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "next_node_key",
+          message: "Send-template must point to a next node.",
+        });
+      } else if (!knownKeys.has(cfg.next_node_key)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "next_node_key",
+          message: `Send-template points to non-existent node "${cfg.next_node_key}".`,
+        });
+      }
+      break;
+    }
+
+    case "wait":
+    case "send_webhook":
+    case "http_fetch":
+    case "update_contact_field":
+    case "assign_conversation":
+    case "create_deal":
+    case "close_conversation": {
+      const cfg = node.config as { next_node_key?: string; url?: string };
+      if (node.node_type === "send_webhook" || node.node_type === "http_fetch") {
+        if (!cfg.url?.trim()) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: "url",
+            message: "Outbound webhook node needs a URL.",
+          });
+        }
+      }
+      if (!cfg.next_node_key) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "next_node_key",
+          message: "Node must point to a next node.",
+        });
+      } else if (!knownKeys.has(cfg.next_node_key)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "next_node_key",
+          message: `Node points to non-existent node "${cfg.next_node_key}".`,
+        });
+      }
+      break;
+    }
+
     case "handoff":
     case "end":
       // Terminal nodes have no outgoing edges; nothing to validate
@@ -745,11 +861,23 @@ export function reachableFromEntry(
   return visited;
 }
 
+function nonEmpty(v: unknown): boolean {
+  return typeof v === "string" && v.trim().length > 0;
+}
+
 function outgoingEdges(node: NodeInput): string[] {
   switch (node.node_type) {
     case "start":
     case "send_message":
     case "send_media":
+    case "send_template":
+    case "wait":
+    case "send_webhook":
+    case "http_fetch":
+    case "update_contact_field":
+    case "assign_conversation":
+    case "create_deal":
+    case "close_conversation":
     case "collect_input":
     case "set_tag": {
       const cfg = node.config as { next_node_key?: string };

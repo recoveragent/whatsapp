@@ -9,6 +9,10 @@ import {
 } from './extract-context';
 import { loadCampaign, sendShopifyCampaign } from './send-campaign';
 import { syncShopifyOrder } from './sync-order';
+import {
+  dispatchShopifyFlows,
+  shopifyTopicToFlowTrigger,
+} from '@/lib/flows/shopify-dispatch';
 import type {
   ShopifyCheckoutPayload,
   ShopifyFulfillmentPayload,
@@ -57,6 +61,23 @@ export async function handleShopifyWebhook(args: {
       break;
     case 'orders/updated':
       await syncShopifyOrder(args.db, config.account_id, args.payload as ShopifyOrderPayload, shopName);
+      {
+        const order = args.payload as ShopifyOrderPayload;
+        const trigger = shopifyTopicToFlowTrigger(args.topic, {
+          cancelled_at: order.cancelled_at,
+          fulfillment_status: order.fulfillment_status,
+        });
+        if (trigger) {
+          const ctx = contextFromOrder(order, shopName);
+          await dispatchShopifyFlows({
+            db: args.db,
+            accountId: config.account_id,
+            ownerUserId: config.user_id,
+            triggerType: trigger,
+            context: ctx,
+          });
+        }
+      }
       break;
     case 'fulfillments/create':
     case 'fulfillments/update':
@@ -96,6 +117,14 @@ async function handleOrderCreate(
   if (!result.ok && result.error !== 'already sent') {
     console.warn('[shopify] order_confirmation:', result.error);
   }
+
+  await dispatchShopifyFlows({
+    db,
+    accountId: config.account_id,
+    ownerUserId: config.user_id,
+    triggerType: 'shopify_order_placed',
+    context,
+  });
 }
 
 async function handleFulfillment(
@@ -135,6 +164,19 @@ async function handleFulfillment(
 
   if (!result.ok && result.error !== 'already sent') {
     console.warn('[shopify] fulfillment_update:', result.error);
+  }
+
+  const trigger = shopifyTopicToFlowTrigger('fulfillments/create', {
+    fulfillment_status: order?.fulfillment_status,
+  });
+  if (trigger) {
+    await dispatchShopifyFlows({
+      db,
+      accountId: config.account_id,
+      ownerUserId: config.user_id,
+      triggerType: trigger,
+      context,
+    });
   }
 }
 

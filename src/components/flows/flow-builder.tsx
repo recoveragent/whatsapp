@@ -51,6 +51,7 @@ import {
   type BuilderNode,
   type NodeType,
 } from "./shared";
+import { TriggerPanel } from "./trigger-panel";
 import { NodeConfigForm } from "./forms/node-config-form";
 import { NodeKeySelect } from "./forms/fields";
 import { IssueLine } from "./validation-panel";
@@ -59,18 +60,9 @@ import {
   type BuilderState,
 } from "./flow-editor-state";
 
-// ============================================================
-// Local state shape — mirrors the DB but the configs are typed
-// loosely (Record<string, unknown>) since each node_type carries a
-// different shape. The sub-form components narrow as needed.
-// ============================================================
-
-// ============================================================
-// Root component
-// ============================================================
-
 export function FlowBuilder() {
   const {
+    flow,
     state,
     setState,
     issues,
@@ -152,6 +144,7 @@ export function FlowBuilder() {
   return (
     <div className="flex flex-col gap-6">
       <TriggerPanel
+        flowId={flow.id}
         state={state}
         setState={setState}
         triggerIssues={issues.filter((i) => i.scope === "trigger")}
@@ -201,133 +194,6 @@ export function FlowBuilder() {
   );
 }
 
-
-// ============================================================
-// Keyword trigger input
-// ============================================================
-
-/**
- * Comma-separated keyword entry. Keeps a local draft string so the
- * comma (and trailing space) the user types survive until they're done
- * — parsing into the keywords array on every keystroke stripped the
- * trailing comma the instant it was typed, making it impossible to
- * start a second keyword (issue #234). We commit on blur / Enter, then
- * re-display the cleaned, rejoined form. Seeded once on mount; the
- * component unmounts/remounts when the trigger type changes, so the
- * seed stays in sync. Mirrors the automations builder's KeywordMatchConfig.
- */
-function KeywordsInput({
-  keywords,
-  onChange,
-}: {
-  keywords: string[];
-  onChange: (keywords: string[]) => void;
-}) {
-  const [draft, setDraft] = useState(keywords.join(", "));
-
-  function commit() {
-    const parsed = draft
-      .split(",")
-      .map((k) => k.trim())
-      .filter(Boolean);
-    setDraft(parsed.join(", "));
-    onChange(parsed);
-  }
-
-  return (
-    <Input
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          commit();
-        }
-      }}
-      placeholder="support, help, hi"
-      className="bg-muted"
-    />
-  );
-}
-
-// ============================================================
-// Trigger panel
-// ============================================================
-
-function TriggerPanel({
-  state,
-  setState,
-  triggerIssues,
-}: {
-  state: BuilderState;
-  setState: React.Dispatch<React.SetStateAction<BuilderState>>;
-  triggerIssues: ValidationIssue[];
-}) {
-  return (
-    <section className="rounded-lg border border-border bg-card p-4">
-      <h2 className="mb-3 text-sm font-semibold text-foreground">Trigger</h2>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <div>
-          <label className="mb-1 block text-xs text-muted-foreground">When…</label>
-          <Select
-            value={state.trigger_type}
-            onValueChange={(v) =>
-              setState((s) => ({
-                ...s,
-                trigger_type: v as BuilderState["trigger_type"],
-                trigger_config:
-                  v === "keyword" ? { keywords: [] } : v === "manual" ? {} : {},
-              }))
-            }
-          >
-            <SelectTrigger className="bg-muted">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="keyword">
-                A message contains a keyword
-              </SelectItem>
-              <SelectItem value="first_inbound_message">
-                Customer&apos;s first ever inbound message
-              </SelectItem>
-              <SelectItem value="manual">
-                Manual only (no auto-trigger)
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        {state.trigger_type === "keyword" && (
-          <div>
-            <label className="mb-1 block text-xs text-muted-foreground">
-              Keywords (comma-separated)
-            </label>
-            <KeywordsInput
-              keywords={
-                Array.isArray(state.trigger_config.keywords)
-                  ? (state.trigger_config.keywords as string[])
-                  : []
-              }
-              onChange={(keywords) =>
-                setState((s) => ({
-                  ...s,
-                  trigger_config: { ...s.trigger_config, keywords },
-                }))
-              }
-            />
-          </div>
-        )}
-      </div>
-      {triggerIssues.length > 0 && (
-        <div className="mt-3 flex flex-col gap-1">
-          {triggerIssues.map((i, ix) => (
-            <IssueLine key={ix} issue={i} />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
 
 // ============================================================
 // Entry-node picker

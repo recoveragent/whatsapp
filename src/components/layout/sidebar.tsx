@@ -16,6 +16,7 @@ import {
   Radio,
   Settings,
   Shield,
+  Wallet,
   User,
   UserCog,
   Users,
@@ -98,6 +99,7 @@ const navItems: NavItem[] = [
 ];
 
 const bottomNavItems = [
+  { href: "/wallet", label: "Wallet", icon: Wallet },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -271,20 +273,36 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
           <ul className="flex flex-col gap-1">
             {isSuperAdmin ? (
-              <li>
-                <Link
-                  href="/admin/brands"
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
-                    pathname.startsWith("/admin")
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                >
-                  <Building2 className="h-4 w-4" />
-                  Brands
-                </Link>
-              </li>
+              <>
+                <li>
+                  <Link
+                    href="/admin/brands"
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                      pathname.startsWith("/admin/brands")
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <Building2 className="h-4 w-4" />
+                    Brands
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/admin/billing"
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                      pathname.startsWith("/admin/billing")
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <Wallet className="h-4 w-4" />
+                    Payment gateway
+                  </Link>
+                </li>
+              </>
             ) : null}
             {!opsOnlyNav &&
             bottomNavItems.map((item) => {

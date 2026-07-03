@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import Link from 'next/link';
-import { Building2, Loader2, LogIn, PlugZap, Plus, Shield, ShoppingBag } from 'lucide-react';
+import { Building2, IndianRupee, Loader2, LogIn, PlugZap, Plus, Shield, ShoppingBag } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -334,6 +334,13 @@ export function BrandsAdminPanel() {
                     >
                       <PlugZap className="size-4" />
                       WhatsApp setup
+                    </Link>
+                    <Link
+                      href={`/admin/brands/${b.id}/pricing`}
+                      className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-transparent px-3 text-sm font-medium text-foreground hover:bg-muted"
+                    >
+                      <IndianRupee className="size-4" />
+                      Wallet pricing
                     </Link>
                     {b.brand_category === 'ecommerce' ? (
                       <Link

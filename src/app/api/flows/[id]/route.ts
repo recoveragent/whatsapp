@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { ensureFlowWebhookConfig } from '@/lib/flows/webhook-config'
+import type { FlowTriggerType } from '@/lib/flows/trigger-types'
 
 /**
  * GET   /api/flows/[id]  — fetch one flow with its nodes.
@@ -73,7 +75,7 @@ export async function GET(
 interface PutBody {
   name?: string
   description?: string | null
-  trigger_type?: 'keyword' | 'first_inbound_message' | 'manual'
+  trigger_type?: FlowTriggerType
   trigger_config?: Record<string, unknown>
   entry_node_id?: string | null
   fallback_policy?: Record<string, unknown>
@@ -107,6 +109,12 @@ export async function PUT(
 
   const admin = supabaseAdmin()
 
+  const { data: existing } = await admin
+    .from('flows')
+    .select('trigger_type, trigger_config')
+    .eq('id', id)
+    .maybeSingle()
+
   // Update the flow row first — the body may not include `nodes` (a
   // header-only save for editing the trigger config without touching
   // the graph). Skip node replacement in that case.
@@ -117,8 +125,29 @@ export async function PUT(
   if (body.description !== undefined)
     flowPatch.description = body.description
   if (body.trigger_type !== undefined) flowPatch.trigger_type = body.trigger_type
-  if (body.trigger_config !== undefined)
-    flowPatch.trigger_config = body.trigger_config
+
+  const effectiveTriggerType =
+    body.trigger_type ?? (existing?.trigger_type as FlowTriggerType | undefined)
+
+  if (body.trigger_config !== undefined) {
+    let cfg = body.trigger_config
+    if (effectiveTriggerType === 'webhook_received') {
+      let ensured = { ...ensureFlowWebhookConfig(cfg) }
+      const prev = existing?.trigger_config as Record<string, unknown> | null
+      if (
+        prev?.last_received_payload != null &&
+        ensured.last_received_payload == null
+      ) {
+        ensured = {
+          ...ensured,
+          last_received_payload: prev.last_received_payload,
+          last_received_at: prev.last_received_at as string | undefined,
+        }
+      }
+      cfg = ensured
+    }
+    flowPatch.trigger_config = cfg
+  }
   if (body.entry_node_id !== undefined)
     flowPatch.entry_node_id = body.entry_node_id
   if (body.fallback_policy !== undefined)
