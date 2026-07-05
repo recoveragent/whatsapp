@@ -829,7 +829,9 @@ function ConditionPredicateFields({
           {isShopifyPayment ? (
             <Select
               value={cfg.value ?? "paid"}
-              onValueChange={(v) => onPatch({ value: v, operator: "equals" })}
+              onValueChange={(v) =>
+                onPatch({ value: v ?? undefined, operator: "equals" })
+              }
             >
               <SelectTrigger className="bg-muted">
                 <SelectValue />
@@ -845,7 +847,7 @@ function ConditionPredicateFields({
           ) : subject === "tag" && tags.length > 0 ? (
             <Select
               value={cfg.subject_key ?? ""}
-              onValueChange={(v) => onPatch({ subject_key: v })}
+              onValueChange={(v) => onPatch({ subject_key: v ?? undefined })}
             >
               <SelectTrigger className="bg-muted">
                 <SelectValue placeholder="Pick a tag…" />
@@ -861,7 +863,7 @@ function ConditionPredicateFields({
           ) : subject === "contact_field" ? (
             <Select
               value={cfg.subject_key ?? ""}
-              onValueChange={(v) => onPatch({ subject_key: v })}
+              onValueChange={(v) => onPatch({ subject_key: v ?? undefined })}
             >
               <SelectTrigger className="bg-muted">
                 <SelectValue placeholder="Pick a field…" />
@@ -876,7 +878,7 @@ function ConditionPredicateFields({
           ) : subject === "var" && varKeys.length > 0 ? (
             <Select
               value={cfg.subject_key ?? ""}
-              onValueChange={(v) => onPatch({ subject_key: v })}
+              onValueChange={(v) => onPatch({ subject_key: v ?? undefined })}
             >
               <SelectTrigger className="bg-muted">
                 <SelectValue placeholder="Pick a variable…" />
@@ -913,9 +915,9 @@ function ConditionPredicateFields({
             </label>
             <Select
               value={operator}
-              onValueChange={(v) =>
-                onPatch({ operator: v as ConditionCfg["operator"] })
-              }
+              onValueChange={(v) => {
+                if (v) onPatch({ operator: v as ConditionCfg["operator"] });
+              }}
             >
               <SelectTrigger className="bg-muted">
                 <SelectValue />

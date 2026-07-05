@@ -655,7 +655,7 @@ function validateNode(
       const cfg = node.config as {
         subject?: "var" | "tag" | "contact_field" | "shopify_payment";
         subject_key?: string;
-        operator?: "equals" | "contains" | "present" | "absent";
+        operator?: "equals" | "not_equals" | "contains" | "present" | "absent";
         value?: string;
         true_next?: string;
         false_next?: string;
