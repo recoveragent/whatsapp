@@ -140,6 +140,7 @@ export interface CollectInputNodeConfig {
 
 export type ConditionOperator =
   | "equals"
+  | "not_equals"
   | "contains"
   | "present"
   | "absent";
@@ -167,6 +168,28 @@ export interface ConditionNodeConfig {
   true_next: string;
   /** Node to advance to when it evaluates false. */
   false_next: string;
+}
+
+/** One branch in a multi-case switch node — first match wins. */
+export interface SwitchBranchConfig {
+  branch_id: string;
+  /** Shown on the canvas edge label. */
+  label: string;
+  subject: ConditionSubject;
+  subject_key: string;
+  operator: ConditionOperator;
+  value?: string;
+  next_node_key: string;
+}
+
+/**
+ * Routes to different nodes based on ordered predicate checks.
+ * Evaluates branches top-to-bottom; advances to the first match,
+ * otherwise `default_next`.
+ */
+export interface SwitchNodeConfig {
+  branches: SwitchBranchConfig[];
+  default_next: string;
 }
 
 export interface SetTagNodeConfig {
@@ -254,6 +277,7 @@ export type FlowNodeConfig =
   | { node_type: "send_media"; config: SendMediaNodeConfig }
   | { node_type: "collect_input"; config: CollectInputNodeConfig }
   | { node_type: "condition"; config: ConditionNodeConfig }
+  | { node_type: "switch"; config: SwitchNodeConfig }
   | { node_type: "set_tag"; config: SetTagNodeConfig }
   | { node_type: "handoff"; config: HandoffNodeConfig }
   | { node_type: "send_template"; config: SendTemplateNodeConfig }

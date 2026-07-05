@@ -820,6 +820,7 @@ const ADD_NODE_TYPES: NodeType[] = [
   "send_template",
   "collect_input",
   "condition",
+  "switch",
   "set_tag",
   "wait",
   "send_webhook",

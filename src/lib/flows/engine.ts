@@ -55,6 +55,7 @@ import {
   type SendMessageNodeConfig,
   type SetTagNodeConfig,
   type StartNodeConfig,
+  type SwitchNodeConfig,
   type KeywordTriggerConfig,
 } from "./types";
 import {
@@ -143,6 +144,7 @@ export function isAutoAdvancing(node_type: string): boolean {
     node_type === "send_message" ||
     node_type === "send_media" ||
     node_type === "condition" ||
+    node_type === "switch" ||
     node_type === "set_tag" ||
     node_type === "send_template" ||
     node_type === "send_webhook" ||
@@ -192,6 +194,9 @@ export function evaluateConditionPredicate(args: {
     case "equals":
       if (args.subjectValue === undefined) return false;
       return args.subjectValue === (args.configValue ?? "");
+    case "not_equals":
+      if (args.subjectValue === undefined) return true;
+      return args.subjectValue !== (args.configValue ?? "");
     case "contains":
       if (args.subjectValue === undefined) return false;
       return args.subjectValue.includes(args.configValue ?? "");
@@ -737,6 +742,41 @@ async function advanceFromNodeKey(
         branch === "true" ? cfg.true_next : cfg.false_next;
       await logEvent(db, run.id, "node_entered", node.node_key, {
         condition_result: branch,
+        advancing_to: currentKey,
+      });
+      continue;
+    }
+    if (node.node_type === "switch") {
+      const cfg = node.config as unknown as SwitchNodeConfig;
+      let nextKey = cfg.default_next;
+      let matchedBranch: string | null = null;
+      try {
+        for (const branch of cfg.branches ?? []) {
+          const matches = await evaluateConditionNode(db, run, {
+            subject: branch.subject,
+            subject_key: branch.subject_key,
+            operator: branch.operator,
+            value: branch.value,
+            true_next: "",
+            false_next: "",
+          });
+          if (matches) {
+            nextKey = branch.next_node_key;
+            matchedBranch = branch.branch_id;
+            break;
+          }
+        }
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "switch_evaluation_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+        await endRun(db, run.id, "failed", "switch_evaluation_failed");
+        return { outcome: "completed" };
+      }
+      currentKey = nextKey;
+      await logEvent(db, run.id, "node_entered", node.node_key, {
+        switch_branch: matchedBranch,
         advancing_to: currentKey,
       });
       continue;

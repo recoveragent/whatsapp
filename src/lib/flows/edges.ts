@@ -20,6 +20,7 @@
  *   - `button:<reply_id>` for send_buttons rows
  *   - `row:<reply_id>`    for send_list rows
  *   - `true` / `false`    for condition branches
+ *   - `branch:<branch_id>` / `default` for switch branches
  */
 
 import type { BuilderNode } from "@/components/flows/shared";
@@ -80,6 +81,42 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
             target: falseNext,
             sourceHandle: "false",
             label: "false",
+          });
+        }
+        break;
+      }
+
+      case "switch": {
+        const branches = Array.isArray((cfg as { branches?: unknown }).branches)
+          ? ((cfg as { branches: Array<Record<string, unknown>> }).branches)
+          : [];
+        for (const branch of branches) {
+          const branchId =
+            typeof branch.branch_id === "string" ? branch.branch_id : null;
+          const next =
+            typeof branch.next_node_key === "string"
+              ? branch.next_node_key
+              : null;
+          const label =
+            typeof branch.label === "string" ? branch.label : branchId;
+          if (branchId && next && knownKeys.has(next)) {
+            edges.push({
+              id: `${node.node_key}--branch:${branchId}--${next}`,
+              source: node.node_key,
+              target: next,
+              sourceHandle: `branch:${branchId}`,
+              label: label ?? branchId,
+            });
+          }
+        }
+        const defaultNext = (cfg as { default_next?: string }).default_next;
+        if (defaultNext && knownKeys.has(defaultNext)) {
+          edges.push({
+            id: `${node.node_key}--default--${defaultNext}`,
+            source: node.node_key,
+            target: defaultNext,
+            sourceHandle: "default",
+            label: "else",
           });
         }
         break;
@@ -267,6 +304,21 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
         { id: "false", label: "false" },
       ];
 
+    case "switch": {
+      const branches = Array.isArray((cfg as { branches?: unknown }).branches)
+        ? ((cfg as { branches: Array<Record<string, unknown>> }).branches)
+        : [];
+      const slots = branches
+        .filter((b) => typeof b.branch_id === "string" && b.branch_id)
+        .map((b) => {
+          const branchId = b.branch_id as string;
+          const label = typeof b.label === "string" ? b.label : branchId;
+          return { id: `branch:${branchId}`, label };
+        });
+      slots.push({ id: "default", label: "else" });
+      return slots;
+    }
+
     case "send_buttons": {
       const buttons = Array.isArray((cfg as { buttons?: unknown }).buttons)
         ? ((cfg as { buttons: Array<Record<string, unknown>> }).buttons)
@@ -369,6 +421,24 @@ export function applyEdgeConnection(
       if (sourceHandle === "true") return { true_next: targetKey };
       if (sourceHandle === "false") return { false_next: targetKey };
       return null;
+
+    case "switch": {
+      if (sourceHandle === "default") return { default_next: targetKey };
+      if (!sourceHandle.startsWith("branch:")) return null;
+      const branchId = sourceHandle.slice("branch:".length);
+      const branches = Array.isArray(
+        (node.config as { branches?: unknown }).branches,
+      )
+        ? ((node.config as { branches: Array<Record<string, unknown>> })
+            .branches)
+        : [];
+      if (!branches.some((b) => b.branch_id === branchId)) return null;
+      return {
+        branches: branches.map((b) =>
+          b.branch_id === branchId ? { ...b, next_node_key: targetKey } : b,
+        ),
+      };
+    }
 
     case "send_buttons": {
       if (!sourceHandle.startsWith("button:")) return null;
@@ -502,6 +572,30 @@ function patchedConfigWithoutKey(
         ...cfg,
         ...(trueMatch ? { true_next: "" } : {}),
         ...(falseMatch ? { false_next: "" } : {}),
+      };
+    }
+
+    case "switch": {
+      const c = cfg as {
+        default_next?: string;
+        branches?: Array<{ next_node_key?: string }>;
+      };
+      const defaultMatch = c.default_next === deletedKey;
+      const branches = Array.isArray(c.branches) ? c.branches : [];
+      const branchMatch = branches.some((b) => b.next_node_key === deletedKey);
+      if (!defaultMatch && !branchMatch) return null;
+      return {
+        ...cfg,
+        ...(defaultMatch ? { default_next: "" } : {}),
+        ...(branchMatch
+          ? {
+              branches: branches.map((b) =>
+                b.next_node_key === deletedKey
+                  ? { ...b, next_node_key: "" }
+                  : b,
+              ),
+            }
+          : {}),
       };
     }
 

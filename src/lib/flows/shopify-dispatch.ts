@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { ensureShopifyContact, ensureConversation } from '@/lib/shopify/ensure-contact'
 import type { ShopifyEventContext } from '@/lib/shopify/types'
-import { runFlowsForTrigger } from './dispatch-external'
+import { runFlowsForTrigger, type FlowDispatchOutcome } from './dispatch-external'
 import { shopifyTopicToFlowTrigger, type FlowTriggerType } from './trigger-types'
 
 function contextToVars(ctx: ShopifyEventContext): Record<string, unknown> {
@@ -24,6 +24,14 @@ function contextToVars(ctx: ShopifyEventContext): Record<string, unknown> {
   }
 }
 
+export interface ShopifyFlowDispatchOutcome {
+  ok: boolean
+  reason?: 'no_phone' | 'no_contact' | 'no_conversation'
+  order_number?: string | null
+  payment_status?: string | null
+  dispatch?: FlowDispatchOutcome
+}
+
 /**
  * Dispatch active Shopify-triggered flows for an order event.
  */
@@ -33,9 +41,16 @@ export async function dispatchShopifyFlows(args: {
   ownerUserId: string
   triggerType: FlowTriggerType
   context: ShopifyEventContext
-}): Promise<void> {
+}): Promise<ShopifyFlowDispatchOutcome> {
+  const base = {
+    order_number: args.context.orderNumber,
+    payment_status: args.context.financialStatus,
+  }
+
   const phone = args.context.phone
-  if (!phone) return
+  if (!phone) {
+    return { ok: false, reason: 'no_phone', ...base }
+  }
 
   const contact = await ensureShopifyContact(
     args.db,
@@ -44,7 +59,9 @@ export async function dispatchShopifyFlows(args: {
     phone,
     args.context.customerName,
   )
-  if (!contact) return
+  if (!contact) {
+    return { ok: false, reason: 'no_contact', ...base }
+  }
 
   const conversation = await ensureConversation(
     args.db,
@@ -52,15 +69,23 @@ export async function dispatchShopifyFlows(args: {
     args.ownerUserId,
     contact.id,
   )
-  if (!conversation) return
+  if (!conversation) {
+    return { ok: false, reason: 'no_conversation', ...base }
+  }
 
-  await runFlowsForTrigger({
+  const dispatch = await runFlowsForTrigger({
     accountId: args.accountId,
     triggerType: args.triggerType,
     contactId: contact.id,
     conversationId: conversation.id,
     context: { vars: contextToVars(args.context) },
   })
+
+  return {
+    ok: dispatch.started.length > 0,
+    ...base,
+    dispatch,
+  }
 }
 
 export { shopifyTopicToFlowTrigger }

@@ -35,6 +35,30 @@ export interface FlowDispatchInput {
   flowId?: string
 }
 
+export interface FlowDispatchStarted {
+  flow_id: string
+  flow_name: string
+  flow_run_id?: string
+}
+
+export interface FlowDispatchSkipped {
+  flow_id: string
+  flow_name: string
+  reason:
+    | 'payment_status_mismatch'
+    | 'no_entry_node'
+    | 'no_conversation'
+    | 'start_failed'
+    | 'active_run_exists'
+}
+
+export interface FlowDispatchOutcome {
+  started: FlowDispatchStarted[]
+  skipped: FlowDispatchSkipped[]
+  /** True when no active flows exist for this trigger type. */
+  no_active_flows: boolean
+}
+
 function flowMatchesTrigger(
   flow: FlowRow,
   input: FlowDispatchInput,
@@ -70,10 +94,31 @@ function flowMatchesTrigger(
   return true
 }
 
+function shopifyPaymentMismatchReason(
+  flow: FlowRow,
+  input: FlowDispatchInput,
+): string | null {
+  if (!isShopifyOrderFlowTrigger(input.triggerType)) return null
+  const cfg = flow.trigger_config as Record<string, unknown>
+  const want = cfg.payment_status as string | undefined
+  if (!want || want === 'any') return null
+  const actual = input.context?.vars?.payment_status
+  if (actual === want) return null
+  return `expected "${want}", got "${actual ?? 'null'}"`
+}
+
 /**
  * Fire all active flows matching an external trigger for an account.
  */
-export async function runFlowsForTrigger(input: FlowDispatchInput): Promise<void> {
+export async function runFlowsForTrigger(
+  input: FlowDispatchInput,
+): Promise<FlowDispatchOutcome> {
+  const outcome: FlowDispatchOutcome = {
+    started: [],
+    skipped: [],
+    no_active_flows: false,
+  }
+
   try {
     const db = supabaseAdmin()
 
@@ -84,7 +129,7 @@ export async function runFlowsForTrigger(input: FlowDispatchInput): Promise<void
         .eq('id', input.contactId)
         .eq('account_id', input.accountId)
         .maybeSingle()
-      if (!owned) return
+      if (!owned) return outcome
     }
 
     let flows: FlowRow[] = []
@@ -108,9 +153,32 @@ export async function runFlowsForTrigger(input: FlowDispatchInput): Promise<void
       flows = (data as FlowRow[] | null) ?? []
     }
 
+    if (flows.length === 0) {
+      outcome.no_active_flows = true
+      return outcome
+    }
+
     for (const flow of flows) {
+      const paymentMismatch = shopifyPaymentMismatchReason(flow, input)
+      if (paymentMismatch) {
+        outcome.skipped.push({
+          flow_id: flow.id,
+          flow_name: flow.name,
+          reason: 'payment_status_mismatch',
+        })
+        continue
+      }
+
       if (!flowMatchesTrigger(flow, input)) continue
-      if (!flow.entry_node_id) continue
+
+      if (!flow.entry_node_id) {
+        outcome.skipped.push({
+          flow_id: flow.id,
+          flow_name: flow.name,
+          reason: 'no_entry_node',
+        })
+        continue
+      }
 
       let conversationId = input.conversationId
       if (!conversationId && input.contactId) {
@@ -122,9 +190,16 @@ export async function runFlowsForTrigger(input: FlowDispatchInput): Promise<void
         )
         conversationId = conv?.id
       }
-      if (!conversationId || !input.contactId) continue
+      if (!conversationId || !input.contactId) {
+        outcome.skipped.push({
+          flow_id: flow.id,
+          flow_name: flow.name,
+          reason: 'no_conversation',
+        })
+        continue
+      }
 
-      await startFlowForExternalEvent({
+      const result = await startFlowForExternalEvent({
         flow,
         contactId: input.contactId,
         conversationId,
@@ -136,10 +211,32 @@ export async function runFlowsForTrigger(input: FlowDispatchInput): Promise<void
         },
         messageText: input.context?.message_text,
       })
+
+      if (result.ok && result.flow_run_id) {
+        outcome.started.push({
+          flow_id: flow.id,
+          flow_name: flow.name,
+          flow_run_id: result.flow_run_id,
+        })
+      } else if (result.ok) {
+        outcome.skipped.push({
+          flow_id: flow.id,
+          flow_name: flow.name,
+          reason: 'active_run_exists',
+        })
+      } else {
+        outcome.skipped.push({
+          flow_id: flow.id,
+          flow_name: flow.name,
+          reason: 'start_failed',
+        })
+      }
     }
   } catch (err) {
     console.error('[flows] external dispatch failed:', err)
   }
+
+  return outcome
 }
 
 /**

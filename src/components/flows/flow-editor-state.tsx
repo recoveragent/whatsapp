@@ -182,6 +182,21 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
         true_next: "",
         false_next: "",
       };
+    case "switch":
+      return {
+        branches: [
+          {
+            branch_id: "case_1",
+            label: "Case 1",
+            subject: "var",
+            subject_key: "",
+            operator: "equals",
+            value: "",
+            next_node_key: "",
+          },
+        ],
+        default_next: "",
+      };
     case "set_tag":
       return { mode: "add", tag_id: "", next_node_key: "" };
     case "handoff":

@@ -55,6 +55,7 @@ export type NodeType =
   | "send_template"
   | "collect_input"
   | "condition"
+  | "switch"
   | "set_tag"
   | "handoff"
   | "wait"
@@ -112,9 +113,14 @@ export const NODE_META: Record<
     color: "text-teal-400",
   },
   condition: {
-    label: "If / else",
+    label: "Condition",
     icon: GitFork,
     color: "text-fuchsia-400",
+  },
+  switch: {
+    label: "Condition branches",
+    icon: GitFork,
+    color: "text-violet-400",
   },
   set_tag: {
     label: "Tag contact",
@@ -289,6 +295,8 @@ export function summarizeNode(node: BuilderNode): string | null {
       const op =
         cfg.operator === "equals"
           ? "=="
+          : cfg.operator === "not_equals"
+            ? "!="
           : cfg.operator === "contains"
             ? "contains"
             : cfg.operator === "present"
@@ -298,10 +306,22 @@ export function summarizeNode(node: BuilderNode): string | null {
                 : "";
       const value = typeof cfg.value === "string" ? cfg.value : "";
       const valStr =
-        (cfg.operator === "equals" || cfg.operator === "contains") && value
+        (cfg.operator === "equals" ||
+          cfg.operator === "not_equals" ||
+          cfg.operator === "contains") &&
+        value
           ? ` "${truncate(value, 20)}"`
           : "";
       return subject === "tag" ? subjectStr : `${subjectStr} ${op}${valStr}`;
+    }
+    case "switch": {
+      const branches = Array.isArray(cfg.branches)
+        ? (cfg.branches as Array<{ label?: string }>)
+        : [];
+      const count = branches.length;
+      return count > 0
+        ? `${count} branch${count === 1 ? "" : "es"} + else`
+        : "No branches configured";
     }
     case "set_tag": {
       const mode = cfg.mode === "remove" ? "Remove" : "Add";

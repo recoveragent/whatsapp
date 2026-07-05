@@ -6,6 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type { FlowNodeRow, FlowRunRow } from './types'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
+import { buildSendTimeParamsFromVariables } from '@/lib/flows/template-send-params'
 import { templateConfigHasQuickReplies } from './template-buttons'
 
 type AdminClient = SupabaseClient
@@ -147,11 +148,12 @@ export async function executeExtendedNode(
       case 'send_template': {
         const c = cfg as unknown as SendTemplateNodeConfig
         if (!c.template_name) throw new Error('template_name required')
-        const params = c.variables
-          ? Object.keys(c.variables)
-              .sort((a, b) => Number(a) - Number(b))
-              .map((k) => interpolateFlowVars(String(c.variables![k]), vars, messageText))
-          : []
+        const interpolate = (raw: string) =>
+          interpolateFlowVars(raw, vars, messageText)
+        const messageParams = buildSendTimeParamsFromVariables(
+          c.variables,
+          interpolate,
+        )
         const { whatsapp_message_id } = await engineSendTemplate({
           accountId: run.account_id,
           userId: run.user_id,
@@ -159,7 +161,7 @@ export async function executeExtendedNode(
           contactId: run.contact_id!,
           templateName: c.template_name,
           language: c.language,
-          params,
+          messageParams,
         })
         if (templateConfigHasQuickReplies(c)) {
           const { data: msg } = await db

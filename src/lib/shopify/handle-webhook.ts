@@ -18,6 +18,7 @@ import type {
   ShopifyFulfillmentPayload,
   ShopifyOrderPayload,
 } from './types';
+import type { ShopifyFlowDispatchOutcome } from '@/lib/flows/shopify-dispatch';
 
 interface ShopifyConfigLookup {
   account_id: string;
@@ -39,6 +40,22 @@ async function loadConfigByShop(
 
   if (error || !data || data.status !== 'connected') return null;
   return data as ShopifyConfigLookup;
+}
+
+function logFlowDispatch(
+  topic: string,
+  outcome: ShopifyFlowDispatchOutcome,
+): void {
+  console.info('[shopify webhook] flow dispatch', {
+    topic,
+    order: outcome.order_number,
+    payment_status: outcome.payment_status,
+    ok: outcome.ok,
+    reason: outcome.reason,
+    started: outcome.dispatch?.started.map((s) => s.flow_name) ?? [],
+    skipped: outcome.dispatch?.skipped ?? [],
+    no_active_flows: outcome.dispatch?.no_active_flows ?? false,
+  });
 }
 
 export async function handleShopifyWebhook(args: {
@@ -69,13 +86,14 @@ export async function handleShopifyWebhook(args: {
         });
         if (trigger) {
           const ctx = contextFromOrder(order, shopName);
-          await dispatchShopifyFlows({
+          const outcome = await dispatchShopifyFlows({
             db: args.db,
             accountId: config.account_id,
             ownerUserId: config.user_id,
             triggerType: trigger,
             context: ctx,
           });
+          logFlowDispatch(args.topic, outcome);
         }
       }
       break;
@@ -102,29 +120,31 @@ async function handleOrderCreate(
 ) {
   await syncShopifyOrder(db, config.account_id, order, shopName);
 
-  const campaign = await loadCampaign(db, config.account_id, 'order_confirmation');
-  if (!campaign) return;
-
   const context = contextFromOrder(order, shopName);
-  const result = await sendShopifyCampaign({
-    db,
-    accountId: config.account_id,
-    ownerUserId: config.user_id,
-    campaign,
-    context,
-  });
 
-  if (!result.ok && result.error !== 'already sent') {
-    console.warn('[shopify] order_confirmation:', result.error);
+  const campaign = await loadCampaign(db, config.account_id, 'order_confirmation');
+  if (campaign) {
+    const result = await sendShopifyCampaign({
+      db,
+      accountId: config.account_id,
+      ownerUserId: config.user_id,
+      campaign,
+      context,
+    });
+
+    if (!result.ok && result.error !== 'already sent') {
+      console.warn('[shopify] order_confirmation:', result.error);
+    }
   }
 
-  await dispatchShopifyFlows({
+  const outcome = await dispatchShopifyFlows({
     db,
     accountId: config.account_id,
     ownerUserId: config.user_id,
     triggerType: 'shopify_order_placed',
     context,
   });
+  logFlowDispatch('orders/create', outcome);
 }
 
 async function handleFulfillment(
@@ -170,13 +190,14 @@ async function handleFulfillment(
     fulfillment_status: order?.fulfillment_status,
   });
   if (trigger) {
-    await dispatchShopifyFlows({
+    const outcome = await dispatchShopifyFlows({
       db,
       accountId: config.account_id,
       ownerUserId: config.user_id,
       triggerType: trigger,
       context,
     });
+    logFlowDispatch('fulfillments/create', outcome);
   }
 }
 

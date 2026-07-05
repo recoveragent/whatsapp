@@ -683,7 +683,7 @@ function validateNode(
       }
       if (
         !cfg.operator ||
-        !["equals", "contains", "present", "absent"].includes(cfg.operator)
+        !["equals", "not_equals", "contains", "present", "absent"].includes(cfg.operator)
       ) {
         issues.push({
           severity: "error",
@@ -705,7 +705,9 @@ function validateNode(
             "Shopify payment condition needs a payment status (paid, pending, or partially paid).",
         });
       } else if (
-        (cfg.operator === "equals" || cfg.operator === "contains") &&
+        (cfg.operator === "equals" ||
+          cfg.operator === "not_equals" ||
+          cfg.operator === "contains") &&
         (cfg.value === undefined || cfg.value === "")
       ) {
         issues.push({
@@ -735,6 +737,118 @@ function validateNode(
             message: `Condition's "${branch}" points to non-existent node "${key}".`,
           });
         }
+      }
+      break;
+    }
+
+    case "switch": {
+      const cfg = node.config as {
+        branches?: Array<{
+          branch_id?: string;
+          label?: string;
+          subject?: "var" | "tag" | "contact_field" | "shopify_payment";
+          subject_key?: string;
+          operator?: "equals" | "not_equals" | "contains" | "present" | "absent";
+          value?: string;
+          next_node_key?: string;
+        }>;
+        default_next?: string;
+      };
+      const branches = cfg.branches ?? [];
+      if (branches.length === 0) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "branches",
+          message: "Switch needs at least one condition branch.",
+        });
+      }
+      branches.forEach((branch, index) => {
+        const prefix = `branches[${index}]`;
+        if (!branch.branch_id?.trim()) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: `${prefix}.branch_id`,
+            message: "Each switch branch needs an internal id.",
+          });
+        }
+        if (
+          !branch.subject ||
+          !["var", "tag", "contact_field", "shopify_payment"].includes(
+            branch.subject,
+          )
+        ) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: `${prefix}.subject`,
+            message: "Each switch branch needs a subject.",
+          });
+        }
+        if (
+          branch.subject !== "shopify_payment" &&
+          !branch.subject_key?.trim()
+        ) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: `${prefix}.subject_key`,
+            message: "Each switch branch needs a subject key.",
+          });
+        }
+        if (
+          !branch.operator ||
+          !["equals", "not_equals", "contains", "present", "absent"].includes(
+            branch.operator,
+          )
+        ) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: `${prefix}.operator`,
+            message: "Each switch branch needs an operator.",
+          });
+        }
+        if (!branch.next_node_key) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: `${prefix}.next_node_key`,
+            message: "Each switch branch must point to a next node.",
+          });
+        } else if (!knownKeys.has(branch.next_node_key)) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: `${prefix}.next_node_key`,
+            message: `Switch branch points to non-existent node "${branch.next_node_key}".`,
+          });
+        }
+      });
+      if (!cfg.default_next) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "default_next",
+          message: "Switch needs a default (else) branch.",
+        });
+      } else if (!knownKeys.has(cfg.default_next)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "default_next",
+          message: `Switch default points to non-existent node "${cfg.default_next}".`,
+        });
       }
       break;
     }
@@ -963,6 +1077,18 @@ function outgoingEdges(node: NodeInput): string[] {
       const out: string[] = [];
       if (cfg.true_next) out.push(cfg.true_next);
       if (cfg.false_next) out.push(cfg.false_next);
+      return out;
+    }
+    case "switch": {
+      const cfg = node.config as {
+        default_next?: string;
+        branches?: Array<{ next_node_key?: string }>;
+      };
+      const out: string[] = [];
+      if (cfg.default_next) out.push(cfg.default_next);
+      for (const b of cfg.branches ?? []) {
+        if (b.next_node_key) out.push(b.next_node_key);
+      }
       return out;
     }
     case "send_buttons": {

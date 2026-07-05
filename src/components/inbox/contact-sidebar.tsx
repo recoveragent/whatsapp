@@ -17,11 +17,13 @@ import {
   ShoppingBag,
   Loader2,
   ExternalLink,
+  Play,
 } from "lucide-react";
 import { isFulfilledStatus } from "@/lib/shopify/order-links";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -37,6 +39,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+  const [triggeringOrderId, setTriggeringOrderId] = useState<string | null>(null);
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
@@ -136,6 +139,72 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     }
     setAddingNote(false);
   }, [contact, newNote, accountId]);
+
+  const handleTriggerFlow = useCallback(
+    async (order: ShopifyOrder) => {
+      if (!contact) return;
+      setTriggeringOrderId(order.shopify_order_id);
+      try {
+        const res = await fetch("/api/shopify/orders/trigger-flow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contact_id: contact.id,
+            shopify_order_id: order.shopify_order_id,
+          }),
+        });
+        const payload = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          error?: string;
+          reason?: string;
+          dispatch?: {
+            started?: Array<{ flow_name: string }>;
+            skipped?: Array<{ flow_name: string; reason: string }>;
+            no_active_flows?: boolean;
+          };
+        };
+
+        if (!res.ok) {
+          toast.error(payload.error ?? "Could not trigger flow");
+          return;
+        }
+
+        const started = payload.dispatch?.started ?? [];
+        if (started.length > 0) {
+          toast.success(
+            `Started ${started.map((s) => s.flow_name).join(", ")} for ${order.order_number}`,
+          );
+          return;
+        }
+
+        if (payload.reason === "no_phone") {
+          toast.error("No phone on this order — add one in Shopify first.");
+          return;
+        }
+
+        if (payload.dispatch?.no_active_flows) {
+          toast.error("No active flow with trigger “Shopify: order placed”.");
+          return;
+        }
+
+        const skipped = payload.dispatch?.skipped ?? [];
+        if (skipped.length > 0) {
+          const detail = skipped
+            .map((s) => `${s.flow_name} (${s.reason.replace(/_/g, " ")})`)
+            .join("; ");
+          toast.error(`Flow not started: ${detail}`);
+          return;
+        }
+
+        toast.error("Flow did not start — check server logs for details.");
+      } catch {
+        toast.error("Could not trigger flow");
+      } finally {
+        setTriggeringOrderId(null);
+      }
+    },
+    [contact],
+  );
 
   if (!contact) {
     return (
@@ -303,6 +372,21 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                           ))}
                         </div>
                       )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-2 h-7 w-full gap-1.5 text-[11px]"
+                        disabled={triggeringOrderId === order.shopify_order_id}
+                        onClick={() => handleTriggerFlow(order)}
+                      >
+                        {triggeringOrderId === order.shopify_order_id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Play className="h-3 w-3" />
+                        )}
+                        Run order flow
+                      </Button>
                     </div>
                   </div>
                 ))

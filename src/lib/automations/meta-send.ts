@@ -1,4 +1,6 @@
 import { sendTextMessage, sendTemplateMessage } from '@/lib/whatsapp/meta-api'
+import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
+import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
   assertWalletCanSend,
@@ -10,6 +12,7 @@ import {
   phoneVariants,
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils'
+import type { MessageTemplate } from '@/types'
 import { supabaseAdmin } from './admin-client'
 
 // ------------------------------------------------------------
@@ -44,7 +47,10 @@ interface SendTemplateArgs {
   contactId: string
   templateName: string
   language?: string
+  /** Legacy body-only positional values. */
   params?: string[]
+  /** Structured header / body / button values for Meta send. */
+  messageParams?: SendTimeParams
 }
 
 export async function engineSendText(args: SendTextArgs): Promise<{ whatsapp_message_id: string }> {
@@ -99,15 +105,22 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   const accessToken = decrypt(config.access_token)
 
   let templateCategory: string | null = null
+  let templateRow: MessageTemplate | null = null
   if (input.kind === 'template') {
-    const { data: templateRow } = await db
+    const lang = input.language ?? 'en_US'
+    const { data: row } = await db
       .from('message_templates')
-      .select('category')
+      .select('*')
       .eq('account_id', input.accountId)
       .eq('name', input.templateName)
-      .eq('language', input.language ?? 'en_US')
+      .eq('language', lang)
       .maybeSingle()
-    templateCategory = (templateRow?.category as string) ?? null
+    if (row && isMessageTemplate(row)) {
+      templateRow = row
+      templateCategory = row.category
+    } else if (row?.category) {
+      templateCategory = row.category as string
+    }
     await assertWalletCanSend(input.accountId, templateCategory)
   }
 
@@ -119,6 +132,8 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         to: phone,
         templateName: input.templateName,
         language: input.language,
+        template: templateRow ?? undefined,
+        messageParams: input.messageParams,
         params: input.params,
       })
       return r.messageId

@@ -188,6 +188,16 @@ export function NodeConfigForm({
         />
       );
 
+    case "switch":
+      return (
+        <SwitchForm
+          cfg={cfg as SwitchCfg}
+          allNodes={allNodes}
+          currentKey={node.node_key}
+          onUpdateConfig={onUpdateConfig}
+        />
+      );
+
     case "set_tag":
       return (
         <SetTagForm
@@ -710,34 +720,68 @@ function SendListForm({
 interface ConditionCfg {
   subject?: "var" | "tag" | "contact_field" | "shopify_payment";
   subject_key?: string;
-  operator?: "equals" | "contains" | "present" | "absent";
+  operator?: "equals" | "not_equals" | "contains" | "present" | "absent";
   value?: string;
   true_next?: string;
   false_next?: string;
 }
 
-interface UserTag {
-  id: string;
-  name: string;
-  color?: string;
+interface SwitchBranchCfg {
+  branch_id: string;
+  label: string;
+  subject?: ConditionCfg["subject"];
+  subject_key?: string;
+  operator?: ConditionCfg["operator"];
+  value?: string;
+  next_node_key?: string;
 }
 
-function ConditionForm({
+interface SwitchCfg {
+  branches?: SwitchBranchCfg[];
+  default_next?: string;
+}
+
+function collectFlowVarKeys(nodes: BuilderNode[]): string[] {
+  const keys = new Set<string>();
+  for (const n of nodes) {
+    if (n.node_type !== "collect_input") continue;
+    const key = (n.config as { var_key?: string }).var_key?.trim();
+    if (key) keys.add(key);
+  }
+  return [...keys].sort();
+}
+
+function uniqueSwitchBranchId(
+  branches: SwitchBranchCfg[],
+  label: string,
+): string {
+  const base = slugify(label, "case");
+  const taken = new Set(branches.map((b) => b.branch_id));
+  let id = base;
+  let n = 2;
+  while (taken.has(id)) {
+    id = `${base}_${n++}`;
+  }
+  return id;
+}
+
+function ConditionPredicateFields({
   cfg,
   allNodes,
-  currentKey,
-  onUpdateConfig,
+  onPatch,
 }: {
-  cfg: ConditionCfg;
+  cfg: Pick<ConditionCfg, "subject" | "subject_key" | "operator" | "value">;
   allNodes: BuilderNode[];
-  currentKey: string;
-  onUpdateConfig: (patch: Record<string, unknown>) => void;
+  onPatch: (patch: Partial<ConditionCfg>) => void;
 }) {
   const tags = useUserTags();
-
+  const varKeys = collectFlowVarKeys(allNodes);
   const subject = cfg.subject ?? "var";
   const operator = cfg.operator ?? "equals";
-  const showValue = operator === "equals" || operator === "contains";
+  const showValue =
+    operator === "equals" ||
+    operator === "not_equals" ||
+    operator === "contains";
   const isShopifyPayment = subject === "shopify_payment";
 
   return (
@@ -750,14 +794,14 @@ function ConditionForm({
             onValueChange={(v) => {
               const next = v as ConditionCfg["subject"];
               if (next === "shopify_payment") {
-                onUpdateConfig({
+                onPatch({
                   subject: next,
                   subject_key: "payment_status",
                   operator: "equals",
                   value: cfg.value || "paid",
                 });
               } else {
-                onUpdateConfig({ subject: next });
+                onPatch({ subject: next });
               }
             }}
           >
@@ -777,7 +821,7 @@ function ConditionForm({
             {isShopifyPayment
               ? "Payment status"
               : subject === "var"
-                ? "var name"
+                ? "Variable"
                 : subject === "tag"
                   ? "Tag"
                   : "Field"}
@@ -785,9 +829,7 @@ function ConditionForm({
           {isShopifyPayment ? (
             <Select
               value={cfg.value ?? "paid"}
-              onValueChange={(v) =>
-                onUpdateConfig({ value: v, operator: "equals" })
-              }
+              onValueChange={(v) => onPatch({ value: v, operator: "equals" })}
             >
               <SelectTrigger className="bg-muted">
                 <SelectValue />
@@ -803,7 +845,7 @@ function ConditionForm({
           ) : subject === "tag" && tags.length > 0 ? (
             <Select
               value={cfg.subject_key ?? ""}
-              onValueChange={(v) => onUpdateConfig({ subject_key: v })}
+              onValueChange={(v) => onPatch({ subject_key: v })}
             >
               <SelectTrigger className="bg-muted">
                 <SelectValue placeholder="Pick a tag…" />
@@ -819,7 +861,7 @@ function ConditionForm({
           ) : subject === "contact_field" ? (
             <Select
               value={cfg.subject_key ?? ""}
-              onValueChange={(v) => onUpdateConfig({ subject_key: v })}
+              onValueChange={(v) => onPatch({ subject_key: v })}
             >
               <SelectTrigger className="bg-muted">
                 <SelectValue placeholder="Pick a field…" />
@@ -831,12 +873,26 @@ function ConditionForm({
                 <SelectItem value="company">company</SelectItem>
               </SelectContent>
             </Select>
+          ) : subject === "var" && varKeys.length > 0 ? (
+            <Select
+              value={cfg.subject_key ?? ""}
+              onValueChange={(v) => onPatch({ subject_key: v })}
+            >
+              <SelectTrigger className="bg-muted">
+                <SelectValue placeholder="Pick a variable…" />
+              </SelectTrigger>
+              <SelectContent>
+                {varKeys.map((key) => (
+                  <SelectItem key={key} value={key}>
+                    vars.{key}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : (
             <Input
               value={cfg.subject_key ?? ""}
-              onChange={(e) =>
-                onUpdateConfig({ subject_key: e.target.value })
-              }
+              onChange={(e) => onPatch({ subject_key: e.target.value })}
               placeholder={subject === "var" ? "e.g. email" : "tag UUID"}
               className="bg-muted font-mono text-xs"
             />
@@ -852,11 +908,13 @@ function ConditionForm({
       >
         {!isShopifyPayment && (
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">Operator</label>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              Operator
+            </label>
             <Select
               value={operator}
               onValueChange={(v) =>
-                onUpdateConfig({ operator: v as ConditionCfg["operator"] })
+                onPatch({ operator: v as ConditionCfg["operator"] })
               }
             >
               <SelectTrigger className="bg-muted">
@@ -866,6 +924,7 @@ function ConditionForm({
                 <SelectItem value="present">is present</SelectItem>
                 <SelectItem value="absent">is absent</SelectItem>
                 <SelectItem value="equals">equals</SelectItem>
+                <SelectItem value="not_equals">does not equal</SelectItem>
                 <SelectItem value="contains">contains</SelectItem>
               </SelectContent>
             </Select>
@@ -873,16 +932,45 @@ function ConditionForm({
         )}
         {showValue && !isShopifyPayment && (
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">Value</label>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              Value
+            </label>
             <Input
               value={cfg.value ?? ""}
-              onChange={(e) => onUpdateConfig({ value: e.target.value })}
+              onChange={(e) => onPatch({ value: e.target.value })}
               className="bg-muted"
             />
           </div>
         )}
       </div>
+    </>
+  );
+}
 
+interface UserTag {
+  id: string;
+  name: string;
+  color?: string;
+}
+
+function ConditionForm({
+  cfg,
+  allNodes,
+  currentKey,
+  onUpdateConfig,
+}: {
+  cfg: ConditionCfg;
+  allNodes: BuilderNode[];
+  currentKey: string;
+  onUpdateConfig: (patch: Record<string, unknown>) => void;
+}) {
+  return (
+    <>
+      <ConditionPredicateFields
+        cfg={cfg}
+        allNodes={allNodes}
+        onPatch={(patch) => onUpdateConfig(patch)}
+      />
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <NextNodeRow
           value={cfg.true_next ?? ""}
@@ -899,6 +987,124 @@ function ConditionForm({
           label="If false → advance to"
         />
       </div>
+    </>
+  );
+}
+
+function SwitchForm({
+  cfg,
+  allNodes,
+  currentKey,
+  onUpdateConfig,
+}: {
+  cfg: SwitchCfg;
+  allNodes: BuilderNode[];
+  currentKey: string;
+  onUpdateConfig: (patch: Record<string, unknown>) => void;
+}) {
+  const branches = cfg.branches ?? [];
+
+  const updateBranch = (index: number, patch: Partial<SwitchBranchCfg>) => {
+    onUpdateConfig({
+      branches: branches.map((b, i) => (i === index ? { ...b, ...patch } : b)),
+    });
+  };
+
+  const removeBranch = (index: number) => {
+    onUpdateConfig({
+      branches: branches.filter((_, i) => i !== index),
+    });
+  };
+
+  const addBranch = () => {
+    const label = `Case ${branches.length + 1}`;
+    onUpdateConfig({
+      branches: [
+        ...branches,
+        {
+          branch_id: uniqueSwitchBranchId(branches, label),
+          label,
+          subject: "var",
+          subject_key: "",
+          operator: "equals",
+          value: "",
+          next_node_key: "",
+        },
+      ],
+    });
+  };
+
+  return (
+    <>
+      <p className="text-xs text-muted-foreground">
+        Branches are checked top to bottom. The first match wins; otherwise the
+        flow follows the else branch.
+      </p>
+      <div className="flex flex-col gap-4">
+        {branches.map((branch, index) => (
+          <div
+            key={branch.branch_id || index}
+            className="rounded-lg border border-border bg-muted/30 p-3"
+          >
+            <div className="mb-3 flex items-center gap-2">
+              <Input
+                value={branch.label}
+                onChange={(e) => {
+                  const label = e.target.value;
+                  updateBranch(index, {
+                    label,
+                    branch_id: branch.branch_id || uniqueSwitchBranchId(branches, label),
+                  });
+                }}
+                placeholder="Branch label"
+                className="bg-muted text-sm"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="shrink-0 text-muted-foreground hover:text-red-400"
+                onClick={() => removeBranch(index)}
+                disabled={branches.length <= 1}
+                aria-label="Remove branch"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex flex-col gap-3">
+              <ConditionPredicateFields
+                cfg={branch}
+                allNodes={allNodes}
+                onPatch={(patch) => updateBranch(index, patch)}
+              />
+              <NextNodeRow
+                value={branch.next_node_key ?? ""}
+                allNodes={allNodes}
+                currentKey={currentKey}
+                onChange={(v) => updateBranch(index, { next_node_key: v })}
+                label="Then advance to"
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="border-border"
+        onClick={addBranch}
+      >
+        <Plus className="mr-1 h-3.5 w-3.5" />
+        Add branch
+      </Button>
+      <NextNodeRow
+        value={cfg.default_next ?? ""}
+        allNodes={allNodes}
+        currentKey={currentKey}
+        onChange={(v) => onUpdateConfig({ default_next: v })}
+        label="Else → advance to"
+      />
     </>
   );
 }

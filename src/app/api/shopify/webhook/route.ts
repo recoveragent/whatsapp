@@ -32,6 +32,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
+  const orderRef =
+    topic.startsWith('orders/') && payload && typeof payload === 'object'
+      ? ((payload as { name?: string; id?: string | number }).name ??
+        (payload as { id?: string | number }).id ??
+        null)
+      : null;
+
+  console.info('[shopify webhook] received', {
+    topic,
+    shop: shopDomain,
+    order: orderRef,
+  });
+
   try {
     await handleShopifyWebhook({
       db: supabaseAdmin(),
