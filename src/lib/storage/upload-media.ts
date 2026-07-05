@@ -1,8 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 
 /**
- * Shared media-upload helper for Supabase Storage buckets that use the
- * account-scoped path convention introduced in migration 020
+ * Shared media-upload helper for Supabase Storage buckets that use the * account-scoped path convention introduced in migration 020
  * (`flow-media`) and reused by migration 023 (`chat-media`):
  *
  *   <bucket>/account-<account_id>/<timestamp>-<basename>.<ext>
@@ -80,41 +79,35 @@ export async function uploadAccountMedia(
   bucket: string,
   file: File,
 ): Promise<UploadAccountMediaResult> {
-  const supabase = createClient();
+  const form = new FormData();
+  form.append("file", file);
+  form.append("bucket", bucket);
 
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
-  if (userErr || !user) {
-    throw new Error("Not signed in.");
-  }
-
-  // Resolve account_id so the path is account-scoped (matches the
-  // bucket's RLS write policy from migration 020/023). User-scoped
-  // paths would be rejected.
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("account_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (profileErr || !profile?.account_id) {
-    throw new Error("Could not resolve your account.");
-  }
-
-  const path = buildMediaPath(profile.account_id as string, file.name);
-  const { error: upErr } = await supabase.storage.from(bucket).upload(path, file, {
-    cacheControl: "3600",
-    upsert: false,
-    contentType: file.type,
+  const res = await fetch("/api/account/media/upload", {
+    method: "POST",
+    body: form,
+    credentials: "include",
   });
-  if (upErr) throw new Error(upErr.message);
 
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from(bucket).getPublicUrl(path);
+  const data = (await res.json()) as {
+    publicUrl?: string;
+    path?: string;
+    error?: string;
+    needsBrandContext?: boolean;
+  };
 
-  return { publicUrl, path };
+  if (!res.ok) {
+    if (data.needsBrandContext) {
+      throw new Error("Select a brand first to upload media.");
+    }
+    throw new Error(data.error ?? "Upload failed");
+  }
+
+  if (!data.publicUrl || !data.path) {
+    throw new Error("Upload failed");
+  }
+
+  return { publicUrl: data.publicUrl, path: data.path };
 }
 
 /**

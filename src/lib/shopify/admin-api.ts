@@ -1,7 +1,13 @@
+import { phonesMatch } from '@/lib/whatsapp/phone-utils';
+
 import { SHOPIFY_API_VERSION } from './config';
 import { formatShopifyApiError } from './format-api-error';
 import { normalizeShopDomain } from './normalize-shop';
-import { normalizePhone, phoneVariants } from '@/lib/whatsapp/phone-utils';
+import {
+  shopifyCustomerSearchQueries,
+  shopifyPhoneE164Variants,
+  shopifyPhoneSearchVariants,
+} from './phone-search';
 import type { ShopifyOrderPayload } from './types';
 export interface ShopifyShopInfo {
   id: number;
@@ -150,34 +156,177 @@ export async function fetchOrder(
   return data.order;
 }
 
-/** Search orders by customer phone (tries E.164 variants). */
+function parseShopifyGid(gid: string): string | null {
+  const match = gid.match(/\/(\d+)$/);
+  return match?.[1] ?? null;
+}
+
+function mergeOrders(
+  target: ShopifyOrderPayload[],
+  seen: Set<string>,
+  orders: ShopifyOrderPayload[],
+): void {
+  for (const order of orders) {
+    const id = String(order.id ?? '');
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      target.push(order);
+    }
+  }
+}
+
+async function shopifyGraphql<T>(
+  shopDomain: string,
+  accessToken: string,
+  query: string,
+  variables?: Record<string, unknown>,
+): Promise<T> {
+  const normalized = normalizeShopDomain(shopDomain);
+  if (!normalized) throw new Error('Invalid shop domain');
+
+  const url = `https://${normalized}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Shopify-Access-Token': accessToken,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+
+  if (!response.ok) {
+    let message = `Shopify GraphQL error: ${response.status}`;
+    try {
+      const body = await response.json();
+      message = formatShopifyApiError(body, message);
+    } catch {
+      // keep fallback
+    }
+    throw new Error(message);
+  }
+
+  const body = (await response.json()) as T & { errors?: Array<{ message?: string }> };
+  if (Array.isArray(body.errors) && body.errors.length > 0) {
+    const message = body.errors.map((e) => e.message).filter(Boolean).join('; ');
+    throw new Error(message || 'Shopify GraphQL request failed');
+  }
+
+  return body;
+}
+
+interface ShopifyCustomerSearchHit {
+  id: number;
+  phone?: string | null;
+  default_address?: { phone?: string | null } | null;
+}
+
+function customerPhoneMatches(
+  customer: ShopifyCustomerSearchHit,
+  contactPhone: string,
+): boolean {
+  const candidates = [
+    customer.phone,
+    customer.default_address?.phone,
+  ];
+  return candidates.some(
+    (raw) => typeof raw === 'string' && raw.length > 0 && phonesMatch(raw, contactPhone),
+  );
+}
+
+async function searchCustomerIdsByPhone(
+  shopDomain: string,
+  accessToken: string,
+  phone: string,
+): Promise<string[]> {
+  const seen = new Set<string>();
+
+  for (const query of shopifyCustomerSearchQueries(phone)) {
+    try {
+      const data = await shopifyFetch<{ customers: ShopifyCustomerSearchHit[] }>(
+        shopDomain,
+        accessToken,
+        `/customers/search.json?query=${encodeURIComponent(query)}&limit=10`,
+      );
+      for (const customer of data.customers ?? []) {
+        const id = String(customer.id ?? '');
+        if (!id) continue;
+        if (customerPhoneMatches(customer, phone) || !customer.phone) {
+          seen.add(id);
+        }
+      }
+    } catch (err) {
+      console.warn('[shopify] customer search failed:', query, err);
+    }
+  }
+
+  for (const e164 of shopifyPhoneE164Variants(phone)) {
+    try {
+      const data = await shopifyGraphql<{
+        data?: { customer?: { id?: string } | null };
+      }>(
+        shopDomain,
+        accessToken,
+        `query($identifier: CustomerIdentifierInput!) {
+          customer: customerByIdentifier(identifier: $identifier) {
+            id
+          }
+        }`,
+        { identifier: { phoneNumber: e164 } },
+      );
+      const numeric = data.data?.customer?.id
+        ? parseShopifyGid(data.data.customer.id)
+        : null;
+      if (numeric) seen.add(numeric);
+    } catch (err) {
+      console.warn('[shopify] customerByIdentifier failed:', e164, err);
+    }
+  }
+
+  return [...seen];
+}
+
+async function fetchOrdersByCustomerId(
+  shopDomain: string,
+  accessToken: string,
+  customerId: string,
+): Promise<ShopifyOrderPayload[]> {
+  const data = await shopifyFetch<{ orders: ShopifyOrderPayload[] }>(
+    shopDomain,
+    accessToken,
+    `/customers/${customerId}/orders.json?status=any&limit=50`,
+  );
+  return data.orders ?? [];
+}
+
+/** Search orders by customer phone (REST, customer search, and GraphQL). */
 export async function fetchOrdersByPhone(
   shopDomain: string,
   accessToken: string,
   phone: string,
 ): Promise<ShopifyOrderPayload[]> {
-  const normalized = normalizePhone(phone);
-  if (!normalized) return [];
-
   const seen = new Set<string>();
   const merged: ShopifyOrderPayload[] = [];
 
-  for (const variant of phoneVariants(normalized)) {
+  for (const variant of shopifyPhoneSearchVariants(phone)) {
     try {
       const data = await shopifyFetch<{ orders: ShopifyOrderPayload[] }>(
         shopDomain,
         accessToken,
         `/orders.json?status=any&phone=${encodeURIComponent(variant)}&limit=50`,
       );
-      for (const order of data.orders ?? []) {
-        const id = String(order.id ?? '');
-        if (id && !seen.has(id)) {
-          seen.add(id);
-          merged.push(order);
-        }
-      }
+      mergeOrders(merged, seen, data.orders ?? []);
     } catch (err) {
       console.warn('[shopify] fetchOrdersByPhone variant failed:', variant, err);
+    }
+  }
+
+  const customerIds = await searchCustomerIdsByPhone(shopDomain, accessToken, phone);
+  for (const customerId of customerIds) {
+    try {
+      const orders = await fetchOrdersByCustomerId(shopDomain, accessToken, customerId);
+      mergeOrders(merged, seen, orders);
+    } catch (err) {
+      console.warn('[shopify] fetchOrdersByCustomerId failed:', customerId, err);
     }
   }
 

@@ -12,7 +12,10 @@ import type { FlowWebhookTriggerConfig } from './webhook-config'
 import { supabaseAdmin } from './admin-client'
 import { startFlowForExternalEvent } from './engine'
 import type { FlowRow } from './types'
-import type { FlowTriggerType } from './trigger-types'
+import {
+  isShopifyOrderFlowTrigger,
+  type FlowTriggerType,
+} from './trigger-types'
 
 export interface FlowDispatchContext {
   message_text?: string
@@ -53,6 +56,14 @@ function flowMatchesTrigger(
       const hh = String(now.getHours()).padStart(2, '0')
       const mm = String(now.getMinutes()).padStart(2, '0')
       if (`${hh}:${mm}` !== schedule) return false
+    }
+  }
+
+  if (isShopifyOrderFlowTrigger(input.triggerType)) {
+    const want = cfg.payment_status as string | undefined
+    if (want && want !== 'any') {
+      const actual = input.context?.vars?.payment_status
+      if (actual !== want) return false
     }
   }
 

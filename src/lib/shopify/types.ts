@@ -52,6 +52,8 @@ export interface ShopifyEventContext {
   trackingUrl: string | null;
   checkoutUrl: string | null;
   fulfillmentStatus: string | null;
+  /** Shopify `financial_status` on orders (paid, pending, partially_paid, …). */
+  financialStatus: string | null;
   shopName: string;
   resourceKey: string;
 }
@@ -74,10 +76,12 @@ export interface ShopifyOrderPayload {
     last_name?: string;
     phone?: string;
     email?: string;
+    default_address?: { phone?: string };
   };
   shipping_address?: { phone?: string; first_name?: string; last_name?: string };
   billing_address?: { phone?: string };
   phone?: string;
+  contact_phone?: string;
   email?: string;
   fulfillments?: Array<{
     status?: string;

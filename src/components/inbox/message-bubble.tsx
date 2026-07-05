@@ -1,13 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { Message, MessageReaction } from "@/types";
 import {
-  Clock,
-  Check,
-  CheckCheck,
-  XCircle,
   FileText,
   MapPin,
   LayoutTemplate,
@@ -15,8 +11,11 @@ import {
   CornerDownLeft,
 } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "sonner";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ReplyQuote } from "./reply-quote";
 import { MessageReactions } from "./message-reactions";
+import { openMediaUrl, useProxiedMediaUrl } from "./use-proxied-media";
 
 interface MessageBubbleProps {
   message: Message;
@@ -27,21 +26,47 @@ interface MessageBubbleProps {
   onToggleReaction?: (emoji: string) => void;
 }
 
-function StatusIcon({ status }: { status: Message["status"] }) {
-  switch (status) {
-    case "sending":
-      return <Clock className="h-3 w-3 text-muted-foreground" />;
-    case "sent":
-      return <Check className="h-3 w-3 text-muted-foreground" />;
-    case "delivered":
-      return <CheckCheck className="h-3 w-3 text-muted-foreground" />;
-    case "read":
-      return <CheckCheck className="h-3 w-3 text-blue-400" />;
-    case "failed":
-      return <XCircle className="h-3 w-3 text-red-400" />;
-    default:
-      return null;
-  }
+function MessageStatusLabel({
+  status,
+  onPrimary,
+}: {
+  status: Message["status"];
+  onPrimary: boolean;
+}) {
+  const muted = onPrimary ? "text-primary-foreground/75" : "text-muted-foreground";
+  const label =
+    status === "sending"
+      ? "Sending…"
+      : status === "sent"
+        ? "Sent"
+        : status === "delivered"
+          ? "Delivered"
+          : status === "read"
+            ? "Read"
+            : status === "failed"
+              ? "Failed"
+              : null;
+
+  if (!label) return null;
+
+  return (
+    <span
+      className={cn(
+        "text-[10px] font-medium",
+        status === "failed"
+          ? onPrimary
+            ? "text-red-200"
+            : "text-red-500"
+          : status === "read"
+            ? onPrimary
+              ? "text-sky-200"
+              : "text-sky-500"
+            : muted,
+      )}
+    >
+      {label}
+    </span>
+  );
 }
 
 function MediaUnavailable({ label }: { label: string }) {
@@ -54,43 +79,11 @@ function MediaUnavailable({ label }: { label: string }) {
 }
 
 function MediaImage({ url, alt }: { url: string; alt: string }) {
-  const [src, setSrc] = useState<string | null>(null);
-  const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const { src, loading, error } = useProxiedMediaUrl(url);
+  const [open, setOpen] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
-  const loadImage = useCallback(async () => {
-    if (!url) return;
-
-    // Proxy URLs need auth fetch to create blob URL
-    if (url.startsWith("/api/whatsapp/media/")) {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("Failed to load media");
-        const blob = await res.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        setSrc(blobUrl);
-      } catch {
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      setSrc(url);
-      setLoading(false);
-    }
-  }, [url]);
-
-  useEffect(() => {
-    loadImage();
-    return () => {
-      if (src?.startsWith("blob:")) {
-        URL.revokeObjectURL(src);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadImage]);
-
-  if (error) {
+  if (error || imgError) {
     return (
       <div className="flex h-40 w-60 items-center justify-center rounded-lg bg-muted">
         <ImageOff className="h-8 w-8 text-muted-foreground" />
@@ -107,12 +100,96 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
   }
 
   return (
-    <img
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="block cursor-zoom-in rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        aria-label="Open image"
+      >
+        <img
+          src={src ?? ""}
+          alt={alt}
+          className="max-h-64 max-w-60 rounded-lg object-cover"
+          onError={() => setImgError(true)}
+        />
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          showCloseButton
+          className="max-w-[min(92vw,56rem)] border-none bg-transparent p-2 shadow-none ring-0 sm:max-w-[min(92vw,56rem)]"
+        >
+          <img
+            src={src ?? ""}
+            alt={alt}
+            className="mx-auto max-h-[85vh] w-auto max-w-full rounded-lg object-contain"
+          />
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function ProxiedVideo({ url }: { url: string }) {
+  const { src, loading, error } = useProxiedMediaUrl(url);
+
+  if (error) return <MediaUnavailable label="Video" />;
+  if (loading) {
+    return (
+      <div className="flex h-40 w-60 items-center justify-center rounded-lg bg-muted">
+        <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  return (
+    <video
       src={src ?? ""}
-      alt={alt}
-      className="max-h-64 max-w-60 rounded-lg object-cover"
-      onError={() => setError(true)}
+      controls
+      className="max-h-64 max-w-60 rounded-lg"
     />
+  );
+}
+
+function ProxiedAudio({ url }: { url: string }) {
+  const { src, loading, error } = useProxiedMediaUrl(url);
+
+  if (error) return <MediaUnavailable label="Audio" />;
+  if (loading) {
+    return (
+      <div className="flex h-10 w-60 items-center justify-center rounded-lg bg-muted">
+        <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  return <audio src={src ?? ""} controls className="max-w-60" />;
+}
+
+function ProxiedDocumentLink({
+  url,
+  label,
+}: {
+  url: string;
+  label: string;
+}) {
+  const [opening, setOpening] = useState(false);
+
+  return (
+    <button
+      type="button"
+      disabled={opening}
+      onClick={() => {
+        setOpening(true);
+        void openMediaUrl(url, label)
+          .catch(() => toast.error("Failed to open document"))
+          .finally(() => setOpening(false));
+      }}
+      className="flex w-full items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-60"
+    >
+      <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
+      <span className="truncate">{label}</span>
+    </button>
   );
 }
 
@@ -145,11 +222,7 @@ function MessageContent({ message }: { message: Message }) {
       return (
         <div>
           {message.media_url ? (
-            <video
-              src={message.media_url}
-              controls
-              className="max-h-64 max-w-60 rounded-lg"
-            />
+            <ProxiedVideo url={message.media_url} />
           ) : (
             <MediaUnavailable label="Video" />
           )}
@@ -165,7 +238,7 @@ function MessageContent({ message }: { message: Message }) {
       return (
         <div>
           {message.media_url ? (
-            <audio src={message.media_url} controls className="max-w-60" />
+            <ProxiedAudio url={message.media_url} />
           ) : (
             <MediaUnavailable label="Audio" />
           )}
@@ -175,6 +248,14 @@ function MessageContent({ message }: { message: Message }) {
     case "document":
       if (!message.media_url) {
         return <MediaUnavailable label={message.content_text || "Document"} />;
+      }
+      if (message.media_url.startsWith("/api/whatsapp/media/")) {
+        return (
+          <ProxiedDocumentLink
+            url={message.media_url}
+            label={message.content_text || "Document"}
+          />
+        );
       }
       return (
         <a
@@ -294,7 +375,9 @@ export function MessageBubble({
           >
             {time}
           </span>
-          {isAgent && <StatusIcon status={message.status} />}
+          {isAgent && (
+            <MessageStatusLabel status={message.status} onPrimary={isAgent} />
+          )}
         </div>
       </div>
       {reactions && reactions.length > 0 && onToggleReaction && (

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { CheckCircle2, ExternalLink, Loader2, ShoppingBag, XCircle } from 'lucide-react';
+import { CheckCircle2, ExternalLink, Loader2, RotateCcw, ShoppingBag, Unlink, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -25,6 +25,7 @@ interface AccountContextPayload {
 interface ConnectionPayload {
   configured: boolean;
   connected: boolean;
+  needs_reconnect?: boolean;
   oauth_available?: boolean;
   shop_domain?: string | null;
   shop_name?: string | null;
@@ -44,6 +45,7 @@ export function ShopifyBrandConnection() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [shopInput, setShopInput] = useState('');
   const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -125,6 +127,31 @@ export function ShopifyBrandConnection() {
     window.location.href = `/api/shopify/oauth/start?shop=${encodeURIComponent(shopInput.trim())}`;
   };
 
+  const handleDisconnect = async () => {
+    if (
+      !confirm(
+        'Disconnect Shopify from this workspace? Campaign settings are kept, but order and checkout automations will stop until you reconnect.',
+      )
+    ) {
+      return;
+    }
+
+    setDisconnecting(true);
+    try {
+      const res = await fetch('/api/shopify/connection', { method: 'DELETE' });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? 'Disconnect failed');
+
+      toast.success('Shopify disconnected');
+      setShopInput('');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Disconnect failed');
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
   if (loading) {
     return (
       <section className="animate-in fade-in-50 duration-200">
@@ -157,8 +184,10 @@ export function ShopifyBrandConnection() {
 
   const configured = connection?.configured ?? false;
   const connected = connection?.connected ?? false;
+  const needsReconnect = Boolean(connection?.needs_reconnect ?? (configured && !connected));
   const canEdit = accountCtx?.canEditSettings ?? false;
   const oauthAvailable = connection?.oauth_available ?? false;
+  const showConnectForm = canEdit && oauthAvailable && (!configured || needsReconnect);
 
   return (
     <section className="animate-in fade-in-50 duration-200">
@@ -176,7 +205,9 @@ export function ShopifyBrandConnection() {
           className={
             configured && connected
               ? 'bg-emerald-950/30 border-emerald-700/50'
-              : 'bg-card border-border'
+              : configured && needsReconnect
+                ? 'bg-amber-950/30 border-amber-700/50'
+                : 'bg-card border-border'
           }
         >
           <div className="flex items-start gap-3">
@@ -187,26 +218,31 @@ export function ShopifyBrandConnection() {
             )}
             <div>
               <AlertTitle className="text-foreground mb-1">
-                {configured && connected ? 'Shopify connected' : 'No Shopify store connected'}
+                {configured && connected
+                  ? 'Shopify connected'
+                  : configured && needsReconnect
+                    ? 'Reconnect required'
+                    : 'No Shopify store connected'}
               </AlertTitle>
               <AlertDescription className="text-muted-foreground text-sm">
                 {loadError ??
-                  (configured && connected
-                    ? 'Webhooks are registered. Enable campaigns below to start sending messages.'
-                    : canEdit
-                      ? 'Connect your store to automate WhatsApp messages for orders and checkouts.'
-                      : 'Ask a workspace admin to connect Shopify.')}
+                  (connection?.message ??
+                    (configured && connected
+                      ? 'Webhooks are registered. Enable campaigns below to start sending messages.'
+                      : canEdit
+                        ? 'Connect your store to automate WhatsApp messages for orders and checkouts.'
+                        : 'Ask a workspace admin to connect Shopify.'))}
               </AlertDescription>
             </div>
           </div>
         </Alert>
 
-        {!configured && canEdit && oauthAvailable && (
+        {showConnectForm && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <ShoppingBag className="size-4" />
-                Connect store
+                {needsReconnect ? 'Reconnect store' : 'Connect store'}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -225,16 +261,35 @@ export function ShopifyBrandConnection() {
                   </span>
                 </div>
               </div>
-              <Button onClick={handleConnect} disabled={connecting}>
-                {connecting ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <>
-                    Connect with Shopify
-                    <ExternalLink className="ml-1.5 size-4" />
-                  </>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={handleConnect} disabled={connecting}>
+                  {connecting ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <>
+                      {needsReconnect ? 'Reconnect with Shopify' : 'Connect with Shopify'}
+                      <ExternalLink className="ml-1.5 size-4" />
+                    </>
+                  )}
+                </Button>
+                {configured && needsReconnect && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={disconnecting}
+                    onClick={() => void handleDisconnect()}
+                  >
+                    {disconnecting ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Unlink className="mr-1.5 size-4" />
+                        Disconnect
+                      </>
+                    )}
+                  </Button>
                 )}
-              </Button>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -255,9 +310,11 @@ export function ShopifyBrandConnection() {
         {configured && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Connected store</CardTitle>
+              <CardTitle className="text-base">
+                {needsReconnect ? 'Previously connected store' : 'Connected store'}
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm">
+            <CardContent className="space-y-3 text-sm">
               {connection?.shop_name && (
                 <p className="font-medium text-foreground">{connection.shop_name}</p>
               )}
@@ -272,6 +329,42 @@ export function ShopifyBrandConnection() {
                     timeStyle: 'short',
                   })}
                 </p>
+              )}
+              {canEdit && connected && oauthAvailable && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={connecting}
+                    onClick={handleConnect}
+                  >
+                    {connecting ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <>
+                        <RotateCcw className="mr-1.5 size-4" />
+                        Reconnect
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={disconnecting}
+                    onClick={() => void handleDisconnect()}
+                  >
+                    {disconnecting ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Unlink className="mr-1.5 size-4" />
+                        Disconnect
+                      </>
+                    )}
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>

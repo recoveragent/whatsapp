@@ -7,6 +7,7 @@ import {
   toPublicPaymentConfig,
   upsertOrgPaymentConfig,
 } from '@/lib/wallet/payment-config';
+import { encryptionConfigError, walletDbErrorMessage } from '@/lib/wallet/db-errors';
 
 async function requireSuperAdmin() {
   const supabase = await createClient();
@@ -28,6 +29,26 @@ async function requireSuperAdmin() {
   return { supabase, organizationId: member.organization_id as string };
 }
 
+function paymentErrorResponse(err: unknown): NextResponse {
+  const encryptionHint = encryptionConfigError(err);
+  if (encryptionHint) {
+    return NextResponse.json({ error: encryptionHint }, { status: 500 });
+  }
+
+  if (err instanceof Error && /key secret is required/i.test(err.message)) {
+    return NextResponse.json({ error: err.message }, { status: 400 });
+  }
+
+  if (err && typeof err === 'object' && 'message' in err) {
+    const dbMessage = walletDbErrorMessage(err as { code?: string; message?: string });
+    if (dbMessage !== 'Database error') {
+      return NextResponse.json({ error: dbMessage }, { status: 503 });
+    }
+  }
+
+  return toErrorResponse(err);
+}
+
 export async function GET() {
   try {
     const { organizationId } = await requireSuperAdmin();
@@ -37,7 +58,7 @@ export async function GET() {
       webhookUrl: `${process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, '') ?? ''}/api/wallet/webhook/razorpay`,
     });
   } catch (err) {
-    return toErrorResponse(err);
+    return paymentErrorResponse(err);
   }
 }
 
@@ -75,6 +96,7 @@ export async function PUT(request: Request) {
     const config = await getOrgPaymentConfig(organizationId);
     return NextResponse.json({ config: toPublicPaymentConfig(config) });
   } catch (err) {
-    return toErrorResponse(err);
+    console.error('[admin/payment-config] PUT failed:', err);
+    return paymentErrorResponse(err);
   }
 }

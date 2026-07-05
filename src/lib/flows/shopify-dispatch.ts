@@ -17,6 +17,8 @@ function contextToVars(ctx: ShopifyEventContext): Record<string, unknown> {
     tracking_url: ctx.trackingUrl,
     checkout_url: ctx.checkoutUrl,
     fulfillment_status: ctx.fulfillmentStatus,
+    payment_status: ctx.financialStatus,
+    financial_status: ctx.financialStatus,
     shop_name: ctx.shopName,
     name: ctx.customerName,
   }

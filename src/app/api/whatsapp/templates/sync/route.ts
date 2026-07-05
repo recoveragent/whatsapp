@@ -75,9 +75,12 @@ function parseButtons(metaButtons: MetaButton[] | undefined): TemplateButton[] {
   if (!metaButtons?.length) return []
   const out: TemplateButton[] = []
   for (const b of metaButtons) {
-    switch (b.type?.toUpperCase()) {
+    const type = (b.type ?? '').toUpperCase().replace(/-/g, '_').replace(/\s+/g, '_')
+    const label = (b.text ?? '').trim()
+    switch (type) {
       case 'QUICK_REPLY':
-        out.push({ type: 'QUICK_REPLY', text: b.text })
+      case 'QUICKREPLY':
+        if (label) out.push({ type: 'QUICK_REPLY', text: label })
         break
       case 'URL':
         out.push({
@@ -215,10 +218,12 @@ export async function POST() {
     const errors: { name: string; language: string; message: string }[] = []
 
     for (const t of metaTemplates) {
-      const body = (t.components ?? []).find((c) => c.type === 'BODY')
-      const header = (t.components ?? []).find((c) => c.type === 'HEADER')
-      const footer = (t.components ?? []).find((c) => c.type === 'FOOTER')
-      const buttons = (t.components ?? []).find((c) => c.type === 'BUTTONS')
+      const componentType = (c: MetaTemplateComponent) =>
+        (c.type ?? '').trim().toUpperCase()
+      const body = (t.components ?? []).find((c) => componentType(c) === 'BODY')
+      const header = (t.components ?? []).find((c) => componentType(c) === 'HEADER')
+      const footer = (t.components ?? []).find((c) => componentType(c) === 'FOOTER')
+      const buttons = (t.components ?? []).find((c) => componentType(c) === 'BUTTONS')
 
       const parsedButtons = parseButtons(buttons?.buttons)
       const sampleValues = extractSampleValues(body, header)

@@ -49,6 +49,8 @@ interface WhatsAppMessage {
     button_reply?: { id: string; title: string }
     list_reply?: { id: string; title: string; description?: string }
   }
+  /** Template quick-reply tap — Meta sends type `button`. */
+  button?: { text: string; payload: string }
   /** Present when the customer swipe-replies to one of our messages. */
   context?: { id: string }
 }
@@ -576,7 +578,7 @@ async function processMessage(
   // allowed value so the INSERT doesn't fail with a constraint error.
   const ALLOWED_CONTENT_TYPES = new Set([
     'text', 'image', 'document', 'audio', 'video',
-    'location', 'template', 'interactive',
+    'location', 'template', 'interactive', 'button',
   ])
   const contentType = ALLOWED_CONTENT_TYPES.has(message.type)
     ? message.type
@@ -850,6 +852,19 @@ async function parseMessageContent(
         }
       }
       return { ...empty, contentText: '[Interactive reply]' }
+    }
+
+    case 'button': {
+      const btn = message.button
+      if (btn) {
+        const replyId = btn.payload?.trim() || btn.text?.trim() || ''
+        return {
+          ...empty,
+          contentText: btn.text || replyId,
+          interactiveReplyId: replyId || null,
+        }
+      }
+      return { ...empty, contentText: '[Button reply]' }
     }
 
     default:

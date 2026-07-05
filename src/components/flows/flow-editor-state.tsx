@@ -187,7 +187,7 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
     case "handoff":
       return { note: "" };
     case "send_template":
-      return { template_name: "", language: "en_US", variables: {}, next_node_key: "" };
+      return { template_name: "", language: "en_US", variables: {}, buttons: [], next_node_key: "" };
     case "wait":
       return { amount: 1, unit: "hours", next_node_key: "" };
     case "send_webhook":

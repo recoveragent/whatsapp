@@ -60,6 +60,8 @@ import { cn } from "@/lib/utils"
 import { defaultWebhookTriggerConfig } from "@/lib/automations/webhook-config"
 import { generateWebhookToken } from "@/lib/automations/webhook-token"
 import { flattenPayloadKeys } from "@/lib/automations/webhook-payload"
+import { SendTemplateFields } from "@/components/shared/send-template-fields"
+import { templateVariableGroupsForAutomation } from "@/lib/flows/template-variables"
 
 // ------------------------------------------------------------
 // Types (builder-local — mirror the flattened rows we POST)
@@ -394,129 +396,6 @@ function AgentSelect({
   )
 }
 
-/** Template dropdown showing approved templates by name + language,
- *  storing both template_name and language. Falls back to manual name +
- *  language inputs when no approved templates are synced yet. */
-function SendTemplateFields({
-  templateName,
-  language,
-  variables,
-  onChange,
-}: {
-  templateName: string
-  language: string
-  variables?: Record<string, string>
-  onChange: (patch: {
-    template_name: string
-    language: string
-    variables?: Record<string, string>
-  }) => void
-}) {
-  const { templates } = useResources()
-  const selectedTemplate = templates.find(
-    (t) => t.name === templateName && (t.language ?? "en_US") === (language || "en_US"),
-  )
-  const placeholders = useMemo(() => {
-    const text = selectedTemplate?.body_text ?? ""
-    const matches = text.match(/\{\{\d+\}\}/g) ?? []
-    return [...new Set(matches)].sort((a, b) => {
-      const na = Number(a.replace(/\D/g, ""))
-      const nb = Number(b.replace(/\D/g, ""))
-      return na - nb
-    })
-  }, [selectedTemplate?.body_text])
-
-  if (templates.length === 0) {
-    return (
-      <>
-        <FieldBlock label="Template name">
-          <Input
-            value={templateName}
-            onChange={(e) =>
-              onChange({ template_name: e.target.value, language })
-            }
-            className="bg-muted text-foreground"
-          />
-        </FieldBlock>
-        <FieldBlock label="Language">
-          <Input
-            value={language}
-            onChange={(e) =>
-              onChange({ template_name: templateName, language: e.target.value })
-            }
-            className="bg-muted text-foreground"
-          />
-        </FieldBlock>
-      </>
-    )
-  }
-
-  // Encode name + language in the option value so two templates that
-  // share a name across languages stay distinct.
-  const toValue = (name: string, lang: string) => `${name}::${lang}`
-  const current = templateName ? toValue(templateName, language) : ""
-  const hasMatch = templates.some(
-    (t) => toValue(t.name, t.language ?? "en_US") === current,
-  )
-
-  return (
-    <>
-      <FieldBlock label="Template">
-        <select
-          value={current}
-          onChange={(e) => {
-            const [name, lang] = e.target.value.split("::")
-            onChange({ template_name: name ?? "", language: lang ?? "", variables })
-          }}
-          className={SELECT_CLASS}
-        >
-          <option value="">Select a template…</option>
-          {templates.map((t) => {
-            const lang = t.language ?? "en_US"
-            return (
-              <option key={t.id} value={toValue(t.name, lang)}>
-                {t.name} ({lang})
-              </option>
-            )
-          })}
-          {current && !hasMatch && (
-            <option value={current}>
-              {templateName} ({language || "unknown"}) — not in approved list
-            </option>
-          )}
-        </select>
-      </FieldBlock>
-      {placeholders.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-[11px] text-muted-foreground">
-            Map each template variable. Use <code className="text-primary">{"{{ vars.field }}"}</code>{" "}
-            or <code className="text-primary">{"{{ trigger.field }}"}</code> for webhook payloads.
-          </p>
-          {placeholders.map((ph) => {
-            const key = ph.replace(/^\{\{|\}\}$/g, "")
-            return (
-              <FieldBlock key={key} label={`Variable ${key}`}>
-                <Input
-                  value={variables?.[key] ?? ""}
-                  onChange={(e) =>
-                    onChange({
-                      template_name: templateName,
-                      language,
-                      variables: { ...variables, [key]: e.target.value },
-                    })
-                  }
-                  placeholder={`e.g. {{ vars.${key} }} or static text`}
-                  className="bg-muted font-mono text-xs text-foreground"
-                />
-              </FieldBlock>
-            )
-          })}
-        </div>
-      )}
-    </>
-  )
-}
-
 // ------------------------------------------------------------
 // Main builder component
 // ------------------------------------------------------------
@@ -677,6 +556,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
             <StepList
               steps={state.steps}
               parentPath={[]}
+              triggerType={state.trigger_type}
               expandedId={expandedId}
               setExpandedId={setExpandedId}
               updateStep={updateStep}
@@ -1171,6 +1051,7 @@ type StepPath = (
 interface StepListProps {
   steps: BuilderStep[]
   parentPath: StepPath
+  triggerType: AutomationTriggerType
   expandedId: string | null
   setExpandedId: (id: string | null) => void
   updateStep: (path: StepPath, updater: (s: BuilderStep) => BuilderStep) => void
@@ -1272,6 +1153,7 @@ function StepRenderer({
             <div className="border-t border-border px-4 py-3">
               <StepEditor
                 step={step}
+                triggerType={props.triggerType}
                 onChange={(next) => props.updateStep(path, () => next)}
               />
               <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3">
@@ -1415,9 +1297,11 @@ function AddButton({ onPick }: { onPick: (t: AutomationStepType) => void }) {
 
 function StepEditor({
   step,
+  triggerType,
   onChange,
 }: {
   step: BuilderStep
+  triggerType: AutomationTriggerType
   onChange: (s: BuilderStep) => void
 }) {
   const cfg = step.step_config
@@ -1442,7 +1326,9 @@ function StepEditor({
           templateName={(cfg.template_name as string) ?? ""}
           language={(cfg.language as string) ?? ""}
           variables={(cfg.variables as Record<string, string>) ?? undefined}
-          onChange={(patch) => set(patch)}
+          onChange={(patch) => set({ ...patch })}
+          variableGroups={templateVariableGroupsForAutomation(triggerType)}
+          variableHint="Focus a field, then pick a variable. User attributes come from the contact; trigger attributes depend on your automation trigger."
         />
       )
     case "add_tag":

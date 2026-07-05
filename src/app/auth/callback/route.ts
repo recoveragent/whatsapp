@@ -1,13 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getServerRedirectOrigin } from "@/lib/auth/site-url";
 
 /**
  * Supabase auth redirect target — exchanges the `code` query param for
  * a session, then sends the user to `next` (e.g. /reset-password).
  */
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
+  const origin = getServerRedirectOrigin(request);
   const code = searchParams.get("code");
   const nextRaw = searchParams.get("next") ?? "/dashboard";
   // Only allow same-origin relative paths.

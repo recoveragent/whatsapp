@@ -6,6 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type { FlowNodeRow, FlowRunRow } from './types'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
+import { templateConfigHasQuickReplies } from './template-buttons'
 
 type AdminClient = SupabaseClient
 
@@ -13,6 +14,11 @@ export interface SendTemplateNodeConfig {
   template_name: string
   language?: string
   variables?: Record<string, string>
+  buttons?: Array<{
+    reply_id: string
+    title: string
+    next_node_key: string
+  }>
   next_node_key: string
 }
 
@@ -55,6 +61,7 @@ export interface CloseConversationNodeConfig {
 
 export type ExtendedNodeResult =
   | { kind: 'continue'; nextKey: string }
+  | { kind: 'suspend' }
   | { kind: 'wait'; nextKey: string; runAt: string }
   | { kind: 'error'; message: string }
 
@@ -91,13 +98,48 @@ export function isExtendedNodeType(nodeType: string): boolean {
   return EXTENDED_NODE_TYPES.has(nodeType)
 }
 
+async function resolveFlowInterpolationVars(
+  db: AdminClient,
+  run: FlowRunRow,
+): Promise<Record<string, unknown>> {
+  const merged = { ...(run.vars ?? {}) }
+  if (!run.contact_id) return merged
+
+  const { data } = await db
+    .from('contacts')
+    .select('name, email, phone, company')
+    .eq('id', run.contact_id)
+    .maybeSingle()
+
+  if (!data) return merged
+  const contact = data as {
+    name?: string | null
+    email?: string | null
+    phone?: string | null
+    company?: string | null
+  }
+
+  if (contact.name && merged.name === undefined) merged.name = contact.name
+  if (contact.phone && merged.phone === undefined) merged.phone = contact.phone
+  if (contact.email && merged.email === undefined) merged.email = contact.email
+  if (contact.company && merged.company === undefined) merged.company = contact.company
+
+  const fullName = String(contact.name ?? merged.name ?? '').trim()
+  const parts = fullName.split(/\s+/).filter(Boolean)
+  if (merged.first_name === undefined) merged.first_name = parts[0] ?? ''
+  if (merged.last_name === undefined) merged.last_name = parts.slice(1).join(' ')
+  if (merged.customer_name === undefined && fullName) merged.customer_name = fullName
+
+  return merged
+}
+
 export async function executeExtendedNode(
   db: AdminClient,
   run: FlowRunRow,
   node: FlowNodeRow,
   messageText?: string,
 ): Promise<ExtendedNodeResult> {
-  const vars = run.vars ?? {}
+  const vars = await resolveFlowInterpolationVars(db, run)
   const cfg = node.config as Record<string, unknown>
 
   try {
@@ -110,7 +152,7 @@ export async function executeExtendedNode(
               .sort((a, b) => Number(a) - Number(b))
               .map((k) => interpolateFlowVars(String(c.variables![k]), vars, messageText))
           : []
-        await engineSendTemplate({
+        const { whatsapp_message_id } = await engineSendTemplate({
           accountId: run.account_id,
           userId: run.user_id,
           conversationId: run.conversation_id!,
@@ -119,6 +161,20 @@ export async function executeExtendedNode(
           language: c.language,
           params,
         })
+        if (templateConfigHasQuickReplies(c)) {
+          const { data: msg } = await db
+            .from('messages')
+            .select('id')
+            .eq('message_id', whatsapp_message_id)
+            .maybeSingle()
+          await db
+            .from('flow_runs')
+            .update({
+              last_prompt_message_id: (msg as { id: string } | null)?.id ?? null,
+            })
+            .eq('id', run.id)
+          return { kind: 'suspend' }
+        }
         return { kind: 'continue', nextKey: c.next_node_key }
       }
       case 'wait': {

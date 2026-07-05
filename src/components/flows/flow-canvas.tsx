@@ -651,6 +651,7 @@ function FlowCanvasInner() {
         node={selectedNode}
         isEntry={selectedNode?.node_key === entryNodeId}
         allNodes={builderNodes}
+        triggerType={state.trigger_type}
         onClose={() => setSelectedNodeKey(null)}
         onUpdateConfig={onSelectedUpdateConfig}
         onDelete={handleDeleteSelected}
@@ -720,6 +721,7 @@ function NodeEditSheet({
   node,
   isEntry,
   allNodes,
+  triggerType,
   onClose,
   onUpdateConfig,
   onDelete,
@@ -728,6 +730,7 @@ function NodeEditSheet({
   node: BuilderNode | null;
   isEntry: boolean;
   allNodes: BuilderNode[];
+  triggerType: import("./flow-editor-state").BuilderState["trigger_type"];
   onClose: () => void;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
   onDelete: () => void;
@@ -749,7 +752,10 @@ function NodeEditSheet({
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent
         side="right"
-        className="flex w-full flex-col gap-0 border-l border-border bg-popover p-0 sm:max-w-md"
+        className={cn(
+          "flex w-full flex-col gap-0 border-l border-border bg-popover p-0",
+          node.node_type === "send_template" ? "sm:max-w-xl" : "sm:max-w-md",
+        )}
       >
         <SheetHeader className="border-b border-border px-5 py-4">
           <SheetTitle className="flex items-center gap-2 text-popover-foreground">
@@ -772,6 +778,7 @@ function NodeEditSheet({
             allNodes={allNodes}
             showAdvanced={false}
             onUpdateConfig={onUpdateConfig}
+            triggerType={triggerType}
           />
         </div>
 
@@ -806,7 +813,6 @@ function NodeEditSheet({
 // ============================================================
 
 const ADD_NODE_TYPES: NodeType[] = [
-  "start",
   "send_buttons",
   "send_list",
   "send_message",
@@ -858,7 +864,7 @@ function CanvasAddNodeButton() {
         <Plus className="h-3.5 w-3.5" />
         Add node
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="border-border bg-popover">
+      <DropdownMenuContent align="end" className="min-w-[14rem] border-border bg-popover">
         {ADD_NODE_TYPES.map((t) => {
           const meta = NODE_META[t];
           const Icon = meta.icon;

@@ -138,6 +138,59 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
         break;
       }
 
+      case "send_template": {
+        const buttons = Array.isArray((cfg as { buttons?: unknown }).buttons)
+          ? ((cfg as { buttons: Array<Record<string, unknown>> }).buttons)
+          : [];
+        if (buttons.length > 0) {
+          for (const btn of buttons) {
+            const replyId =
+              typeof btn.reply_id === "string" ? btn.reply_id : null;
+            const next =
+              typeof btn.next_node_key === "string" ? btn.next_node_key : null;
+            const title = typeof btn.title === "string" ? btn.title : null;
+            if (!replyId || !next || !knownKeys.has(next)) continue;
+            edges.push({
+              id: `${node.node_key}--button:${replyId}--${next}`,
+              source: node.node_key,
+              target: next,
+              sourceHandle: `button:${replyId}`,
+              label: title ?? replyId,
+            });
+          }
+        } else {
+          const next = (cfg as { next_node_key?: string }).next_node_key;
+          if (next && knownKeys.has(next)) {
+            edges.push({
+              id: `${node.node_key}--next--${next}`,
+              source: node.node_key,
+              target: next,
+              sourceHandle: "next",
+            });
+          }
+        }
+        break;
+      }
+
+      case "wait":
+      case "send_webhook":
+      case "http_fetch":
+      case "update_contact_field":
+      case "assign_conversation":
+      case "create_deal":
+      case "close_conversation": {
+        const next = (cfg as { next_node_key?: string }).next_node_key;
+        if (next && knownKeys.has(next)) {
+          edges.push({
+            id: `${node.node_key}--next--${next}`,
+            source: node.node_key,
+            target: next,
+            sourceHandle: "next",
+          });
+        }
+        break;
+      }
+
       case "handoff":
       case "end":
         // Terminal nodes — no outgoing edges.
@@ -177,7 +230,6 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
     case "start":
     case "send_message":
     case "send_media":
-    case "send_template":
     case "wait":
     case "send_webhook":
     case "http_fetch":
@@ -186,8 +238,28 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
     case "create_deal":
     case "close_conversation":
     case "collect_input":
-    case "set_tag":
+    case "set_tag": {
       return [{ id: "next", label: "Next" }];
+    }
+
+    case "send_template": {
+      const buttons = Array.isArray((cfg as { buttons?: unknown }).buttons)
+        ? ((cfg as { buttons: Array<Record<string, unknown>> }).buttons)
+        : [];
+      if (buttons.length > 0) {
+        return buttons
+          .filter((b) => typeof b.reply_id === "string" && b.reply_id)
+          .map((b) => {
+            const replyId = b.reply_id as string;
+            const title = typeof b.title === "string" ? b.title : null;
+            return {
+              id: `button:${replyId}`,
+              label: title ?? replyId,
+            };
+          });
+      }
+      return [{ id: "next", label: "Next" }];
+    }
 
     case "condition":
       return [
@@ -261,7 +333,6 @@ export function applyEdgeConnection(
     case "start":
     case "send_message":
     case "send_media":
-    case "send_template":
     case "wait":
     case "send_webhook":
     case "http_fetch":
@@ -272,6 +343,26 @@ export function applyEdgeConnection(
     case "collect_input":
     case "set_tag":
       if (sourceHandle === "next") return { next_node_key: targetKey };
+      return null;
+
+    case "send_template":
+      if (sourceHandle === "next") return { next_node_key: targetKey };
+      if (sourceHandle.startsWith("button:")) {
+        const replyId = sourceHandle.slice("button:".length);
+        const buttons = Array.isArray(
+          (node.config as { buttons?: unknown }).buttons,
+        )
+          ? ((node.config as {
+              buttons: Array<Record<string, unknown>>;
+            }).buttons)
+          : [];
+        if (!buttons.some((b) => b.reply_id === replyId)) return null;
+        return {
+          buttons: buttons.map((b) =>
+            b.reply_id === replyId ? { ...b, next_node_key: targetKey } : b,
+          ),
+        };
+      }
       return null;
 
     case "condition":
@@ -365,7 +456,6 @@ function patchedConfigWithoutKey(
     case "start":
     case "send_message":
     case "send_media":
-    case "send_template":
     case "wait":
     case "send_webhook":
     case "http_fetch":
@@ -378,6 +468,29 @@ function patchedConfigWithoutKey(
       const next = (cfg as { next_node_key?: string }).next_node_key;
       if (next !== deletedKey) return null;
       return { ...cfg, next_node_key: "" };
+    }
+
+    case "send_template": {
+      const next = (cfg as { next_node_key?: string }).next_node_key;
+      const buttons = Array.isArray((cfg as { buttons?: unknown }).buttons)
+        ? (cfg as { buttons: Array<Record<string, unknown>> }).buttons
+        : [];
+      const nextMatch = next === deletedKey;
+      const buttonMatch = buttons.some((b) => b.next_node_key === deletedKey);
+      if (!nextMatch && !buttonMatch) return null;
+      return {
+        ...cfg,
+        ...(nextMatch ? { next_node_key: "" } : {}),
+        ...(buttonMatch
+          ? {
+              buttons: buttons.map((b) =>
+                b.next_node_key === deletedKey
+                  ? { ...b, next_node_key: "" }
+                  : b,
+              ),
+            }
+          : {}),
+      };
     }
 
     case "condition": {

@@ -1,5 +1,6 @@
 import { decrypt, encrypt } from '@/lib/whatsapp/encryption';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { encryptionConfigError } from '@/lib/wallet/db-errors';
 
 export interface PaymentConfigPublic {
   provider: string;
@@ -15,16 +16,26 @@ export interface PaymentConfigSecrets {
   webhookSecret: string | null;
 }
 
+function encryptSecret(value: string, label: string): string {
+  try {
+    return encrypt(value);
+  } catch (err) {
+    const hint = encryptionConfigError(err);
+    throw new Error(hint ?? `Failed to encrypt ${label}`);
+  }
+}
+
 export async function getOrgPaymentConfig(
   organizationId: string,
 ): Promise<(PaymentConfigPublic & Partial<PaymentConfigSecrets>) | null> {
   const db = supabaseAdmin();
-  const { data } = await db
+  const { data, error } = await db
     .from('organization_payment_config')
     .select('*')
     .eq('organization_id', organizationId)
     .maybeSingle();
 
+  if (error) throw error;
   if (!data) return null;
 
   let keySecret = '';
@@ -65,11 +76,13 @@ export async function upsertOrgPaymentConfig(args: {
   isEnabled?: boolean;
 }): Promise<void> {
   const db = supabaseAdmin();
-  const existing = await db
+  const { data: existing, error: existingErr } = await db
     .from('organization_payment_config')
     .select('key_secret_encrypted, webhook_secret_encrypted')
     .eq('organization_id', args.organizationId)
     .maybeSingle();
+
+  if (existingErr) throw existingErr;
 
   const payload: Record<string, unknown> = {
     organization_id: args.organizationId,
@@ -81,15 +94,17 @@ export async function upsertOrgPaymentConfig(args: {
   };
 
   if (args.keySecret?.trim()) {
-    payload.key_secret_encrypted = encrypt(args.keySecret.trim());
-  } else if (existing.data?.key_secret_encrypted) {
-    payload.key_secret_encrypted = existing.data.key_secret_encrypted;
+    payload.key_secret_encrypted = encryptSecret(args.keySecret.trim(), 'key secret');
+  } else if (existing?.key_secret_encrypted) {
+    payload.key_secret_encrypted = existing.key_secret_encrypted;
+  } else {
+    throw new Error('Razorpay key secret is required on first save');
   }
 
   if (args.webhookSecret?.trim()) {
-    payload.webhook_secret_encrypted = encrypt(args.webhookSecret.trim());
-  } else if (existing.data?.webhook_secret_encrypted) {
-    payload.webhook_secret_encrypted = existing.data.webhook_secret_encrypted;
+    payload.webhook_secret_encrypted = encryptSecret(args.webhookSecret.trim(), 'webhook secret');
+  } else if (existing?.webhook_secret_encrypted) {
+    payload.webhook_secret_encrypted = existing.webhook_secret_encrypted;
   }
 
   const { error } = await db

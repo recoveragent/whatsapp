@@ -1,6 +1,7 @@
 import {
   Coins,
   FileText,
+  Inbox,
   KeyRound,
   LayoutGrid,
   Palette,
@@ -32,6 +33,7 @@ export const SETTINGS_SECTIONS = [
   'shopify',
   'templates',
   'fields',
+  'inbox',
   'deals',
   'members',
   'api',
@@ -58,6 +60,7 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   shopify: { id: 'shopify', label: 'Shopify', icon: ShoppingBag, group: 'workspace' },
   templates: { id: 'templates', label: 'Templates', icon: FileText, group: 'workspace' },
   fields: { id: 'fields', label: 'Fields & tags', icon: Tags, group: 'workspace' },
+  inbox: { id: 'inbox', label: 'Inbox', icon: Inbox, group: 'workspace' },
   deals: { id: 'deals', label: 'Deals & currency', icon: Coins, group: 'workspace' },
   members: { id: 'members', label: 'Team members', icon: UsersRound, group: 'workspace' },
   api: { id: 'api', label: 'API keys', icon: KeyRound, group: 'workspace' },

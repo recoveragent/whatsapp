@@ -37,6 +37,7 @@ const STATUS_COLORS: Record<ConversationStatus, string> = {
   open: "bg-primary",
   pending: "bg-amber-500",
   closed: "bg-muted-foreground",
+  followup: "bg-amber-500",
 };
 
 type InboxFilter = ConversationStatus | "all" | "unread";
@@ -45,6 +46,7 @@ const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = [
   { label: "All", value: "all" },
   { label: "Unread", value: "unread" },
   { label: "Open", value: "open" },
+  { label: "Followup", value: "followup" },
   { label: "Pending", value: "pending" },
   { label: "Closed", value: "closed" },
 ];

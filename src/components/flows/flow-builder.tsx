@@ -172,6 +172,7 @@ export function FlowBuilder() {
               key={node.node_key}
               node={node}
               allNodes={state.nodes}
+              triggerType={state.trigger_type}
               expanded={expandedWithFlash.has(node.node_key)}
               isEntry={state.entry_node_id === node.node_key}
               isFlashed={flashKey === node.node_key}
@@ -241,6 +242,7 @@ function NodeCard({
   onUpdateConfig,
   onRemove,
   onSetEntry,
+  triggerType,
 }: {
   node: BuilderNode;
   allNodes: BuilderNode[];
@@ -254,6 +256,7 @@ function NodeCard({
   onUpdateConfig: (patch: Record<string, unknown>) => void;
   onRemove: () => void;
   onSetEntry: () => void;
+  triggerType: BuilderState["trigger_type"];
 }) {
   const meta = NODE_META[node.node_type];
   const hasError = issues.some((i) => i.severity === "error");
@@ -315,6 +318,7 @@ function NodeCard({
           <NodeConfigWithAdvanced
             node={node}
             allNodes={allNodes}
+            triggerType={triggerType}
             onUpdate={onUpdate}
             onUpdateConfig={onUpdateConfig}
           />
@@ -358,11 +362,13 @@ function NodeCard({
 function NodeConfigWithAdvanced({
   node,
   allNodes,
+  triggerType,
   onUpdate,
   onUpdateConfig,
 }: {
   node: BuilderNode;
   allNodes: BuilderNode[];
+  triggerType: BuilderState["trigger_type"];
   onUpdate: (patch: Partial<BuilderNode>) => void;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
 }) {
@@ -376,6 +382,7 @@ function NodeConfigWithAdvanced({
         allNodes={allNodes}
         showAdvanced={showAdvanced}
         onUpdateConfig={onUpdateConfig}
+        triggerType={triggerType}
       />
       <div className="border-t border-border pt-3">
         <button
@@ -425,7 +432,6 @@ function NodeConfigWithAdvanced({
 
 function AddNodeButton({ onAdd }: { onAdd: (type: NodeType) => void }) {
   const types: NodeType[] = [
-    "start",
     "send_buttons",
     "send_list",
     "send_message",

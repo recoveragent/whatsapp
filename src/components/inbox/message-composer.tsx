@@ -84,6 +84,37 @@ const PICKER_ACCEPT: Record<"image" | "video" | "document", string> = {
     "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain",
 };
 
+const ACCEPTED_IMAGE_TYPES = new Set(
+  PICKER_ACCEPT.image.split(",").map((type) => type.trim()),
+);
+
+function isFileDrag(e: React.DragEvent): boolean {
+  return Array.from(e.dataTransfer.types).includes("Files");
+}
+
+function pickAcceptedImageFile(files: Iterable<File>): File | null {
+  for (const file of files) {
+    if (ACCEPTED_IMAGE_TYPES.has(file.type)) return file;
+  }
+  return null;
+}
+
+function hasUnsupportedImageFile(files: Iterable<File>): boolean {
+  for (const file of files) {
+    if (file.type.startsWith("image/") && !ACCEPTED_IMAGE_TYPES.has(file.type)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function normalizePastedImageFile(raw: File, mimeType: string): File {
+  const ext =
+    mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
+  if (raw.name && !/^image\.(png|jpe?g|webp)$/i.test(raw.name)) return raw;
+  return new File([raw], `pasted-${Date.now()}.${ext}`, { type: mimeType });
+}
+
 interface MediaDraft {
   kind: ComposerMediaKind;
   mediaUrl: string;
@@ -102,6 +133,8 @@ interface MessageComposerProps {
   onPrivateNoteSaved?: (note: ConversationPrivateNote) => void;
   replyTo?: ReplyDraft | null;
   onClearReply?: () => void;
+  /** Fired when upload, draft, or recording is in progress in the composer. */
+  onComposerPendingChange?: (pending: boolean) => void;
 }
 
 type ComposerMode = "message" | "note";
@@ -126,6 +159,7 @@ export function MessageComposer({
   onPrivateNoteSaved,
   replyTo,
   onClearReply,
+  onComposerPendingChange,
 }: MessageComposerProps) {
   const [text, setText] = useState("");
   const [composerMode, setComposerMode] = useState<ComposerMode>("message");
@@ -139,6 +173,8 @@ export function MessageComposer({
   // attachment; `busy` covers the upload/transcode window.
   const [draft, setDraft] = useState<MediaDraft | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepthRef = useRef(0);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
@@ -171,6 +207,11 @@ export function MessageComposer({
   const readOnly = !canSend;
   // Media (like free-form text) is only allowed inside the 24h window.
   const inputsDisabled = readOnly || sessionExpired;
+  const canAttachImage = !inputsDisabled && !busy && !recording;
+
+  useEffect(() => {
+    onComposerPendingChange?.(busy || !!draft || recording);
+  }, [busy, draft, recording, onComposerPendingChange]);
 
   const handleSaveNote = useCallback(async () => {
     const trimmed = noteText.trim();
@@ -299,6 +340,84 @@ export function MessageComposer({
       if (file) void stageUpload(kind, file);
     },
     [stageUpload],
+  );
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      if (!canAttachImage) return;
+
+      const items = e.clipboardData?.items;
+      if (!items?.length) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+
+        const raw = item.getAsFile();
+        if (!raw) continue;
+
+        e.preventDefault();
+
+        if (!ACCEPTED_IMAGE_TYPES.has(item.type)) {
+          toast.error("Only PNG, JPEG, and WebP images can be pasted.");
+          return;
+        }
+
+        void stageUpload("image", normalizePastedImageFile(raw, item.type));
+        return;
+      }
+    },
+    [canAttachImage, stageUpload],
+  );
+
+  const handleDragEnter = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      if (!canAttachImage || !isFileDrag(e)) return;
+      e.preventDefault();
+      dragDepthRef.current += 1;
+      setDragActive(true);
+    },
+    [canAttachImage],
+  );
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragActive(false);
+  }, []);
+
+  const handleDragOver = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      if (!canAttachImage || !isFileDrag(e)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    },
+    [canAttachImage],
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      dragDepthRef.current = 0;
+      setDragActive(false);
+
+      if (!canAttachImage) return;
+
+      const files = Array.from(e.dataTransfer.files);
+      if (!files.length) return;
+
+      const image = pickAcceptedImageFile(files);
+      if (!image) {
+        if (hasUnsupportedImageFile(files)) {
+          toast.error("Only PNG, JPEG, and WebP images can be attached.");
+        }
+        return;
+      }
+
+      void stageUpload("image", image);
+    },
+    [canAttachImage, stageUpload],
   );
 
   // ---- Voice recording (client-side Ogg/Opus, no server transcode) ---
@@ -489,7 +608,21 @@ export function MessageComposer({
           </div>
         </div>
       ) : (
-        <>
+        <div
+          className={cn(
+            "relative rounded-xl transition-colors",
+            dragActive && "bg-primary/5 ring-2 ring-primary/40 ring-offset-2 ring-offset-card",
+          )}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          {dragActive && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-primary/60 bg-primary/5">
+              <p className="text-sm font-medium text-primary">Drop image to attach</p>
+            </div>
+          )}
       {replyTo && (
         <div className="mb-2">
           <ReplyQuote
@@ -639,6 +772,7 @@ export function MessageComposer({
             value={text}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder={
               readOnly
                 ? "Read-only — viewers can browse but not reply"
@@ -676,10 +810,10 @@ export function MessageComposer({
           under the textarea left edge. */}
       {!draft && !recording && (
         <p className="mt-1 pl-[5.5rem] text-[10px] text-muted-foreground">
-          Type &apos;/&apos; for quick replies
+          Type &apos;/&apos; for quick replies · Paste or drop an image to attach
         </p>
       )}
-        </>
+        </div>
       )}
     </div>
   );

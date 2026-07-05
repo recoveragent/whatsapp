@@ -219,7 +219,28 @@ function validateTrigger(
       });
     }
   }
-  // first_inbound_message / manual / shopify / message triggers — no extra config.
+  if (
+    trigger_type === "shopify_order_placed" ||
+    trigger_type === "shopify_order_updated" ||
+    trigger_type === "shopify_order_fulfilled" ||
+    trigger_type === "shopify_order_cancelled" ||
+    trigger_type === "shopify_order_partially_fulfilled"
+  ) {
+    const ps = trigger_config.payment_status as string | undefined;
+    if (
+      ps &&
+      ps !== "any" &&
+      !["paid", "pending", "partially_paid"].includes(ps)
+    ) {
+      issues.push({
+        severity: "error",
+        scope: "trigger",
+        field: "trigger_config.payment_status",
+        message: "Payment status must be any, paid, pending, or partially paid.",
+      });
+    }
+  }
+  // first_inbound_message / manual / message triggers — no extra config.
 
   return issues;
 }
@@ -632,23 +653,26 @@ function validateNode(
 
     case "condition": {
       const cfg = node.config as {
-        subject?: "var" | "tag" | "contact_field";
+        subject?: "var" | "tag" | "contact_field" | "shopify_payment";
         subject_key?: string;
         operator?: "equals" | "contains" | "present" | "absent";
         value?: string;
         true_next?: string;
         false_next?: string;
       };
-      if (!cfg.subject || !["var", "tag", "contact_field"].includes(cfg.subject)) {
+      if (
+        !cfg.subject ||
+        !["var", "tag", "contact_field", "shopify_payment"].includes(cfg.subject)
+      ) {
         issues.push({
           severity: "error",
           scope: "node",
           node_key: node.node_key,
           field: "subject",
-          message: "Condition needs a subject (var / tag / contact_field).",
+          message: "Condition needs a subject (var / tag / contact_field / shopify_payment).",
         });
       }
-      if (!cfg.subject_key?.trim()) {
+      if (cfg.subject !== "shopify_payment" && !cfg.subject_key?.trim()) {
         issues.push({
           severity: "error",
           scope: "node",
@@ -667,6 +691,18 @@ function validateNode(
           node_key: node.node_key,
           field: "operator",
           message: "Condition needs an operator.",
+        });
+      } else if (
+        cfg.subject === "shopify_payment" &&
+        (cfg.value === undefined || cfg.value === "")
+      ) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "value",
+          message:
+            "Shopify payment condition needs a payment status (paid, pending, or partially paid).",
         });
       } else if (
         (cfg.operator === "equals" || cfg.operator === "contains") &&
@@ -748,7 +784,11 @@ function validateNode(
     }
 
     case "send_template": {
-      const cfg = node.config as { template_name?: string; next_node_key?: string };
+      const cfg = node.config as {
+        template_name?: string;
+        next_node_key?: string;
+        buttons?: Array<{ reply_id?: string; next_node_key?: string }>;
+      };
       if (!cfg.template_name?.trim()) {
         issues.push({
           severity: "error",
@@ -758,7 +798,28 @@ function validateNode(
           message: "Send-template node needs a template name.",
         });
       }
-      if (!cfg.next_node_key) {
+      const qrButtons = Array.isArray(cfg.buttons) ? cfg.buttons : [];
+      if (qrButtons.length > 0) {
+        for (const [i, btn] of qrButtons.entries()) {
+          if (!btn.next_node_key) {
+            issues.push({
+              severity: "error",
+              scope: "node",
+              node_key: node.node_key,
+              field: `buttons.${i}.next_node_key`,
+              message: `Quick-reply button "${btn.reply_id ?? i + 1}" needs a next node.`,
+            });
+          } else if (!knownKeys.has(btn.next_node_key)) {
+            issues.push({
+              severity: "error",
+              scope: "node",
+              node_key: node.node_key,
+              field: `buttons.${i}.next_node_key`,
+              message: `Button "${btn.reply_id}" points to non-existent node "${btn.next_node_key}".`,
+            });
+          }
+        }
+      } else if (!cfg.next_node_key) {
         issues.push({
           severity: "error",
           scope: "node",
@@ -870,7 +931,6 @@ function outgoingEdges(node: NodeInput): string[] {
     case "start":
     case "send_message":
     case "send_media":
-    case "send_template":
     case "wait":
     case "send_webhook":
     case "http_fetch":
@@ -882,6 +942,18 @@ function outgoingEdges(node: NodeInput): string[] {
     case "set_tag": {
       const cfg = node.config as { next_node_key?: string };
       return cfg.next_node_key ? [cfg.next_node_key] : [];
+    }
+    case "send_template": {
+      const cfg = node.config as {
+        next_node_key?: string;
+        buttons?: Array<{ next_node_key?: string }>;
+      };
+      const out: string[] = [];
+      if (cfg.next_node_key) out.push(cfg.next_node_key);
+      for (const b of cfg.buttons ?? []) {
+        if (b.next_node_key) out.push(b.next_node_key);
+      }
+      return out;
     }
     case "condition": {
       const cfg = node.config as {

@@ -65,12 +65,22 @@ export function WalletPanel() {
     setLoading(true);
     try {
       await loadWallet();
-      const suffix = queryParams ? `?${queryParams}` : '';
+      const dailyUrl = queryParams ? `/api/wallet/daily?${queryParams}` : '/api/wallet/daily';
+      const txParams = new URLSearchParams(queryParams);
+      txParams.set('limit', '100');
       const [dailyRes, txRes] = await Promise.all([
-        fetch(`/api/wallet/daily${suffix}`),
-        fetch(`/api/wallet/transactions${suffix}&limit=100`),
+        fetch(dailyUrl),
+        fetch(`/api/wallet/transactions?${txParams}`),
       ]);
-      if (!dailyRes.ok || !txRes.ok) throw new Error('Failed to load history');
+      if (!dailyRes.ok || !txRes.ok) {
+        const dailyErr = dailyRes.ok ? null : await dailyRes.json().catch(() => null);
+        const txErr = txRes.ok ? null : await txRes.json().catch(() => null);
+        throw new Error(
+          (dailyErr as { error?: string } | null)?.error ??
+            (txErr as { error?: string } | null)?.error ??
+            'Failed to load history',
+        );
+      }
       const dailyData = await dailyRes.json();
       const txData = await txRes.json();
       setDaily(dailyData.daily ?? []);

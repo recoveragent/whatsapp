@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account';
+import { getCurrentAccount, requireRole, toErrorResponse } from '@/lib/auth/account';
 import { fetchShopInfo } from '@/lib/shopify/admin-api';
 import { isShopifyOAuthConfigured } from '@/lib/shopify/config';
 import { decrypt } from '@/lib/whatsapp/encryption';
@@ -54,12 +54,41 @@ export async function GET() {
     return NextResponse.json({
       configured: true,
       connected,
+      needs_reconnect: !connected,
       oauth_available: isShopifyOAuthConfigured(),
       shop_domain: config.shop_domain,
       shop_name: shopName,
       connected_at: config.connected_at,
       scopes: config.scopes,
+      message: connected
+        ? 'Webhooks are registered. Enable campaigns below to start sending messages.'
+        : 'Your Shopify app may have been uninstalled or the access token expired. Reconnect to restore automations.',
     });
+  } catch (err) {
+    return toErrorResponse(err);
+  }
+}
+
+/**
+ * DELETE /api/shopify/connection
+ *
+ * Removes the stored Shopify OAuth credentials for this workspace so
+ * the admin can connect a fresh app install.
+ */
+export async function DELETE() {
+  try {
+    const ctx = await requireRole('admin');
+
+    const { error } = await ctx.supabase
+      .from('shopify_config')
+      .delete()
+      .eq('account_id', ctx.accountId);
+
+    if (error) {
+      return NextResponse.json({ error: 'Failed to disconnect Shopify' }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
   } catch (err) {
     return toErrorResponse(err);
   }

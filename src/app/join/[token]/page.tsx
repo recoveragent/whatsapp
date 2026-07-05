@@ -116,6 +116,16 @@ export default function JoinPage() {
     setPeek(null);
     setAuthedUserId(undefined);
     try {
+      const hash = window.location.hash.replace(/^#/, '');
+      if (hash.includes('access_token=')) {
+        const params = new URLSearchParams(hash);
+        const access_token = params.get('access_token');
+        const refresh_token = params.get('refresh_token');
+        if (access_token && refresh_token) {
+          await createClient().auth.setSession({ access_token, refresh_token });
+          window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+        }
+      }
       const [peekRes, authRes] = await Promise.all([
         fetch(`/api/invitations/${encodeURIComponent(token)}/peek`, {
           cache: 'no-store',
@@ -139,8 +149,27 @@ export default function JoinPage() {
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
+
+    const establishSessionFromHash = async () => {
+      const hash = window.location.hash.replace(/^#/, '');
+      if (!hash.includes('access_token=')) return;
+      const params = new URLSearchParams(hash);
+      const access_token = params.get('access_token');
+      const refresh_token = params.get('refresh_token');
+      if (!access_token || !refresh_token) return;
+      const supabase = createClient();
+      await supabase.auth.setSession({ access_token, refresh_token });
+      // Drop tokens from the address bar once cookies are set.
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${window.location.search}`,
+      );
+    };
+
     (async () => {
       try {
+        await establishSessionFromHash();
         const [peekRes, authRes] = await Promise.all([
           fetch(`/api/invitations/${encodeURIComponent(token)}/peek`, {
             cache: 'no-store',
@@ -180,10 +209,12 @@ export default function JoinPage() {
         // enough to show directly; we open a modal so the user has
         // a clear next-action (sign out → use different email)
         // rather than a 3-second toast.
-        if (res.status === 409) {
+        if (res.status === 409 || res.status === 401) {
           setConflictMessage(
             payload.error ||
-              'You are already in another account. Sign in with a different email to join this one.',
+              (res.status === 401
+                ? 'Sign out and open this invite link again with the invited email.'
+                : 'You are already in another account. Sign in with a different email to join this one.'),
           );
         } else {
           toast.error(payload.error || 'Failed to accept invitation');

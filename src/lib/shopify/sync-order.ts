@@ -1,8 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { findExistingContact } from '@/lib/contacts/dedupe';
-import { normalizePhone } from '@/lib/whatsapp/phone-utils';
-import { contextFromOrder } from './extract-context';
+import { contextFromOrder, extractOrderPhone } from './extract-context';
 import { extractOrderTracking } from './order-links';
 import type { ShopifyOrderPayload } from './types';
 
@@ -21,7 +20,7 @@ export async function syncShopifyOrder(
 
   const ctx = contextFromOrder(order, shopName);
   let contactId: string | null = null;
-  const customerPhone = ctx.phone ? normalizePhone(ctx.phone) : null;
+  const customerPhone = extractOrderPhone(order) ?? ctx.phone;
 
   if (customerPhone) {
     const existing = await findExistingContact(db, accountId, customerPhone);

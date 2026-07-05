@@ -46,14 +46,23 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { uploadAccountMedia, MEDIA_MAX_BYTES } from "@/lib/storage/upload-media";
+import {
+  SHOPIFY_PAYMENT_STATUSES,
+  SHOPIFY_PAYMENT_STATUS_LABELS,
+} from "@/lib/flows/trigger-types";
 import { slugify, type BuilderNode } from "../shared";
 import { NextNodeRow, NodeKeySelect, TextRow } from "./fields";
+import { SendTemplateFields } from "@/components/shared/send-template-fields";
+import { templateVariableGroupsForFlow } from "@/lib/flows/template-variables";
+import type { TemplateQuickReplyButton } from "@/lib/flows/template-buttons";
+import type { FlowTriggerType } from "@/lib/flows/trigger-types";
 
 interface NodeConfigFormProps {
   node: BuilderNode;
   allNodes: BuilderNode[];
   showAdvanced: boolean;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
+  triggerType?: FlowTriggerType;
 }
 
 export function NodeConfigForm({
@@ -61,6 +70,7 @@ export function NodeConfigForm({
   allNodes,
   showAdvanced,
   onUpdateConfig,
+  triggerType,
 }: NodeConfigFormProps) {
   const cfg = node.config;
   switch (node.node_type) {
@@ -201,22 +211,23 @@ export function NodeConfigForm({
     case "send_template":
       return (
         <>
-          <TextRow
-            label="Template name"
-            value={(cfg as { template_name?: string }).template_name ?? ""}
-            onChange={(v) => onUpdateConfig({ template_name: v })}
-          />
-          <TextRow
-            label="Language"
-            value={(cfg as { language?: string }).language ?? "en_US"}
-            onChange={(v) => onUpdateConfig({ language: v })}
-          />
-          <NextNodeRow
-            value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
+          <SendTemplateFields
+            templateName={(cfg as { template_name?: string }).template_name ?? ""}
+            language={(cfg as { language?: string }).language ?? "en_US"}
+            variables={
+              ((cfg as { variables?: Record<string, string> }).variables ??
+                {}) as Record<string, string>
+            }
+            buttons={
+              ((cfg as { buttons?: TemplateQuickReplyButton[] }).buttons ??
+                []) as TemplateQuickReplyButton[]
+            }
+            nextNodeKey={(cfg as { next_node_key?: string }).next_node_key ?? ""}
             allNodes={allNodes}
-            currentKey={node.node_key}
-            onChange={(v) => onUpdateConfig({ next_node_key: v })}
-            label="Advances to"
+            currentNodeKey={node.node_key}
+            onChange={(patch) => onUpdateConfig({ ...patch })}
+            variableGroups={templateVariableGroupsForFlow(triggerType)}
+            variableHint="Focus a field, then pick a variable from the list. User attributes come from the contact; trigger attributes depend on your flow trigger."
           />
         </>
       );
@@ -697,7 +708,7 @@ function SendListForm({
 // ============================================================
 
 interface ConditionCfg {
-  subject?: "var" | "tag" | "contact_field";
+  subject?: "var" | "tag" | "contact_field" | "shopify_payment";
   subject_key?: string;
   operator?: "equals" | "contains" | "present" | "absent";
   value?: string;
@@ -727,6 +738,7 @@ function ConditionForm({
   const subject = cfg.subject ?? "var";
   const operator = cfg.operator ?? "equals";
   const showValue = operator === "equals" || operator === "contains";
+  const isShopifyPayment = subject === "shopify_payment";
 
   return (
     <>
@@ -735,15 +747,26 @@ function ConditionForm({
           <label className="mb-1 block text-xs text-muted-foreground">If</label>
           <Select
             value={subject}
-            onValueChange={(v) =>
-              onUpdateConfig({ subject: v as ConditionCfg["subject"] })
-            }
+            onValueChange={(v) => {
+              const next = v as ConditionCfg["subject"];
+              if (next === "shopify_payment") {
+                onUpdateConfig({
+                  subject: next,
+                  subject_key: "payment_status",
+                  operator: "equals",
+                  value: cfg.value || "paid",
+                });
+              } else {
+                onUpdateConfig({ subject: next });
+              }
+            }}
           >
             <SelectTrigger className="bg-muted">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="var">Captured variable</SelectItem>
+              <SelectItem value="shopify_payment">Shopify payment status</SelectItem>
               <SelectItem value="tag">Contact has tag</SelectItem>
               <SelectItem value="contact_field">Contact field</SelectItem>
             </SelectContent>
@@ -751,13 +774,33 @@ function ConditionForm({
         </div>
         <div className="md:col-span-2">
           <label className="mb-1 block text-xs text-muted-foreground">
-            {subject === "var"
-              ? "var name"
-              : subject === "tag"
-                ? "Tag"
-                : "Field"}
+            {isShopifyPayment
+              ? "Payment status"
+              : subject === "var"
+                ? "var name"
+                : subject === "tag"
+                  ? "Tag"
+                  : "Field"}
           </label>
-          {subject === "tag" && tags.length > 0 ? (
+          {isShopifyPayment ? (
+            <Select
+              value={cfg.value ?? "paid"}
+              onValueChange={(v) =>
+                onUpdateConfig({ value: v, operator: "equals" })
+              }
+            >
+              <SelectTrigger className="bg-muted">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SHOPIFY_PAYMENT_STATUSES.filter((ps) => ps !== "any").map((ps) => (
+                  <SelectItem key={ps} value={ps}>
+                    {SHOPIFY_PAYMENT_STATUS_LABELS[ps]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : subject === "tag" && tags.length > 0 ? (
             <Select
               value={cfg.subject_key ?? ""}
               onValueChange={(v) => onUpdateConfig({ subject_key: v })}
@@ -804,29 +847,31 @@ function ConditionForm({
       <div
         className={cn(
           "grid grid-cols-1 gap-3",
-          showValue ? "md:grid-cols-2" : "",
+          showValue && !isShopifyPayment ? "md:grid-cols-2" : "",
         )}
       >
-        <div>
-          <label className="mb-1 block text-xs text-muted-foreground">Operator</label>
-          <Select
-            value={operator}
-            onValueChange={(v) =>
-              onUpdateConfig({ operator: v as ConditionCfg["operator"] })
-            }
-          >
-            <SelectTrigger className="bg-muted">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="present">is present</SelectItem>
-              <SelectItem value="absent">is absent</SelectItem>
-              <SelectItem value="equals">equals</SelectItem>
-              <SelectItem value="contains">contains</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        {showValue && (
+        {!isShopifyPayment && (
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">Operator</label>
+            <Select
+              value={operator}
+              onValueChange={(v) =>
+                onUpdateConfig({ operator: v as ConditionCfg["operator"] })
+              }
+            >
+              <SelectTrigger className="bg-muted">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="present">is present</SelectItem>
+                <SelectItem value="absent">is absent</SelectItem>
+                <SelectItem value="equals">equals</SelectItem>
+                <SelectItem value="contains">contains</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {showValue && !isShopifyPayment && (
           <div>
             <label className="mb-1 block text-xs text-muted-foreground">Value</label>
             <Input

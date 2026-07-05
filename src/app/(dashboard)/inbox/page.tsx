@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
@@ -8,6 +8,10 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
+import {
+  hasOutboundInFlight,
+  OUTBOUND_PENDING_TOAST,
+} from "@/components/inbox/outbound-pending";
 import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -31,6 +35,11 @@ export default function InboxPage() {
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [composerPending, setComposerPending] = useState(false);
+  const outboundInFlight = useMemo(
+    () => hasOutboundInFlight(messages, composerPending),
+    [messages, composerPending],
+  );
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null
   );
@@ -419,11 +428,11 @@ export default function InboxPage() {
 
   const handleSelectConversation = useCallback(
     (conv: Conversation) => {
-      // Re-clicking the already-active conversation would clear the
-      // messages array, but the fetch effect in MessageThread only re-runs
-      // when conversationId changes — so messages would stay empty until
-      // the user navigated away and back. Bail out early instead.
       if (activeConversation?.id === conv.id) return;
+      if (outboundInFlight) {
+        toast.error(OUTBOUND_PENDING_TOAST);
+        return;
+      }
       setActiveConversation(conv);
       setActiveContact(conv.contact ?? null);
       setMessages([]);
@@ -456,7 +465,7 @@ export default function InboxPage() {
       // replace() to avoid polluting browser history with every click.
       router.replace(`/inbox?c=${conv.id}`, { scroll: false });
     },
-    [activeConversation?.id, router]
+    [activeConversation?.id, router, outboundInFlight],
   );
 
   const handleConversationCreated = useCallback(
@@ -477,6 +486,10 @@ export default function InboxPage() {
   // back. Also clears the ?c= param so a refresh lands on the list
   // instead of re-opening the thread the user just backed out of.
   const handleCloseConversation = useCallback(() => {
+    if (outboundInFlight) {
+      toast.error(OUTBOUND_PENDING_TOAST);
+      return;
+    }
     setActiveConversation(null);
     setActiveContact(null);
     setMessages([]);
@@ -484,7 +497,7 @@ export default function InboxPage() {
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
     router.replace("/inbox", { scroll: false });
-  }, [router]);
+  }, [router, outboundInFlight]);
 
 
   const handleMessagesLoaded = useCallback((loaded: Message[]) => {
@@ -609,6 +622,7 @@ export default function InboxPage() {
             onRefresh={handleManualRefresh}
             contactPanelOpen={contactPanelOpen}
             onToggleContactPanel={handleToggleContactPanel}
+            onComposerPendingChange={setComposerPending}
           />
         </div>
 

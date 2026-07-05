@@ -3,6 +3,10 @@ import { NextResponse } from 'next/server';
 import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { fetchOrdersByEmail, fetchOrdersByPhone } from '@/lib/shopify/admin-api';
+import {
+  filterCachedOrdersForContact,
+  filterLiveOrdersForContact,
+} from '@/lib/shopify/match-order-contact';
 import { syncShopifyOrder } from '@/lib/shopify/sync-order';
 import { hasShopifyOrdersTable } from '@/lib/inbox/tables';
 import {
@@ -79,24 +83,59 @@ function matchOrdersByPhone(orders: ShopifyOrder[], phone: string): ShopifyOrder
   );
 }
 
+async function linkVerifiedOrders(
+  db: ReturnType<typeof supabaseAdmin>,
+  accountId: string,
+  contactId: string,
+  orders: ShopifyOrder[],
+): Promise<void> {
+  const ids = orders
+    .filter((o) => o.contact_id !== contactId)
+    .map((o) => o.id);
+  if (ids.length === 0) return;
+
+  await db
+    .from('shopify_orders')
+    .update({ contact_id: contactId, updated_at: new Date().toISOString() })
+    .eq('account_id', accountId)
+    .in('id', ids);
+}
+
 async function loadCachedOrders(
   accountId: string,
   contactId: string,
-  normalizedPhone: string | null,
+  phone: string | null,
 ): Promise<ShopifyOrder[]> {
   const db = supabaseAdmin();
+  const normalizedPhone = phone ? normalizePhone(phone) : null;
 
+  // Phone-first: map Shopify orders to this inbox contact by number.
   if (normalizedPhone) {
-    const suffix = normalizedPhone.length >= 8 ? normalizedPhone.slice(-8) : normalizedPhone;
-    await db
+    const suffix = normalizedPhone.length >= 10
+      ? normalizedPhone.slice(-10)
+      : normalizedPhone.length >= 8
+        ? normalizedPhone.slice(-8)
+        : normalizedPhone;
+
+    const { data: candidates, error: candidateErr } = await db
       .from('shopify_orders')
-      .update({ contact_id: contactId, updated_at: new Date().toISOString() })
+      .select('*')
       .eq('account_id', accountId)
-      .is('contact_id', null)
-      .like('customer_phone', `%${suffix}`);
+      .not('customer_phone', 'is', null)
+      .like('customer_phone', `%${suffix}`)
+      .order('ordered_at', { ascending: false })
+      .limit(100);
+
+    if (candidateErr) throw candidateErr;
+
+    const matched = matchOrdersByPhone((candidates ?? []) as ShopifyOrder[], normalizedPhone);
+    if (matched.length > 0) {
+      await linkVerifiedOrders(db, accountId, contactId, matched);
+      return matched;
+    }
   }
 
-  const { data: byContact, error: byContactErr } = await db
+  const { data: linked, error: linkedErr } = await db
     .from('shopify_orders')
     .select('*')
     .eq('account_id', accountId)
@@ -104,39 +143,13 @@ async function loadCachedOrders(
     .order('ordered_at', { ascending: false })
     .limit(50);
 
-  if (byContactErr) throw byContactErr;
-  if ((byContact?.length ?? 0) > 0) return byContact ?? [];
+  if (linkedErr) throw linkedErr;
 
-  if (!normalizedPhone) return [];
-
-  const suffix = normalizedPhone.length >= 8 ? normalizedPhone.slice(-8) : normalizedPhone;
-  const { data: candidates, error: candidateErr } = await db
-    .from('shopify_orders')
-    .select('*')
-    .eq('account_id', accountId)
-    .like('customer_phone', `%${suffix}`)
-    .order('ordered_at', { ascending: false })
-    .limit(100);
-
-  if (candidateErr) throw candidateErr;
-
-  const matched = matchOrdersByPhone(candidates ?? [], normalizedPhone);
-  if (matched.length > 0) {
-    const ids = matched.filter((o) => !o.contact_id).map((o) => o.id);
-    if (ids.length > 0) {
-      await db
-        .from('shopify_orders')
-        .update({ contact_id: contactId, updated_at: new Date().toISOString() })
-        .in('id', ids);
-    }
-  }
-
-  return matched;
+  return filterCachedOrdersForContact((linked ?? []) as ShopifyOrder[], phone, contactId);
 }
 
 async function fetchLiveShopifyOrders(args: {
   accountId: string;
-  contactId: string;
   phone: string | null;
   email: string | null;
 }): Promise<ShopifyOrderPayload[]> {
@@ -163,7 +176,7 @@ async function fetchLiveShopifyOrders(args: {
     liveOrders = await fetchOrdersByEmail(shopDomain, accessToken, args.email);
   }
 
-  return liveOrders;
+  return filterLiveOrdersForContact(liveOrders, args.phone, args.email);
 }
 
 async function syncLiveShopifyOrders(args: {
@@ -215,12 +228,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
     }
 
-    const normalizedPhone = contact.phone ? normalizePhone(contact.phone) : null;
     const hasTable = await hasShopifyOrdersTable();
     const shopDomain = await loadShopDomain(ctx.accountId);
 
     if (hasTable) {
-      let orders = await loadCachedOrders(ctx.accountId, contactId, normalizedPhone);
+      let orders = await loadCachedOrders(
+        ctx.accountId,
+        contactId,
+        contact.phone,
+      );
 
       if (orders.length === 0) {
         try {
@@ -230,10 +246,28 @@ export async function GET(req: Request) {
             phone: contact.phone,
             email: contact.email ?? null,
           });
-          orders = await loadCachedOrders(ctx.accountId, contactId, normalizedPhone);
+          orders = await loadCachedOrders(
+            ctx.accountId,
+            contactId,
+            contact.phone,
+          );
         } catch (err) {
           console.warn('[shopify/orders] live sync failed:', err);
         }
+      }
+
+      // Still empty — return live results directly (bypasses stale cache).
+      if (orders.length === 0 && contact.phone) {
+        const liveOrders = await fetchLiveShopifyOrders({
+          accountId: ctx.accountId,
+          phone: contact.phone,
+          email: contact.email ?? null,
+        });
+        return NextResponse.json({
+          orders: liveOrders.map((order) =>
+            mapLiveOrder(order, ctx.accountId, contactId, shopDomain),
+          ),
+        });
       }
 
       return NextResponse.json({ orders: enrichOrders(orders, shopDomain) });
@@ -241,7 +275,6 @@ export async function GET(req: Request) {
 
     const liveOrders = await fetchLiveShopifyOrders({
       accountId: ctx.accountId,
-      contactId,
       phone: contact.phone,
       email: contact.email ?? null,
     });

@@ -144,7 +144,7 @@ export type ConditionOperator =
   | "present"
   | "absent";
 
-export type ConditionSubject = "var" | "tag" | "contact_field";
+export type ConditionSubject = "var" | "tag" | "contact_field" | "shopify_payment";
 
 /**
  * Routes the run based on a predicate over the contact's tags,
@@ -157,6 +157,7 @@ export interface ConditionNodeConfig {
    * For `var`: the key in flow_runs.vars.
    * For `tag`: the tag UUID (matched against contact_tags).
    * For `contact_field`: one of 'name' | 'email' | 'phone' | 'company'.
+   * For `shopify_payment`: reads `payment_status` from flow vars (Shopify orders).
    */
   subject_key: string;
   operator: ConditionOperator;
@@ -182,6 +183,13 @@ export interface SendTemplateNodeConfig {
   template_name: string;
   language?: string;
   variables?: Record<string, string>;
+  /** Quick-reply branches — synced from the approved template. */
+  buttons?: Array<{
+    reply_id: string;
+    title: string;
+    next_node_key: string;
+  }>;
+  /** Used when the template has no quick-reply buttons. */
   next_node_key: string;
 }
 

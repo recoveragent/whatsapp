@@ -36,6 +36,7 @@ import {
   Briefcase,
   CircleSlash,
 } from "lucide-react";
+import { SHOPIFY_PAYMENT_STATUS_LABELS } from "@/lib/flows/trigger-types";
 
 // ============================================================
 // Node-type union — single source of truth for every place the UI
@@ -266,6 +267,14 @@ export function summarizeNode(node: BuilderNode): string | null {
       return varKey ? `→ vars.${varKey}` : null;
     }
     case "condition": {
+      if (cfg.subject === "shopify_payment") {
+        const value = typeof cfg.value === "string" ? cfg.value : "";
+        const label =
+          value in SHOPIFY_PAYMENT_STATUS_LABELS
+            ? SHOPIFY_PAYMENT_STATUS_LABELS[value as keyof typeof SHOPIFY_PAYMENT_STATUS_LABELS]
+            : value || "paid";
+        return `payment is ${label}`;
+      }
       const subjectKey =
         typeof cfg.subject_key === "string" ? cfg.subject_key : "";
       if (!subjectKey) return null;
@@ -308,7 +317,11 @@ export function summarizeNode(node: BuilderNode): string | null {
     }
     case "send_template": {
       const name = typeof cfg.template_name === "string" ? cfg.template_name : "";
-      return name ? `Template: ${truncate(name, 50)}` : null;
+      const qr = Array.isArray(cfg.buttons) ? cfg.buttons.length : 0;
+      if (!name) return null;
+      return qr > 0
+        ? `Template: ${truncate(name, 40)} · ${qr} button${qr === 1 ? "" : "s"}`
+        : `Template: ${truncate(name, 50)}`;
     }
     case "wait": {
       const amount = cfg.amount ?? 1;

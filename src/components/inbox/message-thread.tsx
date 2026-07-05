@@ -108,6 +108,8 @@ interface MessageThreadProps {
    */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
+  /** Parent uses this to block leaving the thread while a send is in flight. */
+  onComposerPendingChange?: (pending: boolean) => void;
 }
 
 function formatDateSeparator(dateStr: string): string {
@@ -157,11 +159,12 @@ function groupTimelineByDate(items: TimelineItem[]) {
   return groups;
 }
 
-const STATUS_OPTIONS: { label: string; value: ConversationStatus; color: string }[] = [
-  { label: "Open", value: "open", color: "text-primary" },
-  { label: "Pending", value: "pending", color: "text-amber-400" },
-  { label: "Closed", value: "closed", color: "text-muted-foreground" },
-];
+const STATUS_COLORS: Record<ConversationStatus, string> = {
+  open: "text-primary",
+  pending: "text-amber-400",
+  closed: "text-muted-foreground",
+  followup: "text-amber-500",
+};
 
 /**
  * WhatsApp-style doodle background applied to the chat area (both the
@@ -189,6 +192,7 @@ export function MessageThread({
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
+  onComposerPendingChange,
 }: MessageThreadProps) {
   const { user, accountId } = useAuth();
   const { getPresence, getRow, now } = usePresence();
@@ -619,16 +623,33 @@ export function MessageThread({
     async (status: ConversationStatus) => {
       if (!conversation) return;
 
-      const supabase = createClient();
-      await supabase
-        .from("conversations")
-        .update({ status })
-        .eq("id", conversation.id);
+      const res = await fetch(`/api/inbox/conversations/${conversation.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
 
-      onStatusChange(conversation.id, status);
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        toast.error(body?.error ?? "Failed to update conversation status");
+        return;
+      }
+
+      const updated = (await res.json()) as Conversation;
+      onStatusChange(conversation.id, updated.status);
+      if (updated.status === "followup") {
+        toast.success("Follow-up scheduled");
+      }
     },
     [conversation, onStatusChange]
   );
+
+  const handleToggleOpenClose = useCallback(() => {
+    if (!conversation) return;
+    const next: ConversationStatus =
+      conversation.status === "closed" ? "open" : "closed";
+    void handleStatusChange(next);
+  }, [conversation, handleStatusChange]);
 
   const handleOpenTemplates = useCallback(() => {
     setTemplateModalOpen(true);
@@ -871,9 +892,11 @@ export function MessageThread({
   }
 
   const displayName = contact.name || contact.phone;
-  const currentStatus = STATUS_OPTIONS.find(
-    (s) => s.value === conversation.status
-  );
+  const isClosed = conversation.status === "closed";
+  const primaryStatusLabel = isClosed ? "Open" : "Close";
+  const primaryStatusColor = isClosed
+    ? STATUS_COLORS.open
+    : STATUS_COLORS[conversation.status] ?? STATUS_COLORS.open;
   const assignedAgentId = conversation.assigned_agent_id ?? null;
   const currentAssignee = profiles.find((p) => p.user_id === assignedAgentId);
   const assignLabel = assignedAgentId
@@ -977,30 +1000,41 @@ export function MessageThread({
             </button>
           )}
 
-          {/* Status dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger className={cn(
-                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                  currentStatus?.color ?? "text-muted-foreground"
-                )}>
-                {currentStatus?.label ?? "Status"}
-                <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="border-border bg-popover"
+          {/* Status: primary toggles open/closed; dropdown sets follow-up */}
+          <div className="inline-flex items-center rounded-md border border-border">
+            <button
+              type="button"
+              onClick={handleToggleOpenClose}
+              className={cn(
+                "inline-flex h-7 items-center px-2.5 text-xs font-medium hover:bg-muted",
+                primaryStatusColor,
+              )}
             >
-              {STATUS_OPTIONS.map((opt) => (
+              {primaryStatusLabel}
+            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={cn(
+                  "inline-flex h-7 w-7 items-center justify-center border-l border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+                  conversation.status === "followup" && "text-amber-500",
+                )}
+                aria-label="More status options"
+              >
+                <ChevronDown className="h-3 w-3" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="border-border bg-popover"
+              >
                 <DropdownMenuItem
-                  key={opt.value}
-                  onClick={() => handleStatusChange(opt.value)}
-                  className={cn("text-sm", opt.color)}
+                  onClick={() => handleStatusChange("followup")}
+                  className={cn("text-sm", STATUS_COLORS.followup)}
                 >
-                  {opt.label}
+                  Followup
                 </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
           {/* Assign dropdown */}
           <DropdownMenu>
@@ -1154,6 +1188,7 @@ export function MessageThread({
         onPrivateNoteSaved={handlePrivateNoteSaved}
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
+        onComposerPendingChange={onComposerPendingChange}
       />
 
       <TemplatePicker

@@ -53,6 +53,39 @@ export function isExternalFlowTrigger(t: string): t is FlowTriggerType {
   return (EXTERNAL_FLOW_TRIGGERS as string[]).includes(t)
 }
 
+/** Shopify order webhook triggers that support payment-status filtering. */
+export const SHOPIFY_ORDER_FLOW_TRIGGERS = [
+  'shopify_order_placed',
+  'shopify_order_updated',
+  'shopify_order_fulfilled',
+  'shopify_order_cancelled',
+  'shopify_order_partially_fulfilled',
+] as const satisfies readonly FlowTriggerType[]
+
+export type ShopifyOrderFlowTrigger = (typeof SHOPIFY_ORDER_FLOW_TRIGGERS)[number]
+
+export const SHOPIFY_PAYMENT_STATUSES = [
+  'any',
+  'paid',
+  'pending',
+  'partially_paid',
+] as const
+
+export type ShopifyPaymentStatus = (typeof SHOPIFY_PAYMENT_STATUSES)[number]
+
+export const SHOPIFY_PAYMENT_STATUS_LABELS: Record<ShopifyPaymentStatus, string> = {
+  any: 'Any payment status',
+  paid: 'Paid',
+  pending: 'Pending',
+  partially_paid: 'Partially paid',
+}
+
+export function isShopifyOrderFlowTrigger(
+  t: string,
+): t is ShopifyOrderFlowTrigger {
+  return (SHOPIFY_ORDER_FLOW_TRIGGERS as readonly string[]).includes(t)
+}
+
 /** Map Shopify webhook topics to flow trigger types. */
 export function shopifyTopicToFlowTrigger(
   topic: string,

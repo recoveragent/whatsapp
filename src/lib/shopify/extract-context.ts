@@ -16,13 +16,16 @@ function fullName(
 
 function extractPhone(payload: {
   phone?: string;
-  customer?: { phone?: string };
+  contact_phone?: string;
+  customer?: { phone?: string; default_address?: { phone?: string } };
   shipping_address?: { phone?: string };
   billing_address?: { phone?: string };
 }): string | null {
   const candidates = [
     payload.phone,
+    payload.contact_phone,
     payload.customer?.phone,
+    payload.customer?.default_address?.phone,
     payload.shipping_address?.phone,
     payload.billing_address?.phone,
   ];
@@ -32,6 +35,14 @@ function extractPhone(payload: {
     if (normalized.length >= 8) return normalized;
   }
   return null;
+}
+
+export function extractOrderPhone(order: ShopifyOrderPayload): string | null {
+  return extractPhone(order);
+}
+
+export function extractOrderEmail(order: ShopifyOrderPayload): string | null {
+  return order.email ?? order.customer?.email ?? null;
 }
 
 function formatLineItems(
@@ -64,15 +75,16 @@ export function contextFromOrder(
 
   return {
     customerName,
-    phone: extractPhone(order),
-    email: order.email ?? order.customer?.email ?? null,
+    phone: extractOrderPhone(order),
+    email: extractOrderEmail(order),
     orderNumber: order.name ?? (order.order_number != null ? `#${order.order_number}` : null),
     orderTotal: formatMoney(order.total_price, order.currency),
     orderItems: formatLineItems(order.line_items),
     trackingNumber: null,
     trackingUrl: null,
     checkoutUrl: null,
-    fulfillmentStatus: null,
+    fulfillmentStatus: order.fulfillment_status ?? null,
+    financialStatus: order.financial_status ?? null,
     shopName,
     resourceKey: `order:${order.id}`,
   };
@@ -98,6 +110,7 @@ export function contextFromCheckout(
     trackingUrl: null,
     checkoutUrl: checkout.abandoned_checkout_url ?? null,
     fulfillmentStatus: null,
+    financialStatus: null,
     shopName,
     resourceKey: `checkout:${checkout.id ?? checkout.token}`,
   };
@@ -119,6 +132,7 @@ export function contextFromFulfillment(
     trackingUrl: null,
     checkoutUrl: null,
     fulfillmentStatus: null,
+    financialStatus: null,
     shopName,
     resourceKey: `fulfillment:${fulfillment.id}`,
   };

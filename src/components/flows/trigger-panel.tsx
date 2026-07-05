@@ -14,7 +14,11 @@ import { type ValidationIssue } from "@/lib/flows/validate";
 import {
   FLOW_TRIGGER_LABELS,
   FLOW_TRIGGER_TYPES,
+  isShopifyOrderFlowTrigger,
+  SHOPIFY_PAYMENT_STATUSES,
+  SHOPIFY_PAYMENT_STATUS_LABELS,
   type FlowTriggerType,
+  type ShopifyPaymentStatus,
 } from "@/lib/flows/trigger-types";
 import {
   defaultFlowWebhookConfig,
@@ -57,6 +61,14 @@ export function summarizeTrigger(
     case "conversation_assigned":
       return "When conversation is assigned";
     default:
+      if (isShopifyOrderFlowTrigger(triggerType)) {
+        const ps = triggerConfig.payment_status as ShopifyPaymentStatus | undefined;
+        const base = FLOW_TRIGGER_LABELS[triggerType] ?? triggerType;
+        if (ps && ps !== "any") {
+          return `${base} · ${SHOPIFY_PAYMENT_STATUS_LABELS[ps]}`;
+        }
+        return base;
+      }
       return FLOW_TRIGGER_LABELS[triggerType] ?? triggerType;
   }
 }
@@ -130,7 +142,9 @@ export function TriggerPanel({
                         ? { tag_id: "" }
                         : v === "time_based"
                           ? { schedule: "", tag_id: "" }
-                          : {},
+                          : v && isShopifyOrderFlowTrigger(v)
+                            ? { payment_status: "any" }
+                            : {},
               }))
             }
           >
@@ -228,6 +242,42 @@ export function TriggerPanel({
             config={state.trigger_config as unknown as FlowWebhookTriggerConfig}
             onChange={(c) => setState((s) => ({ ...s, trigger_config: c }))}
           />
+        )}
+        {isShopifyOrderFlowTrigger(state.trigger_type) && (
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              Payment status
+            </label>
+            <Select
+              value={
+                (state.trigger_config.payment_status as ShopifyPaymentStatus) ?? "any"
+              }
+              onValueChange={(v) =>
+                setState((s) => ({
+                  ...s,
+                  trigger_config: {
+                    ...s.trigger_config,
+                    payment_status: v as ShopifyPaymentStatus,
+                  },
+                }))
+              }
+            >
+              <SelectTrigger className="bg-muted">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SHOPIFY_PAYMENT_STATUSES.map((ps) => (
+                  <SelectItem key={ps} value={ps}>
+                    {SHOPIFY_PAYMENT_STATUS_LABELS[ps]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              Only run this flow when the order matches this payment status. Use a
+              Condition node to branch different actions per status.
+            </p>
+          </div>
         )}
       </div>
       {triggerIssues.length > 0 && (

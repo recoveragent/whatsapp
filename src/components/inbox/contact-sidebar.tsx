@@ -41,6 +41,9 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
 
+    setShopifyOrders([]);
+    setOrdersLoading(true);
+
     const supabase = createClient();
 
     // Fetch deals, notes, and tags in parallel
@@ -73,7 +76,6 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
       setTags(mapped);
     }
 
-    setOrdersLoading(true);
     try {
       const res = await fetch(`/api/shopify/orders?contact_id=${contact.id}`);
       if (res.ok) {

@@ -75,6 +75,7 @@ import {
 export function matchReplyId(
   node: { node_type: string; config: Record<string, unknown> },
   reply_id: string,
+  reply_title?: string,
 ): string | null {
   if (node.node_type === "send_buttons") {
     const cfg = node.config as unknown as SendButtonsNodeConfig;
@@ -88,6 +89,27 @@ export function matchReplyId(
       if (hit) return hit.next_node_key;
     }
     return null;
+  }
+  if (node.node_type === "send_template") {
+    const buttons = Array.isArray(
+      (node.config as { buttons?: unknown }).buttons,
+    )
+      ? ((node.config as {
+          buttons: Array<{
+            reply_id?: string;
+            title?: string;
+            next_node_key?: string;
+          }>;
+        }).buttons)
+      : [];
+    const hit = buttons.find(
+      (b) =>
+        b.reply_id === reply_id ||
+        b.title === reply_id ||
+        (reply_title &&
+          (b.reply_id === reply_title || b.title === reply_title)),
+    );
+    return hit?.next_node_key ?? null;
   }
   return null;
 }
@@ -486,8 +508,9 @@ async function evaluateConditionNode(
   cfg: ConditionNodeConfig,
 ): Promise<boolean> {
   let subjectValue: string | undefined;
-  if (cfg.subject === "var") {
-    const v = run.vars[cfg.subject_key];
+  if (cfg.subject === "var" || cfg.subject === "shopify_payment") {
+    const key = cfg.subject === "shopify_payment" ? "payment_status" : cfg.subject_key;
+    const v = run.vars[key];
     subjectValue = typeof v === "string" ? v : v === undefined ? undefined : String(v);
   } else if (cfg.subject === "tag") {
     const { count } = await db
@@ -802,6 +825,20 @@ async function advanceFromNodeKey(
         });
         return { outcome: "advanced" };
       }
+      if (ext.kind === "suspend") {
+        const advanced = await advanceCurrentNodeKey(
+          db,
+          run.id,
+          run.current_node_key,
+          node.node_key,
+        );
+        if (!advanced) {
+          await logEvent(db, run.id, "error", node.node_key, {
+            reason: "lost_race_during_advance",
+          });
+        }
+        return { outcome: "advanced" };
+      }
       currentKey = ext.nextKey;
       continue;
     }
@@ -965,9 +1002,14 @@ async function handleReplyForActiveRun(
   if (
     message.kind === "interactive_reply" &&
     (currentNode.node_type === "send_buttons" ||
-      currentNode.node_type === "send_list")
+      currentNode.node_type === "send_list" ||
+      currentNode.node_type === "send_template")
   ) {
-    matched = matchReplyId(currentNode, message.reply_id);
+    matched = matchReplyId(
+      currentNode,
+      message.reply_id,
+      message.reply_title,
+    );
   } else if (
     message.kind === "text" &&
     currentNode.node_type === "collect_input"

@@ -174,7 +174,7 @@ export interface ShopifyOrder {
   updated_at: string;
 }
 
-export type ConversationStatus = 'open' | 'pending' | 'closed';
+export type ConversationStatus = 'open' | 'pending' | 'closed' | 'followup';
 
 export interface Conversation {
   id: string;
@@ -185,9 +185,19 @@ export interface Conversation {
   last_message_text?: string;
   last_message_at?: string;
   unread_count: number;
+  followup_scheduled_at?: string | null;
+  followup_sent_at?: string | null;
   created_at: string;
   updated_at: string;
   contact?: Contact;
+}
+
+export interface InboxFollowupSettings {
+  account_id: string;
+  delay_hours: number;
+  message_text: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export type SenderType = 'customer' | 'agent' | 'bot';
