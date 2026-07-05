@@ -32,6 +32,14 @@ function SignupPageInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const inviteToken = searchParams.get("invite");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const supabase = createClient();
 
   useEffect(() => {
     if (!inviteToken) {
@@ -42,15 +50,6 @@ function SignupPageInner() {
   if (!inviteToken) {
     return null;
   }
-
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const supabase = createClient();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();

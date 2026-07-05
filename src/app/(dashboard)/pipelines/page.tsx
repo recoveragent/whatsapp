@@ -52,16 +52,6 @@ export default function PipelinesPage() {
   const canCreateDeals = useCan("send-messages");
   const { accountId, isLeadGenBrand, profileLoading } = useAuth();
 
-  useEffect(() => {
-    if (!profileLoading && !isLeadGenBrand) {
-      router.replace("/dashboard");
-    }
-  }, [profileLoading, isLeadGenBrand, router]);
-
-  if (profileLoading || !isLeadGenBrand) {
-    return null;
-  }
-
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
   const [stages, setStages] = useState<PipelineStage[]>([]);
@@ -185,10 +175,10 @@ export default function PipelinesPage() {
   // callbacks (not synchronous in the effect body).
   useEffect(() => {
     if (!selectedPipelineId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setStages([]);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDeals([]);
+      void queueMicrotask(() => {
+        setStages([]);
+        setDeals([]);
+      });
       return;
     }
     let cancelled = false;
@@ -256,6 +246,16 @@ export default function PipelinesPage() {
     setDefaultStageId(deal.stage_id);
     setDealFormOpen(true);
   }, []);
+
+  useEffect(() => {
+    if (!profileLoading && !isLeadGenBrand) {
+      router.replace("/dashboard");
+    }
+  }, [profileLoading, isLeadGenBrand, router]);
+
+  if (profileLoading || !isLeadGenBrand) {
+    return null;
+  }
 
   async function handleCreatePipeline() {
     const name = newPipelineName.trim();

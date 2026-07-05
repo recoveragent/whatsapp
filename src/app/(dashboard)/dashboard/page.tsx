@@ -102,7 +102,7 @@ export default function DashboardPage() {
   }, [isLeadGenBrand])
 
   useEffect(() => {
-    loadAll()
+    void queueMicrotask(loadAll)
   }, [loadAll])
 
   // Range switch handler — kept in an event callback (not an effect)
