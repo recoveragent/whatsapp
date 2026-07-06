@@ -196,7 +196,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             href={opsOnlyNav ? "/admin/brands" : "/dashboard"}
             className="flex min-w-0 flex-1 items-center"
           >
-            <BrandLogo height={30} priority className="max-w-[11rem]" />
+            <BrandLogo variant="sidebar" priority />
           </Link>
           <button
             type="button"

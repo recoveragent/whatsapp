@@ -12,6 +12,7 @@ import {
   STORAGE_KEY,
   THEME_IDS,
 } from "@/lib/themes";
+import { BRAND_ICON_PATH } from "@/components/brand/brand-logo";
 
 const inter = Inter({
   variable: "--font-sans",
@@ -29,7 +30,8 @@ export const metadata: Metadata = {
     follow: false,
   },
   icons: {
-    icon: [{ url: "/recover-agent-logo.png", type: "image/png" }],
+    icon: [{ url: BRAND_ICON_PATH, type: "image/png" }],
+    apple: [{ url: BRAND_ICON_PATH, type: "image/png" }],
   },
   formatDetection: {
     email: false,

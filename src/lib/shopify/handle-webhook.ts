@@ -99,7 +99,13 @@ export async function handleShopifyWebhook(args: {
       break;
     case 'fulfillments/create':
     case 'fulfillments/update':
-      await handleFulfillment(args.db, config, args.payload as ShopifyFulfillmentPayload, shopName);
+      await handleFulfillment(
+        args.db,
+        config,
+        args.payload as ShopifyFulfillmentPayload,
+        shopName,
+        args.topic,
+      );
       break;
     case 'checkouts/create':
       await handleCheckoutCreate(args.db, config, args.payload as ShopifyCheckoutPayload, shopName);
@@ -152,10 +158,8 @@ async function handleFulfillment(
   config: ShopifyConfigLookup,
   fulfillment: ShopifyFulfillmentPayload,
   shopName: string,
+  topic: string,
 ) {
-  const campaign = await loadCampaign(db, config.account_id, 'fulfillment_update');
-  if (!campaign) return;
-
   let order: ShopifyOrderPayload | null = null;
   if (fulfillment.order_id) {
     try {
@@ -174,19 +178,23 @@ async function handleFulfillment(
   }
 
   const context = contextFromFulfillment(fulfillment, order, shopName);
-  const result = await sendShopifyCampaign({
-    db,
-    accountId: config.account_id,
-    ownerUserId: config.user_id,
-    campaign,
-    context,
-  });
 
-  if (!result.ok && result.error !== 'already sent') {
-    console.warn('[shopify] fulfillment_update:', result.error);
+  const campaign = await loadCampaign(db, config.account_id, 'fulfillment_update');
+  if (campaign) {
+    const result = await sendShopifyCampaign({
+      db,
+      accountId: config.account_id,
+      ownerUserId: config.user_id,
+      campaign,
+      context,
+    });
+
+    if (!result.ok && result.error !== 'already sent') {
+      console.warn('[shopify] fulfillment_update:', result.error);
+    }
   }
 
-  const trigger = shopifyTopicToFlowTrigger('fulfillments/create', {
+  const trigger = shopifyTopicToFlowTrigger(topic, {
     fulfillment_status: order?.fulfillment_status,
   });
   if (trigger) {
@@ -197,7 +205,7 @@ async function handleFulfillment(
       triggerType: trigger,
       context,
     });
-    logFlowDispatch('fulfillments/create', outcome);
+    logFlowDispatch(topic, outcome);
   }
 }
 
