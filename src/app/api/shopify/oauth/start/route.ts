@@ -10,6 +10,7 @@ import {
 import {
   getShopifyApiKey,
   getShopifyApiSecret,
+  getShopifyPublicOrigin,
   getShopifyRedirectUri,
   getShopifyScopes,
   isShopifyOAuthConfigured,
@@ -83,6 +84,16 @@ export async function POST(request: Request) {
           { status: 400 },
         );
       }
+    }
+
+    if (!getShopifyPublicOrigin(request)) {
+      return NextResponse.json(
+        {
+          error:
+            'Set NEXT_PUBLIC_SITE_URL to your public HTTPS domain (e.g. https://wa.recoveragent.ai) before connecting. Shopify cannot send OAuth/webhooks to 0.0.0.0 or localhost.',
+        },
+        { status: 400 },
+      );
     }
 
     const state = await createOAuthState({

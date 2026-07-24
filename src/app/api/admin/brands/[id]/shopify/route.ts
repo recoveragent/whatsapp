@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { toErrorResponse } from '@/lib/auth/account';
 import { requireSuperAdminBrand } from '@/lib/auth/super-admin';
 import { fetchShopInfo } from '@/lib/shopify/admin-api';
-import { getShopifyRedirectUri } from '@/lib/shopify/config';
+import { getShopifyWebhookUrl } from '@/lib/shopify/config';
 import { persistShopifyConfig } from '@/lib/shopify/persist-config';
 import { decrypt } from '@/lib/whatsapp/encryption';
 
@@ -45,14 +45,6 @@ async function healthCheck(
   }
 }
 
-function webhookCallbackUrl(request: Request): string {
-  // Same public origin as OAuth redirect — never 0.0.0.0 / localhost.
-  return getShopifyRedirectUri(request).replace(
-    /\/api\/shopify\/oauth\/callback$/,
-    '/api/shopify/webhook',
-  );
-}
-
 /**
  * GET /api/admin/brands/[id]/shopify
  */
@@ -90,11 +82,18 @@ export async function GET(request: Request, context: RouteContext) {
 
     const health = await healthCheck(config);
 
+    let webhookUrl = '';
+    try {
+      webhookUrl = getShopifyWebhookUrl(request);
+    } catch {
+      webhookUrl = '';
+    }
+
     return NextResponse.json({
       brand: ctx.brand,
       config: safeConfig,
       health,
-      webhook_url: webhookCallbackUrl(request),
+      webhook_url: webhookUrl,
     });
   } catch (err) {
     return toErrorResponse(err);
@@ -141,6 +140,21 @@ export async function POST(request: Request, context: RouteContext) {
       return NextResponse.json({ error: 'access_token is required' }, { status: 400 });
     }
 
+    let webhookUrl: string;
+    try {
+      webhookUrl = getShopifyWebhookUrl(request);
+    } catch (err) {
+      return NextResponse.json(
+        {
+          error:
+            err instanceof Error
+              ? err.message
+              : 'Set NEXT_PUBLIC_SITE_URL before connecting Shopify',
+        },
+        { status: 400 },
+      );
+    }
+
     const result = await persistShopifyConfig({
       supabase: ctx.supabase,
       userId: ctx.userId,
@@ -148,7 +162,7 @@ export async function POST(request: Request, context: RouteContext) {
       shopDomain: shop_domain,
       accessToken: resolvedToken,
       scopes: Array.isArray(scopes) ? scopes : undefined,
-      webhookCallbackUrl: webhookCallbackUrl(request),
+      webhookCallbackUrl: webhookUrl,
       apiKey: typeof client_id === 'string' ? client_id : undefined,
       apiSecret: typeof client_secret === 'string' ? client_secret : undefined,
       keepExistingAppCredentials: true,

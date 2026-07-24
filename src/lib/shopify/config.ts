@@ -1,4 +1,5 @@
 import { getConfiguredSiteUrl, getServerRedirectOrigin } from '@/lib/auth/site-url';
+import { isLocalWebhookUrl } from './format-api-error';
 
 const DEFAULT_SCOPES = [
   'read_orders',
@@ -26,16 +27,46 @@ export function getShopifyScopes(): string {
 }
 
 /**
+ * Public HTTPS origin for Shopify OAuth + webhooks.
+ * Never returns localhost / 0.0.0.0 — Shopify rejects those.
+ */
+export function getShopifyPublicOrigin(request: Request): string | null {
+  const origin =
+    getServerRedirectOrigin(request) || getConfiguredSiteUrl() || null;
+  if (!origin) return null;
+  if (isLocalWebhookUrl(origin)) return null;
+  return origin.replace(/\/$/, '');
+}
+
+/**
  * OAuth redirect URI shown to merchants and sent to Shopify.
- * Prefers NEXT_PUBLIC_SITE_URL / SITE_URL so local hosts like
- * https://0.0.0.0:3000 never appear in the custom-app setup instructions.
  */
 export function getShopifyRedirectUri(request: Request): string {
   const origin =
-    getServerRedirectOrigin(request) ||
-    getConfiguredSiteUrl() ||
-    new URL(request.url).origin;
-  return `${origin.replace(/\/$/, '')}/api/shopify/oauth/callback`;
+    getShopifyPublicOrigin(request) ||
+    getConfiguredSiteUrl()?.replace(/\/$/, '') ||
+    new URL(request.url).origin.replace(/\/$/, '');
+  return `${origin}/api/shopify/oauth/callback`;
+}
+
+/** Webhook callback Shopify will POST to — must be a public HTTPS URL. */
+export function getShopifyWebhookUrl(request: Request): string {
+  const origin = getShopifyPublicOrigin(request);
+  if (!origin) {
+    throw new Error(
+      'Set NEXT_PUBLIC_SITE_URL to your public HTTPS domain (e.g. https://wa.recoveragent.ai) before connecting Shopify. Local addresses like 0.0.0.0 cannot receive webhooks.',
+    );
+  }
+  return `${origin}/api/shopify/webhook`;
+}
+
+/** Settings page after OAuth — prefer public site so the browser is not sent to 0.0.0.0. */
+export function getShopifySettingsOrigin(request: Request): string {
+  return (
+    getShopifyPublicOrigin(request) ||
+    getConfiguredSiteUrl()?.replace(/\/$/, '') ||
+    new URL(request.url).origin.replace(/\/$/, '')
+  );
 }
 
 export function isShopifyOAuthConfigured(): boolean {

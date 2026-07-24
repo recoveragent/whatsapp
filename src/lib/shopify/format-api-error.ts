@@ -29,8 +29,13 @@ export function formatShopifyApiError(body: unknown, fallback: string): string {
 
 export function isLocalWebhookUrl(url: string): boolean {
   try {
-    const host = new URL(url).hostname;
-    return host === 'localhost' || host === '127.0.0.1';
+    const host = new URL(url).hostname.toLowerCase();
+    return (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '0.0.0.0' ||
+      host.endsWith('.local')
+    );
   } catch {
     return false;
   }
