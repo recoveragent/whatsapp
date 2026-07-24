@@ -3,7 +3,15 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { CheckCircle2, ExternalLink, Loader2, RotateCcw, ShoppingBag, Unlink, XCircle } from 'lucide-react';
+import {
+  CheckCircle2,
+  ExternalLink,
+  Loader2,
+  RotateCcw,
+  ShoppingBag,
+  Unlink,
+  XCircle,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -27,6 +35,9 @@ interface ConnectionPayload {
   connected: boolean;
   needs_reconnect?: boolean;
   oauth_available?: boolean;
+  has_app_credentials?: boolean;
+  api_key_hint?: string | null;
+  redirect_uri?: string | null;
   shop_domain?: string | null;
   shop_name?: string | null;
   connected_at?: string | null;
@@ -44,6 +55,8 @@ export function ShopifyBrandConnection() {
   const [connection, setConnection] = useState<ConnectionPayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [shopInput, setShopInput] = useState('');
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
 
@@ -85,6 +98,10 @@ export function ShopifyBrandConnection() {
 
       setConnection(data);
       if (data.shop_domain) setShopInput(data.shop_domain.replace('.myshopify.com', ''));
+      if (data.has_app_credentials) {
+        setClientId('');
+        setClientSecret('');
+      }
     } catch (err) {
       setConnection({ configured: false, connected: false });
       setLoadError(err instanceof Error ? err.message : 'Could not load Shopify status.');
@@ -118,13 +135,48 @@ export function ShopifyBrandConnection() {
     }
   }, [searchParams, load, router]);
 
-  const handleConnect = () => {
+  const handleConnect = async (opts?: { useStoredCredentials?: boolean }) => {
     if (!shopInput.trim()) {
       toast.error('Enter your shop domain');
       return;
     }
+
+    const preferStored = Boolean(
+      opts?.useStoredCredentials ||
+        (connection?.has_app_credentials && !clientId.trim() && !clientSecret.trim()),
+    );
+
+    if (!preferStored && !clientId.trim() && !connection?.has_app_credentials) {
+      toast.error('Enter Client ID from your Shopify custom app');
+      return;
+    }
+    if (!preferStored && !clientSecret.trim() && !connection?.has_app_credentials) {
+      toast.error('Enter Client Secret from your Shopify custom app');
+      return;
+    }
+
     setConnecting(true);
-    window.location.href = `/api/shopify/oauth/start?shop=${encodeURIComponent(shopInput.trim())}`;
+    try {
+      const body: Record<string, string> = { shop: shopInput.trim() };
+      if (!preferStored) {
+        if (clientId.trim()) body.client_id = clientId.trim();
+        if (clientSecret.trim()) body.client_secret = clientSecret.trim();
+      }
+
+      const res = await fetch('/api/shopify/oauth/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = (await res.json()) as { authorize_url?: string; error?: string };
+      if (!res.ok || !data.authorize_url) {
+        throw new Error(data.error ?? 'Could not start Shopify connection');
+      }
+      window.location.href = data.authorize_url;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not start Shopify connection');
+      setConnecting(false);
+    }
   };
 
   const handleDisconnect = async () => {
@@ -144,6 +196,8 @@ export function ShopifyBrandConnection() {
 
       toast.success('Shopify disconnected');
       setShopInput('');
+      setClientId('');
+      setClientSecret('');
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Disconnect failed');
@@ -186,8 +240,8 @@ export function ShopifyBrandConnection() {
   const connected = connection?.connected ?? false;
   const needsReconnect = Boolean(connection?.needs_reconnect ?? (configured && !connected));
   const canEdit = accountCtx?.canEditSettings ?? false;
-  const oauthAvailable = connection?.oauth_available ?? false;
-  const showConnectForm = canEdit && oauthAvailable && (!configured || needsReconnect);
+  const showConnectForm = canEdit && (!configured || needsReconnect);
+  const redirectUri = connection?.redirect_uri ?? '';
 
   return (
     <section className="animate-in fade-in-50 duration-200">
@@ -196,7 +250,7 @@ export function ShopifyBrandConnection() {
         description={
           configured
             ? 'Your connected Shopify store and WhatsApp campaign automations.'
-            : 'Connect Shopify to send order confirmations, fulfillment updates, and abandoned checkout messages on WhatsApp.'
+            : 'Connect a custom Shopify app with Client ID and Secret to automate WhatsApp campaigns.'
         }
       />
 
@@ -230,7 +284,7 @@ export function ShopifyBrandConnection() {
                     (configured && connected
                       ? 'Webhooks are registered. Enable campaigns below to start sending messages.'
                       : canEdit
-                        ? 'Connect your store to automate WhatsApp messages for orders and checkouts.'
+                        ? 'Create a custom app in the client’s Shopify Dev Dashboard, then enter Client ID, Client Secret, and shop domain.'
                         : 'Ask a workspace admin to connect Shopify.'))}
               </AlertDescription>
             </div>
@@ -246,6 +300,25 @@ export function ShopifyBrandConnection() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground space-y-1.5">
+                <p className="font-medium text-foreground">Custom app setup</p>
+                <ol className="list-decimal pl-4 space-y-1">
+                  <li>In Shopify Dev Dashboard, create a custom app for this store.</li>
+                  <li>
+                    Add Allowed redirection URL:
+                    {redirectUri ? (
+                      <code className="mt-1 block break-all rounded bg-background px-1.5 py-0.5 text-[11px] text-foreground">
+                        {redirectUri}
+                      </code>
+                    ) : (
+                      ' (shown after load)'
+                    )}
+                  </li>
+                  <li>Enable Admin API scopes for orders, fulfillments, checkouts, and customers.</li>
+                  <li>Paste Client ID and Client Secret below, then connect.</li>
+                </ol>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="shop-domain">Shop domain</Label>
                 <div className="flex gap-2">
@@ -255,14 +328,50 @@ export function ShopifyBrandConnection() {
                     onChange={(e) => setShopInput(e.target.value)}
                     placeholder="your-store"
                     className="flex-1"
+                    autoComplete="off"
                   />
                   <span className="flex items-center text-sm text-muted-foreground">
                     .myshopify.com
                   </span>
                 </div>
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="shopify-client-id">Client ID</Label>
+                <Input
+                  id="shopify-client-id"
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                  placeholder={
+                    connection?.api_key_hint
+                      ? `Stored: ${connection.api_key_hint}`
+                      : 'From Shopify custom app'
+                  }
+                  autoComplete="off"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="shopify-client-secret">Client Secret</Label>
+                <Input
+                  id="shopify-client-secret"
+                  type="password"
+                  value={clientSecret}
+                  onChange={(e) => setClientSecret(e.target.value)}
+                  placeholder={
+                    connection?.has_app_credentials
+                      ? 'Leave blank to reuse stored secret'
+                      : 'From Shopify custom app'
+                  }
+                  autoComplete="new-password"
+                />
+              </div>
+
               <div className="flex flex-wrap gap-2">
-                <Button onClick={handleConnect} disabled={connecting}>
+                <Button
+                  onClick={() => void handleConnect()}
+                  disabled={connecting}
+                >
                   {connecting ? (
                     <Loader2 className="size-4 animate-spin" />
                   ) : (
@@ -294,19 +403,6 @@ export function ShopifyBrandConnection() {
           </Card>
         )}
 
-        {!configured && canEdit && !oauthAvailable && (
-          <Alert className="border-border">
-            <AlertDescription className="text-sm text-muted-foreground">
-              Shopify OAuth is not configured on this server. Ask Recover Agent to
-              complete setup under{' '}
-              <Link href="/admin/brands" className="text-primary underline">
-                Brands → Shopify setup
-              </Link>
-              .
-            </AlertDescription>
-          </Alert>
-        )}
-
         {configured && (
           <Card>
             <CardHeader>
@@ -321,6 +417,11 @@ export function ShopifyBrandConnection() {
               {connection?.shop_domain && (
                 <p className="text-muted-foreground">{connection.shop_domain}</p>
               )}
+              {connection?.api_key_hint && (
+                <p className="text-xs text-muted-foreground">
+                  Custom app Client ID {connection.api_key_hint}
+                </p>
+              )}
               {connection?.connected_at && (
                 <p className="text-xs text-muted-foreground">
                   Connected{' '}
@@ -330,14 +431,14 @@ export function ShopifyBrandConnection() {
                   })}
                 </p>
               )}
-              {canEdit && connected && oauthAvailable && (
+              {canEdit && connected && (
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     disabled={connecting}
-                    onClick={handleConnect}
+                    onClick={() => void handleConnect({ useStoredCredentials: true })}
                   >
                     {connecting ? (
                       <Loader2 className="size-4 animate-spin" />

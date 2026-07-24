@@ -30,6 +30,8 @@ interface SafeConfigRow {
   status: string;
   connected_at: string | null;
   has_access_token: boolean;
+  has_app_credentials?: boolean;
+  api_key_hint?: string | null;
 }
 
 interface ShopifyConfigProps {
@@ -53,6 +55,9 @@ export function ShopifyConfig({ brandId, brandName }: ShopifyConfigProps) {
   const [shopDomain, setShopDomain] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const [tokenEdited, setTokenEdited] = useState(false);
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [credsEdited, setCredsEdited] = useState(false);
 
   const fetchConfig = useCallback(async () => {
     setLoading(true);
@@ -76,6 +81,9 @@ export function ShopifyConfig({ brandId, brandName }: ShopifyConfigProps) {
       }
       setAccessToken(data?.has_access_token ? MASKED_TOKEN : '');
       setTokenEdited(false);
+      setClientId('');
+      setClientSecret('');
+      setCredsEdited(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Load failed');
     } finally {
@@ -98,6 +106,10 @@ export function ShopifyConfig({ brandId, brandName }: ShopifyConfigProps) {
       };
       if (tokenEdited && accessToken !== MASKED_TOKEN) {
         body.access_token = accessToken;
+      }
+      if (credsEdited) {
+        if (clientId.trim()) body.client_id = clientId.trim();
+        if (clientSecret.trim()) body.client_secret = clientSecret.trim();
       }
 
       const res = await fetch(apiBase, {
@@ -218,8 +230,8 @@ export function ShopifyConfig({ brandId, brandName }: ShopifyConfigProps) {
               Store credentials
             </CardTitle>
             <CardDescription>
-              Use a Shopify custom app admin API access token, or let brand admins connect via OAuth
-              in Settings → Shopify.
+              Prefer Client ID + Secret via Settings → Shopify OAuth. Ops can also paste an Admin
+              API token here; include Client Secret so webhooks verify correctly.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -238,6 +250,43 @@ export function ShopifyConfig({ brandId, brandName }: ShopifyConfigProps) {
                     .myshopify.com
                   </span>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="client-id">Client ID (custom app)</Label>
+                <Input
+                  id="client-id"
+                  value={clientId}
+                  onChange={(e) => {
+                    setClientId(e.target.value);
+                    setCredsEdited(true);
+                  }}
+                  placeholder={
+                    config?.api_key_hint
+                      ? `Stored: ${config.api_key_hint}`
+                      : 'Shopify custom app Client ID'
+                  }
+                  autoComplete="off"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="client-secret">Client Secret (webhook HMAC)</Label>
+                <Input
+                  id="client-secret"
+                  type="password"
+                  value={clientSecret}
+                  onChange={(e) => {
+                    setClientSecret(e.target.value);
+                    setCredsEdited(true);
+                  }}
+                  placeholder={
+                    config?.has_app_credentials
+                      ? 'Leave blank to keep stored secret'
+                      : 'Shopify custom app Client Secret'
+                  }
+                  autoComplete="new-password"
+                />
               </div>
 
               <div className="space-y-2">

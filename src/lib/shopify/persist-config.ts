@@ -4,7 +4,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { encrypt } from '@/lib/whatsapp/encryption';
 import { fetchShopInfo, registerShopifyWebhooks } from './admin-api';
 import { isLocalWebhookUrl } from './format-api-error';
-import { normalizeShopDomain } from './normalize-shop';import { seedDefaultCampaigns } from './send-campaign';
+import { normalizeShopDomain } from './normalize-shop';
+import { seedDefaultCampaigns } from './send-campaign';
 
 export interface PersistShopifyConfigInput {
   supabase: SupabaseClient;
@@ -14,6 +15,12 @@ export interface PersistShopifyConfigInput {
   accessToken: string;
   scopes?: string[];
   webhookCallbackUrl: string;
+  /** Shopify custom app Client ID (plaintext). */
+  apiKey?: string | null;
+  /** Shopify custom app Client Secret (plaintext — encrypted at rest). */
+  apiSecret?: string | null;
+  /** When true, keep existing api_key/api_secret if new values omitted. */
+  keepExistingAppCredentials?: boolean;
 }
 
 export type PersistShopifyConfigResult =
@@ -75,12 +82,39 @@ export async function persistShopifyConfig(
   const encryptedToken = encrypt(input.accessToken.trim());
   const scopes = input.scopes ?? [];
 
+  let existingCreds: { api_key: string | null; api_secret: string | null } | null = null;
+  if (input.keepExistingAppCredentials) {
+    const { data } = await input.supabase
+      .from('shopify_config')
+      .select('api_key, api_secret')
+      .eq('account_id', input.accountId)
+      .maybeSingle();
+    existingCreds = data
+      ? {
+          api_key: (data.api_key as string | null) ?? null,
+          api_secret: (data.api_secret as string | null) ?? null,
+        }
+      : null;
+  }
+
+  const apiKey =
+    input.apiKey?.trim() ||
+    (input.keepExistingAppCredentials ? existingCreds?.api_key ?? null : null);
+  const apiSecretPlain = input.apiSecret?.trim() || null;
+  const apiSecretEncrypted = apiSecretPlain
+    ? encrypt(apiSecretPlain)
+    : input.keepExistingAppCredentials
+      ? existingCreds?.api_secret ?? null
+      : null;
+
   const { error: upsertError } = await input.supabase.from('shopify_config').upsert(
     {
       account_id: input.accountId,
       user_id: input.userId,
       shop_domain: shopDomain,
       access_token: encryptedToken,
+      api_key: apiKey,
+      api_secret: apiSecretEncrypted,
       scopes,
       status: 'connected',
       connected_at: new Date().toISOString(),
@@ -106,6 +140,8 @@ export async function createOAuthState(args: {
   accountId: string;
   userId: string;
   shopDomain: string;
+  apiKey: string;
+  apiSecret: string;
 }): Promise<string> {
   const token = crypto.randomBytes(24).toString('hex');
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -115,6 +151,8 @@ export async function createOAuthState(args: {
     account_id: args.accountId,
     user_id: args.userId,
     shop_domain: args.shopDomain,
+    api_key: args.apiKey.trim(),
+    api_secret: encrypt(args.apiSecret.trim()),
     expires_at: expiresAt,
   });
 
@@ -129,10 +167,12 @@ export async function consumeOAuthState(
   account_id: string;
   user_id: string;
   shop_domain: string;
+  api_key: string | null;
+  api_secret_encrypted: string | null;
 } | null> {
   const { data, error } = await db
     .from('shopify_oauth_states')
-    .select('account_id, user_id, shop_domain, expires_at')
+    .select('account_id, user_id, shop_domain, api_key, api_secret, expires_at')
     .eq('state_token', state)
     .maybeSingle();
 
@@ -145,5 +185,7 @@ export async function consumeOAuthState(
     account_id: data.account_id as string,
     user_id: data.user_id as string,
     shop_domain: data.shop_domain as string,
+    api_key: (data.api_key as string | null) ?? null,
+    api_secret_encrypted: (data.api_secret as string | null) ?? null,
   };
 }

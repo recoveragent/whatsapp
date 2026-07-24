@@ -33,6 +33,10 @@ export interface ShopifyConfigRow {
   user_id: string;
   shop_domain: string;
   access_token: string;
+  /** Shopify custom app Client ID (plaintext). */
+  api_key?: string | null;
+  /** Encrypted custom app Client Secret. */
+  api_secret?: string | null;
   scopes: string[];
   status: 'connected' | 'disconnected';
   connected_at: string | null;

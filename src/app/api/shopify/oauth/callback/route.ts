@@ -4,10 +4,12 @@ import { exchangeOAuthCode } from '@/lib/shopify/admin-api';
 import {
   getShopifyApiKey,
   getShopifyApiSecret,
+  isShopifyOAuthConfigured,
 } from '@/lib/shopify/config';
 import { consumeOAuthState, persistShopifyConfig } from '@/lib/shopify/persist-config';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { createClient } from '@/lib/supabase/server';
+import { decrypt } from '@/lib/whatsapp/encryption';
 
 function settingsRedirect(origin: string, params: Record<string, string>): NextResponse {
   const url = new URL(`${origin}/settings`);
@@ -50,11 +52,33 @@ export async function GET(request: Request) {
       });
     }
 
+    let clientId = oauthState.api_key?.trim() ?? '';
+    let clientSecret = '';
+    if (oauthState.api_secret_encrypted) {
+      try {
+        clientSecret = decrypt(oauthState.api_secret_encrypted);
+      } catch {
+        return settingsRedirect(origin, {
+          shopify_error: 'Could not decrypt stored Client Secret — reconnect and re-enter it',
+        });
+      }
+    }
+
+    if (!clientId || !clientSecret) {
+      if (!isShopifyOAuthConfigured()) {
+        return settingsRedirect(origin, {
+          shopify_error: 'Missing Shopify app credentials for this connection',
+        });
+      }
+      clientId = getShopifyApiKey();
+      clientSecret = getShopifyApiSecret();
+    }
+
     const token = await exchangeOAuthCode({
       shopDomain: shop,
       code,
-      clientId: getShopifyApiKey(),
-      clientSecret: getShopifyApiSecret(),
+      clientId,
+      clientSecret,
     });
 
     const supabase = await createClient();
@@ -66,6 +90,8 @@ export async function GET(request: Request) {
       accessToken: token.access_token,
       scopes: token.scope.split(',').map((s) => s.trim()).filter(Boolean),
       webhookCallbackUrl: `${origin}/api/shopify/webhook`,
+      apiKey: clientId,
+      apiSecret: clientSecret,
     });
 
     if (!result.ok) {

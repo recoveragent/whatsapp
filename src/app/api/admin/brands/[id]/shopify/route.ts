@@ -61,7 +61,7 @@ export async function GET(request: Request, context: RouteContext) {
     const { data: config, error } = await ctx.supabase
       .from('shopify_config')
       .select(
-        'shop_domain, scopes, status, connected_at, access_token',
+        'shop_domain, scopes, status, connected_at, access_token, api_key, api_secret',
       )
       .eq('account_id', accountId)
       .maybeSingle();
@@ -77,6 +77,10 @@ export async function GET(request: Request, context: RouteContext) {
           status: config.status,
           connected_at: config.connected_at,
           has_access_token: Boolean(config.access_token),
+          has_app_credentials: Boolean(config.api_key && config.api_secret),
+          api_key_hint: config.api_key
+            ? `${String(config.api_key).slice(0, 6)}…${String(config.api_key).slice(-4)}`
+            : null,
         }
       : null;
 
@@ -101,7 +105,7 @@ export async function POST(request: Request, context: RouteContext) {
     const { id } = await context.params;
     const ctx = await requireSuperAdminBrand(id);
     const body = await request.json();
-    const { shop_domain, access_token, scopes } = body;
+    const { shop_domain, access_token, scopes, client_id, client_secret } = body;
 
     if (!shop_domain) {
       return NextResponse.json({ error: 'shop_domain is required' }, { status: 400 });
@@ -109,7 +113,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     const { data: existing } = await ctx.supabase
       .from('shopify_config')
-      .select('access_token')
+      .select('access_token, api_key, api_secret')
       .eq('account_id', ctx.brand.id)
       .maybeSingle();
 
@@ -141,6 +145,9 @@ export async function POST(request: Request, context: RouteContext) {
       accessToken: resolvedToken,
       scopes: Array.isArray(scopes) ? scopes : undefined,
       webhookCallbackUrl: webhookCallbackUrl(request),
+      apiKey: typeof client_id === 'string' ? client_id : undefined,
+      apiSecret: typeof client_secret === 'string' ? client_secret : undefined,
+      keepExistingAppCredentials: true,
     });
 
     if (!result.ok) {

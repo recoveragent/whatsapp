@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    if (!verifyShopifyWebhookHmac(rawBody, hmac)) {
+    if (!(await verifyShopifyWebhookHmac(rawBody, hmac, shopDomain))) {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
   } catch {

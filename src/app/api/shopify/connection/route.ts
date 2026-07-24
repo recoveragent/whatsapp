@@ -2,19 +2,20 @@ import { NextResponse } from 'next/server';
 
 import { getCurrentAccount, requireRole, toErrorResponse } from '@/lib/auth/account';
 import { fetchShopInfo } from '@/lib/shopify/admin-api';
-import { isShopifyOAuthConfigured } from '@/lib/shopify/config';
+import { getShopifyRedirectUri, isShopifyOAuthConfigured } from '@/lib/shopify/config';
 import { decrypt } from '@/lib/whatsapp/encryption';
 
 /**
  * GET /api/shopify/connection
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const ctx = await getCurrentAccount();
+    const redirectUri = getShopifyRedirectUri(new URL(request.url).origin);
 
     const { data: config, error } = await ctx.supabase
       .from('shopify_config')
-      .select('shop_domain, status, connected_at, scopes')
+      .select('shop_domain, status, connected_at, scopes, api_key, api_secret, access_token')
       .eq('account_id', ctx.accountId)
       .maybeSingle();
 
@@ -22,27 +23,34 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to load connection status' }, { status: 500 });
     }
 
+    // Brands can always connect with their own custom-app Client ID/Secret.
+    // Server-wide SHOPIFY_API_* remains an optional fallback for reconnect.
+    const oauthAvailable = true;
+    const hasAppCredentials = Boolean(config?.api_key && config?.api_secret);
+    const apiKeyHint = config?.api_key
+      ? `${String(config.api_key).slice(0, 6)}…${String(config.api_key).slice(-4)}`
+      : null;
+
     if (!config?.shop_domain) {
       return NextResponse.json({
         configured: false,
         connected: false,
-        oauth_available: isShopifyOAuthConfigured(),
-        message: 'Connect your Shopify store to send order and checkout messages.',
+        oauth_available: oauthAvailable,
+        has_app_credentials: false,
+        api_key_hint: null,
+        redirect_uri: redirectUri,
+        env_app_fallback: isShopifyOAuthConfigured(),
+        message:
+          'Create a custom app in the Shopify Dev Dashboard, then enter Client ID, Client Secret, and shop domain to connect.',
       });
     }
-
-    const { data: fullRow } = await ctx.supabase
-      .from('shopify_config')
-      .select('access_token')
-      .eq('account_id', ctx.accountId)
-      .maybeSingle();
 
     let shopName: string | null = null;
     let connected = config.status === 'connected';
 
-    if (fullRow?.access_token) {
+    if (config.access_token) {
       try {
-        const accessToken = decrypt(fullRow.access_token);
+        const accessToken = decrypt(config.access_token);
         const shop = await fetchShopInfo(config.shop_domain, accessToken);
         shopName = shop.name;
         connected = true;
@@ -55,7 +63,11 @@ export async function GET() {
       configured: true,
       connected,
       needs_reconnect: !connected,
-      oauth_available: isShopifyOAuthConfigured(),
+      oauth_available: oauthAvailable,
+      has_app_credentials: hasAppCredentials,
+      api_key_hint: apiKeyHint,
+      redirect_uri: redirectUri,
+      env_app_fallback: isShopifyOAuthConfigured(),
       shop_domain: config.shop_domain,
       shop_name: shopName,
       connected_at: config.connected_at,
@@ -71,9 +83,6 @@ export async function GET() {
 
 /**
  * DELETE /api/shopify/connection
- *
- * Removes the stored Shopify OAuth credentials for this workspace so
- * the admin can connect a fresh app install.
  */
 export async function DELETE() {
   try {
