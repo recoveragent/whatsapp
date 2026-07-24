@@ -1,3 +1,5 @@
+import { getConfiguredSiteUrl, getServerRedirectOrigin } from '@/lib/auth/site-url';
+
 const DEFAULT_SCOPES = [
   'read_orders',
   'read_fulfillments',
@@ -23,7 +25,16 @@ export function getShopifyScopes(): string {
   return process.env.SHOPIFY_SCOPES?.trim() || DEFAULT_SCOPES;
 }
 
-export function getShopifyRedirectUri(origin: string): string {
+/**
+ * OAuth redirect URI shown to merchants and sent to Shopify.
+ * Prefers NEXT_PUBLIC_SITE_URL / SITE_URL so local hosts like
+ * https://0.0.0.0:3000 never appear in the custom-app setup instructions.
+ */
+export function getShopifyRedirectUri(request: Request): string {
+  const origin =
+    getServerRedirectOrigin(request) ||
+    getConfiguredSiteUrl() ||
+    new URL(request.url).origin;
   return `${origin.replace(/\/$/, '')}/api/shopify/oauth/callback`;
 }
 

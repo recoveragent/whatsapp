@@ -94,7 +94,7 @@ export async function POST(request: Request) {
       apiSecret: clientSecret,
     });
 
-    const redirectUri = getShopifyRedirectUri(new URL(request.url).origin);
+    const redirectUri = getShopifyRedirectUri(request);
     const authorizeUrl = new URL(`https://${shopDomain}/admin/oauth/authorize`);
     authorizeUrl.searchParams.set('client_id', clientId);
     authorizeUrl.searchParams.set('scope', getShopifyScopes());
@@ -177,7 +177,7 @@ export async function GET(request: Request) {
       apiSecret: clientSecret,
     });
 
-    const redirectUri = getShopifyRedirectUri(origin);
+    const redirectUri = getShopifyRedirectUri(request);
     const authorizeUrl = new URL(`https://${shopDomain}/admin/oauth/authorize`);
     authorizeUrl.searchParams.set('client_id', clientId);
     authorizeUrl.searchParams.set('scope', getShopifyScopes());

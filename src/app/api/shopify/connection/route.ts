@@ -11,7 +11,7 @@ import { decrypt } from '@/lib/whatsapp/encryption';
 export async function GET(request: Request) {
   try {
     const ctx = await getCurrentAccount();
-    const redirectUri = getShopifyRedirectUri(new URL(request.url).origin);
+    const redirectUri = getShopifyRedirectUri(request);
 
     const { data: config, error } = await ctx.supabase
       .from('shopify_config')
