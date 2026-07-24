@@ -582,11 +582,23 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
 
     case 'close_conversation': {
       if (!args.contactId) throw new Error('close_conversation needs a contact')
-      await db
+      const { data: closedRows } = await db
         .from('conversations')
         .update({ status: 'closed', updated_at: new Date().toISOString() })
         .eq('account_id', args.automation.account_id)
         .eq('contact_id', args.contactId)
+        .select('id')
+      const { insertConversationStatusMessage } = await import(
+        '@/lib/inbox/status-system-message'
+      )
+      for (const row of closedRows ?? []) {
+        await insertConversationStatusMessage({
+          db,
+          conversationId: (row as { id: string }).id,
+          status: 'closed',
+          actor: { kind: 'automation' },
+        })
+      }
       return 'conversation closed'
     }
 

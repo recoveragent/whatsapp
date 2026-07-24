@@ -621,13 +621,15 @@ async function processMessage(
   // Update conversation. Customer reply should reopen the thread —
   // closed/followup chats staying closed hid replies from the Open
   // inbox (agents only saw them if they switched filter).
+  const reopened =
+    conversation.status === 'closed' || conversation.status === 'followup'
   const convUpdate: Record<string, unknown> = {
     last_message_text: contentText || `[${message.type}]`,
     last_message_at: new Date().toISOString(),
     unread_count: (conversation.unread_count || 0) + 1,
     updated_at: new Date().toISOString(),
   }
-  if (conversation.status === 'closed' || conversation.status === 'followup') {
+  if (reopened) {
     convUpdate.status = 'open'
   }
 
@@ -638,6 +640,18 @@ async function processMessage(
 
   if (convError) {
     console.error('Error updating conversation:', convError)
+  }
+
+  if (reopened) {
+    const { insertConversationStatusMessage } = await import(
+      '@/lib/inbox/status-system-message'
+    )
+    await insertConversationStatusMessage({
+      db: supabaseAdmin(),
+      conversationId: conversation.id,
+      status: 'open',
+      actor: { kind: 'customer' },
+    })
   }
 
   // If this contact was a recent broadcast recipient, flag the reply

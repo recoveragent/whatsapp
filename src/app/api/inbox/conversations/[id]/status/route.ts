@@ -6,6 +6,10 @@ import {
   followupScheduledAt,
   getFollowupSettings,
 } from '@/lib/inbox/followup'
+import {
+  insertConversationStatusMessage,
+  resolveAgentDisplayName,
+} from '@/lib/inbox/status-system-message'
 import type { ConversationStatus } from '@/types'
 
 const ALLOWED: ConversationStatus[] = ['open', 'closed', 'followup']
@@ -37,6 +41,10 @@ export async function PATCH(
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
     }
 
+    if (conversation.status === body.status) {
+      return NextResponse.json(conversation)
+    }
+
     const patch: Record<string, unknown> = {
       status: body.status,
       updated_at: new Date().toISOString(),
@@ -63,7 +71,18 @@ export async function PATCH(
       )
     }
 
-    return NextResponse.json(data)
+    const agentName = await resolveAgentDisplayName(ctx.supabase, ctx.userId)
+    const systemMessage = await insertConversationStatusMessage({
+      db: ctx.supabase,
+      conversationId: id,
+      status: body.status,
+      actor: { kind: 'agent', name: agentName, userId: ctx.userId },
+    })
+
+    return NextResponse.json({
+      ...data,
+      system_message: systemMessage,
+    })
   } catch (err) {
     return toErrorResponse(err)
   }

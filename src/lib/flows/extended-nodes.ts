@@ -274,6 +274,15 @@ export async function executeExtendedNode(
             .from('conversations')
             .update({ status: 'closed', updated_at: new Date().toISOString() })
             .eq('id', run.conversation_id)
+          const { insertConversationStatusMessage } = await import(
+            '@/lib/inbox/status-system-message'
+          )
+          await insertConversationStatusMessage({
+            db,
+            conversationId: run.conversation_id,
+            status: 'closed',
+            actor: { kind: 'flow' },
+          })
         }
         return { kind: 'continue', nextKey: c.next_node_key }
       }

@@ -329,8 +329,20 @@ export function MessageBubble({
   currentUserId,
   onToggleReaction,
 }: MessageBubbleProps) {
+  const time = format(new Date(message.created_at), "h:mm a");
+
+  if (message.content_type === "system") {
+    return (
+      <div className="flex justify-center px-2 py-1">
+        <p className="max-w-[90%] text-center text-[11px] leading-snug text-muted-foreground">
+          {message.content_text || "Status updated"}
+          <span className="whitespace-nowrap"> · {time}</span>
+        </p>
+      </div>
+    );
+  }
+
   const isAgent = message.sender_type === "agent" || message.sender_type === "bot";
-  const time = format(new Date(message.created_at), "HH:mm");
 
   // Row alignment + width cap are owned by <MessageActions> so its hover
   // group matches the bubble's content area, not the full row.
@@ -373,7 +385,7 @@ export function MessageBubble({
               isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
             )}
           >
-            {time}
+            {format(new Date(message.created_at), "HH:mm")}
           </span>
           {isAgent && (
             <MessageStatusLabel status={message.status} onPrimary={isAgent} />

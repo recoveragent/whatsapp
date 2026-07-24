@@ -635,13 +635,18 @@ export function MessageThread({
         return;
       }
 
-      const updated = (await res.json()) as Conversation;
+      const updated = (await res.json()) as Conversation & {
+        system_message?: Message | null;
+      };
       onStatusChange(conversation.id, updated.status);
+      if (updated.system_message) {
+        onNewMessage(updated.system_message);
+      }
       if (updated.status === "followup") {
         toast.success("Follow-up scheduled");
       }
     },
-    [conversation, onStatusChange]
+    [conversation, onStatusChange, onNewMessage]
   );
 
   const handleToggleOpenClose = useCallback(() => {
@@ -1133,6 +1138,10 @@ export function MessageThread({
                     }
 
                     const msg = item.message;
+                    if (msg.content_type === "system") {
+                      return <MessageBubble key={msg.id} message={msg} />;
+                    }
+
                     const parent = msg.reply_to_message_id
                       ? messagesById.get(msg.reply_to_message_id)
                       : null;
