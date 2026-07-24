@@ -618,15 +618,22 @@ async function processMessage(
     return
   }
 
-  // Update conversation
+  // Update conversation. Customer reply should reopen the thread —
+  // closed/followup chats staying closed hid replies from the Open
+  // inbox (agents only saw them if they switched filter).
+  const convUpdate: Record<string, unknown> = {
+    last_message_text: contentText || `[${message.type}]`,
+    last_message_at: new Date().toISOString(),
+    unread_count: (conversation.unread_count || 0) + 1,
+    updated_at: new Date().toISOString(),
+  }
+  if (conversation.status === 'closed' || conversation.status === 'followup') {
+    convUpdate.status = 'open'
+  }
+
   const { error: convError } = await supabaseAdmin()
     .from('conversations')
-    .update({
-      last_message_text: contentText || `[${message.type}]`,
-      last_message_at: new Date().toISOString(),
-      unread_count: (conversation.unread_count || 0) + 1,
-      updated_at: new Date().toISOString(),
-    })
+    .update(convUpdate)
     .eq('id', conversation.id)
 
   if (convError) {
