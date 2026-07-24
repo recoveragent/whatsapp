@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { toErrorResponse } from '@/lib/auth/account';
 import { requireSuperAdminBrand } from '@/lib/auth/super-admin';
 import { fetchShopInfo } from '@/lib/shopify/admin-api';
+import { getShopifyRedirectUri } from '@/lib/shopify/config';
 import { persistShopifyConfig } from '@/lib/shopify/persist-config';
 import { decrypt } from '@/lib/whatsapp/encryption';
 
@@ -45,8 +46,11 @@ async function healthCheck(
 }
 
 function webhookCallbackUrl(request: Request): string {
-  const origin = new URL(request.url).origin;
-  return `${origin}/api/shopify/webhook`;
+  // Same public origin as OAuth redirect — never 0.0.0.0 / localhost.
+  return getShopifyRedirectUri(request).replace(
+    /\/api\/shopify\/oauth\/callback$/,
+    '/api/shopify/webhook',
+  );
 }
 
 /**
