@@ -37,6 +37,55 @@ export function formatConversationStatusCopy(
   }
 }
 
+export type AssignmentChange =
+  | { kind: 'self'; actorName: string }
+  | { kind: 'assign'; actorName: string; assigneeName: string }
+  | { kind: 'unassign'; actorName: string }
+
+/** Timeline microcopy for assignment changes. */
+export function formatAssignmentCopy(change: AssignmentChange): string {
+  const actor = change.actorName.trim() || 'agent'
+  switch (change.kind) {
+    case 'self':
+      return `Self-assigned by ${actor}`
+    case 'assign':
+      return `Assigned to ${change.assigneeName.trim() || 'agent'} by ${actor}`
+    case 'unassign':
+      return `Unassigned by ${actor}`
+  }
+}
+
+async function insertSystemMessage(args: {
+  db: SupabaseClient
+  conversationId: string
+  contentText: string
+  senderId?: string | null
+  at?: Date
+}): Promise<Message | null> {
+  const createdAt = (args.at ?? new Date()).toISOString()
+
+  const { data, error } = await args.db
+    .from('messages')
+    .insert({
+      conversation_id: args.conversationId,
+      sender_type: 'bot',
+      sender_id: args.senderId ?? null,
+      content_type: 'system',
+      content_text: args.contentText,
+      status: 'delivered',
+      created_at: createdAt,
+    })
+    .select('*')
+    .maybeSingle()
+
+  if (error) {
+    console.error('[inbox] system message insert failed:', error)
+    return null
+  }
+
+  return data as Message | null
+}
+
 export async function insertConversationStatusMessage(args: {
   db: SupabaseClient
   conversationId: string
@@ -44,31 +93,29 @@ export async function insertConversationStatusMessage(args: {
   actor: StatusChangeActor
   at?: Date
 }): Promise<Message | null> {
-  const createdAt = (args.at ?? new Date()).toISOString()
-  const contentText = formatConversationStatusCopy(args.status, args.actor)
+  return insertSystemMessage({
+    db: args.db,
+    conversationId: args.conversationId,
+    contentText: formatConversationStatusCopy(args.status, args.actor),
+    senderId: args.actor.kind === 'agent' ? args.actor.userId : null,
+    at: args.at,
+  })
+}
 
-  const row = {
-    conversation_id: args.conversationId,
-    sender_type: 'bot' as const,
-    sender_id: args.actor.kind === 'agent' ? args.actor.userId : null,
-    content_type: 'system' as const,
-    content_text: contentText,
-    status: 'delivered' as const,
-    created_at: createdAt,
-  }
-
-  const { data, error } = await args.db
-    .from('messages')
-    .insert(row)
-    .select('*')
-    .maybeSingle()
-
-  if (error) {
-    console.error('[inbox] status system message insert failed:', error)
-    return null
-  }
-
-  return data as Message | null
+export async function insertAssignmentSystemMessage(args: {
+  db: SupabaseClient
+  conversationId: string
+  change: AssignmentChange
+  actorUserId: string
+  at?: Date
+}): Promise<Message | null> {
+  return insertSystemMessage({
+    db: args.db,
+    conversationId: args.conversationId,
+    contentText: formatAssignmentCopy(args.change),
+    senderId: args.actorUserId,
+    at: args.at,
+  })
 }
 
 export async function resolveAgentDisplayName(

@@ -135,6 +135,18 @@ export async function POST(request: Request) {
       )
     }
 
+    const assigneeId = (conversation.assigned_agent_id as string | null) ?? null
+    if (!assigneeId || assigneeId !== ctx.userId) {
+      return NextResponse.json(
+        {
+          error: assigneeId
+            ? 'This chat is assigned to someone else — reassign it to yourself before replying'
+            : 'Self-assign this chat before replying',
+        },
+        { status: 403 },
+      )
+    }
+
     const contact = conversation.contact
     if (!contact?.phone) {
       return NextResponse.json(

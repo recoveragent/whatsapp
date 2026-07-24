@@ -20,6 +20,7 @@ import {
   Loader2,
   Lock,
   StickyNote,
+  UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GatedButton } from "@/components/ui/gated-button";
@@ -135,6 +136,14 @@ interface MessageComposerProps {
   onClearReply?: () => void;
   /** Fired when upload, draft, or recording is in progress in the composer. */
   onComposerPendingChange?: (pending: boolean) => void;
+  /** Current assignee — null when unclaimed. */
+  assignedAgentId?: string | null;
+  currentUserId?: string | null;
+  /** Display name of the assignee (when not me). */
+  assigneeName?: string | null;
+  /** Claim the chat for the current user so Reply unlocks. */
+  onSelfAssign?: () => void | Promise<void>;
+  selfAssigning?: boolean;
 }
 
 type ComposerMode = "message" | "note";
@@ -160,6 +169,11 @@ export function MessageComposer({
   replyTo,
   onClearReply,
   onComposerPendingChange,
+  assignedAgentId = null,
+  currentUserId = null,
+  assigneeName = null,
+  onSelfAssign,
+  selfAssigning = false,
 }: MessageComposerProps) {
   const [text, setText] = useState("");
   const [composerMode, setComposerMode] = useState<ComposerMode>("message");
@@ -205,8 +219,13 @@ export function MessageComposer({
   // every capability — so the disabled branch is a no-op there.
   const canSend = useCan("send-messages");
   const readOnly = !canSend;
+  const assignedToMe =
+    !!currentUserId && !!assignedAgentId && assignedAgentId === currentUserId;
+  const unassigned = !assignedAgentId;
+  /** Reply (WhatsApp) requires claiming the chat; private notes do not. */
+  const replyLocked = canSend && !assignedToMe;
   // Media (like free-form text) is only allowed inside the 24h window.
-  const inputsDisabled = readOnly || sessionExpired;
+  const inputsDisabled = readOnly || sessionExpired || replyLocked;
   const canAttachImage = !inputsDisabled && !busy && !recording;
 
   useEffect(() => {
@@ -606,6 +625,34 @@ export function MessageComposer({
               )}
             </GatedButton>
           </div>
+        </div>
+      ) : replyLocked ? (
+        <div className="flex flex-col items-stretch gap-2 rounded-xl border border-border bg-muted/40 px-4 py-4">
+          {unassigned ? (
+            <>
+              <p className="text-center text-xs text-muted-foreground">
+                Self-assign this chat to reply. Private notes are still available above.
+              </p>
+              <Button
+                type="button"
+                className="w-full"
+                disabled={!onSelfAssign || selfAssigning || readOnly}
+                onClick={() => void onSelfAssign?.()}
+              >
+                {selfAssigning ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <UserPlus className="mr-2 h-4 w-4" />
+                )}
+                Self-assign to reply
+              </Button>
+            </>
+          ) : (
+            <p className="text-center text-xs text-muted-foreground">
+              Assigned to {assigneeName?.trim() || "another agent"} — use Assign
+              in the header to take over.
+            </p>
+          )}
         </div>
       ) : (
         <div

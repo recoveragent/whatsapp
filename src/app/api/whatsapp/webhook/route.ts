@@ -631,6 +631,8 @@ async function processMessage(
   }
   if (reopened) {
     convUpdate.status = 'open'
+    // Fresh claim required — previous assignee does not keep the chat.
+    convUpdate.assigned_agent_id = null
   }
 
   const { error: convError } = await supabaseAdmin()

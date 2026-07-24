@@ -214,6 +214,12 @@ export default function InboxPage() {
           });
         }
 
+        // System microcopy (status/assign) belongs in the timeline only —
+        // never replace the conversation list preview with it.
+        if (newMsg.content_type === "system") {
+          return;
+        }
+
         // Update conversation list preview. We need to know *synchronously*
         // whether the conv is already in state to decide between patching
         // the preview and triggering a hydrate — see the comment on

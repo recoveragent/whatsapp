@@ -225,6 +225,7 @@ export function MessageThread({
   }, [isRefreshing, onRefresh]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
   const [privateNotes, setPrivateNotes] = useState<ConversationPrivateNote[]>([]);
+  const [selfAssigning, setSelfAssigning] = useState(false);
 
   const fetchPrivateNotes = useCallback(async (convId: string) => {
     try {
@@ -841,19 +842,26 @@ export function MessageThread({
     async (agentId: string | null) => {
       if (!conversation) return;
 
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("conversations")
-        .update({ assigned_agent_id: agentId })
-        .eq("id", conversation.id);
+      const res = await fetch(`/api/inbox/conversations/${conversation.id}/assign`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigned_agent_id: agentId }),
+      });
 
-      if (error) {
-        console.error("Failed to update assignment:", error);
-        toast.error("Failed to update assignment");
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        console.error("Failed to update assignment:", body?.error);
+        toast.error(body?.error ?? "Failed to update assignment");
         return;
       }
 
-      onAssignChange(conversation.id, agentId);
+      const updated = (await res.json()) as Conversation & {
+        system_message?: Message | null;
+      };
+      onAssignChange(conversation.id, updated.assigned_agent_id ?? null);
+      if (updated.system_message) {
+        onNewMessage(updated.system_message);
+      }
 
       if (agentId && contact?.id && accountId) {
         void fetch("/api/crm/triggers", {
@@ -868,8 +876,18 @@ export function MessageThread({
         });
       }
     },
-    [conversation, contact, accountId, onAssignChange],
+    [conversation, contact, accountId, onAssignChange, onNewMessage],
   );
+
+  const handleSelfAssign = useCallback(async () => {
+    if (!user?.id) return;
+    setSelfAssigning(true);
+    try {
+      await handleAssignChange(user.id);
+    } finally {
+      setSelfAssigning(false);
+    }
+  }, [user?.id, handleAssignChange]);
 
   const timeline = useMemo(
     () => buildTimeline(messages, privateNotes),
@@ -1198,6 +1216,11 @@ export function MessageThread({
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
         onComposerPendingChange={onComposerPendingChange}
+        assignedAgentId={assignedAgentId}
+        currentUserId={user?.id ?? null}
+        assigneeName={currentAssignee?.full_name ?? null}
+        onSelfAssign={handleSelfAssign}
+        selfAssigning={selfAssigning}
       />
 
       <TemplatePicker

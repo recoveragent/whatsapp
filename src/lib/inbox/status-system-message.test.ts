@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatConversationStatusCopy } from './status-system-message'
+import {
+  formatAssignmentCopy,
+  formatConversationStatusCopy,
+} from './status-system-message'
 
 describe('formatConversationStatusCopy', () => {
   it('names the agent for open/closed/follow-up', () => {
@@ -37,5 +40,23 @@ describe('formatConversationStatusCopy', () => {
     expect(
       formatConversationStatusCopy('closed', { kind: 'flow' }),
     ).toBe('Chat closed by flow')
+  })
+})
+
+describe('formatAssignmentCopy', () => {
+  it('formats self-assign, assign-to-other, and unassign', () => {
+    expect(formatAssignmentCopy({ kind: 'self', actorName: 'Priya' })).toBe(
+      'Self-assigned by Priya',
+    )
+    expect(
+      formatAssignmentCopy({
+        kind: 'assign',
+        actorName: 'Priya',
+        assigneeName: 'Ravi',
+      }),
+    ).toBe('Assigned to Ravi by Priya')
+    expect(formatAssignmentCopy({ kind: 'unassign', actorName: 'Priya' })).toBe(
+      'Unassigned by Priya',
+    )
   })
 })
