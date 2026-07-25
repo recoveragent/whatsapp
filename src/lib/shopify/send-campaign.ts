@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { engineSendTemplate } from '@/lib/automations/meta-send';
 import { getCampaignDefinition } from './campaign-defaults';
 import { buildTemplateParams } from './extract-context';
-import { ensureConversation, ensureShopifyContact } from './ensure-contact';
+import { ensureConversation, ensureShopifyContact, closeOpenConversationIfEmpty } from './ensure-contact';
 import type {
   ShopifyCampaignRow,
   ShopifyCampaignType,
@@ -139,6 +139,7 @@ export async function sendShopifyCampaign(args: {
       status: 'failed',
       error_message: message,
     });
+    await closeOpenConversationIfEmpty(db, conversation.id);
     return { ok: false, error: message };
   }
 }

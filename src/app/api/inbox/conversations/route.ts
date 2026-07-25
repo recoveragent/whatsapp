@@ -39,6 +39,7 @@ export async function POST(req: Request) {
       ctx.accountId,
       ctx.userId,
       contact.id,
+      { createStatus: 'open' },
     );
     if (!conv) {
       return NextResponse.json({ error: 'Could not create conversation' }, { status: 500 });

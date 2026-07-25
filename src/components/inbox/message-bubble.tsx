@@ -274,9 +274,10 @@ function MessageContent({ message }: { message: Message }) {
     case "template":
       return (
         <div>
-          <span className="mb-1 inline-flex items-center gap-1 rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+          <span className="mb-1 inline-flex items-center gap-1 rounded bg-black/15 px-1.5 py-0.5 text-[10px] font-medium opacity-90">
             <LayoutTemplate className="h-3 w-3" />
             Template
+            {message.template_name ? ` · ${message.template_name}` : ""}
           </span>
           {message.content_text && (
             <p className="mt-1 whitespace-pre-wrap break-words text-sm">
@@ -392,6 +393,21 @@ export function MessageBubble({
           )}
         </div>
       </div>
+      {message.status === "failed" && (
+        <p
+          className={cn(
+            "mt-1 max-w-[min(100%,28rem)] text-[11px] leading-snug text-red-600 dark:text-red-400",
+            isAgent ? "text-right" : "text-left",
+          )}
+          title={
+            message.error_message ||
+            "Delivery failed. Meta did not provide a reason for this message."
+          }
+        >
+          {message.error_message ||
+            "Delivery failed — reason not recorded for this message. New failures will show Meta’s error here."}
+        </p>
+      )}
       {reactions && reactions.length > 0 && onToggleReaction && (
         <MessageReactions
           reactions={reactions}

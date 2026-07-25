@@ -226,6 +226,8 @@ export interface Message {
   template_name?: string;
   message_id?: string;
   status: MessageStatus;
+  /** Meta delivery-failure reason (status webhook `errors`), when status is failed. */
+  error_message?: string | null;
   created_at: string;
   reply_to_message_id?: string;
   /**

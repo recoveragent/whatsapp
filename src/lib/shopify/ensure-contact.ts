@@ -56,12 +56,26 @@ export async function ensureShopifyContact(
   return created;
 }
 
+/**
+ * Find or create a conversation for a contact.
+ *
+ * `createStatus` applies only when inserting a new row (existing
+ * conversations are returned unchanged).
+ *
+ * - Shopify campaigns / flows / outbound automations: `'closed'` so
+ *   order confirmations don't crowd the Open inbox until the customer
+ *   replies (inbound webhook reopens closed/followup).
+ * - Agent "New message" inbox: `'open'`.
+ */
 export async function ensureConversation(
   db: SupabaseClient,
   accountId: string,
   ownerUserId: string,
   contactId: string,
+  opts?: { createStatus?: 'open' | 'closed' | 'pending' | 'followup' },
 ): Promise<{ id: string } | null> {
+  const createStatus = opts?.createStatus ?? 'closed';
+
   const { data: existing } = await db
     .from('conversations')
     .select('id')
@@ -77,6 +91,7 @@ export async function ensureConversation(
       account_id: accountId,
       user_id: ownerUserId,
       contact_id: contactId,
+      status: createStatus,
     })
     .select('id')
     .single();
@@ -87,4 +102,39 @@ export async function ensureConversation(
   }
 
   return created;
+}
+
+/**
+ * If a conversation is still `open` but has no messages, close it.
+ * Used after Shopify outbound attempts that created a thread without
+ * landing a WhatsApp message (failed send, no matching flow, etc.).
+ */
+export async function closeOpenConversationIfEmpty(
+  db: SupabaseClient,
+  conversationId: string,
+): Promise<void> {
+  const { data: conv, error: convErr } = await db
+    .from('conversations')
+    .select('id, status')
+    .eq('id', conversationId)
+    .maybeSingle();
+
+  if (convErr || !conv || conv.status !== 'open') return;
+
+  const { count, error: countErr } = await db
+    .from('messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('conversation_id', conversationId);
+
+  if (countErr || (count ?? 0) > 0) return;
+
+  const { error: updateErr } = await db
+    .from('conversations')
+    .update({ status: 'closed', updated_at: new Date().toISOString() })
+    .eq('id', conversationId)
+    .eq('status', 'open');
+
+  if (updateErr) {
+    console.error('[shopify] closeOpenConversationIfEmpty failed:', updateErr);
+  }
 }

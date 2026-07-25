@@ -74,6 +74,13 @@ interface WhatsAppWebhookEntry {
         status: string
         timestamp: string
         recipient_id: string
+        errors?: Array<{
+          code?: number
+          title?: string
+          message?: string
+          error_data?: { details?: string }
+          href?: string
+        }>
       }>
     }
     field: string
@@ -326,17 +333,63 @@ function isValidStatusTransition(current: string, incoming: string): boolean {
   return ii > ci
 }
 
+type MetaStatusError = {
+  code?: number
+  title?: string
+  message?: string
+  error_data?: { details?: string }
+  href?: string
+}
+
+/** Compact, agent-readable summary of Meta's status-webhook errors. */
+function formatMetaStatusErrors(errors: MetaStatusError[] | undefined): string | null {
+  if (!errors?.length) return null
+  const parts = errors
+    .map((e) => {
+      const bits: string[] = []
+      if (e.code != null) bits.push(`[${e.code}]`)
+      if (e.title) bits.push(e.title)
+      const details = e.error_data?.details ?? e.message
+      if (details && details !== e.title) bits.push(details)
+      return bits.join(' ').trim()
+    })
+    .filter(Boolean)
+  return parts.length > 0 ? parts.join('; ') : null
+}
+
 async function handleStatusUpdate(status: {
   id: string
   status: string
   timestamp: string
   recipient_id: string
+  errors?: MetaStatusError[]
 }) {
+  const failureReason =
+    formatMetaStatusErrors(status.errors) ??
+    (status.status === 'failed'
+      ? 'Delivery failed (Meta sent no error detail)'
+      : null)
+
+  // When Meta reports a `failed` status it usually attaches an `errors`
+  // array (code / title / details). Persist that on the message so the
+  // inbox can show why the send failed.
+  if (status.status === 'failed') {
+    console.error(
+      `[webhook][send-failed] message_id=${status.id} recipient=${status.recipient_id} ` +
+        `reason=${JSON.stringify(failureReason)} raw_errors=${JSON.stringify(status.errors ?? [])}`,
+    )
+  }
+
   // 1) Mirror onto messages (legacy behavior) — Meta's status values
   //    already match the CHECK constraint on messages.status.
+  const msgUpdate: Record<string, unknown> = { status: status.status }
+  if (status.status === 'failed' && failureReason) {
+    msgUpdate.error_message = failureReason
+  }
+
   const { error: msgErr } = await supabaseAdmin()
     .from('messages')
-    .update({ status: status.status })
+    .update(msgUpdate)
     .eq('message_id', status.id)
 
   if (msgErr) {

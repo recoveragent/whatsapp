@@ -26,14 +26,37 @@ export interface MetaPhoneInfo {
 }
 
 interface MetaErrorResponse {
-  error?: { message?: string; code?: number; type?: string }
+  error?: {
+    message?: string
+    code?: number
+    error_subcode?: number
+    type?: string
+    error_data?: { details?: string }
+    fbtrace_id?: string
+  }
 }
 
 async function throwMetaError(response: Response, fallback: string): Promise<never> {
   let message = fallback
   try {
     const data = (await response.json()) as MetaErrorResponse
-    if (data.error?.message) message = data.error.message
+    const err = data.error
+    if (err) {
+      // Compose the most useful single line: Meta's headline message plus
+      // `error_data.details` (usually the actionable part, e.g. "template
+      // name does not exist in the translation" or a param-count mismatch)
+      // and the error code so it can be looked up in Meta's docs.
+      const parts: string[] = []
+      if (err.message) parts.push(err.message)
+      if (err.error_data?.details && err.error_data.details !== err.message) {
+        parts.push(err.error_data.details)
+      }
+      const codeBits = [err.code, err.error_subcode].filter(Boolean).join('/')
+      if (codeBits) parts.push(`(code ${codeBits})`)
+      if (parts.length > 0) message = parts.join(' — ')
+      // Full payload to server logs for anything the summary line drops.
+      console.error('[meta-api] send rejected:', JSON.stringify(err))
+    }
   } catch {
     // response body wasn't JSON — keep the fallback
   }
