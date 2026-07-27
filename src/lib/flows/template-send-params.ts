@@ -4,6 +4,7 @@
  * Keys in the config `variables` record:
  *   "1", "2", …       → body {{N}}
  *   "header_1"        → text header {{1}}
+ *   "header_media"    → IMAGE/VIDEO/DOCUMENT header media URL
  *   "button_0", …     → URL / COPY_CODE button overrides
  */
 
@@ -24,6 +25,11 @@ export function buildSendTimeParamsFromVariables(
   const headerRaw = variables.header_1
   const headerText = headerRaw ? interpolate(String(headerRaw)) : undefined
 
+  const headerMediaRaw = variables.header_media
+  const headerMediaUrl = headerMediaRaw
+    ? interpolate(String(headerMediaRaw)).trim() || undefined
+    : undefined
+
   const buttonParams: Record<number, string> = {}
   for (const [k, v] of Object.entries(variables)) {
     const m = k.match(/^button_(\d+)$/)
@@ -33,6 +39,7 @@ export function buildSendTimeParamsFromVariables(
   return {
     body: body.length > 0 ? body : undefined,
     headerText,
+    headerMediaUrl,
     buttonParams:
       Object.keys(buttonParams).length > 0 ? buttonParams : undefined,
   }

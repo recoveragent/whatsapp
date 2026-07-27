@@ -154,6 +154,14 @@ export async function executeExtendedNode(
           c.variables,
           interpolate,
         )
+        // Shopify triggers populate vars.product_image; use it for IMAGE
+        // headers when the node config has no explicit header_media mapping.
+        if (!messageParams.headerMediaUrl) {
+          const productImage = vars.product_image
+          if (typeof productImage === 'string' && productImage.trim()) {
+            messageParams.headerMediaUrl = productImage.trim()
+          }
+        }
         const { whatsapp_message_id } = await engineSendTemplate({
           accountId: run.account_id,
           userId: run.user_id,

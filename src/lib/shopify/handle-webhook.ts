@@ -7,6 +7,10 @@ import {
   contextFromFulfillment,
   contextFromOrder,
 } from './extract-context';
+import {
+  enrichCheckoutContextImage,
+  enrichOrderContextImage,
+} from './enrich-product-image';
 import { loadCampaign, sendShopifyCampaign } from './send-campaign';
 import { syncShopifyOrder } from './sync-order';
 import {
@@ -85,7 +89,13 @@ export async function handleShopifyWebhook(args: {
           fulfillment_status: order.fulfillment_status,
         });
         if (trigger) {
-          const ctx = contextFromOrder(order, shopName);
+          let ctx = contextFromOrder(order, shopName);
+          ctx = await enrichOrderContextImage({
+            context: ctx,
+            order,
+            shopDomain: config.shop_domain,
+            encryptedAccessToken: config.access_token,
+          });
           const outcome = await dispatchShopifyFlows({
             db: args.db,
             accountId: config.account_id,
@@ -126,7 +136,13 @@ async function handleOrderCreate(
 ) {
   await syncShopifyOrder(db, config.account_id, order, shopName);
 
-  const context = contextFromOrder(order, shopName);
+  let context = contextFromOrder(order, shopName);
+  context = await enrichOrderContextImage({
+    context,
+    order,
+    shopDomain: config.shop_domain,
+    encryptedAccessToken: config.access_token,
+  });
 
   const campaign = await loadCampaign(db, config.account_id, 'order_confirmation');
   if (campaign) {
@@ -177,7 +193,15 @@ async function handleFulfillment(
     }
   }
 
-  const context = contextFromFulfillment(fulfillment, order, shopName);
+  let context = contextFromFulfillment(fulfillment, order, shopName);
+  if (order) {
+    context = await enrichOrderContextImage({
+      context,
+      order,
+      shopDomain: config.shop_domain,
+      encryptedAccessToken: config.access_token,
+    });
+  }
 
   const campaign = await loadCampaign(db, config.account_id, 'fulfillment_update');
   if (campaign) {
@@ -301,7 +325,7 @@ export async function processDueAbandonedCheckouts(db: SupabaseClient): Promise<
 
     const { data: config } = await db
       .from('shopify_config')
-      .select('user_id, shop_domain, status')
+      .select('user_id, shop_domain, status, access_token')
       .eq('account_id', accountId)
       .maybeSingle();
 
@@ -323,7 +347,15 @@ export async function processDueAbandonedCheckouts(db: SupabaseClient): Promise<
     }
 
     const shopName = (config.shop_domain as string).replace('.myshopify.com', '');
-    const context = contextFromCheckout(checkout, shopName);
+    let context = contextFromCheckout(checkout, shopName);
+    if (config.access_token) {
+      context = await enrichCheckoutContextImage({
+        context,
+        checkout,
+        shopDomain: config.shop_domain as string,
+        encryptedAccessToken: config.access_token as string,
+      });
+    }
 
     const result = await sendShopifyCampaign({
       db,

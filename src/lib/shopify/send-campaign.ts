@@ -117,6 +117,9 @@ export async function sendShopifyCampaign(args: {
       templateName: campaign.template_name,
       language: campaign.template_language,
       params,
+      messageParams: context.productImage
+        ? { body: params, headerMediaUrl: context.productImage }
+        : undefined,
     });
 
     await db.from('shopify_message_log').insert({

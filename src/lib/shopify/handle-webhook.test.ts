@@ -14,12 +14,16 @@ const {
   sendShopifyCampaign,
   dispatchShopifyFlows,
   fetchOrder,
+  fetchFirstOrderProductImageUrl,
+  fetchProductImageUrl,
 } = vi.hoisted(() => ({
   syncShopifyOrder: vi.fn(),
   loadCampaign: vi.fn(),
   sendShopifyCampaign: vi.fn(),
   dispatchShopifyFlows: vi.fn(),
   fetchOrder: vi.fn(),
+  fetchFirstOrderProductImageUrl: vi.fn().mockResolvedValue(null),
+  fetchProductImageUrl: vi.fn().mockResolvedValue(null),
 }))
 
 vi.mock('./sync-order', () => ({ syncShopifyOrder }))
@@ -31,7 +35,11 @@ vi.mock('@/lib/flows/shopify-dispatch', async (importOriginal) => {
     dispatchShopifyFlows,
   }
 })
-vi.mock('./admin-api', () => ({ fetchOrder }))
+vi.mock('./admin-api', () => ({
+  fetchOrder,
+  fetchFirstOrderProductImageUrl,
+  fetchProductImageUrl,
+}))
 vi.mock('@/lib/whatsapp/encryption', () => ({ decrypt: vi.fn(() => 'test-token') }))
 
 import { handleShopifyWebhook } from './handle-webhook'

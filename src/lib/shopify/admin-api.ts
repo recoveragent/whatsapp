@@ -156,6 +156,83 @@ export async function fetchOrder(
   return data.order;
 }
 
+/**
+ * Public image URL for a product (featured / first image).
+ * REST order webhooks omit line-item images — callers use this fallback.
+ */
+export async function fetchProductImageUrl(
+  shopDomain: string,
+  accessToken: string,
+  productId: string | number,
+): Promise<string | null> {
+  const data = await shopifyFetch<{
+    product?: {
+      image?: { src?: string } | null;
+      images?: Array<{ src?: string }>;
+    };
+  }>(shopDomain, accessToken, `/products/${productId}.json`);
+
+  const src =
+    data.product?.image?.src?.trim() ||
+    data.product?.images?.find((img) => img.src?.trim())?.src?.trim() ||
+    null;
+  return src || null;
+}
+
+/**
+ * First line-item image on an order via GraphQL (image → variant → product).
+ * Prefer this when an order id is available; REST order payloads lack images.
+ */
+export async function fetchFirstOrderProductImageUrl(
+  shopDomain: string,
+  accessToken: string,
+  orderId: string | number,
+): Promise<string | null> {
+  const gid = `gid://shopify/Order/${orderId}`;
+  try {
+    const data = await shopifyGraphql<{
+      data?: {
+        order?: {
+          lineItems?: {
+            nodes?: Array<{
+              image?: { url?: string } | null;
+              variant?: { image?: { url?: string } | null } | null;
+              product?: { featuredImage?: { url?: string } | null } | null;
+            }>;
+          };
+        } | null;
+      };
+    }>(
+      shopDomain,
+      accessToken,
+      `query ($id: ID!) {
+        order(id: $id) {
+          lineItems(first: 5) {
+            nodes {
+              image { url }
+              variant { image { url } }
+              product { featuredImage { url } }
+            }
+          }
+        }
+      }`,
+      { id: gid },
+    );
+
+    for (const node of data.data?.order?.lineItems?.nodes ?? []) {
+      const url =
+        node.image?.url?.trim() ||
+        node.variant?.image?.url?.trim() ||
+        node.product?.featuredImage?.url?.trim() ||
+        null;
+      if (url) return url;
+    }
+  } catch (err) {
+    console.warn('[shopify] fetchFirstOrderProductImageUrl failed:', orderId, err);
+  }
+  return null;
+}
+
 function parseShopifyGid(gid: string): string | null {
   const match = gid.match(/\/(\d+)$/);
   return match?.[1] ?? null;

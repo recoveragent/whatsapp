@@ -69,6 +69,13 @@ function bodyPlaceholders(body: string): string[] {
     .map((m) => m.replace(/^\{\{|\}\}$/g, ""));
 }
 
+const MEDIA_HEADER_TYPES = ["image", "video", "document"] as const;
+type MediaHeaderType = (typeof MEDIA_HEADER_TYPES)[number];
+
+function isMediaHeaderType(value: unknown): value is MediaHeaderType {
+  return MEDIA_HEADER_TYPES.includes(value as MediaHeaderType);
+}
+
 function renderPreviewBody(
   body: string,
   variables: Record<string, string>,
@@ -185,6 +192,37 @@ export function SendTemplateFields({
     [selectedTemplate],
   );
 
+  const mediaHeaderType = isMediaHeaderType(selectedTemplate?.header_type)
+    ? selectedTemplate!.header_type
+    : null;
+
+  // Seed header media for IMAGE/VIDEO/DOCUMENT templates. Prefer the
+  // Shopify product image token when available; otherwise reuse the
+  // template sample URL (same idea as broadcast personalization).
+  useEffect(() => {
+    if (!selectedTemplate || !mediaHeaderType) return;
+    if (variables.header_media?.trim()) return;
+
+    const hasProductImage = variableGroups.some((g) =>
+      g.options.some((o) => o.token.includes("vars.product_image")),
+    );
+    const seed = hasProductImage
+      ? "{{ vars.product_image }}"
+      : selectedTemplate.header_media_url?.trim() || "";
+    if (!seed) return;
+
+    onChange({
+      template_name: templateName,
+      language: lang,
+      variables: { ...variables, header_media: seed },
+      buttons,
+      next_node_key: nextNodeKey,
+    });
+    // Only re-run when the template / trigger vars change — avoid
+    // clobbering a URL the user already cleared or edited.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaHeaderType, selectedTemplate?.id, variableGroups]);
+
   const buttonBranches = useMemo(
     () =>
       selectedTemplate
@@ -281,7 +319,12 @@ export function SendTemplateFields({
   };
 
   const insertToken = (token: string) => {
-    const field = activeField ?? placeholders[0] ?? "header_1";
+    const field =
+      activeField ??
+      placeholders[0] ??
+      (isMediaHeaderType(selectedTemplate?.header_type)
+        ? "header_media"
+        : "header_1");
     if (!field) return;
     onChange({
       template_name: templateName,
@@ -403,6 +446,34 @@ export function SendTemplateFields({
                   )}
                 </p>
               )}
+            {isMediaHeaderType(selectedTemplate.header_type) && (
+              <div className="mb-2">
+                <Badge
+                  variant="outline"
+                  className="mb-1.5 border-primary/30 text-[10px] uppercase text-primary"
+                >
+                  {selectedTemplate.header_type} header
+                </Badge>
+                {selectedTemplate.header_type === "image" &&
+                  (variables.header_media?.trim() ||
+                    selectedTemplate.header_media_url) && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={
+                        variables.header_media?.match(
+                          /^\{\{\s*vars\.[\w.]+\s*\}\}$/,
+                        )
+                          ? selectedTemplate.header_media_url ?? undefined
+                          : variables.header_media?.trim() ||
+                            selectedTemplate.header_media_url ||
+                            undefined
+                      }
+                      alt="Header preview"
+                      className="max-h-28 rounded border border-border object-contain"
+                    />
+                  )}
+              </div>
+            )}
             <p className="whitespace-pre-wrap text-sm text-foreground">
               {renderPreviewBody(selectedTemplate.body_text, variables)}
             </p>
@@ -503,6 +574,38 @@ export function SendTemplateFields({
                   </div>
                 ))}
 
+                {mediaHeaderType && (
+                  <div>
+                    <label className="mb-1 block text-xs text-muted-foreground">
+                      Header media URL ({mediaHeaderType})
+                    </label>
+                    <Input
+                      value={variables.header_media ?? ""}
+                      onFocus={() => setActiveField("header_media")}
+                      onChange={(e) =>
+                        onChange({
+                          template_name: templateName,
+                          language: lang,
+                          variables: {
+                            ...variables,
+                            header_media: e.target.value,
+                          },
+                        })
+                      }
+                      placeholder="{{ vars.product_image }} or https://…"
+                      className={cn(
+                        "bg-muted font-mono text-xs",
+                        activeField === "header_media" && "ring-1 ring-primary",
+                      )}
+                    />
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      Public image URL sent as the template header. Map{" "}
+                      <span className="font-mono">Product image</span> from
+                      trigger attributes for Shopify orders.
+                    </p>
+                  </div>
+                )}
+
                 {selectedTemplate.header_type === "text" &&
                   selectedTemplate.header_content &&
                   extractVariableIndices(selectedTemplate.header_content).length > 0 && (
@@ -574,6 +677,46 @@ export function SendTemplateFields({
                 )}
               </div>
             )}
+
+          {placeholders.length === 0 && mediaHeaderType && (
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_11rem]">
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">
+                  Header media URL ({mediaHeaderType})
+                </label>
+                <Input
+                  value={variables.header_media ?? ""}
+                  onFocus={() => setActiveField("header_media")}
+                  onChange={(e) =>
+                    onChange({
+                      template_name: templateName,
+                      language: lang,
+                      variables: {
+                        ...variables,
+                        header_media: e.target.value,
+                      },
+                    })
+                  }
+                  placeholder="{{ vars.product_image }} or https://…"
+                  className={cn(
+                    "bg-muted font-mono text-xs",
+                    activeField === "header_media" && "ring-1 ring-primary",
+                  )}
+                />
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Public image URL sent as the template header. Map{" "}
+                  <span className="font-mono">Product image</span> from trigger
+                  attributes for Shopify orders.
+                </p>
+              </div>
+              {variableGroups.length > 0 && (
+                <TemplateVariablePicker
+                  groups={variableGroups}
+                  onInsert={insertToken}
+                />
+              )}
+            </div>
+          )}
 
           {hasQuickReplies && allNodes.length > 0 && (
             <div className="space-y-2">

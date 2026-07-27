@@ -13,6 +13,7 @@ function contextToVars(ctx: ShopifyEventContext): Record<string, unknown> {
     order_number: ctx.orderNumber,
     order_total: ctx.orderTotal,
     order_items: ctx.orderItems,
+    product_image: ctx.productImage,
     shipping_address: ctx.shippingAddress,
     tracking_number: ctx.trackingNumber,
     tracking_url: ctx.trackingUrl,

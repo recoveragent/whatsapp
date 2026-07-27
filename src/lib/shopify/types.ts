@@ -8,6 +8,7 @@ export type ShopifyVariableKey =
   | 'order_number'
   | 'order_total'
   | 'order_items'
+  | 'product_image'
   | 'shipping_address'
   | 'tracking_number'
   | 'tracking_url'
@@ -70,6 +71,8 @@ export interface ShopifyEventContext {
   orderNumber: string | null;
   orderTotal: string | null;
   orderItems: string | null;
+  /** Public URL of the first line item's product image (for IMAGE headers). */
+  productImage: string | null;
   /** Formatted shipping / delivery address for templates. */
   shippingAddress: string | null;
   trackingNumber: string | null;
@@ -80,6 +83,18 @@ export interface ShopifyEventContext {
   financialStatus: string | null;
   shopName: string;
   resourceKey: string;
+}
+
+/** Subset of line-item fields we read from order/checkout webhooks. */
+export interface ShopifyLineItemFields {
+  name?: string;
+  title?: string;
+  quantity?: number;
+  product_id?: number | string | null;
+  variant_id?: number | string | null;
+  /** Present on some payloads / GraphQL-shaped items — not on REST order webhooks. */
+  image?: { src?: string; url?: string } | null;
+  image_url?: string | null;
 }
 
 export interface ShopifyOrderPayload {
@@ -94,7 +109,7 @@ export interface ShopifyOrderPayload {
   payment_gateway_names?: string[];
   tags?: string;
   created_at?: string;
-  line_items?: Array<{ name?: string; title?: string; quantity?: number }>;
+  line_items?: ShopifyLineItemFields[];
   customer?: {
     first_name?: string;
     last_name?: string;
@@ -122,7 +137,7 @@ export interface ShopifyCheckoutPayload {
   total_price?: string;
   currency?: string;
   completed_at?: string | null;
-  line_items?: Array<{ title?: string; quantity?: number }>;
+  line_items?: ShopifyLineItemFields[];
   customer?: {
     first_name?: string;
     last_name?: string;

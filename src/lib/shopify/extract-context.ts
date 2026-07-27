@@ -3,6 +3,7 @@ import type {
   ShopifyCheckoutPayload,
   ShopifyEventContext,
   ShopifyFulfillmentPayload,
+  ShopifyLineItemFields,
   ShopifyOrderPayload,
   ShopifyVariableKey,
 } from './types';
@@ -48,7 +49,7 @@ export function extractOrderEmail(order: ShopifyOrderPayload): string | null {
 
 /** Comma-joined line items for WhatsApp template vars (all items). */
 function formatLineItems(
-  items: Array<{ name?: string; title?: string; quantity?: number }> | undefined,
+  items: ShopifyLineItemFields[] | undefined,
 ): string | null {
   if (!items?.length) return null;
   return items
@@ -58,6 +59,35 @@ function formatLineItems(
       return qty > 1 ? `${label} ×${qty}` : label;
     })
     .join(', ');
+}
+
+/** First product image URL already present on line items (rare on REST webhooks). */
+export function imageUrlFromLineItems(
+  items: ShopifyLineItemFields[] | undefined,
+): string | null {
+  if (!items?.length) return null;
+  for (const item of items) {
+    const src =
+      (typeof item.image_url === 'string' && item.image_url.trim()) ||
+      (typeof item.image?.src === 'string' && item.image.src.trim()) ||
+      (typeof item.image?.url === 'string' && item.image.url.trim()) ||
+      null;
+    if (src) return src;
+  }
+  return null;
+}
+
+/** First line item with a product_id (for Admin API image lookup). */
+export function firstProductIdFromLineItems(
+  items: ShopifyLineItemFields[] | undefined,
+): string | null {
+  if (!items?.length) return null;
+  for (const item of items) {
+    if (item.product_id != null && String(item.product_id).trim()) {
+      return String(item.product_id);
+    }
+  }
+  return null;
 }
 
 function formatMoney(amount: string | undefined, currency: string | undefined): string | null {
@@ -110,6 +140,7 @@ export function contextFromOrder(
     orderNumber: order.name ?? (order.order_number != null ? `#${order.order_number}` : null),
     orderTotal: formatMoney(order.total_price, order.currency),
     orderItems: formatLineItems(order.line_items),
+    productImage: imageUrlFromLineItems(order.line_items),
     shippingAddress:
       formatShippingAddress(order.shipping_address) ||
       formatShippingAddress(order.billing_address),
@@ -139,6 +170,7 @@ export function contextFromCheckout(
     orderNumber: null,
     orderTotal: formatMoney(checkout.total_price, checkout.currency),
     orderItems: formatLineItems(checkout.line_items),
+    productImage: imageUrlFromLineItems(checkout.line_items),
     shippingAddress:
       formatShippingAddress(checkout.shipping_address) ||
       formatShippingAddress(checkout.billing_address),
@@ -164,6 +196,7 @@ export function contextFromFulfillment(
     orderNumber: null,
     orderTotal: null,
     orderItems: null,
+    productImage: null,
     shippingAddress: null,
     trackingNumber: null,
     trackingUrl: null,
@@ -214,6 +247,8 @@ function resolveVariable(key: ShopifyVariableKey, ctx: ShopifyEventContext): str
       return ctx.orderTotal ?? '';
     case 'order_items':
       return ctx.orderItems ?? '';
+    case 'product_image':
+      return ctx.productImage ?? '';
     case 'shipping_address':
       return ctx.shippingAddress ?? '';
     case 'tracking_number':
