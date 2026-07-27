@@ -1,43 +1,18 @@
 "use client";
 
 /**
- * View-switcher for the flow editor.
+ * Flow editor shell — header + canvas only.
  *
- * Renders a small Canvas / List pill above whichever view is active,
- * and conditionally mounts `<FlowCanvas>` or `<FlowBuilder>`. Why a
- * separate component:
- *   - The page itself stays trivially small (loading + error + this).
- *   - Either view can stay unaware of the other — they share data
- *     (`{flow, nodes}`) and nothing else.
- *
- * View choice persists per-browser via localStorage so a power user
- * who prefers the list isn't fighting the default on every load.
- * Canvas is the default for everyone else — the original user
- * feedback was that the list shape made flows "hard to understand".
+ * Canvas is the sole editor view (list view and the Canvas/List
+ * switch were removed). Mobile still gets the canvas; zoom/pan
+ * handles small screens better than maintaining a second layout.
  */
 
-import { useEffect, useState } from "react";
-import { LayoutGrid, ListTree } from "lucide-react";
-
-import { FlowBuilder } from "./flow-builder";
 import { FlowCanvas } from "./flow-canvas";
 import { FlowEditorProvider } from "./flow-editor-state";
 import { EditorHeader } from "./header";
 import { ValidationPanel } from "./validation-panel";
-import { cn } from "@/lib/utils";
 import type { FlowRow, FlowNodeRow } from "@/lib/flows/types";
-
-/**
- * Below this viewport width we force list view and hide the toggle.
- * Canvas with drag-to-connect on a phone is unusable — handles are
- * ~10px and live finger drags from one node to another aren't a
- * practical workflow. Matches Tailwind's `md` breakpoint.
- */
-const MOBILE_BREAKPOINT = "(max-width: 767px)";
-
-type View = "canvas" | "list";
-
-const STORAGE_KEY = "wacrm.flowEditor.view";
 
 interface Props {
   initialFlow: FlowRow;
@@ -45,136 +20,17 @@ interface Props {
 }
 
 export function FlowEditorShell({ initialFlow, initialNodes }: Props) {
-  // Read the persisted choice in the useState initializer. Safe even
-  // though this is a client component because the parent page only
-  // mounts us AFTER a client-side fetch resolves — there's no SSR
-  // pass for this subtree, so no hydration mismatch to worry about.
-  // Default to `canvas` (the new default) when nothing is saved.
-  const [view, setView] = useState<View>(() => {
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (saved === "canvas" || saved === "list") return saved;
-    } catch {
-      // Private browsing / disabled storage — fall through to default.
-    }
-    return "canvas";
-  });
-
-  // Live mobile detection. We don't render canvas under the
-  // breakpoint regardless of `view` — but we keep `view` itself
-  // intact so the user's preference comes back when they widen
-  // again (e.g. rotating a tablet, resizing a window).
-  const isMobile = useMatchMedia(MOBILE_BREAKPOINT);
-  const effectiveView: View = isMobile ? "list" : view;
-
-  const choose = (next: View) => {
-    setView(next);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      // ignore
-    }
-  };
-
   return (
     <FlowEditorProvider initialFlow={initialFlow} initialNodes={initialNodes}>
-      <div
-        className={cn(
-          "mx-auto flex min-h-0 w-full flex-1 flex-col",
-          effectiveView === "canvas"
-            ? "max-w-none gap-2"
-            : "max-w-4xl gap-4 md:gap-5",
-        )}
-      >
+      <div className="mx-auto flex min-h-0 w-full max-w-none flex-1 flex-col gap-2">
         <div className="shrink-0">
           <EditorHeader />
         </div>
-        {!isMobile && (
-          <div className="flex shrink-0 items-center justify-end">
-            <div
-              role="group"
-              aria-label="Editor view"
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-card p-0.5 text-xs"
-            >
-              <ToggleButton
-                active={effectiveView === "canvas"}
-                onClick={() => choose("canvas")}
-                icon={<LayoutGrid className="h-3 w-3" />}
-                label="Canvas"
-              />
-              <ToggleButton
-                active={effectiveView === "list"}
-                onClick={() => choose("list")}
-                icon={<ListTree className="h-3 w-3" />}
-                label="List"
-              />
-            </div>
-          </div>
-        )}
-
-        <div
-          className={cn(
-            "relative min-h-0",
-            effectiveView === "canvas"
-              ? "flex flex-1 flex-col"
-              : "flex flex-col overflow-y-auto",
-          )}
-        >
-          {effectiveView === "canvas" ? <FlowCanvas /> : <FlowBuilder />}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <FlowCanvas />
           <ValidationPanel overlay />
         </div>
       </div>
     </FlowEditorProvider>
-  );
-}
-
-/**
- * Tiny `useMatchMedia` shim. We could pull in `react-responsive` but
- * this is the only consumer and matchMedia is one of those browser
- * APIs that doesn't need a dependency.
- */
-function useMatchMedia(query: string): boolean {
-  const [matches, setMatches] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia(query).matches;
-  });
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const mql = window.matchMedia(query);
-    const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
-    // Safari < 14 still uses addListener; addEventListener is the
-    // modern path. Both fire identically.
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
-  }, [query]);
-  return matches;
-}
-
-function ToggleButton({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded px-2 py-1 transition-colors",
-        active
-          ? "bg-secondary text-secondary-foreground"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-      )}
-    >
-      {icon}
-      {label}
-    </button>
   );
 }

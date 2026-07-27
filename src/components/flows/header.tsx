@@ -1,18 +1,12 @@
 "use client";
 
 /**
- * Editor header — flow name / description, status badge, dirty
- * indicator, and the action buttons (Save, Activate/Pause, Delete,
- * View runs, Back).
- *
- * Lifted out of flow-builder.tsx so the same header renders above
- * both views in FlowEditorShell. Without this, canvas users had no
- * way to save without toggling to list view.
+ * Editor header — flow name, status badge, dirty indicator, and the
+ * action buttons (Save, Activate/Pause, Delete, View runs, Back).
  *
  * Reads everything from the editor context (`useFlowEditor`) so it
- * stays in sync with whichever view is mutating state, and routes
- * router navigation locally (back to /flows, View runs to
- * /flows/[id]/runs) — those don't belong in the hook.
+ * stays in sync with the canvas mutating state, and routes
+ * navigation locally (back to /flows, View runs to /flows/[id]/runs).
  */
 
 import { useRouter } from "next/navigation";
@@ -148,14 +142,6 @@ export function EditorHeader() {
           </Button>
         </div>
       </div>
-      <Input
-        value={state.description}
-        onChange={(e) =>
-          setState((s) => ({ ...s, description: e.target.value }))
-        }
-        placeholder="Optional description (internal — customers don't see this)"
-        className="bg-card text-sm"
-      />
     </div>
   );
 }
