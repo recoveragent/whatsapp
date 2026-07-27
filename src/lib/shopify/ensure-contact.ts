@@ -105,36 +105,35 @@ export async function ensureConversation(
 }
 
 /**
- * If a conversation is still `open` but has no messages, close it.
- * Used after Shopify outbound attempts that created a thread without
- * landing a WhatsApp message (failed send, no matching flow, etc.).
+ * Delete a conversation that never received any WhatsApp message (and
+ * has no private notes). Used after Shopify outbound attempts that
+ * created a thread without landing a send — empty shells must not
+ * appear in Open or Closed.
  */
-export async function closeOpenConversationIfEmpty(
+export async function deleteConversationIfEmpty(
   db: SupabaseClient,
   conversationId: string,
 ): Promise<void> {
-  const { data: conv, error: convErr } = await db
-    .from('conversations')
-    .select('id, status')
-    .eq('id', conversationId)
-    .maybeSingle();
-
-  if (convErr || !conv || conv.status !== 'open') return;
-
-  const { count, error: countErr } = await db
+  const { count: msgCount, error: msgErr } = await db
     .from('messages')
     .select('id', { count: 'exact', head: true })
     .eq('conversation_id', conversationId);
 
-  if (countErr || (count ?? 0) > 0) return;
+  if (msgErr || (msgCount ?? 0) > 0) return;
 
-  const { error: updateErr } = await db
+  const { count: noteCount, error: noteErr } = await db
+    .from('conversation_private_notes')
+    .select('id', { count: 'exact', head: true })
+    .eq('conversation_id', conversationId);
+
+  if (noteErr || (noteCount ?? 0) > 0) return;
+
+  const { error: deleteErr } = await db
     .from('conversations')
-    .update({ status: 'closed', updated_at: new Date().toISOString() })
-    .eq('id', conversationId)
-    .eq('status', 'open');
+    .delete()
+    .eq('id', conversationId);
 
-  if (updateErr) {
-    console.error('[shopify] closeOpenConversationIfEmpty failed:', updateErr);
+  if (deleteErr) {
+    console.error('[shopify] deleteConversationIfEmpty failed:', deleteErr);
   }
 }

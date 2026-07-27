@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { ensureShopifyContact, ensureConversation, closeOpenConversationIfEmpty } from '@/lib/shopify/ensure-contact'
+import { ensureShopifyContact, ensureConversation, deleteConversationIfEmpty } from '@/lib/shopify/ensure-contact'
 import type { ShopifyEventContext } from '@/lib/shopify/types'
 import { runFlowsForTrigger, type FlowDispatchOutcome } from './dispatch-external'
 import { shopifyTopicToFlowTrigger, type FlowTriggerType } from './trigger-types'
@@ -82,8 +82,8 @@ export async function dispatchShopifyFlows(args: {
   })
 
   // If nothing landed in the thread (no matching flow / send failed),
-  // don't leave a legacy empty Open chat in the inbox.
-  await closeOpenConversationIfEmpty(args.db, conversation.id)
+  // remove the empty shell so it doesn't appear in Open or Closed.
+  await deleteConversationIfEmpty(args.db, conversation.id)
 
   return {
     ok: dispatch.started.length > 0,
