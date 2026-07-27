@@ -20,7 +20,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SettingsPanelHead } from './settings-panel-head';
-import { ShopifyCampaignsPanel } from './shopify-campaigns-panel';
 
 interface AccountContextPayload {
   linked?: boolean;
@@ -211,7 +210,7 @@ export function ShopifyBrandConnection() {
       <section className="animate-in fade-in-50 duration-200">
         <SettingsPanelHead
           title="Shopify"
-          description="Connect your store and automate WhatsApp campaigns."
+          description="Connect your store for order sync and Flows."
         />
         <div className="flex items-center justify-center py-12">
           <Loader2 className="size-6 animate-spin text-primary" />
@@ -249,8 +248,8 @@ export function ShopifyBrandConnection() {
         title="Shopify"
         description={
           configured
-            ? 'Your connected Shopify store and WhatsApp campaign automations.'
-            : 'Connect a custom Shopify app with Client ID and Secret to automate WhatsApp campaigns.'
+            ? 'Your connected Shopify store for order sync and Flows.'
+            : 'Connect a custom Shopify app with Client ID and Secret for order sync and Flows.'
         }
       />
 
@@ -471,7 +470,6 @@ export function ShopifyBrandConnection() {
           </Card>
         )}
 
-        <ShopifyCampaignsPanel canEdit={canEdit} connected={configured && connected} />
       </div>
     </section>
   );
