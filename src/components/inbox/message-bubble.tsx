@@ -21,6 +21,8 @@ interface MessageBubbleProps {
   message: Message;
   /** Pre-computed quote info for messages that reply to another. */
   reply?: { authorLabel: string; preview: string } | null;
+  /** Scroll the thread to the quoted parent message. */
+  onReplyClick?: () => void;
   reactions?: MessageReaction[];
   currentUserId?: string;
   onToggleReaction?: (emoji: string) => void;
@@ -326,6 +328,7 @@ function MessageContent({ message }: { message: Message }) {
 export function MessageBubble({
   message,
   reply,
+  onReplyClick,
   reactions,
   currentUserId,
   onToggleReaction,
@@ -366,6 +369,7 @@ export function MessageBubble({
           <ReplyQuote
             authorLabel={reply.authorLabel}
             preview={reply.preview}
+            onClick={onReplyClick}
             onPrimary={isAgent}
           />
         )}

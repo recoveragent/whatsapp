@@ -20,6 +20,8 @@ interface MessageActionsProps {
   onReply: () => void;
   onReact: (emoji: string) => void;
   children: ReactNode;
+  /** Brief visual pulse after jumping here from a reply quote. */
+  highlighted?: boolean;
 }
 
 /**
@@ -32,6 +34,7 @@ export function MessageActions({
   onReply,
   onReact,
   children,
+  highlighted = false,
 }: MessageActionsProps) {
   // Touch devices have no hover. Long-press fires `contextmenu`; we capture
   // it, suppress the native menu, and pin the toolbar open until the user
@@ -78,9 +81,11 @@ export function MessageActions({
   // in the row no longer reveals the toolbar.
   return (
     <div
+      id={`msg-${message.id}`}
       className={cn(
-        "flex w-full",
+        "flex w-full scroll-mt-4 rounded-2xl transition-shadow duration-500",
         isAgent ? "justify-end" : "justify-start",
+        highlighted && "ring-2 ring-primary/60 ring-offset-2 ring-offset-background",
       )}
       onContextMenu={handleContextMenu}
       onBlur={() => setTouchOpen(false)}

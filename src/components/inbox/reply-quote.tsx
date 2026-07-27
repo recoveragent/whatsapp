@@ -14,6 +14,8 @@ interface ReplyQuoteProps {
   /** Present → renders the composer-chip variant with an X button. Absent →
    *  renders the embedded-in-bubble variant. */
   onDismiss?: () => void;
+  /** Jump to the quoted message in the thread (bubble variant only). */
+  onClick?: () => void;
   /** True when embedded inside an outbound (primary-filled) bubble, so the
    *  quote must read against the primary surface rather than the neutral
    *  foreground — otherwise it goes low-contrast in light mode. */
@@ -24,11 +26,35 @@ export function ReplyQuote({
   authorLabel,
   preview,
   onDismiss,
+  onClick,
   onPrimary = false,
 }: ReplyQuoteProps) {
   const isChip = !!onDismiss;
+  const clickable = !!onClick && !isChip;
+
   return (
     <div
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={
+        clickable
+          ? (e) => {
+              e.stopPropagation();
+              onClick();
+            }
+          : undefined
+      }
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+                onClick();
+              }
+            }
+          : undefined
+      }
       className={cn(
         "flex items-start gap-2 border-l-2 px-2 py-1",
         onPrimary ? "border-primary-foreground/50" : "border-primary",
@@ -37,6 +63,9 @@ export function ReplyQuote({
           : onPrimary
             ? "mb-1.5 rounded-md bg-primary-foreground/15"
             : "mb-1.5 rounded-md bg-background/20",
+        clickable &&
+          "cursor-pointer transition-colors hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+        clickable && onPrimary && "hover:bg-primary-foreground/25",
       )}
     >
       <div className="min-w-0 flex-1 overflow-hidden">
@@ -48,21 +77,25 @@ export function ReplyQuote({
         >
           {authorLabel}
         </div>
-        {/* Wrap the preview instead of truncating to a single line.
-         *  `truncate` (white-space: nowrap) forced the quote onto one
-         *  impossibly-wide line and — because the parent flex chain
-         *  lacked `min-w-0` at every step — pushed the entire inbox
-         *  layout wider, shoving the contact sidebar off-screen.
-         *  `break-words` also wraps long URLs that have no whitespace
-         *  to break on. Issue #165. */}
-        <div className="whitespace-pre-wrap break-words text-xs text-foreground/80">
+        {/* Cap at two visual lines. `break-words` wraps long URLs that have
+         *  no whitespace; without `min-w-0` on the flex chain a long quote
+         *  used to push the inbox layout wider (issue #165). */}
+        <div
+          className={cn(
+            "line-clamp-2 whitespace-pre-wrap break-words text-xs",
+            onPrimary ? "text-primary-foreground/80" : "text-foreground/80",
+          )}
+        >
           {preview}
         </div>
       </div>
       {onDismiss && (
         <button
           type="button"
-          onClick={onDismiss}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDismiss();
+          }}
           aria-label="Cancel reply"
           className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
         >
@@ -73,18 +106,27 @@ export function ReplyQuote({
   );
 }
 
-/** Build the one-line preview text shown inside a reply quote. */
+const MEDIA_CONTENT_TYPES = new Set<Message["content_type"]>([
+  "image",
+  "video",
+  "audio",
+  "document",
+]);
+
+/** Keep only the first two newline-delimited lines of a text preview. */
+function firstTwoLines(text: string): string {
+  const lines = text.split(/\r?\n/);
+  if (lines.length <= 2) return text;
+  return lines.slice(0, 2).join("\n");
+}
+
+/** Build the compact preview text shown inside a reply quote. */
 export function buildReplyPreview(message: Message): string {
-  if (message.content_text) return message.content_text;
+  if (MEDIA_CONTENT_TYPES.has(message.content_type)) {
+    return "Replied to media";
+  }
+  if (message.content_text) return firstTwoLines(message.content_text);
   switch (message.content_type) {
-    case "image":
-      return "[Image]";
-    case "video":
-      return "[Video]";
-    case "audio":
-      return "[Audio]";
-    case "document":
-      return "[Document]";
     case "location":
       return "[Location]";
     case "template":
