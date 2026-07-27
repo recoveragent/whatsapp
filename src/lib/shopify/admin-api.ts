@@ -240,46 +240,59 @@ async function searchCustomerIdsByPhone(
 ): Promise<string[]> {
   const seen = new Set<string>();
 
-  for (const query of shopifyCustomerSearchQueries(phone)) {
-    try {
-      const data = await shopifyFetch<{ customers: ShopifyCustomerSearchHit[] }>(
-        shopDomain,
-        accessToken,
-        `/customers/search.json?query=${encodeURIComponent(query)}&limit=10`,
-      );
-      for (const customer of data.customers ?? []) {
-        const id = String(customer.id ?? '');
-        if (!id) continue;
-        if (customerPhoneMatches(customer, phone) || !customer.phone) {
-          seen.add(id);
-        }
+  const searchResults = await Promise.all(
+    shopifyCustomerSearchQueries(phone).map(async (query) => {
+      try {
+        const data = await shopifyFetch<{ customers: ShopifyCustomerSearchHit[] }>(
+          shopDomain,
+          accessToken,
+          `/customers/search.json?query=${encodeURIComponent(query)}&limit=10`,
+        );
+        return data.customers ?? [];
+      } catch (err) {
+        console.warn('[shopify] customer search failed:', query, err);
+        return [] as ShopifyCustomerSearchHit[];
       }
-    } catch (err) {
-      console.warn('[shopify] customer search failed:', query, err);
+    }),
+  );
+
+  for (const customers of searchResults) {
+    for (const customer of customers) {
+      const id = String(customer.id ?? '');
+      if (!id) continue;
+      if (customerPhoneMatches(customer, phone) || !customer.phone) {
+        seen.add(id);
+      }
     }
   }
 
-  for (const e164 of shopifyPhoneE164Variants(phone)) {
-    try {
-      const data = await shopifyGraphql<{
-        data?: { customer?: { id?: string } | null };
-      }>(
-        shopDomain,
-        accessToken,
-        `query($identifier: CustomerIdentifierInput!) {
-          customer: customerByIdentifier(identifier: $identifier) {
-            id
-          }
-        }`,
-        { identifier: { phoneNumber: e164 } },
-      );
-      const numeric = data.data?.customer?.id
-        ? parseShopifyGid(data.data.customer.id)
-        : null;
-      if (numeric) seen.add(numeric);
-    } catch (err) {
-      console.warn('[shopify] customerByIdentifier failed:', e164, err);
-    }
+  const graphqlResults = await Promise.all(
+    shopifyPhoneE164Variants(phone).map(async (e164) => {
+      try {
+        const data = await shopifyGraphql<{
+          data?: { customer?: { id?: string } | null };
+        }>(
+          shopDomain,
+          accessToken,
+          `query($identifier: CustomerIdentifierInput!) {
+            customer: customerByIdentifier(identifier: $identifier) {
+              id
+            }
+          }`,
+          { identifier: { phoneNumber: e164 } },
+        );
+        return data.data?.customer?.id
+          ? parseShopifyGid(data.data.customer.id)
+          : null;
+      } catch (err) {
+        console.warn('[shopify] customerByIdentifier failed:', e164, err);
+        return null;
+      }
+    }),
+  );
+
+  for (const numeric of graphqlResults) {
+    if (numeric) seen.add(numeric);
   }
 
   return [...seen];
@@ -307,27 +320,41 @@ export async function fetchOrdersByPhone(
   const seen = new Set<string>();
   const merged: ShopifyOrderPayload[] = [];
 
-  for (const variant of shopifyPhoneSearchVariants(phone)) {
-    try {
-      const data = await shopifyFetch<{ orders: ShopifyOrderPayload[] }>(
-        shopDomain,
-        accessToken,
-        `/orders.json?status=any&phone=${encodeURIComponent(variant)}&limit=50`,
-      );
-      mergeOrders(merged, seen, data.orders ?? []);
-    } catch (err) {
-      console.warn('[shopify] fetchOrdersByPhone variant failed:', variant, err);
-    }
+  // Phone filter first (parallel variants) — usually enough; skip slow customer search when hit.
+  const phoneResults = await Promise.all(
+    shopifyPhoneSearchVariants(phone).map(async (variant) => {
+      try {
+        const data = await shopifyFetch<{ orders: ShopifyOrderPayload[] }>(
+          shopDomain,
+          accessToken,
+          `/orders.json?status=any&phone=${encodeURIComponent(variant)}&limit=50`,
+        );
+        return data.orders ?? [];
+      } catch (err) {
+        console.warn('[shopify] fetchOrdersByPhone variant failed:', variant, err);
+        return [] as ShopifyOrderPayload[];
+      }
+    }),
+  );
+  for (const orders of phoneResults) {
+    mergeOrders(merged, seen, orders);
   }
 
+  if (merged.length > 0) return merged;
+
   const customerIds = await searchCustomerIdsByPhone(shopDomain, accessToken, phone);
-  for (const customerId of customerIds) {
-    try {
-      const orders = await fetchOrdersByCustomerId(shopDomain, accessToken, customerId);
-      mergeOrders(merged, seen, orders);
-    } catch (err) {
-      console.warn('[shopify] fetchOrdersByCustomerId failed:', customerId, err);
-    }
+  const customerOrderResults = await Promise.all(
+    customerIds.map(async (customerId) => {
+      try {
+        return await fetchOrdersByCustomerId(shopDomain, accessToken, customerId);
+      } catch (err) {
+        console.warn('[shopify] fetchOrdersByCustomerId failed:', customerId, err);
+        return [] as ShopifyOrderPayload[];
+      }
+    }),
+  );
+  for (const orders of customerOrderResults) {
+    mergeOrders(merged, seen, orders);
   }
 
   return merged;

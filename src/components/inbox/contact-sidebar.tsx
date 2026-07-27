@@ -29,6 +29,9 @@ interface ContactSidebarProps {
   contact: Contact | null;
 }
 
+/** Session cache so revisiting a contact shows orders instantly. */
+const shopifyOrdersCache = new Map<string, ShopifyOrder[]>();
+
 export function ContactSidebar({ contact }: ContactSidebarProps) {
   const { accountId, isLeadGenBrand, isEcommerceBrand } = useAuth();
   const [copied, setCopied] = useState(false);
@@ -44,27 +47,45 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
 
-    setShopifyOrders([]);
-    setOrdersLoading(true);
+    const contactId = contact.id;
+    const cachedOrders = shopifyOrdersCache.get(contactId);
+    if (cachedOrders) {
+      setShopifyOrders(cachedOrders);
+      setOrdersLoading(false);
+    } else {
+      setShopifyOrders([]);
+      setOrdersLoading(isEcommerceBrand);
+    }
 
     const supabase = createClient();
 
-    // Fetch deals, notes, and tags in parallel
-    const [dealsRes, notesRes, tagsRes] = await Promise.all([
+    const ordersPromise = isEcommerceBrand
+      ? fetch(`/api/shopify/orders?contact_id=${contactId}`)
+          .then(async (res) => {
+            if (!res.ok) return [] as ShopifyOrder[];
+            const payload = (await res.json()) as { orders?: ShopifyOrder[] };
+            return payload.orders ?? [];
+          })
+          .catch(() => [] as ShopifyOrder[])
+      : Promise.resolve([] as ShopifyOrder[]);
+
+    // Deals/notes/tags and Shopify orders in parallel (orders used to wait)
+    const [dealsRes, notesRes, tagsRes, orders] = await Promise.all([
       supabase
         .from("deals")
         .select("*, stage:pipeline_stages(*)")
-        .eq("contact_id", contact.id)
+        .eq("contact_id", contactId)
         .order("created_at", { ascending: false }),
       supabase
         .from("contact_notes")
         .select("*")
-        .eq("contact_id", contact.id)
+        .eq("contact_id", contactId)
         .order("created_at", { ascending: false }),
       supabase
         .from("contact_tags")
         .select("id, tag_id, tags(*)")
-        .eq("contact_id", contact.id),
+        .eq("contact_id", contactId),
+      ordersPromise,
     ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
@@ -79,20 +100,12 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
       setTags(mapped);
     }
 
-    try {
-      const res = await fetch(`/api/shopify/orders?contact_id=${contact.id}`);
-      if (res.ok) {
-        const payload = (await res.json()) as { orders?: ShopifyOrder[] };
-        setShopifyOrders(payload.orders ?? []);
-      } else {
-        setShopifyOrders([]);
-      }
-    } catch {
-      setShopifyOrders([]);
-    } finally {
+    if (isEcommerceBrand) {
+      shopifyOrdersCache.set(contactId, orders);
+      setShopifyOrders(orders);
       setOrdersLoading(false);
     }
-  }, [contact]);
+  }, [contact, isEcommerceBrand]);
 
   // Load on contact change. setContactData/setTags run inside async
   // Supabase callbacks, not synchronously in the effect body.

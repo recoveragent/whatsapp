@@ -184,9 +184,9 @@ async function syncLiveShopifyOrders(args: {
   contactId: string;
   phone: string | null;
   email: string | null;
-}): Promise<void> {
+}): Promise<ShopifyOrderPayload[]> {
   const liveOrders = await fetchLiveShopifyOrders(args);
-  if (liveOrders.length === 0) return;
+  if (liveOrders.length === 0) return [];
 
   const db = supabaseAdmin();
   const { data: config } = await db
@@ -197,15 +197,17 @@ async function syncLiveShopifyOrders(args: {
 
   const shopName = ((config?.shop_domain as string) ?? '').replace('.myshopify.com', '');
 
-  for (const order of liveOrders) {
-    await syncShopifyOrder(db, args.accountId, order, shopName);
-  }
+  await Promise.all(
+    liveOrders.map((order) => syncShopifyOrder(db, args.accountId, order, shopName)),
+  );
 
   await db
     .from('shopify_orders')
     .update({ contact_id: args.contactId, updated_at: new Date().toISOString() })
     .eq('account_id', args.accountId)
     .in('shopify_order_id', liveOrders.map((o) => String(o.id)));
+
+  return liveOrders;
 }
 
 export async function GET(req: Request) {
@@ -228,8 +230,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
     }
 
-    const hasTable = await hasShopifyOrdersTable();
-    const shopDomain = await loadShopDomain(ctx.accountId);
+    const [hasTable, shopDomain] = await Promise.all([
+      hasShopifyOrdersTable(),
+      loadShopDomain(ctx.accountId),
+    ]);
 
     if (hasTable) {
       let orders = await loadCachedOrders(
@@ -240,7 +244,7 @@ export async function GET(req: Request) {
 
       if (orders.length === 0) {
         try {
-          await syncLiveShopifyOrders({
+          const liveOrders = await syncLiveShopifyOrders({
             accountId: ctx.accountId,
             contactId,
             phone: contact.phone,
@@ -251,23 +255,18 @@ export async function GET(req: Request) {
             contactId,
             contact.phone,
           );
+
+          // Sync wrote rows but cache match missed — return live map once (no second Shopify fetch).
+          if (orders.length === 0 && liveOrders.length > 0) {
+            return NextResponse.json({
+              orders: liveOrders.map((order) =>
+                mapLiveOrder(order, ctx.accountId, contactId, shopDomain),
+              ),
+            });
+          }
         } catch (err) {
           console.warn('[shopify/orders] live sync failed:', err);
         }
-      }
-
-      // Still empty — return live results directly (bypasses stale cache).
-      if (orders.length === 0 && contact.phone) {
-        const liveOrders = await fetchLiveShopifyOrders({
-          accountId: ctx.accountId,
-          phone: contact.phone,
-          email: contact.email ?? null,
-        });
-        return NextResponse.json({
-          orders: liveOrders.map((order) =>
-            mapLiveOrder(order, ctx.accountId, contactId, shopDomain),
-          ),
-        });
       }
 
       return NextResponse.json({ orders: enrichOrders(orders, shopDomain) });
