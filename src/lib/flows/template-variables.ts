@@ -31,6 +31,7 @@ const SHOPIFY_OPTIONS: TemplateVariableOption[] = [
   { label: 'Order number', token: '{{ vars.order_number }}', type: 'text' },
   { label: 'Order total', token: '{{ vars.order_total }}', type: 'text' },
   { label: 'Order items', token: '{{ vars.order_items }}', type: 'text' },
+  { label: 'Shipping address', token: '{{ vars.shipping_address }}', type: 'text' },
   { label: 'Payment status', token: '{{ vars.payment_status }}', type: 'text' },
   { label: 'Fulfillment status', token: '{{ vars.fulfillment_status }}', type: 'text' },
   { label: 'Tracking number', token: '{{ vars.tracking_number }}', type: 'text' },

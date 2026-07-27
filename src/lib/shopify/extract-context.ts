@@ -1,4 +1,5 @@
 import type {
+  ShopifyAddressFields,
   ShopifyCheckoutPayload,
   ShopifyEventContext,
   ShopifyFulfillmentPayload,
@@ -45,12 +46,12 @@ export function extractOrderEmail(order: ShopifyOrderPayload): string | null {
   return order.email ?? order.customer?.email ?? null;
 }
 
+/** Comma-joined line items for WhatsApp template vars (all items). */
 function formatLineItems(
   items: Array<{ name?: string; title?: string; quantity?: number }> | undefined,
 ): string | null {
   if (!items?.length) return null;
   return items
-    .slice(0, 5)
     .map((item) => {
       const label = item.name ?? item.title ?? 'Item';
       const qty = item.quantity ?? 1;
@@ -62,6 +63,35 @@ function formatLineItems(
 function formatMoney(amount: string | undefined, currency: string | undefined): string | null {
   if (!amount) return null;
   return currency ? `${amount} ${currency}` : amount;
+}
+
+/** Single-line shipping address suitable for template body params. */
+export function formatShippingAddress(
+  address: ShopifyAddressFields | null | undefined,
+): string | null {
+  if (!address) return null;
+
+  const name =
+    address.name?.trim() ||
+    fullName(address.first_name, address.last_name) ||
+    null;
+  const region = [address.city, address.province || address.province_code, address.zip]
+    .filter(Boolean)
+    .join(', ');
+  const country = address.country || address.country_code || null;
+
+  const parts = [
+    name,
+    address.company,
+    address.address1,
+    address.address2,
+    region || null,
+    country,
+  ]
+    .map((p) => (typeof p === 'string' ? p.trim() : p))
+    .filter((p): p is string => !!p);
+
+  return parts.length > 0 ? parts.join(', ') : null;
 }
 
 export function contextFromOrder(
@@ -80,6 +110,9 @@ export function contextFromOrder(
     orderNumber: order.name ?? (order.order_number != null ? `#${order.order_number}` : null),
     orderTotal: formatMoney(order.total_price, order.currency),
     orderItems: formatLineItems(order.line_items),
+    shippingAddress:
+      formatShippingAddress(order.shipping_address) ||
+      formatShippingAddress(order.billing_address),
     trackingNumber: null,
     trackingUrl: null,
     checkoutUrl: null,
@@ -106,6 +139,9 @@ export function contextFromCheckout(
     orderNumber: null,
     orderTotal: formatMoney(checkout.total_price, checkout.currency),
     orderItems: formatLineItems(checkout.line_items),
+    shippingAddress:
+      formatShippingAddress(checkout.shipping_address) ||
+      formatShippingAddress(checkout.billing_address),
     trackingNumber: null,
     trackingUrl: null,
     checkoutUrl: checkout.abandoned_checkout_url ?? null,
@@ -128,6 +164,7 @@ export function contextFromFulfillment(
     orderNumber: null,
     orderTotal: null,
     orderItems: null,
+    shippingAddress: null,
     trackingNumber: null,
     trackingUrl: null,
     checkoutUrl: null,
@@ -177,6 +214,8 @@ function resolveVariable(key: ShopifyVariableKey, ctx: ShopifyEventContext): str
       return ctx.orderTotal ?? '';
     case 'order_items':
       return ctx.orderItems ?? '';
+    case 'shipping_address':
+      return ctx.shippingAddress ?? '';
     case 'tracking_number':
       return ctx.trackingNumber ?? '';
     case 'tracking_url':

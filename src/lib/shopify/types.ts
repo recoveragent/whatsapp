@@ -8,11 +8,29 @@ export type ShopifyVariableKey =
   | 'order_number'
   | 'order_total'
   | 'order_items'
+  | 'shipping_address'
   | 'tracking_number'
   | 'tracking_url'
   | 'checkout_url'
   | 'fulfillment_status'
   | 'shop_name';
+
+/** Subset of Shopify address fields we read from order/checkout payloads. */
+export interface ShopifyAddressFields {
+  first_name?: string;
+  last_name?: string;
+  name?: string;
+  company?: string;
+  address1?: string;
+  address2?: string;
+  city?: string;
+  province?: string;
+  province_code?: string;
+  zip?: string;
+  country?: string;
+  country_code?: string;
+  phone?: string;
+}
 
 export interface ShopifyCampaignRow {
   id: string;
@@ -52,6 +70,8 @@ export interface ShopifyEventContext {
   orderNumber: string | null;
   orderTotal: string | null;
   orderItems: string | null;
+  /** Formatted shipping / delivery address for templates. */
+  shippingAddress: string | null;
   trackingNumber: string | null;
   trackingUrl: string | null;
   checkoutUrl: string | null;
@@ -74,7 +94,7 @@ export interface ShopifyOrderPayload {
   payment_gateway_names?: string[];
   tags?: string;
   created_at?: string;
-  line_items?: Array<{ name?: string; quantity?: number }>;
+  line_items?: Array<{ name?: string; title?: string; quantity?: number }>;
   customer?: {
     first_name?: string;
     last_name?: string;
@@ -82,8 +102,8 @@ export interface ShopifyOrderPayload {
     email?: string;
     default_address?: { phone?: string };
   };
-  shipping_address?: { phone?: string; first_name?: string; last_name?: string };
-  billing_address?: { phone?: string };
+  shipping_address?: ShopifyAddressFields;
+  billing_address?: ShopifyAddressFields;
   phone?: string;
   contact_phone?: string;
   email?: string;
@@ -109,8 +129,8 @@ export interface ShopifyCheckoutPayload {
     phone?: string;
     email?: string;
   };
-  shipping_address?: { phone?: string; first_name?: string; last_name?: string };
-  billing_address?: { phone?: string };
+  shipping_address?: ShopifyAddressFields;
+  billing_address?: ShopifyAddressFields;
   phone?: string;
   email?: string;
 }
