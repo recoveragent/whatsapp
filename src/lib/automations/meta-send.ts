@@ -176,8 +176,24 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   // Meta message id. sender_type='bot' distinguishes automation sends
   // from manual agent sends.
   const content_type = input.kind === 'template' ? 'template' : 'text'
-  const content_text = input.kind === 'text' ? input.text : null
   const template_name = input.kind === 'template' ? input.templateName : null
+  // For templates, render the approved body with send-time params so the
+  // inbox shows the same preview agents see for manual template sends
+  // (not just "Template · name" with an empty bubble).
+  let content_text: string | null = null
+  if (input.kind === 'text') {
+    content_text = input.text
+  } else if (input.kind === 'template') {
+    const bodyParams =
+      input.messageParams?.body ?? input.params ?? []
+    const body = templateRow?.body_text?.trim()
+    if (body) {
+      content_text = body.replace(/\{\{(\d+)\}\}/g, (_, raw: string) => {
+        const idx = Number(raw) - 1
+        return bodyParams[idx] ?? `{{${raw}}}`
+      })
+    }
+  }
 
   const { error: msgErr } = await db.from('messages').insert({
     conversation_id: input.conversationId,
@@ -207,7 +223,10 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     .from('conversations')
     .update({
       last_message_text:
-        input.kind === 'template' ? `[template:${input.templateName}]` : input.text,
+        content_text ??
+        (input.kind === 'template'
+          ? `[template:${input.templateName}]`
+          : input.text),
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
