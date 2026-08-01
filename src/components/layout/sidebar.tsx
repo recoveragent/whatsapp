@@ -10,6 +10,7 @@ import { BrandLogo } from "@/components/brand/brand-logo";
 import {
   Building2,
   Crown,
+  FileText,
   GitBranch,
   LayoutDashboard,
   LogOut,
@@ -270,20 +271,36 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
           <ul className="flex flex-col gap-1">
             {isSuperAdmin ? (
-              <li>
-                <Link
-                  href="/admin/brands"
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
-                    pathname.startsWith("/admin/brands")
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                >
-                  <Building2 className="h-4 w-4" />
-                  Brands
-                </Link>
-              </li>
+              <>
+                <li>
+                  <Link
+                    href="/admin/brands"
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                      pathname.startsWith("/admin/brands")
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <Building2 className="h-4 w-4" />
+                    Brands
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/admin/templates"
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                      pathname.startsWith("/admin/templates")
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <FileText className="h-4 w-4" />
+                    Templates
+                  </Link>
+                </li>
+              </>
             ) : null}
             {!opsOnlyNav &&
             bottomNavItems.map((item) => {
