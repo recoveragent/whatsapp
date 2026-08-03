@@ -1,6 +1,8 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import {
+  isAccountBillingMode,
   templateCategoryToPricing,
+  type AccountBillingMode,
   type MessagePricingCategory,
 } from '@/lib/wallet/types';
 
@@ -10,6 +12,24 @@ export class InsufficientWalletBalanceError extends Error {
     super(message);
     this.name = 'InsufficientWalletBalanceError';
   }
+}
+
+export async function getAccountBillingMode(
+  accountId: string,
+): Promise<AccountBillingMode> {
+  const db = supabaseAdmin();
+  const { data } = await db
+    .from('accounts')
+    .select('billing_mode')
+    .eq('id', accountId)
+    .maybeSingle();
+  const mode = data?.billing_mode;
+  return isAccountBillingMode(mode) ? mode : 'wallet';
+}
+
+/** True when template sends must debit / check the prepaid wallet. */
+export async function isWalletBillingEnabled(accountId: string): Promise<boolean> {
+  return (await getAccountBillingMode(accountId)) === 'wallet';
 }
 
 export async function getWalletBalancePaise(accountId: string): Promise<number> {
@@ -56,6 +76,8 @@ export async function assertWalletCanSendBatch(
   templateCategory: string | null | undefined,
   count: number,
 ): Promise<void> {
+  if (!(await isWalletBillingEnabled(accountId))) return;
+
   const price = await getMessagePricePaise(accountId, templateCategory);
   if (price <= 0 || count <= 0) return;
 
@@ -72,6 +94,8 @@ export async function assertWalletCanSend(
   accountId: string,
   templateCategory?: string | null,
 ): Promise<void> {
+  if (!(await isWalletBillingEnabled(accountId))) return;
+
   const category = templateCategoryToPricing(templateCategory);
   const db = supabaseAdmin();
 
@@ -103,6 +127,8 @@ export async function debitWalletForTemplateSend(args: {
   messageId: string;
   templateName?: string | null;
 }): Promise<void> {
+  if (!(await isWalletBillingEnabled(args.accountId))) return;
+
   const category = templateCategoryToPricing(args.templateCategory);
   if (!category) return;
 

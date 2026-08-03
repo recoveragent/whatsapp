@@ -29,6 +29,7 @@ export function WalletPanel() {
   const [balancePaise, setBalancePaise] = useState(0);
   const [gstRate, setGstRate] = useState(0.18);
   const [rechargeEnabled, setRechargeEnabled] = useState(false);
+  const [billingMode, setBillingMode] = useState<'wallet' | 'meta_direct'>('wallet');
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewTab>('daily');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
@@ -58,6 +59,7 @@ export function WalletPanel() {
     const data = await res.json();
     setBalancePaise(Number(data.balancePaise ?? 0));
     setGstRate(Number(data.gstRate ?? 0.18));
+    setBillingMode(data.billingMode === 'meta_direct' ? 'meta_direct' : 'wallet');
     setRechargeEnabled(Boolean(data.rechargeEnabled));
   }, []);
 
@@ -152,7 +154,9 @@ export function WalletPanel() {
             Transaction History
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            View your recent wallet transactions
+            {billingMode === 'meta_direct'
+              ? 'This brand pays Meta directly — wallet balance checks are disabled.'
+              : 'View your recent wallet transactions'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

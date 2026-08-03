@@ -3,7 +3,9 @@ import { NextResponse } from 'next/server';
 import { requireSuperAdminBrand } from '@/lib/auth/super-admin';
 import { toErrorResponse } from '@/lib/auth/account';
 import {
+  isAccountBillingMode,
   MESSAGE_PRICING_CATEGORIES,
+  type AccountBillingMode,
   type MessagePricingCategory,
   type MessagePricingRow,
 } from '@/lib/wallet/types';
@@ -14,6 +16,16 @@ export async function GET(_request: Request, context: RouteContext) {
   try {
     const { id } = await context.params;
     const { supabase, brand } = await requireSuperAdminBrand(id);
+
+    const { data: account } = await supabase
+      .from('accounts')
+      .select('billing_mode')
+      .eq('id', brand.id)
+      .maybeSingle();
+
+    const billingMode: AccountBillingMode = isAccountBillingMode(account?.billing_mode)
+      ? account.billing_mode
+      : 'wallet';
 
     const { data: wallet } = await supabase
       .from('account_wallets')
@@ -36,6 +48,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
     return NextResponse.json({
       brand: { id: brand.id, name: brand.name },
+      billingMode,
       balancePaise: Number(wallet?.balance_paise ?? 0),
       currency: (wallet?.currency as string) ?? 'INR',
       pricing: pricingRows,
@@ -51,8 +64,28 @@ export async function PUT(request: Request, context: RouteContext) {
     const { supabase, brand } = await requireSuperAdminBrand(id);
 
     const body = (await request.json().catch(() => null)) as {
+      billingMode?: unknown;
       pricing?: { category?: unknown; pricePaise?: unknown }[];
     } | null;
+
+    if (body?.billingMode !== undefined) {
+      if (!isAccountBillingMode(body.billingMode)) {
+        return NextResponse.json({ error: 'Invalid billing mode' }, { status: 400 });
+      }
+
+      const { error: modeError } = await supabase
+        .from('accounts')
+        .update({
+          billing_mode: body.billingMode,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', brand.id);
+
+      if (modeError) {
+        console.error('[PUT /api/admin/brands/[id]/pricing] billing_mode', modeError);
+        return NextResponse.json({ error: 'Failed to save billing mode' }, { status: 500 });
+      }
+    }
 
     const updates = body?.pricing ?? [];
     for (const row of updates) {

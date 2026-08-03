@@ -4,9 +4,12 @@ import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { fetchOrganizationMembership } from '@/lib/auth/organization';
 import {
   getOrgPaymentConfig,
-  toPublicPaymentConfig,
 } from '@/lib/wallet/payment-config';
-import type { MessagePricingRow } from '@/lib/wallet/types';
+import {
+  isAccountBillingMode,
+  type AccountBillingMode,
+  type MessagePricingRow,
+} from '@/lib/wallet/types';
 
 export async function GET() {
   try {
@@ -28,9 +31,13 @@ export async function GET() {
 
     const { data: accountRow } = await ctx.supabase
       .from('accounts')
-      .select('organization_id')
+      .select('organization_id, billing_mode')
       .eq('id', ctx.accountId)
       .maybeSingle();
+
+    const billingMode: AccountBillingMode = isAccountBillingMode(accountRow?.billing_mode)
+      ? accountRow.billing_mode
+      : 'wallet';
 
     const organizationId =
       ctx.organizationId ??
@@ -52,7 +59,8 @@ export async function GET() {
       balancePaise: Number(wallet?.balance_paise ?? 0),
       currency: (wallet?.currency as string) ?? 'INR',
       pricing: pricingRows,
-      rechargeEnabled: paymentEnabled,
+      billingMode,
+      rechargeEnabled: billingMode === 'wallet' && paymentEnabled,
       gstRate,
     });
   } catch (err) {

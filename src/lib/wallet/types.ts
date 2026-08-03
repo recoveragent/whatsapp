@@ -1,5 +1,19 @@
 export type MessagePricingCategory = 'utility' | 'marketing' | 'authentication';
 
+/** How template sends are billed for a brand. */
+export type AccountBillingMode = 'wallet' | 'meta_direct';
+
+export const ACCOUNT_BILLING_MODES: AccountBillingMode[] = ['wallet', 'meta_direct'];
+
+export const ACCOUNT_BILLING_MODE_LABELS: Record<AccountBillingMode, string> = {
+  wallet: 'Our wallet',
+  meta_direct: 'Meta direct payment',
+};
+
+export function isAccountBillingMode(value: unknown): value is AccountBillingMode {
+  return value === 'wallet' || value === 'meta_direct';
+}
+
 export type WalletTransactionType = 'credit' | 'debit';
 
 export const MESSAGE_PRICING_CATEGORIES: MessagePricingCategory[] = [

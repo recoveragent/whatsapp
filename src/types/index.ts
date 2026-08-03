@@ -49,6 +49,8 @@ export interface Account {
   /** auth.users.id of the immutable owner. */
   owner_user_id: string;
   brand_category?: BrandCategory;
+  /** Prepaid CRM wallet vs Meta-direct template billing. */
+  billing_mode?: 'wallet' | 'meta_direct';
   created_at: string;
   updated_at: string;
 }

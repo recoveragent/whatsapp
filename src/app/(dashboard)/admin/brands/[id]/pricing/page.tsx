@@ -9,9 +9,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
+  ACCOUNT_BILLING_MODE_LABELS,
+  isAccountBillingMode,
   MESSAGE_PRICING_CATEGORIES,
   MESSAGE_PRICING_LABELS,
+  type AccountBillingMode,
   type MessagePricingCategory,
 } from '@/lib/wallet/types';
 import { formatInrFromPaise, rupeesToPaise } from '@/lib/wallet/format';
@@ -21,10 +25,11 @@ export function BrandPricingPanel({ brandId }: { brandId: string }) {
   const [saving, setSaving] = useState(false);
   const [brandName, setBrandName] = useState('');
   const [balancePaise, setBalancePaise] = useState(0);
+  const [billingMode, setBillingMode] = useState<AccountBillingMode>('wallet');
   const [prices, setPrices] = useState<Record<MessagePricingCategory, string>>({
-    utility: '0.45',
-    marketing: '0.78',
-    authentication: '0.45',
+    utility: '0',
+    marketing: '0',
+    authentication: '0',
   });
 
   const load = useCallback(async () => {
@@ -35,6 +40,9 @@ export function BrandPricingPanel({ brandId }: { brandId: string }) {
       const data = await res.json();
       setBrandName(data.brand?.name ?? '');
       setBalancePaise(Number(data.balancePaise ?? 0));
+      setBillingMode(
+        isAccountBillingMode(data.billingMode) ? data.billingMode : 'wallet',
+      );
       const next: Record<MessagePricingCategory, string> = {
         utility: '0',
         marketing: '0',
@@ -60,18 +68,21 @@ export function BrandPricingPanel({ brandId }: { brandId: string }) {
     e.preventDefault();
     setSaving(true);
     try {
-      const pricing = MESSAGE_PRICING_CATEGORIES.map((category) => ({
-        category,
-        pricePaise: rupeesToPaise(prices[category]),
-      }));
+      const pricing =
+        billingMode === 'wallet'
+          ? MESSAGE_PRICING_CATEGORIES.map((category) => ({
+              category,
+              pricePaise: rupeesToPaise(prices[category]),
+            }))
+          : undefined;
       const res = await fetch(`/api/admin/brands/${brandId}/pricing`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pricing }),
+        body: JSON.stringify({ billingMode, pricing }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? 'Save failed');
-      toast.success('Message pricing saved');
+      toast.success('Billing settings saved');
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Save failed');
@@ -88,48 +99,98 @@ export function BrandPricingPanel({ brandId }: { brandId: string }) {
     );
   }
 
+  const walletEnabled = billingMode === 'wallet';
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-foreground">{brandName}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Set per-message rates (Meta guideline categories). Current wallet balance:{' '}
-          <strong>{formatInrFromPaise(balancePaise)}</strong>
+          Choose how this brand pays for template sends.
+          {walletEnabled ? (
+            <>
+              {' '}
+              Current wallet balance: <strong>{formatInrFromPaise(balancePaise)}</strong>
+            </>
+          ) : null}
         </p>
       </div>
 
-      <Card className="max-w-lg border-border">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <IndianRupee className="size-4" />
-            Message pricing (per send)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSave} className="space-y-4">
-            {MESSAGE_PRICING_CATEGORIES.map((category) => (
-              <div key={category} className="space-y-2">
-                <Label htmlFor={`price-${category}`}>
-                  {MESSAGE_PRICING_LABELS[category]} (₹)
-                </Label>
-                <Input
-                  id={`price-${category}`}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={prices[category]}
-                  onChange={(e) =>
-                    setPrices((prev) => ({ ...prev, [category]: e.target.value }))
-                  }
-                />
-              </div>
-            ))}
-            <Button type="submit" disabled={saving}>
-              {saving ? <Loader2 className="size-4 animate-spin" /> : 'Save pricing'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+      <form onSubmit={handleSave} className="space-y-6">
+        <Card className="max-w-lg border-border">
+          <CardHeader>
+            <CardTitle className="text-base">Billing mode</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RadioGroup
+              value={billingMode}
+              onValueChange={(value) => {
+                if (isAccountBillingMode(value)) setBillingMode(value);
+              }}
+              className="gap-3"
+            >
+              {(['wallet', 'meta_direct'] as const).map((mode) => (
+                <label
+                  key={mode}
+                  className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 ${
+                    billingMode === mode ? 'border-primary' : 'border-border'
+                  }`}
+                >
+                  <RadioGroupItem value={mode} className="mt-0.5" />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-foreground">
+                      {ACCOUNT_BILLING_MODE_LABELS[mode]}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {mode === 'wallet'
+                        ? 'Templates debit the prepaid CRM wallet. Sends are blocked when balance is low.'
+                        : 'Client pays Meta directly. Wallet balance checks and debits are disabled.'}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </RadioGroup>
+          </CardContent>
+        </Card>
+
+        {walletEnabled ? (
+          <Card className="max-w-lg border-border">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <IndianRupee className="size-4" />
+                Message pricing (per send)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {MESSAGE_PRICING_CATEGORIES.map((category) => (
+                <div key={category} className="space-y-2">
+                  <Label htmlFor={`price-${category}`}>
+                    {MESSAGE_PRICING_LABELS[category]} (₹)
+                  </Label>
+                  <Input
+                    id={`price-${category}`}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={prices[category]}
+                    onChange={(e) =>
+                      setPrices((prev) => ({ ...prev, [category]: e.target.value }))
+                    }
+                  />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        ) : (
+          <p className="max-w-lg text-sm text-muted-foreground">
+            Wallet pricing and recharge do not apply while Meta direct payment is selected.
+          </p>
+        )}
+
+        <Button type="submit" disabled={saving}>
+          {saving ? <Loader2 className="size-4 animate-spin" /> : 'Save billing settings'}
+        </Button>
+      </form>
     </div>
   );
 }
@@ -148,7 +209,7 @@ export default function BrandPricingPage() {
         Wallet & pricing
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Configure Meta message debit rates for this brand.
+        Choose wallet billing or Meta direct payment for this brand.
       </p>
       <div className="mt-6">
         <BrandPricingPanel brandId={brandId} />

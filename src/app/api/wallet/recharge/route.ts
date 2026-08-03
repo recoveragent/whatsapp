@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { fetchOrganizationMembership } from '@/lib/auth/organization';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { isWalletBillingEnabled } from '@/lib/wallet/billing';
 import { computeGstPaise } from '@/lib/wallet/format';
 import { getOrgPaymentConfig } from '@/lib/wallet/payment-config';
 import { createRazorpayOrder } from '@/lib/wallet/razorpay';
@@ -10,6 +11,13 @@ import { createRazorpayOrder } from '@/lib/wallet/razorpay';
 export async function POST(request: Request) {
   try {
     const ctx = await requireRole('admin');
+
+    if (!(await isWalletBillingEnabled(ctx.accountId))) {
+      return NextResponse.json(
+        { error: 'This brand pays Meta directly. Wallet recharge is disabled.' },
+        { status: 400 },
+      );
+    }
 
     const body = (await request.json().catch(() => null)) as {
       amountPaise?: unknown;
