@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, Loader2, Phone, XCircle } from 'lucide-react';
+import { CheckCircle2, Loader2, Phone, Unlink, XCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SettingsPanelHead } from './settings-panel-head';
 import { WhatsAppEmbeddedSignupPanel } from './whatsapp-embedded-signup-panel';
@@ -25,6 +27,7 @@ interface AccountContextPayload {
 interface ConnectionPayload {
   configured: boolean;
   connected: boolean;
+  needs_reconnect?: boolean;
   phone_number_id?: string | null;
   verified_name?: string | null;
   display_phone_number?: string | null;
@@ -39,6 +42,7 @@ interface ConnectionPayload {
 
 export function WhatsAppBrandConnection() {
   const [loading, setLoading] = useState(true);
+  const [disconnecting, setDisconnecting] = useState(false);
   const [accountCtx, setAccountCtx] = useState<AccountContextPayload | null>(null);
   const [connection, setConnection] = useState<ConnectionPayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -98,6 +102,30 @@ export function WhatsAppBrandConnection() {
     void load();
   }, [load]);
 
+  const handleDisconnect = async () => {
+    if (
+      !confirm(
+        'Disconnect this WhatsApp number from the workspace? You can connect a different number afterward.',
+      )
+    ) {
+      return;
+    }
+
+    setDisconnecting(true);
+    try {
+      const res = await fetch('/api/whatsapp/connection', { method: 'DELETE' });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? 'Disconnect failed');
+
+      toast.success('WhatsApp disconnected. You can connect a new number now.');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Disconnect failed');
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
   if (loading) {
     return (
       <section className="animate-in fade-in-50 duration-200">
@@ -142,22 +170,33 @@ export function WhatsAppBrandConnection() {
 
   const configured = connection?.configured ?? false;
   const connected = connection?.connected ?? false;
+  const needsReconnect = Boolean(
+    connection?.needs_reconnect ?? (configured && !connected),
+  );
   const canEditSettings = accountCtx?.canEditSettings ?? false;
   const displayNumber =
     connection?.display_phone_number || connection?.phone_number_id || null;
   const verifiedName = connection?.verified_name;
-  const showConnect = canEditSettings && !configured && Boolean(accountCtx?.linked);
+  const showConnect =
+    canEditSettings &&
+    Boolean(accountCtx?.linked) &&
+    (!configured || needsReconnect);
   const registrationIncomplete =
-    canEditSettings && configured && connection?.registered === false;
+    canEditSettings &&
+    configured &&
+    connected &&
+    connection?.registered === false;
 
   return (
     <section className="animate-in fade-in-50 duration-200">
       <SettingsPanelHead
         title="WhatsApp number"
         description={
-          configured
+          configured && connected
             ? 'Your connected WhatsApp Business number for this workspace.'
-            : 'Connect your Meta WhatsApp Business account and phone number.'
+            : configured && needsReconnect
+              ? 'Reconnect or disconnect this number, then link a new WhatsApp Business number.'
+              : 'Connect your Meta WhatsApp Business account and phone number.'
         }
       />
 
@@ -173,7 +212,7 @@ export function WhatsAppBrandConnection() {
           className={
             configured && connected
               ? 'bg-emerald-950/30 border-emerald-700/50'
-              : configured
+              : configured && needsReconnect
                 ? 'bg-amber-950/30 border-amber-700/50'
                 : 'bg-card border-border'
           }
@@ -183,14 +222,14 @@ export function WhatsAppBrandConnection() {
               <CheckCircle2 className="size-5 text-emerald-400 mt-0.5 shrink-0" />
             ) : (
               <XCircle
-                className={`size-5 mt-0.5 shrink-0 ${configured ? 'text-amber-400' : 'text-muted-foreground'}`}
+                className={`size-5 mt-0.5 shrink-0 ${needsReconnect ? 'text-amber-400' : 'text-muted-foreground'}`}
               />
             )}
             <div>
               <AlertTitle className="text-foreground mb-1">
                 {configured && connected
                   ? 'WhatsApp number connected'
-                  : configured
+                  : configured && needsReconnect
                     ? 'Number configured — needs attention'
                     : 'No WhatsApp number connected'}
               </AlertTitle>
@@ -202,12 +241,12 @@ export function WhatsAppBrandConnection() {
                     Credentials are valid with Meta. Complete webhook setup below so
                     incoming messages appear in Inbox.
                   </>
-                ) : configured ? (
+                ) : configured && needsReconnect ? (
                   <>
-                    A number is on file but Meta verification failed or registration is
-                    incomplete.
+                    {connection?.message ??
+                      'A number is on file but Meta verification failed.'}
                     {canEditSettings
-                      ? ' Try reconnecting with Meta or contact Recover Agent if messaging stops.'
+                      ? ' Use Connect with Meta above to link a new number, or Disconnect below to clear this one first.'
                       : ' Contact your workspace admin or Recover Agent.'}
                   </>
                 ) : canEditSettings ? (
@@ -229,7 +268,7 @@ export function WhatsAppBrandConnection() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base text-foreground">
                 <Phone className="size-4" />
-                Connected number
+                {needsReconnect ? 'Previously connected number' : 'Connected number'}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
@@ -262,6 +301,26 @@ export function WhatsAppBrandConnection() {
                     timeStyle: 'short',
                   })}
                 </p>
+              )}
+              {canEditSettings && (
+                <div className="pt-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={disconnecting}
+                    onClick={() => void handleDisconnect()}
+                  >
+                    {disconnecting ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Unlink className="mr-1.5 size-4" />
+                        Disconnect
+                      </>
+                    )}
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>
