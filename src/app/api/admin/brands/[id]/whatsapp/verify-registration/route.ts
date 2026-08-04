@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { toErrorResponse } from '@/lib/auth/account';
 import { requireSuperAdminBrand } from '@/lib/auth/super-admin';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import {
   getSubscribedApps,
@@ -21,7 +22,7 @@ export async function GET(_request: Request, context: RouteContext) {
     const { id } = await context.params;
     const ctx = await requireSuperAdminBrand(id);
 
-    const { data: config } = await ctx.supabase
+    const { data: config } = await supabaseAdmin()
       .from('whatsapp_config')
       .select('*')
       .eq('account_id', ctx.brand.id)
