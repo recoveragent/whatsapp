@@ -252,10 +252,28 @@ export function WhatsAppConfig({
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
+      let data: {
+        error?: string;
+        registered?: boolean;
+        registration_error?: string;
+        registration_skipped?: boolean;
+        phone_info?: { verified_name?: string };
+      } = {};
+      try {
+        data = (await res.json()) as typeof data;
+      } catch {
+        toast.error(
+          `Failed to save configuration (HTTP ${res.status}). Check Hostinger logs or try again.`,
+          { duration: 10000 },
+        );
+        setSaving(false);
+        return;
+      }
 
       if (!res.ok) {
-        toast.error(data.error || 'Failed to save configuration');
+        toast.error(data.error || `Failed to save configuration (HTTP ${res.status})`, {
+          duration: 12000,
+        });
         setSaving(false);
         return;
       }

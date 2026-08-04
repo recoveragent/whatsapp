@@ -169,13 +169,17 @@ export async function POST(request: Request, context: RouteContext) {
 
       if (modeError) {
         console.error('[POST /api/admin/brands/whatsapp] connect mode', modeError);
-        return NextResponse.json(
-          {
-            error:
-              'Failed to update WhatsApp connect mode. Apply migration 044_account_whatsapp_connect_mode.sql if missing.',
-          },
-          { status: 500 },
-        );
+        // mode_only toggles must fail loudly; credential saves should still
+        // proceed if migration 044 is not applied yet.
+        if (mode_only) {
+          return NextResponse.json(
+            {
+              error:
+                'Failed to update WhatsApp connect mode. Apply migration 044_account_whatsapp_connect_mode.sql if missing.',
+            },
+            { status: 500 },
+          );
+        }
       }
 
       if (mode_only) {
