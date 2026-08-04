@@ -299,7 +299,7 @@ export function WhatsAppBrandConnection() {
                 {configured && connected
                   ? 'WhatsApp number connected'
                   : configured && needsReconnect
-                    ? 'Number configured ù needs attention'
+                    ? 'Number configured - needs attention'
                     : 'No WhatsApp number connected'}
               </AlertTitle>
               <AlertDescription className="text-muted-foreground text-sm">
