@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { toErrorResponse } from '@/lib/auth/account';
 import { requireSuperAdminBrand } from '@/lib/auth/super-admin';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 import {
   isWhatsAppConnectMode,
   normalizeWhatsAppConnectMode,
@@ -71,7 +72,8 @@ export async function GET(_request: Request, context: RouteContext) {
 
     const [{ data: config, error: configError }, accountResult] =
       await Promise.all([
-        ctx.supabase
+        // Service role: ops page does not require "Open as admin" acting context.
+        supabaseAdmin()
           .from('whatsapp_config')
           .select(
             'phone_number_id, waba_id, status, registered_at, connected_at, last_registration_error, subscribed_apps_at, access_token',
@@ -159,7 +161,7 @@ export async function POST(request: Request, context: RouteContext) {
         );
       }
 
-      const { error: modeError } = await ctx.supabase
+      const { error: modeError } = await supabaseAdmin()
         .from('accounts')
         .update({
           whatsapp_connect_mode,
@@ -197,7 +199,7 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    const { data: existing } = await ctx.supabase
+    const { data: existing } = await supabaseAdmin()
       .from('whatsapp_config')
       .select('access_token')
       .eq('account_id', accountId)
@@ -230,7 +232,8 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     const result = await persistWhatsAppConfig({
-      supabase: ctx.supabase,
+      // Bypass RLS: super admin may not have acting-brand context on this page.
+      supabase: supabaseAdmin(),
       userId: ctx.userId,
       accountId,
       phone_number_id,
@@ -283,7 +286,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
     const { id } = await context.params;
     const ctx = await requireSuperAdminBrand(id);
 
-    const { error: deleteError } = await ctx.supabase
+    const { error: deleteError } = await supabaseAdmin()
       .from('whatsapp_config')
       .delete()
       .eq('account_id', ctx.brand.id);
