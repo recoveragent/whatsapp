@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 
 import { toErrorResponse } from '@/lib/auth/account';
 import { requireSuperAdminBrand } from '@/lib/auth/super-admin';
+import {
+  isWhatsAppConnectMode,
+  normalizeWhatsAppConnectMode,
+} from '@/lib/whatsapp/connect-mode';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { persistWhatsAppConfig } from '@/lib/whatsapp/persist-config';
 import { verifyPhoneNumber } from '@/lib/whatsapp/meta-api';
@@ -65,19 +69,34 @@ export async function GET(_request: Request, context: RouteContext) {
     const ctx = await requireSuperAdminBrand(id);
     const accountId = ctx.brand.id;
 
-    const { data: config, error: configError } = await ctx.supabase
-      .from('whatsapp_config')
-      .select(
-        'phone_number_id, waba_id, status, registered_at, connected_at, last_registration_error, subscribed_apps_at, access_token',
-      )
-      .eq('account_id', accountId)
-      .maybeSingle();
+    const [{ data: config, error: configError }, accountResult] =
+      await Promise.all([
+        ctx.supabase
+          .from('whatsapp_config')
+          .select(
+            'phone_number_id, waba_id, status, registered_at, connected_at, last_registration_error, subscribed_apps_at, access_token',
+          )
+          .eq('account_id', accountId)
+          .maybeSingle(),
+        ctx.supabase
+          .from('accounts')
+          .select('whatsapp_connect_mode')
+          .eq('id', accountId)
+          .maybeSingle(),
+      ]);
 
     if (configError) {
       console.error('[GET /api/admin/brands/whatsapp]', configError);
       return NextResponse.json(
         { error: 'Failed to load configuration' },
         { status: 500 },
+      );
+    }
+
+    if (accountResult.error) {
+      console.warn(
+        '[GET /api/admin/brands/whatsapp] whatsapp_connect_mode unavailable:',
+        accountResult.error.message,
       );
     }
 
@@ -100,6 +119,9 @@ export async function GET(_request: Request, context: RouteContext) {
       brand: ctx.brand,
       config: safeConfig,
       health,
+      whatsappConnectMode: normalizeWhatsAppConnectMode(
+        accountResult.data?.whatsapp_connect_mode,
+      ),
     });
   } catch (err) {
     return toErrorResponse(err);
@@ -110,6 +132,7 @@ export async function GET(_request: Request, context: RouteContext) {
  * POST /api/admin/brands/[id]/whatsapp
  *
  * Super admin only — verify with Meta, encrypt, and persist credentials.
+ * Optional `whatsapp_connect_mode` updates how brand Settings connects.
  */
 export async function POST(request: Request, context: RouteContext) {
   try {
@@ -118,7 +141,50 @@ export async function POST(request: Request, context: RouteContext) {
     const accountId = ctx.brand.id;
 
     const body = await request.json();
-    const { phone_number_id, waba_id, access_token, verify_token, pin } = body;
+    const {
+      phone_number_id,
+      waba_id,
+      access_token,
+      verify_token,
+      pin,
+      whatsapp_connect_mode,
+      mode_only,
+    } = body;
+
+    if (whatsapp_connect_mode !== undefined) {
+      if (!isWhatsAppConnectMode(whatsapp_connect_mode)) {
+        return NextResponse.json(
+          { error: 'Invalid whatsapp_connect_mode' },
+          { status: 400 },
+        );
+      }
+
+      const { error: modeError } = await ctx.supabase
+        .from('accounts')
+        .update({
+          whatsapp_connect_mode,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', accountId);
+
+      if (modeError) {
+        console.error('[POST /api/admin/brands/whatsapp] connect mode', modeError);
+        return NextResponse.json(
+          {
+            error:
+              'Failed to update WhatsApp connect mode. Apply migration 044_account_whatsapp_connect_mode.sql if missing.',
+          },
+          { status: 500 },
+        );
+      }
+
+      if (mode_only) {
+        return NextResponse.json({
+          success: true,
+          whatsappConnectMode: whatsapp_connect_mode,
+        });
+      }
+    }
 
     if (!phone_number_id) {
       return NextResponse.json(
@@ -181,6 +247,9 @@ export async function POST(request: Request, context: RouteContext) {
         registered: false,
         registration_error: result.registration_error,
         phone_info: result.phone_info,
+        whatsappConnectMode: isWhatsAppConnectMode(whatsapp_connect_mode)
+          ? whatsapp_connect_mode
+          : undefined,
       });
     }
 
@@ -190,6 +259,9 @@ export async function POST(request: Request, context: RouteContext) {
       registered: result.registered,
       registration_skipped: result.registration_skipped,
       phone_info: result.phone_info,
+      whatsappConnectMode: isWhatsAppConnectMode(whatsapp_connect_mode)
+        ? whatsapp_connect_mode
+        : undefined,
     });
   } catch (err) {
     console.error('[POST /api/admin/brands/whatsapp]', err);

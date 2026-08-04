@@ -28,6 +28,10 @@ import {
   AccordionTrigger,
   AccordionContent,
 } from '@/components/ui/accordion';
+import {
+  normalizeWhatsAppConnectMode,
+  type WhatsAppConnectMode,
+} from '@/lib/whatsapp/connect-mode';
 
 const MASKED_TOKEN = '••••••••••••••••';
 
@@ -48,9 +52,15 @@ interface SafeConfigRow {
 interface WhatsAppConfigProps {
   brandId: string;
   brandName?: string;
+  /** Hide admin “back to brands” chrome when embedded in brand Settings. */
+  embeddedInSettings?: boolean;
 }
 
-export function WhatsAppConfig({ brandId, brandName }: WhatsAppConfigProps) {
+export function WhatsAppConfig({
+  brandId,
+  brandName,
+  embeddedInSettings = false,
+}: WhatsAppConfigProps) {
   const apiBase = useMemo(
     () => `/api/admin/brands/${brandId}/whatsapp`,
     [brandId],
@@ -74,8 +84,12 @@ export function WhatsAppConfig({ brandId, brandName }: WhatsAppConfigProps) {
   const [verifyToken, setVerifyToken] = useState('');
   const [pin, setPin] = useState('');
   const [tokenEdited, setTokenEdited] = useState(false);
+  const [connectMode, setConnectMode] =
+    useState<WhatsAppConnectMode>('embedded_signup');
+  const [savingMode, setSavingMode] = useState(false);
 
   const isRegistered = Boolean(config?.registered_at);
+  const isSystemUserMode = connectMode === 'system_user_token';
   const lastRegistrationError = config?.last_registration_error ?? null;
 
   const [verifyingRegistration, setVerifyingRegistration] = useState(false);
@@ -108,6 +122,8 @@ export function WhatsAppConfig({ brandId, brandName }: WhatsAppConfigProps) {
       if (payload.brand?.name) {
         setResolvedBrandName(payload.brand.name);
       }
+
+      setConnectMode(normalizeWhatsAppConnectMode(payload.whatsappConnectMode));
 
       const data = payload.config as SafeConfigRow | null;
       const health = payload.health as {
@@ -172,6 +188,35 @@ export function WhatsAppConfig({ brandId, brandName }: WhatsAppConfigProps) {
     void fetchConfig();
   }, [fetchConfig]);
 
+  async function handleConnectModeChange(next: WhatsAppConnectMode) {
+    if (next === connectMode) return;
+    setSavingMode(true);
+    try {
+      const res = await fetch(apiBase, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode_only: true,
+          whatsapp_connect_mode: next,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update connect mode');
+      }
+      setConnectMode(next);
+      toast.success(
+        next === 'system_user_token'
+          ? 'This brand will use System User token credentials (Embedded Signup disabled).'
+          : 'This brand will use Meta Embedded Signup in Settings.',
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update connect mode');
+    } finally {
+      setSavingMode(false);
+    }
+  }
+
   async function handleSave() {
     if (!phoneNumberId.trim()) {
       toast.error('Phone Number ID is required');
@@ -190,6 +235,7 @@ export function WhatsAppConfig({ brandId, brandName }: WhatsAppConfigProps) {
         waba_id: wabaId.trim() || null,
         verify_token: verifyToken.trim() || null,
         pin: pin.trim() || null,
+        whatsapp_connect_mode: connectMode,
       };
 
       if (tokenEdited && accessToken !== MASKED_TOKEN && accessToken.trim()) {
@@ -352,8 +398,16 @@ export function WhatsAppConfig({ brandId, brandName }: WhatsAppConfigProps) {
     return (
       <section className="animate-in fade-in-50 duration-200">
         <SettingsPanelHead
-          title={`WhatsApp setup — ${displayName}`}
-          description="Recover Agent ops only. API credentials and webhook configuration for this brand."
+          title={
+            embeddedInSettings
+              ? 'WhatsApp number'
+              : `WhatsApp setup — ${displayName}`
+          }
+          description={
+            embeddedInSettings
+              ? 'Loading Meta credentials…'
+              : 'Recover Agent ops only. API credentials and webhook configuration for this brand.'
+          }
         />
         <div className="flex items-center justify-center py-12">
           <Loader2 className="size-6 animate-spin text-primary" />
@@ -366,21 +420,82 @@ export function WhatsAppConfig({ brandId, brandName }: WhatsAppConfigProps) {
 
   return (
     <section className="animate-in fade-in-50 duration-200">
-      <div className="mb-4">
-        <Link
-          href="/admin/brands"
-          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted"
-        >
-          <ArrowLeft className="size-4" />
-          Back to brands
-        </Link>
-      </div>
+      {!embeddedInSettings && (
+        <div className="mb-4">
+          <Link
+            href="/admin/brands"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted"
+          >
+            <ArrowLeft className="size-4" />
+            Back to brands
+          </Link>
+        </div>
+      )}
       <SettingsPanelHead
-        title={`WhatsApp setup — ${displayName}`}
-        description="Recover Agent ops only. API credentials and webhook configuration for this brand."
+        title={
+          embeddedInSettings
+            ? 'WhatsApp number'
+            : `WhatsApp setup — ${displayName}`
+        }
+        description={
+          isSystemUserMode
+            ? 'Own Meta portfolio: connect with WABA ID, Phone Number ID, and a permanent System User token. Embedded Signup cannot select this portfolio.'
+            : embeddedInSettings
+              ? 'Recover Agent ops credentials for this workspace.'
+              : 'Recover Agent ops only. API credentials and webhook configuration for this brand.'
+        }
       />
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-foreground text-base">
+                Connection method
+              </CardTitle>
+              <CardDescription className="text-muted-foreground">
+                Use System User token only for Recover Agent&apos;s own WhatsApp
+                portfolio. Customer brands should keep Embedded Signup.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ['embedded_signup', 'Embedded Signup (customers)'],
+                    ['system_user_token', 'System User token (own portfolio)'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    size="sm"
+                    variant={connectMode === value ? 'default' : 'outline'}
+                    disabled={savingMode}
+                    onClick={() => void handleConnectModeChange(value)}
+                    className={
+                      connectMode === value
+                        ? 'bg-primary text-primary-foreground'
+                        : 'border-border text-muted-foreground hover:text-foreground'
+                    }
+                  >
+                    {savingMode && connectMode !== value ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : null}
+                    {label}
+                  </Button>
+                ))}
+              </div>
+              {isSystemUserMode && (
+                <p className="text-xs text-amber-200/90 leading-relaxed">
+                  Meta shows &quot;This business portfolio owns Recover Agent WA.
+                  You can only select other business portfolios&quot; during
+                  Embedded Signup for assets under our own portfolio. Paste
+                  credentials from Meta Business Suite → System Users instead.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
           {showResetBanner && (
             <Alert className="bg-amber-950/40 border-amber-600/40">
               <div className="flex items-start gap-3">
@@ -567,11 +682,13 @@ export function WhatsAppConfig({ brandId, brandName }: WhatsAppConfigProps) {
               </div>
 
               <div className="space-y-2">
-                <Label className="text-muted-foreground">Permanent Access Token</Label>
+                <Label className="text-muted-foreground">
+                  Permanent System User Access Token
+                </Label>
                 <div className="relative">
                   <Input
                     type={showToken ? 'text' : 'password'}
-                    placeholder="Enter your access token"
+                    placeholder="Enter permanent System User token"
                     value={accessToken}
                     onChange={(e) => {
                       setAccessToken(e.target.value);
@@ -597,6 +714,12 @@ export function WhatsAppConfig({ brandId, brandName }: WhatsAppConfigProps) {
                   <p className="text-xs text-muted-foreground">
                     Token is hidden. Leave blank to keep the stored token when updating other
                     fields.
+                  </p>
+                )}
+                {isSystemUserMode && (
+                  <p className="text-xs text-muted-foreground">
+                    Meta Business Suite → Users → System Users → Generate token with
+                    whatsapp_business_management and whatsapp_business_messaging.
                   </p>
                 )}
               </div>
@@ -758,9 +881,13 @@ export function WhatsAppConfig({ brandId, brandName }: WhatsAppConfigProps) {
                   </AccordionTrigger>
                   <AccordionContent className="text-muted-foreground">
                     <ol className="list-decimal list-inside space-y-1 text-sm">
-                      <li>WhatsApp → API Setup</li>
+                      <li>WhatsApp → API Setup (or WhatsApp Manager)</li>
                       <li>Copy Phone Number ID and WABA ID</li>
-                      <li>Generate a permanent access token</li>
+                      <li>
+                        {isSystemUserMode
+                          ? 'Business Settings → System Users → generate a permanent token for the app'
+                          : 'Generate a permanent access token'}
+                      </li>
                     </ol>
                   </AccordionContent>
                 </AccordionItem>

@@ -11,6 +11,7 @@ import { fetchOrganizationMembership } from "@/lib/auth/organization";
 import { canEditSettings, canSendMessages } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { normalizeWhatsAppConnectMode } from "@/lib/whatsapp/connect-mode";
 
 async function pendingInviteHint(email: string | undefined) {
   const normalized = email?.trim().toLowerCase();
@@ -54,6 +55,25 @@ async function pendingInviteHint(email: string | undefined) {
 export async function GET() {
   try {
     const ctx = await getCurrentAccount();
+
+    let whatsappConnectMode = normalizeWhatsAppConnectMode(undefined);
+    const { data: accountExtras, error: extrasError } = await ctx.supabase
+      .from("accounts")
+      .select("whatsapp_connect_mode")
+      .eq("id", ctx.accountId)
+      .maybeSingle();
+
+    if (extrasError) {
+      console.warn(
+        "[GET /api/account/context] whatsapp_connect_mode unavailable:",
+        extrasError.message,
+      );
+    } else {
+      whatsappConnectMode = normalizeWhatsAppConnectMode(
+        accountExtras?.whatsapp_connect_mode,
+      );
+    }
+
     return NextResponse.json({
       linked: true,
       needsBrandContext: false,
@@ -64,6 +84,7 @@ export async function GET() {
       canSendMessages: canSendMessages(ctx.role),
       isSuperAdminActing: ctx.isSuperAdminActing ?? false,
       organizationName: ctx.organizationName ?? null,
+      whatsappConnectMode,
     });
   } catch (err) {
     if (err instanceof BrandContextRequiredError) {

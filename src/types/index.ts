@@ -51,6 +51,11 @@ export interface Account {
   brand_category?: BrandCategory;
   /** Prepaid CRM wallet vs Meta-direct template billing. */
   billing_mode?: 'wallet' | 'meta_direct';
+  /**
+   * How WhatsApp is connected. `system_user_token` is for Recover Agent's
+   * own Meta portfolio (Embedded Signup cannot select that portfolio).
+   */
+  whatsapp_connect_mode?: 'embedded_signup' | 'system_user_token';
   created_at: string;
   updated_at: string;
 }

@@ -8,7 +8,13 @@ import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAuth } from '@/hooks/use-auth';
+import {
+  normalizeWhatsAppConnectMode,
+  type WhatsAppConnectMode,
+} from '@/lib/whatsapp/connect-mode';
 import { SettingsPanelHead } from './settings-panel-head';
+import { WhatsAppConfig } from './whatsapp-config';
 import { WhatsAppEmbeddedSignupPanel } from './whatsapp-embedded-signup-panel';
 import { WhatsAppWebhookSetupCard } from './whatsapp-webhook-setup-card';
 
@@ -20,6 +26,8 @@ interface AccountContextPayload {
   accountId?: string;
   accountName?: string;
   canEditSettings?: boolean;
+  isSuperAdminActing?: boolean;
+  whatsappConnectMode?: WhatsAppConnectMode;
   message?: string;
   error?: string;
 }
@@ -41,6 +49,7 @@ interface ConnectionPayload {
 }
 
 export function WhatsAppBrandConnection() {
+  const { isSuperAdmin, isSuperAdminActing } = useAuth();
   const [loading, setLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
   const [accountCtx, setAccountCtx] = useState<AccountContextPayload | null>(null);
@@ -168,6 +177,66 @@ export function WhatsAppBrandConnection() {
     );
   }
 
+  const connectMode = normalizeWhatsAppConnectMode(accountCtx?.whatsappConnectMode);
+  const isSystemUserMode = connectMode === 'system_user_token';
+  const canManageSystemUser =
+    Boolean(accountCtx?.accountId) &&
+    isSuperAdmin &&
+    (Boolean(accountCtx?.isSuperAdminActing) || isSuperAdminActing);
+
+  // Own Meta portfolio: Embedded Signup is blocked by Meta; ops paste
+  // WABA / Phone Number ID / System User token instead.
+  if (isSystemUserMode && canManageSystemUser && accountCtx?.accountId) {
+    return (
+      <WhatsAppConfig
+        brandId={accountCtx.accountId}
+        brandName={accountCtx.accountName}
+        embeddedInSettings
+      />
+    );
+  }
+
+  if (isSystemUserMode) {
+    const configured = connection?.configured ?? false;
+    const connected = connection?.connected ?? false;
+    const displayNumber =
+      connection?.display_phone_number || connection?.phone_number_id || null;
+
+    return (
+      <section className="animate-in fade-in-50 duration-200">
+        <SettingsPanelHead
+          title="WhatsApp number"
+          description="This workspace uses Recover Agent's own Meta portfolio credentials."
+        />
+        <div className="space-y-6 max-w-xl">
+          <Alert className="bg-card border-border">
+            <AlertTitle className="text-foreground mb-1">
+              Connected via System User token
+            </AlertTitle>
+            <AlertDescription className="text-muted-foreground text-sm space-y-2">
+              <p>
+                Embedded Signup cannot select the business portfolio that owns
+                Recover Agent WA. Credentials are managed by Recover Agent ops
+                (WABA ID, Phone Number ID, permanent System User token).
+              </p>
+              {configured && connected && displayNumber ? (
+                <p className="text-foreground">
+                  Connected number: <strong>{displayNumber}</strong>
+                  {connection?.verified_name
+                    ? ` (${connection.verified_name})`
+                    : ''}
+                </p>
+              ) : (
+                <p>No number is connected yet. Contact Recover Agent to finish setup.</p>
+              )}
+            </AlertDescription>
+          </Alert>
+          {configured && connected && <WhatsAppWebhookSetupCard />}
+        </div>
+      </section>
+    );
+  }
+
   const configured = connection?.configured ?? false;
   const connected = connection?.connected ?? false;
   const needsReconnect = Boolean(
@@ -230,7 +299,7 @@ export function WhatsAppBrandConnection() {
                 {configured && connected
                   ? 'WhatsApp number connected'
                   : configured && needsReconnect
-                    ? 'Number configured ‚Äî needs attention'
+                    ? 'Number configured ù needs attention'
                     : 'No WhatsApp number connected'}
               </AlertTitle>
               <AlertDescription className="text-muted-foreground text-sm">
