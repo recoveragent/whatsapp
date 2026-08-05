@@ -464,64 +464,107 @@ interface ShopifyCustomerDetail {
 }
 
 /**
- * Look up a Shopify customer by phone and return their saved addresses
- * (default + address book), newest-order shipping addresses first when
- * the address book is empty.
+ * Look up shipping addresses for a phone, preferring the **most recent**
+ * ones from Shopify orders (then filling from the customer address book).
  *
  * Used by Collect-address flows to prefill Meta `saved_addresses`.
- * Failures are soft — returns [] so the form still sends blank.
+ * Returns at most {@link MAX_RECENT_ADDRESSES} raw records — the mapper
+ * applies the same Meta UI cap after country filtering + dedupe.
  */
+const MAX_RECENT_ADDRESSES = 5;
+
+function addressFingerprint(addr: ShopifyAddressFields): string {
+  return [
+    addr.address1,
+    addr.address2,
+    addr.city,
+    addr.zip,
+    addr.province || addr.province_code,
+    addr.country_code || addr.country,
+  ]
+    .map((p) => (typeof p === 'string' ? p.trim().toLowerCase() : ''))
+    .join('|');
+}
+
+function pushUniqueAddress(
+  into: ShopifyAddressFields[],
+  addr: ShopifyAddressFields | null | undefined,
+  seen: Set<string>,
+  enrich?: Partial<ShopifyAddressFields>,
+): void {
+  if (!addr || !(addr.address1 || addr.city || addr.zip)) return;
+  if (into.length >= MAX_RECENT_ADDRESSES) return;
+  const merged: ShopifyAddressFields = { ...addr, ...enrich };
+  const key = addressFingerprint(merged);
+  if (!key || seen.has(key)) return;
+  seen.add(key);
+  into.push(merged);
+}
+
 export async function fetchCustomerAddressesByPhone(
   shopDomain: string,
   accessToken: string,
   phone: string,
 ): Promise<ShopifyAddressFields[]> {
-  const customerIds = await searchCustomerIdsByPhone(shopDomain, accessToken, phone);
   const collected: ShopifyAddressFields[] = [];
+  const seen = new Set<string>();
 
-  for (const customerId of customerIds.slice(0, 3)) {
-    try {
-      const data = await shopifyFetch<{ customer: ShopifyCustomerDetail }>(
-        shopDomain,
-        accessToken,
-        `/customers/${customerId}.json`,
-      );
-      const customer = data.customer;
-      if (!customer) continue;
-
-      const book = [
-        ...(customer.default_address ? [customer.default_address] : []),
-        ...(customer.addresses ?? []),
-      ];
-      for (const addr of book) {
-        if (addr && (addr.address1 || addr.city || addr.zip)) {
-          // Ensure name/phone fall through from the customer profile
-          // when the address row omits them.
-          collected.push({
-            ...addr,
-            first_name: addr.first_name || customer.first_name || undefined,
-            last_name: addr.last_name || customer.last_name || undefined,
-            phone: addr.phone || customer.phone || undefined,
-          });
-        }
-      }
-    } catch (err) {
-      console.warn('[shopify] fetch customer addresses failed:', customerId, err);
-    }
-  }
-
-  if (collected.length > 0) return collected;
-
-  // Fallback: recent order shipping/billing addresses for this phone.
+  // 1) Most recent order shipping/billing addresses (newest first).
   try {
     const orders = await fetchOrdersByPhone(shopDomain, accessToken, phone);
-    for (const order of orders.slice(0, 10)) {
-      if (order.shipping_address) collected.push(order.shipping_address);
-      else if (order.billing_address) collected.push(order.billing_address);
+    const sorted = [...orders].sort((a, b) => {
+      const at = a.created_at ? Date.parse(a.created_at) : 0;
+      const bt = b.created_at ? Date.parse(b.created_at) : 0;
+      return bt - at;
+    });
+    for (const order of sorted) {
+      if (collected.length >= MAX_RECENT_ADDRESSES) break;
+      pushUniqueAddress(collected, order.shipping_address, seen);
+      if (collected.length >= MAX_RECENT_ADDRESSES) break;
+      pushUniqueAddress(collected, order.billing_address, seen);
     }
   } catch (err) {
-    console.warn('[shopify] order address fallback failed:', err);
+    console.warn('[shopify] recent order addresses failed:', err);
   }
 
-  return collected;
+  if (collected.length >= MAX_RECENT_ADDRESSES) {
+    return collected.slice(0, MAX_RECENT_ADDRESSES);
+  }
+
+  // 2) Fill remaining slots from the customer address book (default first).
+  try {
+    const customerIds = await searchCustomerIdsByPhone(
+      shopDomain,
+      accessToken,
+      phone,
+    );
+    for (const customerId of customerIds.slice(0, 2)) {
+      if (collected.length >= MAX_RECENT_ADDRESSES) break;
+      try {
+        const data = await shopifyFetch<{ customer: ShopifyCustomerDetail }>(
+          shopDomain,
+          accessToken,
+          `/customers/${customerId}.json`,
+        );
+        const customer = data.customer;
+        if (!customer) continue;
+        const enrich = {
+          first_name: customer.first_name || undefined,
+          last_name: customer.last_name || undefined,
+          phone: customer.phone || undefined,
+        };
+        pushUniqueAddress(collected, customer.default_address, seen, enrich);
+        for (const addr of customer.addresses ?? []) {
+          if (collected.length >= MAX_RECENT_ADDRESSES) break;
+          pushUniqueAddress(collected, addr, seen, enrich);
+        }
+      } catch (err) {
+        console.warn('[shopify] fetch customer addresses failed:', customerId, err);
+      }
+    }
+  } catch (err) {
+    console.warn('[shopify] customer address book lookup failed:', err);
+  }
+
+  return collected.slice(0, MAX_RECENT_ADDRESSES);
 }

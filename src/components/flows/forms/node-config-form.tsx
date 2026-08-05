@@ -831,8 +831,8 @@ function SendAddressForm({
             Prefill from Shopify
           </span>
           <span className="mt-0.5 block text-[10px] text-muted-foreground">
-            When Shopify is connected, offer the customer&apos;s saved
-            store addresses (and the current order address) in WhatsApp.
+            When Shopify is connected, show the 5 most recent shipping
+            addresses from their orders (plus the current order address).
           </span>
         </span>
       </label>

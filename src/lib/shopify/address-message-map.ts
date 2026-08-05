@@ -105,28 +105,40 @@ export function shopifyAddressToMetaValues(
 }
 
 /**
+ * Meta's Address Message picker becomes hard to use (and often
+ * fails to scroll) when too many saved addresses are sent. Show only
+ * the 5 most recent matches — current order/context first, then
+ * recent Shopify order addresses.
+ */
+export const MAX_SAVED_ADDRESSES = 5
+
+/**
  * Build Meta `saved_addresses` entries from Shopify address records.
- * Dedupes by a stable fingerprint of the mapped values.
+ * Dedupes by a stable fingerprint of the mapped values and caps the
+ * list at {@link MAX_SAVED_ADDRESSES}.
  */
 export function shopifyAddressesToSaved(
   addresses: ShopifyAddressFields[],
   country: AddressMessageCountry,
   fallbacks?: { name?: string | null; phone?: string | null },
+  max = MAX_SAVED_ADDRESSES,
 ): AddressSavedAddress[] {
   const out: AddressSavedAddress[] = []
   const seen = new Set<string>()
 
-  addresses.forEach((addr, index) => {
+  for (let index = 0; index < addresses.length; index += 1) {
+    if (out.length >= max) break
+    const addr = addresses[index]!
     const value = shopifyAddressToMetaValues(addr, country, fallbacks)
-    if (!value) return
+    if (!value) continue
     const fingerprint = formatAddressValues(value).toLowerCase()
-    if (!fingerprint || seen.has(fingerprint)) return
+    if (!fingerprint || seen.has(fingerprint)) continue
     seen.add(fingerprint)
     out.push({
       id: `shopify_${index}_${fingerprint.slice(0, 24).replace(/\W+/g, '_')}`,
       value,
     })
-  })
+  }
 
   return out
 }
