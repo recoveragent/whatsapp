@@ -471,7 +471,7 @@ interface ShopifyCustomerDetail {
  * Returns at most {@link MAX_RECENT_ADDRESSES} raw records — the mapper
  * applies the same Meta UI cap after country filtering + dedupe.
  */
-const MAX_RECENT_ADDRESSES = 5;
+const MAX_RECENT_ADDRESSES = 3;
 
 function addressFingerprint(addr: ShopifyAddressFields): string {
   return [

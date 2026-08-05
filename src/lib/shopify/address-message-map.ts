@@ -107,10 +107,10 @@ export function shopifyAddressToMetaValues(
 /**
  * Meta's Address Message picker becomes hard to use (and often
  * fails to scroll) when too many saved addresses are sent. Show only
- * the 5 most recent matches — current order/context first, then
+ * the 3 most recent matches — current order/context first, then
  * recent Shopify order addresses.
  */
-export const MAX_SAVED_ADDRESSES = 5
+export const MAX_SAVED_ADDRESSES = 3
 
 /**
  * Build Meta `saved_addresses` entries from Shopify address records.

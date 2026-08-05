@@ -831,7 +831,7 @@ function SendAddressForm({
             Prefill from Shopify
           </span>
           <span className="mt-0.5 block text-[10px] text-muted-foreground">
-            When Shopify is connected, show the 5 most recent shipping
+            When Shopify is connected, show the 3 most recent shipping
             addresses from their orders (plus the current order address).
           </span>
         </span>

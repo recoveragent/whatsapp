@@ -85,7 +85,7 @@ describe('shopifyAddressesToSaved', () => {
     expect(saved[0]!.id).toMatch(/^shopify_/)
   })
 
-  it('keeps only the first 5 (caller should pass newest-first)', () => {
+  it('keeps only the first 3 (caller should pass newest-first)', () => {
     const many = Array.from({ length: 12 }, (_, i) => ({
       name: `Person ${i}`,
       address1: `Street ${i}`,
@@ -94,9 +94,9 @@ describe('shopifyAddressesToSaved', () => {
       country_code: 'IN',
     }))
     const saved = shopifyAddressesToSaved(many, 'IN')
-    expect(saved).toHaveLength(5)
+    expect(saved).toHaveLength(3)
     expect(saved[0]!.value.name).toBe('Person 0')
-    expect(saved[4]!.value.name).toBe('Person 4')
+    expect(saved[2]!.value.name).toBe('Person 2')
   })
 })
 
