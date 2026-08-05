@@ -75,6 +75,8 @@ export interface ShopifyEventContext {
   productImage: string | null;
   /** Formatted shipping / delivery address for templates. */
   shippingAddress: string | null;
+  /** Structured shipping address for Address Message prefills. */
+  shippingAddressFields: ShopifyAddressFields | null;
   trackingNumber: string | null;
   trackingUrl: string | null;
   checkoutUrl: string | null;

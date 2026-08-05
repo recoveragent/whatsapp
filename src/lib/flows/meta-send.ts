@@ -9,6 +9,7 @@ import {
   type MediaKind,
   type AddressMessageCountry,
   type AddressMessageValues,
+  type AddressSavedAddress,
 } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
@@ -446,6 +447,7 @@ interface SendAddressEngineArgs {
   headerText?: string
   footerText?: string
   values?: AddressMessageValues
+  savedAddresses?: AddressSavedAddress[]
 }
 
 /**
@@ -493,6 +495,7 @@ export async function engineSendAddressMessage(
       headerText: args.headerText,
       footerText: args.footerText,
       values: args.values,
+      savedAddresses: args.savedAddresses,
     })
     return r.messageId
   }

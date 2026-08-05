@@ -144,6 +144,7 @@ export function contextFromOrder(
     shippingAddress:
       formatShippingAddress(order.shipping_address) ||
       formatShippingAddress(order.billing_address),
+    shippingAddressFields: order.shipping_address ?? order.billing_address ?? null,
     trackingNumber: null,
     trackingUrl: null,
     checkoutUrl: null,
@@ -174,6 +175,8 @@ export function contextFromCheckout(
     shippingAddress:
       formatShippingAddress(checkout.shipping_address) ||
       formatShippingAddress(checkout.billing_address),
+    shippingAddressFields:
+      checkout.shipping_address ?? checkout.billing_address ?? null,
     trackingNumber: null,
     trackingUrl: null,
     checkoutUrl: checkout.abandoned_checkout_url ?? null,
@@ -198,6 +201,7 @@ export function contextFromFulfillment(
     orderItems: null,
     productImage: null,
     shippingAddress: null,
+    shippingAddressFields: null,
     trackingNumber: null,
     trackingUrl: null,
     checkoutUrl: null,

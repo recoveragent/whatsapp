@@ -153,6 +153,12 @@ export interface SendAddressNodeConfig {
   country: "IN" | "SG";
   /** Key under which to store the address object in flow_runs.vars. */
   var_key: string;
+  /**
+   * When true (default), prefill Meta's form from Shopify order vars
+   * and/or the customer's Shopify address book when the store is
+   * connected.
+   */
+  prefill_from_shopify?: boolean;
   next_node_key: string;
 }
 

@@ -180,6 +180,7 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
         var_key: "address",
         header_text: "",
         footer_text: "",
+        prefill_from_shopify: true,
         next_node_key: "",
       };
     case "condition":

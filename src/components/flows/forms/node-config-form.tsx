@@ -733,6 +733,7 @@ interface SendAddressCfg {
   footer_text?: string;
   country?: "IN" | "SG";
   var_key?: string;
+  prefill_from_shopify?: boolean;
   next_node_key?: string;
 }
 
@@ -747,6 +748,8 @@ function SendAddressForm({
   currentKey: string;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
 }) {
+  const prefillShopify = cfg.prefill_from_shopify !== false;
+
   return (
     <>
       <p className="text-[11px] text-muted-foreground">
@@ -814,6 +817,25 @@ function SendAddressForm({
           for the formatted address in later messages.
         </p>
       </div>
+      <label className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={prefillShopify}
+          onChange={(e) =>
+            onUpdateConfig({ prefill_from_shopify: e.target.checked })
+          }
+        />
+        <span>
+          <span className="font-medium text-foreground">
+            Prefill from Shopify
+          </span>
+          <span className="mt-0.5 block text-[10px] text-muted-foreground">
+            When Shopify is connected, offer the customer&apos;s saved
+            store addresses (and the current order address) in WhatsApp.
+          </span>
+        </span>
+      </label>
       <NextNodeRow
         value={cfg.next_node_key ?? ""}
         allNodes={allNodes}

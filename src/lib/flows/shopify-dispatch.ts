@@ -15,6 +15,7 @@ function contextToVars(ctx: ShopifyEventContext): Record<string, unknown> {
     order_items: ctx.orderItems,
     product_image: ctx.productImage,
     shipping_address: ctx.shippingAddress,
+    shipping_address_fields: ctx.shippingAddressFields,
     tracking_number: ctx.trackingNumber,
     tracking_url: ctx.trackingUrl,
     checkout_url: ctx.checkoutUrl,

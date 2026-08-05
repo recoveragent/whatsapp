@@ -61,6 +61,7 @@ import {
   type KeywordTriggerConfig,
 } from "./types";
 import { addressReplyToFlowVar } from "@/lib/whatsapp/address-message";
+import { resolveShopifyAddressPrefill } from "./shopify-address-prefill";
 import {
   executeExtendedNode,
   enqueueFlowWait,
@@ -750,6 +751,16 @@ async function advanceFromNodeKey(
       // Send Meta's address form and suspend until nfm_reply arrives.
       const cfg = node.config as unknown as SendAddressNodeConfig;
       try {
+        const prefill =
+          cfg.prefill_from_shopify === false
+            ? { values: undefined, savedAddresses: undefined, sourceCount: 0 }
+            : await resolveShopifyAddressPrefill({
+                accountId: run.account_id,
+                contactId: run.contact_id!,
+                country: cfg.country,
+                vars: run.vars,
+                fetchFromShopify: true,
+              });
         const { whatsapp_message_id } = await engineSendAddressMessage({
           accountId: run.account_id,
           userId: run.user_id,
@@ -763,11 +774,15 @@ async function advanceFromNodeKey(
           footerText: cfg.footer_text
             ? interpolateVars(cfg.footer_text, run.vars)
             : undefined,
+          values: prefill.values,
+          savedAddresses: prefill.savedAddresses,
         });
         await logEvent(db, run.id, "message_sent", node.node_key, {
           node_type: "send_address",
           whatsapp_message_id,
           country: cfg.country,
+          shopify_prefill_count: prefill.savedAddresses?.length ?? 0,
+          shopify_source_count: prefill.sourceCount,
         });
         const { data: msg } = await db
           .from("messages")
@@ -1263,6 +1278,16 @@ async function handleReplyForActiveRun(
     } else if (currentNode.node_type === "send_address") {
       const cfg = currentNode.config as unknown as SendAddressNodeConfig;
       try {
+        const prefill =
+          cfg.prefill_from_shopify === false
+            ? { values: undefined, savedAddresses: undefined }
+            : await resolveShopifyAddressPrefill({
+                accountId: run.account_id,
+                contactId: run.contact_id!,
+                country: cfg.country,
+                vars: run.vars,
+                fetchFromShopify: true,
+              });
         await engineSendAddressMessage({
           accountId: run.account_id,
           userId: run.user_id,
@@ -1276,6 +1301,8 @@ async function handleReplyForActiveRun(
           footerText: cfg.footer_text
             ? interpolateVars(cfg.footer_text, run.vars)
             : undefined,
+          values: prefill.values,
+          savedAddresses: prefill.savedAddresses,
         });
       } catch (err) {
         await logEvent(db, run.id, "error", currentNode.node_key, {

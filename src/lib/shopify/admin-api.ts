@@ -8,7 +8,7 @@ import {
   shopifyPhoneE164Variants,
   shopifyPhoneSearchVariants,
 } from './phone-search';
-import type { ShopifyOrderPayload } from './types';
+import type { ShopifyAddressFields, ShopifyOrderPayload } from './types';
 export interface ShopifyShopInfo {
   id: number;
   name: string;
@@ -452,4 +452,76 @@ export async function fetchOrdersByEmail(
     `/orders.json?status=any&email=${encodeURIComponent(trimmed)}&limit=50`,
   );
   return data.orders ?? [];
+}
+
+interface ShopifyCustomerDetail {
+  id: number;
+  first_name?: string | null;
+  last_name?: string | null;
+  phone?: string | null;
+  default_address?: ShopifyAddressFields | null;
+  addresses?: ShopifyAddressFields[] | null;
+}
+
+/**
+ * Look up a Shopify customer by phone and return their saved addresses
+ * (default + address book), newest-order shipping addresses first when
+ * the address book is empty.
+ *
+ * Used by Collect-address flows to prefill Meta `saved_addresses`.
+ * Failures are soft — returns [] so the form still sends blank.
+ */
+export async function fetchCustomerAddressesByPhone(
+  shopDomain: string,
+  accessToken: string,
+  phone: string,
+): Promise<ShopifyAddressFields[]> {
+  const customerIds = await searchCustomerIdsByPhone(shopDomain, accessToken, phone);
+  const collected: ShopifyAddressFields[] = [];
+
+  for (const customerId of customerIds.slice(0, 3)) {
+    try {
+      const data = await shopifyFetch<{ customer: ShopifyCustomerDetail }>(
+        shopDomain,
+        accessToken,
+        `/customers/${customerId}.json`,
+      );
+      const customer = data.customer;
+      if (!customer) continue;
+
+      const book = [
+        ...(customer.default_address ? [customer.default_address] : []),
+        ...(customer.addresses ?? []),
+      ];
+      for (const addr of book) {
+        if (addr && (addr.address1 || addr.city || addr.zip)) {
+          // Ensure name/phone fall through from the customer profile
+          // when the address row omits them.
+          collected.push({
+            ...addr,
+            first_name: addr.first_name || customer.first_name || undefined,
+            last_name: addr.last_name || customer.last_name || undefined,
+            phone: addr.phone || customer.phone || undefined,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[shopify] fetch customer addresses failed:', customerId, err);
+    }
+  }
+
+  if (collected.length > 0) return collected;
+
+  // Fallback: recent order shipping/billing addresses for this phone.
+  try {
+    const orders = await fetchOrdersByPhone(shopDomain, accessToken, phone);
+    for (const order of orders.slice(0, 10)) {
+      if (order.shipping_address) collected.push(order.shipping_address);
+      else if (order.billing_address) collected.push(order.billing_address);
+    }
+  } catch (err) {
+    console.warn('[shopify] order address fallback failed:', err);
+  }
+
+  return collected;
 }
