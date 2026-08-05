@@ -38,6 +38,7 @@ import {
   engineSendInteractiveList,
   engineSendMedia,
   engineSendText,
+  engineSendAddressMessage,
 } from "./meta-send";
 import { decideFallback, resolveFallbackPolicy } from "./fallback";
 import {
@@ -49,6 +50,7 @@ import {
   type FlowRow,
   type FlowRunRow,
   type ParsedInbound,
+  type SendAddressNodeConfig,
   type SendButtonsNodeConfig,
   type SendListNodeConfig,
   type SendMediaNodeConfig,
@@ -58,6 +60,7 @@ import {
   type SwitchNodeConfig,
   type KeywordTriggerConfig,
 } from "./types";
+import { addressReplyToFlowVar } from "@/lib/whatsapp/address-message";
 import {
   executeExtendedNode,
   enqueueFlowWait,
@@ -161,7 +164,8 @@ export function isSuspending(node_type: string): boolean {
   return (
     node_type === "send_buttons" ||
     node_type === "send_list" ||
-    node_type === "collect_input"
+    node_type === "collect_input" ||
+    node_type === "send_address"
   );
 }
 
@@ -516,7 +520,17 @@ async function evaluateConditionNode(
   if (cfg.subject === "var" || cfg.subject === "shopify_payment") {
     const key = cfg.subject === "shopify_payment" ? "payment_status" : cfg.subject_key;
     const v = run.vars[key];
-    subjectValue = typeof v === "string" ? v : v === undefined ? undefined : String(v);
+    if (typeof v === "string") {
+      subjectValue = v;
+    } else if (v && typeof v === "object" && !Array.isArray(v)) {
+      const obj = v as Record<string, unknown>;
+      subjectValue =
+        typeof obj.formatted === "string" ? obj.formatted : JSON.stringify(v);
+    } else if (v === undefined || v === null) {
+      subjectValue = undefined;
+    } else {
+      subjectValue = String(v);
+    }
   } else if (cfg.subject === "tag") {
     const { count } = await db
       .from("contact_tags")
@@ -554,12 +568,21 @@ async function evaluateConditionNode(
  * prompt text so a captured `name` can show up in the next prompt
  * ("Thanks {{vars.name}}, what's your email?"). Missing vars render as
  * empty string — the same behavior as the automations engine.
+ *
+ * Address captures store an object with `formatted` plus field keys;
+ * interpolating that var prefers `formatted` so messages stay readable.
  */
 function interpolateVars(template: string, vars: Record<string, unknown>): string {
   if (!template) return "";
   return template.replace(/\{\{vars\.([a-zA-Z0-9_]+)\}\}/g, (_, key) => {
     const v = vars[key];
-    return v === undefined || v === null ? "" : String(v);
+    if (v === undefined || v === null) return "";
+    if (typeof v === "object" && !Array.isArray(v)) {
+      const obj = v as Record<string, unknown>;
+      if (typeof obj.formatted === "string") return obj.formatted;
+      return JSON.stringify(v);
+    }
+    return String(v);
   });
 }
 
@@ -708,6 +731,61 @@ async function advanceFromNodeKey(
           detail: err instanceof Error ? err.message : String(err),
         });
         await endRun(db, run.id, "failed", "collect_input_prompt_failed");
+        return { outcome: "completed" };
+      }
+      const advanced = await advanceCurrentNodeKey(
+        db,
+        run.id,
+        run.current_node_key,
+        node.node_key,
+      );
+      if (!advanced) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "lost_race_during_advance",
+        });
+      }
+      return { outcome: "advanced" };
+    }
+    if (node.node_type === "send_address") {
+      // Send Meta's address form and suspend until nfm_reply arrives.
+      const cfg = node.config as unknown as SendAddressNodeConfig;
+      try {
+        const { whatsapp_message_id } = await engineSendAddressMessage({
+          accountId: run.account_id,
+          userId: run.user_id,
+          conversationId: run.conversation_id!,
+          contactId: run.contact_id!,
+          bodyText: interpolateVars(cfg.body_text, run.vars),
+          country: cfg.country,
+          headerText: cfg.header_text
+            ? interpolateVars(cfg.header_text, run.vars)
+            : undefined,
+          footerText: cfg.footer_text
+            ? interpolateVars(cfg.footer_text, run.vars)
+            : undefined,
+        });
+        await logEvent(db, run.id, "message_sent", node.node_key, {
+          node_type: "send_address",
+          whatsapp_message_id,
+          country: cfg.country,
+        });
+        const { data: msg } = await db
+          .from("messages")
+          .select("id")
+          .eq("message_id", whatsapp_message_id)
+          .maybeSingle();
+        await db
+          .from("flow_runs")
+          .update({
+            last_prompt_message_id: (msg as { id: string } | null)?.id ?? null,
+          })
+          .eq("id", run.id);
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "send_address_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+        await endRun(db, run.id, "failed", "send_address_failed");
         return { outcome: "completed" };
       }
       const advanced = await advanceCurrentNodeKey(
@@ -1014,6 +1092,10 @@ async function handleReplyForActiveRun(
     reply_kind: message.kind,
     reply_id: message.kind === "interactive_reply" ? message.reply_id : null,
     text_length: message.kind === "text" ? message.text.length : null,
+    address_fields:
+      message.kind === "address_reply"
+        ? Object.keys(message.values).length
+        : null,
   });
 
   if (!run.current_node_key) {
@@ -1033,9 +1115,10 @@ async function handleReplyForActiveRun(
     return { consumed: true, flow_run_id: run.id, outcome: "no_match" };
   }
 
-  // Two ways a reply can advance:
+  // Three ways a reply can advance:
   //   1. Interactive button/list tap on a send_buttons/send_list node.
   //   2. Text reply on a collect_input node — capture into vars.
+  //   3. Address form submit on a send_address node — capture into vars.
   //
   // Everything else falls through to the fallback policy below.
   let matched: string | null = null;
@@ -1075,6 +1158,36 @@ async function handleReplyForActiveRun(
         await logEvent(db, run.id, "node_entered", currentNode.node_key, {
           captured_key: cfg.var_key,
           captured_length: captured.length,
+        });
+        matched = cfg.next_node_key;
+      }
+    }
+  } else if (
+    message.kind === "address_reply" &&
+    currentNode.node_type === "send_address"
+  ) {
+    const cfg = currentNode.config as unknown as SendAddressNodeConfig;
+    if (cfg.var_key && message.formatted.trim()) {
+      const captured = addressReplyToFlowVar({
+        formatted: message.formatted,
+        values: message.values,
+        saved_address_id: message.saved_address_id,
+      });
+      const newVars = { ...run.vars, [cfg.var_key]: captured };
+      const { error: capErr } = await db
+        .from("flow_runs")
+        .update({
+          vars: newVars,
+          reprompt_count: 0,
+        })
+        .eq("id", run.id);
+      if (!capErr) {
+        run.vars = newVars;
+        run.reprompt_count = 0;
+        await logEvent(db, run.id, "node_entered", currentNode.node_key, {
+          captured_key: cfg.var_key,
+          captured_length: message.formatted.length,
+          address_fields: Object.keys(message.values).length,
         });
         matched = cfg.next_node_key;
       }
@@ -1140,6 +1253,29 @@ async function handleReplyForActiveRun(
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
           text: interpolateVars(cfg.prompt_text, run.vars),
+        });
+      } catch (err) {
+        await logEvent(db, run.id, "error", currentNode.node_key, {
+          reason: "reprompt_send_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+      }
+    } else if (currentNode.node_type === "send_address") {
+      const cfg = currentNode.config as unknown as SendAddressNodeConfig;
+      try {
+        await engineSendAddressMessage({
+          accountId: run.account_id,
+          userId: run.user_id,
+          conversationId: run.conversation_id!,
+          contactId: run.contact_id!,
+          bodyText: interpolateVars(cfg.body_text, run.vars),
+          country: cfg.country,
+          headerText: cfg.header_text
+            ? interpolateVars(cfg.header_text, run.vars)
+            : undefined,
+          footerText: cfg.footer_text
+            ? interpolateVars(cfg.footer_text, run.vars)
+            : undefined,
         });
       } catch (err) {
         await logEvent(db, run.id, "error", currentNode.node_key, {

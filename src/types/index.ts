@@ -241,9 +241,15 @@ export interface Message {
    * Only set when `content_type === 'interactive'` — the stable id of
    * the button or list row the customer tapped. The Flows engine uses
    * this to route the next node; the inbox bubble uses it as a styling
-   * cue (renders with a "↩ button reply" affordance).
+   * cue (renders with a "↩ button reply" affordance). Address Message
+   * submissions store `"address_message"`.
    */
   interactive_reply_id?: string;
+  /**
+   * Optional structured extras (e.g. Address Message field values).
+   * Migration 045. Null/undefined for plain messages.
+   */
+  content_payload?: Record<string, unknown> | null;
 }
 
 export type ReactionActor = 'customer' | 'agent';

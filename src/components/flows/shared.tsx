@@ -22,6 +22,7 @@ import {
   Inbox,
   ListChecks,
   ListPlus,
+  MapPin,
   MessageCircle,
   Paperclip,
   PlayCircle,
@@ -54,6 +55,7 @@ export type NodeType =
   | "send_media"
   | "send_template"
   | "collect_input"
+  | "send_address"
   | "condition"
   | "switch"
   | "set_tag"
@@ -111,6 +113,11 @@ export const NODE_META: Record<
     label: "Collect input",
     icon: Inbox,
     color: "text-teal-400",
+  },
+  send_address: {
+    label: "Collect address",
+    icon: MapPin,
+    color: "text-rose-400",
   },
   condition: {
     label: "Condition",
@@ -271,6 +278,17 @@ export function summarizeNode(node: BuilderNode): string | null {
         return varKey ? `${truncate(prompt, 50)} → vars.${varKey}` : truncate(prompt);
       }
       return varKey ? `→ vars.${varKey}` : null;
+    }
+    case "send_address": {
+      const body = typeof cfg.body_text === "string" ? cfg.body_text : "";
+      const country = typeof cfg.country === "string" ? cfg.country : "";
+      const varKey = typeof cfg.var_key === "string" ? cfg.var_key : "";
+      const bits = [
+        country ? country : null,
+        body ? truncate(body, 40) : null,
+        varKey ? `→ vars.${varKey}` : null,
+      ].filter(Boolean);
+      return bits.length > 0 ? bits.join(" · ") : null;
     }
     case "condition": {
       if (cfg.subject === "shopify_payment") {

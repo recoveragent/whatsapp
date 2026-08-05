@@ -178,6 +178,16 @@ export function NodeConfigForm({
         </>
       );
 
+    case "send_address":
+      return (
+        <SendAddressForm
+          cfg={cfg as SendAddressCfg}
+          allNodes={allNodes}
+          currentKey={node.node_key}
+          onUpdateConfig={onUpdateConfig}
+        />
+      );
+
     case "condition":
       return (
         <ConditionForm
@@ -714,6 +724,108 @@ function SendListForm({
 }
 
 // ============================================================
+// send_address
+// ============================================================
+
+interface SendAddressCfg {
+  body_text?: string;
+  header_text?: string;
+  footer_text?: string;
+  country?: "IN" | "SG";
+  var_key?: string;
+  next_node_key?: string;
+}
+
+function SendAddressForm({
+  cfg,
+  allNodes,
+  currentKey,
+  onUpdateConfig,
+}: {
+  cfg: SendAddressCfg;
+  allNodes: BuilderNode[];
+  currentKey: string;
+  onUpdateConfig: (patch: Record<string, unknown>) => void;
+}) {
+  return (
+    <>
+      <p className="text-[11px] text-muted-foreground">
+        Opens WhatsApp&apos;s native address form. Available for India and
+        Singapore recipients only.
+      </p>
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">
+          Country
+        </label>
+        <Select
+          value={cfg.country ?? "IN"}
+          onValueChange={(v) =>
+            onUpdateConfig({ country: v as "IN" | "SG" })
+          }
+        >
+          <SelectTrigger className="bg-muted">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="IN">India (IN)</SelectItem>
+            <SelectItem value="SG">Singapore (SG)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <TextRow
+        label="Body text"
+        value={cfg.body_text ?? ""}
+        onChange={(v) => onUpdateConfig({ body_text: v })}
+        rows={2}
+      />
+      <TextRow
+        label="Header (optional)"
+        value={cfg.header_text ?? ""}
+        onChange={(v) => onUpdateConfig({ header_text: v })}
+        rows={1}
+      />
+      <TextRow
+        label="Footer (optional)"
+        value={cfg.footer_text ?? ""}
+        onChange={(v) => onUpdateConfig({ footer_text: v })}
+        rows={1}
+      />
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">
+          Variable key (stored in flow_runs.vars)
+        </label>
+        <Input
+          value={cfg.var_key ?? ""}
+          onChange={(e) =>
+            onUpdateConfig({
+              var_key: e.target.value.replace(/[^a-zA-Z0-9_]/g, ""),
+            })
+          }
+          placeholder="e.g. address, shipping_address"
+          className="bg-muted font-mono text-xs"
+        />
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          Stores a structured object. Use{" "}
+          <code className="rounded bg-muted px-1">
+            {"{{vars."}
+            {cfg.var_key || "address"}
+            {"}}"}
+          </code>{" "}
+          for the formatted address in later messages.
+        </p>
+      </div>
+      <NextNodeRow
+        value={cfg.next_node_key ?? ""}
+        allNodes={allNodes}
+        currentKey={currentKey}
+        onChange={(v) => onUpdateConfig({ next_node_key: v })}
+        label="After address is submitted, advance to"
+      />
+    </>
+  );
+}
+
+// ============================================================
 // condition
 // ============================================================
 
@@ -744,7 +856,9 @@ interface SwitchCfg {
 function collectFlowVarKeys(nodes: BuilderNode[]): string[] {
   const keys = new Set<string>();
   for (const n of nodes) {
-    if (n.node_type !== "collect_input") continue;
+    if (n.node_type !== "collect_input" && n.node_type !== "send_address") {
+      continue;
+    }
     const key = (n.config as { var_key?: string }).var_key?.trim();
     if (key) keys.add(key);
   }

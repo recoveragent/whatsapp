@@ -173,6 +173,15 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
         var_key: "answer",
         next_node_key: "",
       };
+    case "send_address":
+      return {
+        body_text: "Please share your delivery address.",
+        country: "IN",
+        var_key: "address",
+        header_text: "",
+        footer_text: "",
+        next_node_key: "",
+      };
     case "condition":
       return {
         subject: "var",

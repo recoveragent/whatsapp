@@ -88,6 +88,7 @@ describe("defaultConfigFor", () => {
     "send_list",
     "send_media",
     "collect_input",
+    "send_address",
     "condition",
     "set_tag",
     "handoff",
@@ -126,6 +127,17 @@ describe("defaultConfigFor", () => {
     // Mirrors the regex in validate.ts: alphanumeric + underscore,
     // starts with letter or underscore.
     expect(cfg.var_key).toMatch(/^[a-zA-Z_][a-zA-Z0-9_]*$/);
+  });
+
+  it("send_address defaults to India with a valid var_key", () => {
+    const cfg = defaultConfigFor("send_address") as {
+      country?: string;
+      var_key?: string;
+      body_text?: string;
+    };
+    expect(cfg.country).toBe("IN");
+    expect(cfg.var_key).toMatch(/^[a-zA-Z_][a-zA-Z0-9_]*$/);
+    expect(cfg.body_text?.length).toBeGreaterThan(0);
   });
 
   it("end's default is an empty object (terminal — no config)", () => {

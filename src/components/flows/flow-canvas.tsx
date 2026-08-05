@@ -819,6 +819,7 @@ const ADD_NODE_TYPES: NodeType[] = [
   "send_media",
   "send_template",
   "collect_input",
+  "send_address",
   "condition",
   "switch",
   "set_tag",

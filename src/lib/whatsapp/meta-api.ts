@@ -1008,6 +1008,120 @@ function validateInteractiveHeaderFooter(
 }
 
 // ============================================================
+// Address Messages (India + Singapore)
+// ============================================================
+//
+// Interactive subtype that opens Meta's native address form.
+// Reply arrives as interactive.type = nfm_reply (see
+// src/lib/whatsapp/address-message.ts). Only available when both the
+// business and the recipient are in IN or SG.
+
+import type {
+  AddressMessageCountry,
+  AddressMessageValues,
+  AddressSavedAddress,
+} from './address-message'
+
+export type { AddressMessageCountry, AddressMessageValues, AddressSavedAddress }
+
+export interface SendAddressMessageArgs {
+  phoneNumberId: string
+  accessToken: string
+  to: string
+  bodyText: string
+  /** Mandatory — drives which address fields Meta shows. */
+  country: AddressMessageCountry
+  headerText?: string
+  footerText?: string
+  /** Prefill values shown in the form. */
+  values?: AddressMessageValues
+  /** Previously saved addresses the customer can pick from. */
+  savedAddresses?: AddressSavedAddress[]
+  /** Field → error message; prevents submit until fixed. */
+  validationErrors?: Partial<Record<keyof AddressMessageValues, string>>
+  contextMessageId?: string
+}
+
+/**
+ * Send a WhatsApp Address Message (interactive address form).
+ *
+ * Country must be `IN` or `SG`. Meta rejects the send when the
+ * recipient's phone country code does not match.
+ */
+export async function sendAddressMessage(
+  args: SendAddressMessageArgs,
+): Promise<MetaSendResult> {
+  const {
+    phoneNumberId,
+    accessToken,
+    to,
+    bodyText,
+    country,
+    headerText,
+    footerText,
+    values,
+    savedAddresses,
+    validationErrors,
+    contextMessageId,
+  } = args
+
+  validateInteractiveBody(bodyText)
+  validateInteractiveHeaderFooter(headerText, footerText)
+  if (country !== 'IN' && country !== 'SG') {
+    throw new Error(
+      `Address message country must be "IN" or "SG" (got "${String(country)}").`,
+    )
+  }
+
+  const parameters: Record<string, unknown> = { country }
+  if (values && Object.keys(values).length > 0) parameters.values = values
+  if (savedAddresses && savedAddresses.length > 0) {
+    parameters.saved_addresses = savedAddresses.map((a) => ({
+      id: a.id,
+      value: a.value,
+    }))
+  }
+  if (validationErrors && Object.keys(validationErrors).length > 0) {
+    parameters.validation_errors = validationErrors
+  }
+
+  const interactive: Record<string, unknown> = {
+    type: 'address_message',
+    body: { text: bodyText },
+    action: {
+      name: 'address_message',
+      parameters,
+    },
+  }
+  if (headerText) interactive.header = { type: 'text', text: headerText }
+  if (footerText) interactive.footer = { text: footerText }
+
+  const body: Record<string, unknown> = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive,
+  }
+  if (contextMessageId) body.context = { message_id: contextMessageId }
+
+  const url = `${META_API_BASE}/${phoneNumberId}/messages`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+  const data = await response.json()
+  return { messageId: data.messages[0].id }
+}
+
+// ============================================================
 // Media
 // ============================================================
 

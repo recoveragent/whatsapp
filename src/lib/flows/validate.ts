@@ -651,6 +651,70 @@ function validateNode(
       break;
     }
 
+    case "send_address": {
+      const cfg = node.config as {
+        body_text?: string;
+        country?: string;
+        var_key?: string;
+        next_node_key?: string;
+        header_text?: string;
+        footer_text?: string;
+      };
+      if (!cfg.body_text?.trim()) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "body_text",
+          message: "Address message needs body text for the customer.",
+        });
+      }
+      if (cfg.country !== "IN" && cfg.country !== "SG") {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "country",
+          message: 'Address message country must be "IN" or "SG".',
+        });
+      }
+      if (!cfg.var_key?.trim()) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "var_key",
+          message: "Address message needs a var_key to store the address under.",
+        });
+      } else if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(cfg.var_key)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "var_key",
+          message: `var_key "${cfg.var_key}" must be alphanumeric+underscore and start with a letter or underscore.`,
+        });
+      }
+      if (!cfg.next_node_key) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "next_node_key",
+          message: "Address message must point to a next node.",
+        });
+      } else if (!knownKeys.has(cfg.next_node_key)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "next_node_key",
+          message: `Address message points to non-existent node "${cfg.next_node_key}".`,
+        });
+      }
+      break;
+    }
+
     case "condition": {
       const cfg = node.config as {
         subject?: "var" | "tag" | "contact_field" | "shopify_payment";
@@ -1053,6 +1117,7 @@ function outgoingEdges(node: NodeInput): string[] {
     case "create_deal":
     case "close_conversation":
     case "collect_input":
+    case "send_address":
     case "set_tag": {
       const cfg = node.config as { next_node_key?: string };
       return cfg.next_node_key ? [cfg.next_node_key] : [];

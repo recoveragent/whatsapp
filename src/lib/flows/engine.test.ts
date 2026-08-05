@@ -162,6 +162,7 @@ describe("node classification helpers", () => {
     expect(isSuspending("send_buttons")).toBe(true);
     expect(isSuspending("send_list")).toBe(true);
     expect(isSuspending("collect_input")).toBe(true);
+    expect(isSuspending("send_address")).toBe(true);
     expect(isSuspending("start")).toBe(false);
     expect(isSuspending("send_message")).toBe(false);
     expect(isSuspending("condition")).toBe(false);
@@ -186,6 +187,7 @@ describe("node classification helpers", () => {
       "send_list",
       "send_media",
       "collect_input",
+      "send_address",
       "condition",
       "switch",
       "set_tag",

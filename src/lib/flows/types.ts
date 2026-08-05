@@ -138,6 +138,24 @@ export interface CollectInputNodeConfig {
   next_node_key: string;
 }
 
+/**
+ * Sends Meta's Address Message form (India / Singapore) and suspends
+ * until the customer submits. Captured address is stored under
+ * `flow_runs.vars[var_key]` as an object with `formatted` plus the
+ * individual field values (city, in_pin_code, etc.).
+ */
+export interface SendAddressNodeConfig {
+  /** Body text above the address CTA. */
+  body_text: string;
+  header_text?: string;
+  footer_text?: string;
+  /** Meta country code — drives which form fields appear. */
+  country: "IN" | "SG";
+  /** Key under which to store the address object in flow_runs.vars. */
+  var_key: string;
+  next_node_key: string;
+}
+
 export type ConditionOperator =
   | "equals"
   | "not_equals"
@@ -276,6 +294,7 @@ export type FlowNodeConfig =
   | { node_type: "send_list"; config: SendListNodeConfig }
   | { node_type: "send_media"; config: SendMediaNodeConfig }
   | { node_type: "collect_input"; config: CollectInputNodeConfig }
+  | { node_type: "send_address"; config: SendAddressNodeConfig }
   | { node_type: "condition"; config: ConditionNodeConfig }
   | { node_type: "switch"; config: SwitchNodeConfig }
   | { node_type: "set_tag"; config: SetTagNodeConfig }
@@ -417,6 +436,15 @@ export type ParsedInbound =
       reply_id: string;
       /** The visible title of the tapped option (for logging). */
       reply_title: string;
+      meta_message_id: string;
+    }
+  | {
+      kind: "address_reply";
+      /** Human-readable multi-line address from Meta. */
+      formatted: string;
+      /** Structured field values from the address form. */
+      values: Record<string, string>;
+      saved_address_id?: string;
       meta_message_id: string;
     };
 

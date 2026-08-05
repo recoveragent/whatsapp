@@ -298,6 +298,27 @@ function MessageContent({ message }: { message: Message }) {
       );
 
     case "interactive": {
+      // Address Message submission — structured values live in
+      // content_payload; content_text is the formatted multi-line summary.
+      const isAddress =
+        message.interactive_reply_id === "address_message" ||
+        (message.content_payload &&
+          (message.content_payload as { type?: string }).type ===
+            "address_message");
+      if (isAddress) {
+        return (
+          <div className="flex flex-col gap-0.5">
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              <MapPin className="h-3 w-3" />
+              Address
+            </span>
+            <p className="whitespace-pre-wrap break-words text-sm">
+              {message.content_text || "[Address submitted]"}
+            </p>
+          </div>
+        );
+      }
+
       // Customer tapped a reply button or list row on a message the bot
       // sent. We show the tapped option's title (already in content_text,
       // set by parseMessageContent in the webhook) with a small affordance

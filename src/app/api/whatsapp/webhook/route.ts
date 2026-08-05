@@ -11,6 +11,7 @@ import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
+import { parseAddressNfmReply } from '@/lib/whatsapp/address-message'
 
 // Lazy-initialized to avoid build-time crash when env vars are missing
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -40,14 +41,21 @@ interface WhatsAppMessage {
   reaction?: { message_id: string; emoji: string }
   /**
    * Set when the customer taps a button or list row on an interactive
-   * message we sent. `button_reply.id` / `list_reply.id` is whatever id
-   * we put on the button/row when sending — the Flows engine uses this
-   * to advance the per-contact run.
+   * message we sent, or submits an Address Message form (`nfm_reply`).
+   * `button_reply.id` / `list_reply.id` is whatever id we put on the
+   * button/row when sending — the Flows engine uses this to advance
+   * the per-contact run. Address replies carry structured fields in
+   * `nfm_reply.response_json`.
    */
   interactive?: {
-    type: 'button_reply' | 'list_reply'
+    type: 'button_reply' | 'list_reply' | 'nfm_reply'
     button_reply?: { id: string; title: string }
     list_reply?: { id: string; title: string; description?: string }
+    nfm_reply?: {
+      name?: string
+      body?: string
+      response_json?: string | Record<string, unknown>
+    }
   }
   /** Template quick-reply tap — Meta sends type `button`. */
   button?: { text: string; payload: string }
@@ -596,7 +604,7 @@ async function processMessage(
   }
 
   // Parse message content based on type
-  const { contentText, mediaUrl, mediaType, interactiveReplyId } =
+  const { contentText, mediaUrl, mediaType, interactiveReplyId, contentPayload } =
     await parseMessageContent(message, accessToken)
 
   // Resolve swipe-reply context if present. A missing parent is fine —
@@ -664,6 +672,8 @@ async function processMessage(
     // the column; null for every other content_type so existing inserts
     // behave identically.
     interactive_reply_id: interactiveReplyId,
+    // Structured extras (Address Message values, etc.). Migration 045.
+    content_payload: contentPayload,
   })
 
   if (msgError) {
@@ -739,18 +749,39 @@ async function processMessage(
     contactId: contactRecord.id,
     conversationId: conversation.id,
     message:
-      interactiveReplyId
+      contentPayload &&
+      typeof contentPayload === 'object' &&
+      (contentPayload as { type?: string }).type === 'address_message'
         ? {
-            kind: 'interactive_reply',
-            reply_id: interactiveReplyId,
-            reply_title: contentText ?? '',
+            kind: 'address_reply',
+            formatted:
+              typeof (contentPayload as { formatted?: string }).formatted ===
+              'string'
+                ? (contentPayload as { formatted: string }).formatted
+                : contentText ?? '',
+            values:
+              ((contentPayload as { values?: Record<string, string> })
+                .values as Record<string, string>) ?? {},
+            saved_address_id:
+              typeof (contentPayload as { saved_address_id?: string })
+                .saved_address_id === 'string'
+                ? (contentPayload as { saved_address_id: string })
+                    .saved_address_id
+                : undefined,
             meta_message_id: message.id,
           }
-        : {
-            kind: 'text',
-            text: contentText ?? message.text?.body ?? '',
-            meta_message_id: message.id,
-          },
+        : interactiveReplyId
+          ? {
+              kind: 'interactive_reply',
+              reply_id: interactiveReplyId,
+              reply_title: contentText ?? '',
+              meta_message_id: message.id,
+            }
+          : {
+              kind: 'text',
+              text: contentText ?? message.text?.body ?? '',
+              meta_message_id: message.id,
+            },
     isFirstInboundMessage,
   })
   const flowConsumed = flowResult.consumed
@@ -805,9 +836,12 @@ async function parseMessageContent(
    * option (whatever we put on the button when sending). Used by the
    * Flows engine to advance the per-contact run; persisted to
    * `messages.interactive_reply_id` so the inbox bubble can render the
-   * tap with the right affordance. Null for everything else.
+   * tap with the right affordance. Null for everything else. Address
+   * replies store `"address_message"` here.
    */
   interactiveReplyId: string | null
+  /** Structured extras (Address Message fields). Null when unused. */
+  contentPayload: Record<string, unknown> | null
 }> {
   // getMediaUrl signature is (mediaId, accessToken) — earlier code had
   // the args swapped, so every verification hit an invalid Meta URL and
@@ -835,6 +869,7 @@ async function parseMessageContent(
     mediaUrl: null,
     mediaType: null,
     interactiveReplyId: null,
+    contentPayload: null,
   }
 
   switch (message.type) {
@@ -912,6 +947,32 @@ async function parseMessageContent(
       return { ...empty, contentText: message.reaction?.emoji || null }
 
     case 'interactive': {
+      // Address Message submission — Meta delivers nfm_reply with
+      // response_json holding the structured fields.
+      const address = parseAddressNfmReply(
+        message.interactive?.type === 'nfm_reply'
+          ? {
+              type: 'nfm_reply',
+              nfm_reply: message.interactive.nfm_reply,
+            }
+          : null,
+      )
+      if (address) {
+        return {
+          ...empty,
+          contentText: address.formatted,
+          interactiveReplyId: 'address_message',
+          contentPayload: {
+            type: 'address_message',
+            formatted: address.formatted,
+            values: address.values,
+            ...(address.saved_address_id
+              ? { saved_address_id: address.saved_address_id }
+              : {}),
+          },
+        }
+      }
+
       // The customer tapped a reply button or a list row on a message
       // we previously sent. Meta delivers `interactive.button_reply` for
       // 3-button messages and `interactive.list_reply` for list messages.

@@ -3,6 +3,7 @@ import {
   INTERACTIVE_LIMITS,
   sendInteractiveButtons,
   sendInteractiveList,
+  sendAddressMessage,
 } from "./meta-api";
 
 // All assertions in this file run BEFORE the network call. We stub fetch
@@ -262,6 +263,63 @@ describe("sendInteractiveList â€” validation", () => {
               ],
             },
           ],
+        },
+      },
+    });
+  });
+});
+
+describe("sendAddressMessage — validation + payload", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn(neverFetch));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("rejects an invalid country", async () => {
+    await expect(
+      sendAddressMessage({
+        ...BASE_ARGS,
+        country: "US" as "IN",
+      }),
+    ).rejects.toThrow(/IN.*SG/);
+  });
+
+  it("sends the address_message interactive payload", async () => {
+    let captured: { body: unknown } | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        captured = { body: JSON.parse(String(init.body)) };
+        return new Response(JSON.stringify({ messages: [{ id: "wamid.ADDR" }] }), {
+          status: 200,
+        });
+      }),
+    );
+
+    const result = await sendAddressMessage({
+      ...BASE_ARGS,
+      country: "IN",
+      headerText: "Delivery",
+      footerText: "Thanks",
+      values: { name: "Pat", phone_number: "+919999999999" },
+    });
+
+    expect(result).toEqual({ messageId: "wamid.ADDR" });
+    expect(captured!.body).toMatchObject({
+      type: "interactive",
+      interactive: {
+        type: "address_message",
+        body: { text: "Body text" },
+        header: { type: "text", text: "Delivery" },
+        footer: { text: "Thanks" },
+        action: {
+          name: "address_message",
+          parameters: {
+            country: "IN",
+            values: { name: "Pat", phone_number: "+919999999999" },
+          },
         },
       },
     });
