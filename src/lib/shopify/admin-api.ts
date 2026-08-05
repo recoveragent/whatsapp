@@ -454,22 +454,10 @@ export async function fetchOrdersByEmail(
   return data.orders ?? [];
 }
 
-interface ShopifyCustomerDetail {
-  id: number;
-  first_name?: string | null;
-  last_name?: string | null;
-  phone?: string | null;
-  default_address?: ShopifyAddressFields | null;
-  addresses?: ShopifyAddressFields[] | null;
-}
-
 /**
- * Look up shipping addresses for a phone, preferring the **most recent**
- * ones from Shopify orders (then filling from the customer address book).
- *
- * Used by Collect-address flows to prefill Meta `saved_addresses`.
- * Returns at most {@link MAX_RECENT_ADDRESSES} raw records — the mapper
- * applies the same Meta UI cap after country filtering + dedupe.
+ * Shipping addresses from this contact's own recent Shopify orders only
+ * (newest first, unique, capped). Does NOT use the store address book
+ * or other customers' addresses.
  */
 const MAX_RECENT_ADDRESSES = 3;
 
@@ -490,17 +478,43 @@ function pushUniqueAddress(
   into: ShopifyAddressFields[],
   addr: ShopifyAddressFields | null | undefined,
   seen: Set<string>,
-  enrich?: Partial<ShopifyAddressFields>,
 ): void {
   if (!addr || !(addr.address1 || addr.city || addr.zip)) return;
   if (into.length >= MAX_RECENT_ADDRESSES) return;
-  const merged: ShopifyAddressFields = { ...addr, ...enrich };
-  const key = addressFingerprint(merged);
+  const key = addressFingerprint(addr);
   if (!key || seen.has(key)) return;
   seen.add(key);
-  into.push(merged);
+  into.push(addr);
 }
 
+/** True when the order is tied to this WhatsApp contact's phone. */
+function orderBelongsToPhone(
+  order: ShopifyOrderPayload,
+  contactPhone: string,
+): boolean {
+  const candidates = [
+    order.phone,
+    order.contact_phone,
+    order.customer?.phone,
+    order.customer?.default_address?.phone,
+    order.shipping_address?.phone,
+    order.billing_address?.phone,
+  ];
+  const phones = candidates.filter(
+    (raw): raw is string => typeof raw === 'string' && raw.trim().length > 0,
+  );
+  // If Shopify returned the order via phone search but none of the
+  // payload fields carry a phone, keep it — the query already scoped
+  // by phone. When phones ARE present, require a strict match so we
+  // never leak another customer's address into the picker.
+  if (phones.length === 0) return true;
+  return phones.some((raw) => phonesMatch(raw, contactPhone));
+}
+
+/**
+ * Recent shipping addresses for a single customer (by phone), taken
+ * only from their Shopify orders — newest first, max 3 unique.
+ */
 export async function fetchCustomerAddressesByPhone(
   shopDomain: string,
   accessToken: string,
@@ -509,61 +523,28 @@ export async function fetchCustomerAddressesByPhone(
   const collected: ShopifyAddressFields[] = [];
   const seen = new Set<string>();
 
-  // 1) Most recent order shipping/billing addresses (newest first).
   try {
     const orders = await fetchOrdersByPhone(shopDomain, accessToken, phone);
-    const sorted = [...orders].sort((a, b) => {
-      const at = a.created_at ? Date.parse(a.created_at) : 0;
-      const bt = b.created_at ? Date.parse(b.created_at) : 0;
-      return bt - at;
-    });
+    const sorted = [...orders]
+      .filter((order) => orderBelongsToPhone(order, phone))
+      .sort((a, b) => {
+        const at = a.created_at ? Date.parse(a.created_at) : 0;
+        const bt = b.created_at ? Date.parse(b.created_at) : 0;
+        return bt - at;
+      });
+
     for (const order of sorted) {
       if (collected.length >= MAX_RECENT_ADDRESSES) break;
-      pushUniqueAddress(collected, order.shipping_address, seen);
-      if (collected.length >= MAX_RECENT_ADDRESSES) break;
-      pushUniqueAddress(collected, order.billing_address, seen);
-    }
-  } catch (err) {
-    console.warn('[shopify] recent order addresses failed:', err);
-  }
-
-  if (collected.length >= MAX_RECENT_ADDRESSES) {
-    return collected.slice(0, MAX_RECENT_ADDRESSES);
-  }
-
-  // 2) Fill remaining slots from the customer address book (default first).
-  try {
-    const customerIds = await searchCustomerIdsByPhone(
-      shopDomain,
-      accessToken,
-      phone,
-    );
-    for (const customerId of customerIds.slice(0, 2)) {
-      if (collected.length >= MAX_RECENT_ADDRESSES) break;
-      try {
-        const data = await shopifyFetch<{ customer: ShopifyCustomerDetail }>(
-          shopDomain,
-          accessToken,
-          `/customers/${customerId}.json`,
-        );
-        const customer = data.customer;
-        if (!customer) continue;
-        const enrich = {
-          first_name: customer.first_name || undefined,
-          last_name: customer.last_name || undefined,
-          phone: customer.phone || undefined,
-        };
-        pushUniqueAddress(collected, customer.default_address, seen, enrich);
-        for (const addr of customer.addresses ?? []) {
-          if (collected.length >= MAX_RECENT_ADDRESSES) break;
-          pushUniqueAddress(collected, addr, seen, enrich);
-        }
-      } catch (err) {
-        console.warn('[shopify] fetch customer addresses failed:', customerId, err);
+      // Prefer the shipping address on the order; only use billing when
+      // shipping is missing so we stay tied to that order's delivery.
+      if (order.shipping_address) {
+        pushUniqueAddress(collected, order.shipping_address, seen);
+      } else {
+        pushUniqueAddress(collected, order.billing_address, seen);
       }
     }
   } catch (err) {
-    console.warn('[shopify] customer address book lookup failed:', err);
+    console.warn('[shopify] recent order addresses failed:', err);
   }
 
   return collected.slice(0, MAX_RECENT_ADDRESSES);

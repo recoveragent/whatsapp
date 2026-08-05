@@ -4,9 +4,9 @@
  *
  * Sources (in order, merged + deduped):
  *   1. Structured `shipping_address_fields` already on the flow run
- *      (Shopify order/checkout trigger).
- *   2. Live Shopify Admin lookup by contact phone (customer address
- *      book, then recent order shipping) when the store is connected.
+ *      (Shopify order/checkout trigger for this conversation).
+ *   2. This contact's recent Shopify order shipping addresses (by phone)
+ *      when the store is connected — never the store-wide address book.
  */
 
 import { decrypt } from '@/lib/whatsapp/encryption'
