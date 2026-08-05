@@ -19,6 +19,14 @@ function fullName(
   return [first, last].filter(Boolean).join(' ').trim()
 }
 
+/** Meta address forms expect a dialable phone; normalize to +digits when possible. */
+function formatAddressPhone(raw: string | null | undefined): string | undefined {
+  if (!raw?.trim()) return undefined
+  const digits = raw.replace(/\D/g, '')
+  if (digits.length < 8) return raw.trim()
+  return `+${digits}`
+}
+
 function countryCodeOf(address: ShopifyAddressFields): string | null {
   const raw = (address.country_code || address.country || '').trim()
   if (!raw) return null
@@ -63,9 +71,11 @@ export function shopifyAddressToMetaValues(
     undefined
 
   const phone =
-    (typeof address.phone === 'string' && address.phone.trim()) ||
-    fallbacks?.phone?.trim() ||
-    undefined
+    formatAddressPhone(
+      (typeof address.phone === 'string' && address.phone.trim()) ||
+        fallbacks?.phone?.trim() ||
+        undefined,
+    ) || undefined
 
   const street = [address.address1, address.company]
     .map((p) => (typeof p === 'string' ? p.trim() : ''))

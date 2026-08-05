@@ -337,7 +337,10 @@ async function searchCustomerIdsByPhone(
     for (const customer of customers) {
       const id = String(customer.id ?? '');
       if (!id) continue;
-      if (customerPhoneMatches(customer, phone) || !customer.phone) {
+      // Require a real phone match — previously we also kept customers
+      // with a missing phone, which leaked unrelated store orders into
+      // address prefills (and then filtered to nothing).
+      if (customerPhoneMatches(customer, phone)) {
         seen.add(id);
       }
     }
@@ -456,8 +459,9 @@ export async function fetchOrdersByEmail(
 
 /**
  * Shipping addresses from this contact's own recent Shopify orders only
- * (newest first, unique, capped). Does NOT use the store address book
- * or other customers' addresses.
+ * (newest first, unique, capped). Scoped by `fetchOrdersByPhone` — no
+ * store address book and no extra phone re-filter (Shopify order phones
+ * often differ in trunk-0 / country-code formatting from WhatsApp).
  */
 const MAX_RECENT_ADDRESSES = 3;
 
@@ -487,30 +491,6 @@ function pushUniqueAddress(
   into.push(addr);
 }
 
-/** True when the order is tied to this WhatsApp contact's phone. */
-function orderBelongsToPhone(
-  order: ShopifyOrderPayload,
-  contactPhone: string,
-): boolean {
-  const candidates = [
-    order.phone,
-    order.contact_phone,
-    order.customer?.phone,
-    order.customer?.default_address?.phone,
-    order.shipping_address?.phone,
-    order.billing_address?.phone,
-  ];
-  const phones = candidates.filter(
-    (raw): raw is string => typeof raw === 'string' && raw.trim().length > 0,
-  );
-  // If Shopify returned the order via phone search but none of the
-  // payload fields carry a phone, keep it — the query already scoped
-  // by phone. When phones ARE present, require a strict match so we
-  // never leak another customer's address into the picker.
-  if (phones.length === 0) return true;
-  return phones.some((raw) => phonesMatch(raw, contactPhone));
-}
-
 /**
  * Recent shipping addresses for a single customer (by phone), taken
  * only from their Shopify orders — newest first, max 3 unique.
@@ -525,13 +505,11 @@ export async function fetchCustomerAddressesByPhone(
 
   try {
     const orders = await fetchOrdersByPhone(shopDomain, accessToken, phone);
-    const sorted = [...orders]
-      .filter((order) => orderBelongsToPhone(order, phone))
-      .sort((a, b) => {
-        const at = a.created_at ? Date.parse(a.created_at) : 0;
-        const bt = b.created_at ? Date.parse(b.created_at) : 0;
-        return bt - at;
-      });
+    const sorted = [...orders].sort((a, b) => {
+      const at = a.created_at ? Date.parse(a.created_at) : 0;
+      const bt = b.created_at ? Date.parse(b.created_at) : 0;
+      return bt - at;
+    });
 
     for (const order of sorted) {
       if (collected.length >= MAX_RECENT_ADDRESSES) break;
