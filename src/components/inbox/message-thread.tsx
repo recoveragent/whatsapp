@@ -47,6 +47,7 @@ import {
 } from "./message-composer";
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
+import { ScheduleFollowupDialog } from "./schedule-followup-dialog";
 import { PrivateNoteBubble } from "./private-note-bubble";
 import { buildReplyPreview } from "./reply-quote";
 import { toast } from "sonner";
@@ -199,6 +200,7 @@ export function MessageThread({
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [followupDialogOpen, setFollowupDialogOpen] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
   // Purely visual spin state for the manual-refresh button. The actual
@@ -665,6 +667,17 @@ export function MessageThread({
     [conversation, onStatusChange, onNewMessage]
   );
 
+  const handleFollowupScheduled = useCallback(
+    (updated: Conversation & { system_message?: Message | null }) => {
+      if (!conversation) return;
+      onStatusChange(conversation.id, updated.status);
+      if (updated.system_message) {
+        onNewMessage(updated.system_message);
+      }
+    },
+    [conversation, onStatusChange, onNewMessage],
+  );
+
   const handleToggleOpenClose = useCallback(() => {
     if (!conversation) return;
     const next: ConversationStatus =
@@ -1077,7 +1090,7 @@ export function MessageThread({
                 className="border-border bg-popover"
               >
                 <DropdownMenuItem
-                  onClick={() => handleStatusChange("followup")}
+                  onClick={() => setFollowupDialogOpen(true)}
                   className={cn("text-sm", STATUS_COLORS.followup)}
                 >
                   Followup
@@ -1261,6 +1274,18 @@ export function MessageThread({
         onOpenChange={setTemplateModalOpen}
         onSelect={handleSendTemplate}
       />
+
+      {conversation ? (
+        <ScheduleFollowupDialog
+          open={followupDialogOpen}
+          onOpenChange={setFollowupDialogOpen}
+          conversationId={conversation.id}
+          contactLabel={
+            contact?.name?.trim() || contact?.phone || undefined
+          }
+          onScheduled={handleFollowupScheduled}
+        />
+      ) : null}
     </div>
   );
 }

@@ -207,6 +207,23 @@ export interface InboxFollowupSettings {
   updated_at: string;
 }
 
+export type InboxReminderStatus = 'pending' | 'completed';
+
+export interface InboxReminder {
+  id: string;
+  account_id: string;
+  conversation_id: string;
+  contact_id: string;
+  created_by: string;
+  note: string;
+  due_at: string;
+  status: InboxReminderStatus;
+  completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  contact?: { id: string; name?: string | null; phone: string } | null;
+}
+
 export type SenderType = 'customer' | 'agent' | 'bot';
 export type ContentType =
   | 'text'
