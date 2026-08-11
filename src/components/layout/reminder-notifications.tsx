@@ -1,11 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { Bell, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { createClient } from '@/lib/supabase/client'
+import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import {
   Popover,
@@ -20,6 +22,8 @@ type ReminderRow = InboxReminder & {
   contact?: { id: string; name?: string | null; phone: string } | null
 }
 
+type PanelTab = 'due' | 'history'
+
 function contactLabel(reminder: ReminderRow): string {
   return (
     reminder.contact?.name?.trim() ||
@@ -28,12 +32,45 @@ function contactLabel(reminder: ReminderRow): string {
   )
 }
 
+function splitDue(pending: ReminderRow[], nowMs: number) {
+  const due: ReminderRow[] = []
+  const upcoming: ReminderRow[] = []
+  for (const r of pending) {
+    if (new Date(r.due_at).getTime() <= nowMs) due.push(r)
+    else upcoming.push(r)
+  }
+  return { due, upcoming }
+}
+
+function notifyReminderDue(reminder: ReminderRow) {
+  const name = contactLabel(reminder)
+  toast.message(`Follow-up due: ${name}`, {
+    description: reminder.note,
+    duration: 12_000,
+  })
+
+  if (typeof window === 'undefined' || !('Notification' in window)) return
+  if (Notification.permission !== 'granted') return
+  try {
+    new Notification(`Follow-up due: ${name}`, {
+      body: reminder.note,
+      tag: `inbox-reminder-${reminder.id}`,
+    })
+  } catch {
+    // ignore — browser may block even when permission is granted
+  }
+}
+
 export function ReminderNotifications() {
   const [open, setOpen] = useState(false)
+  const [tab, setTab] = useState<PanelTab>('due')
   const [loading, setLoading] = useState(true)
-  const [due, setDue] = useState<ReminderRow[]>([])
+  const [pending, setPending] = useState<ReminderRow[]>([])
   const [history, setHistory] = useState<ReminderRow[]>([])
   const [snoozeId, setSnoozeId] = useState<string | null>(null)
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  const knownDueIdsRef = useRef<Set<string>>(new Set())
+  const primedRef = useRef(false)
 
   const load = useCallback(async () => {
     try {
@@ -45,8 +82,9 @@ export function ReminderNotifications() {
         reminders?: ReminderRow[]
         history?: ReminderRow[]
       }
-      setDue(data.reminders ?? [])
+      setPending(data.reminders ?? [])
       setHistory(data.history ?? [])
+      setNowMs(Date.now())
     } catch {
       // silent — header should not toast on background poll failures
     } finally {
@@ -56,7 +94,7 @@ export function ReminderNotifications() {
 
   useEffect(() => {
     void load()
-    const interval = window.setInterval(() => void load(), 30_000)
+    const interval = window.setInterval(() => void load(), 15_000)
     return () => window.clearInterval(interval)
   }, [load])
 
@@ -77,6 +115,50 @@ export function ReminderNotifications() {
       void supabase.removeChannel(channel)
     }
   }, [load])
+
+  const { due, upcoming } = useMemo(
+    () => splitDue(pending, nowMs),
+    [pending, nowMs],
+  )
+
+  // When the next upcoming reminder hits due_at, promote it immediately
+  // (DB rows don't change at due time, so realtime alone is not enough).
+  useEffect(() => {
+    if (upcoming.length === 0) return
+    const nextDueMs = Math.min(
+      ...upcoming.map((r) => new Date(r.due_at).getTime()),
+    )
+    const delay = Math.max(0, nextDueMs - Date.now()) + 50
+    const timer = window.setTimeout(() => {
+      setNowMs(Date.now())
+    }, Math.min(delay, 2_147_000_000))
+    return () => window.clearTimeout(timer)
+  }, [upcoming])
+
+  // Toast / browser notification for newly due items.
+  useEffect(() => {
+    const dueIds = new Set(due.map((r) => r.id))
+    if (!primedRef.current) {
+      knownDueIdsRef.current = dueIds
+      primedRef.current = true
+      return
+    }
+
+    for (const reminder of due) {
+      if (!knownDueIdsRef.current.has(reminder.id)) {
+        notifyReminderDue(reminder)
+      }
+    }
+    knownDueIdsRef.current = dueIds
+  }, [due])
+
+  // Ask once for browser notifications after the user opens the panel.
+  useEffect(() => {
+    if (!open) return
+    if (typeof window === 'undefined' || !('Notification' in window)) return
+    if (Notification.permission !== 'default') return
+    void Notification.requestPermission().catch(() => {})
+  }, [open])
 
   const count = due.length
 
@@ -112,20 +194,42 @@ export function ReminderNotifications() {
           </p>
         </div>
 
+        <div className="flex border-b border-border">
+          <button
+            type="button"
+            className={cn(
+              'flex-1 px-3 py-2 text-xs font-medium transition-colors',
+              tab === 'due'
+                ? 'border-b-2 border-primary text-foreground'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+            onClick={() => setTab('due')}
+          >
+            Due{count > 0 ? ` (${count})` : ''}
+          </button>
+          <button
+            type="button"
+            className={cn(
+              'flex-1 px-3 py-2 text-xs font-medium transition-colors',
+              tab === 'history'
+                ? 'border-b-2 border-primary text-foreground'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+            onClick={() => setTab('history')}
+          >
+            History
+          </button>
+        </div>
+
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
             Loading…
           </div>
-        ) : (
+        ) : tab === 'due' ? (
           <ScrollArea className="max-h-96">
-            <div className="border-b border-border px-3 py-2">
-              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                Due
-              </p>
-            </div>
             {due.length === 0 ? (
-              <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+              <p className="px-3 py-8 text-center text-sm text-muted-foreground">
                 No reminders due
               </p>
             ) : (
@@ -157,7 +261,7 @@ export function ReminderNotifications() {
                           <ReminderSnoozeControls
                             reminderId={reminder.id}
                             onSnoozed={() => {
-                              setDue((prev) =>
+                              setPending((prev) =>
                                 prev.filter((r) => r.id !== reminder.id),
                               )
                               setSnoozeId(null)
@@ -186,14 +290,11 @@ export function ReminderNotifications() {
                 })}
               </ul>
             )}
-
-            <div className="border-y border-border px-3 py-2">
-              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                History
-              </p>
-            </div>
+          </ScrollArea>
+        ) : (
+          <ScrollArea className="max-h-96">
             {history.length === 0 ? (
-              <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+              <p className="px-3 py-8 text-center text-sm text-muted-foreground">
                 No completed reminders yet
               </p>
             ) : (

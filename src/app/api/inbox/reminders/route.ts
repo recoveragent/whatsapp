@@ -6,6 +6,7 @@ import {
   listCompletedReminders,
   listConversationReminders,
   listDueReminders,
+  listPendingReminders,
   REMINDER_NOTE_MAX_LENGTH,
 } from '@/lib/inbox/reminders'
 
@@ -32,10 +33,15 @@ export async function GET(request: Request) {
 
     if (scope === 'all') {
       const [reminders, history] = await Promise.all([
-        listDueReminders(ctx.supabase, ctx.accountId),
+        listPendingReminders(ctx.supabase, ctx.accountId),
         listCompletedReminders(ctx.supabase, ctx.accountId),
       ])
       return NextResponse.json({ reminders, history })
+    }
+
+    if (scope === 'pending') {
+      const reminders = await listPendingReminders(ctx.supabase, ctx.accountId)
+      return NextResponse.json({ reminders })
     }
 
     const reminders = await listDueReminders(ctx.supabase, ctx.accountId)

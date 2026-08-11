@@ -75,6 +75,25 @@ export async function listDueReminders(
   )
 }
 
+/** All pending reminders (due + scheduled). Client splits by local clock. */
+export async function listPendingReminders(
+  db: SupabaseClient,
+  accountId: string,
+): Promise<ReminderWithContact[]> {
+  const { data, error } = await db
+    .from('inbox_reminders')
+    .select(REMINDER_SELECT)
+    .eq('account_id', accountId)
+    .eq('status', 'pending')
+    .order('due_at', { ascending: true })
+    .limit(100)
+
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((row) =>
+    normalizeReminderRow(row as Parameters<typeof normalizeReminderRow>[0]),
+  )
+}
+
 export async function listCompletedReminders(
   db: SupabaseClient,
   accountId: string,
