@@ -683,6 +683,7 @@ export function TemplateManager() {
               <div className="space-y-2">
                 <Label className="text-muted-foreground">Category</Label>
                 <Select
+                  modal={false}
                   value={form.category}
                   onValueChange={(val) =>
                     setForm({
@@ -694,7 +695,10 @@ export function TemplateManager() {
                   <SelectTrigger className="w-full bg-muted border-border text-foreground">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
+                  <SelectContent
+                    alignItemWithTrigger={false}
+                    className="bg-popover border-border"
+                  >
                     {CATEGORIES.map((cat) => (
                       <SelectItem
                         key={cat}
@@ -741,6 +745,7 @@ export function TemplateManager() {
             <div className="space-y-2">
               <Label className="text-muted-foreground">Header</Label>
               <Select
+                modal={false}
                 value={form.header_format}
                 onValueChange={(val) =>
                   // Preserve header_content, header_media_url, and
@@ -758,7 +763,10 @@ export function TemplateManager() {
                 <SelectTrigger className="w-full bg-muted border-border text-foreground">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-popover border-border">
+                <SelectContent
+                  alignItemWithTrigger={false}
+                  className="bg-popover border-border"
+                >
                   {HEADER_FORMATS.map((type) => (
                     <SelectItem
                       key={type}
@@ -950,6 +958,7 @@ export function TemplateManager() {
                     >
                       <div className="flex items-center gap-2">
                         <Select
+                          modal={false}
                           value={btn.type}
                           onValueChange={(val) => {
                             // Same null guard as the Header Select
@@ -962,7 +971,10 @@ export function TemplateManager() {
                           <SelectTrigger className="w-40 bg-muted border-border text-foreground h-8 text-xs">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent className="bg-popover border-border">
+                          <SelectContent
+                            alignItemWithTrigger={false}
+                            className="bg-popover border-border"
+                          >
                             <SelectItem
                               value="QUICK_REPLY"
                               className="text-popover-foreground focus:bg-muted focus:text-popover-foreground"

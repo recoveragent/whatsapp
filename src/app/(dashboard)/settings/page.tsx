@@ -83,8 +83,16 @@ export default function SettingsPage() {
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[236px_minmax(0,1fr)] lg:items-start">
-        <SettingsRail active={activeSection} onSelect={go} hints={hints} />
-        <div className="min-w-0">{panel[activeSection]}</div>
+        {/* z-10 keeps the sticky rail above panel stacking contexts so
+            overflows / animated panels can't steal its clicks. */}
+        <div className="relative z-10 min-w-0">
+          <SettingsRail active={activeSection} onSelect={go} hints={hints} />
+        </div>
+        {/* Clip horizontal overflow so wide panel children can't extend
+            into the rail column and intercept pointer events. */}
+        <div className="relative z-0 min-w-0 overflow-x-clip">
+          {panel[activeSection]}
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useRef, type ReactNode } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
@@ -17,24 +19,38 @@ import {
 // drives the row→column switch in the markup below — keep the two in sync.
 const RAIL_DESKTOP_MIN_PX = 1024;
 
+function sectionHref(
+  section: SettingsSection,
+  searchParams: URLSearchParams | ReturnType<typeof useSearchParams>,
+) {
+  const params = new URLSearchParams(searchParams.toString());
+  params.set('tab', section);
+  return `/settings?${params.toString()}`;
+}
+
 /**
  * The settings left rail — grouped, vertical on desktop and a
  * horizontal scroller on narrow screens (mirrors the mockup's ≤920px
  * behaviour). The active item auto-scrolls into view when the rail is
  * horizontal so a deep-linked section is never off-screen.
+ *
+ * Items are real links (not buttons + router.replace) so navigation stays
+ * reliable even when a panel leaves a stacking-context / pointer trap
+ * that would otherwise swallow click handlers.
  */
 export function SettingsRail({
   active,
-  onSelect,
   hints,
 }: {
   active: SettingsSection;
-  onSelect: (section: SettingsSection) => void;
+  /** @deprecated Prefer link navigation; kept optional for call-site compat. */
+  onSelect?: (section: SettingsSection) => void;
   hints?: Partial<Record<SettingsSection, ReactNode>>;
 }) {
   const { brandCategory } = useAuth();
+  const searchParams = useSearchParams();
   const visibleSections = filterSettingsSections(SETTINGS_SECTIONS, brandCategory);
-  const activeRef = useRef<HTMLButtonElement>(null);
+  const activeRef = useRef<HTMLAnchorElement>(null);
 
   // When horizontal (mobile), keep the active chip in view. On desktop
   // the rail is a static column, so skip.
@@ -52,7 +68,7 @@ export function SettingsRail({
     <nav
       aria-label="Settings sections"
       className={cn(
-        'flex gap-1 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+        'relative z-10 flex gap-1 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
         'border-b border-border',
         'lg:sticky lg:top-0 lg:flex-col lg:overflow-visible lg:border-b-0 lg:pb-0',
       )}
@@ -76,11 +92,11 @@ export function SettingsRail({
               const Icon = meta.icon;
               const isActive = s === active;
               return (
-                <button
+                <Link
                   key={s}
                   ref={isActive ? activeRef : undefined}
-                  type="button"
-                  onClick={() => onSelect(s)}
+                  href={sectionHref(s, searchParams)}
+                  scroll={false}
                   aria-current={isActive ? 'page' : undefined}
                   className={cn(
                     'flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium whitespace-nowrap transition-colors',
@@ -102,7 +118,7 @@ export function SettingsRail({
                       {hints[s]}
                     </span>
                   ) : null}
-                </button>
+                </Link>
               );
             })}
           </div>
