@@ -12,8 +12,8 @@
  *   - Dirty / saving / activating flags so the header save button
  *     and the beforeunload guard share the same source.
  *   - All mutations: name / description / trigger / fallback,
- *     addNode / updateNode / updateNodeConfig / updateNodePosition /
- *     removeNode, setEntryNodeId.
+ *     addNode / duplicateNode / updateNode / updateNodeConfig /
+ *     updateNodePosition / removeNode, setEntryNodeId.
  *   - Side effects: save (PUT), setStatus (POST /activate),
  *     deleteFlow (DELETE then router.push).
  *   - Validation issues + the canActivate boolean.
@@ -92,10 +92,12 @@ export interface FlowEditorContextValue {
   issues: ValidationIssue[];
   canActivate: boolean;
 
-  // Node mutations. addNode returns the generated key so the caller
-  // (a NodeCard "Add" button or canvas "+" button) can scroll to /
-  // focus / open the new node.
+  // Node mutations. addNode / duplicateNode return the generated key
+  // so the caller (a NodeCard "Add" button or canvas "+" button) can
+  // scroll to / focus / open the new node.
   addNode: (type: NodeType) => string;
+  /** Deep-clone a node (config + offset position). Does not change entry. */
+  duplicateNode: (key: string) => string | null;
   updateNode: (key: string, patch: Partial<BuilderNode>) => void;
   updateNodeConfig: (key: string, patch: Record<string, unknown>) => void;
   updateNodePosition: (key: string, x: number, y: number) => void;
@@ -133,6 +135,29 @@ export function uniqueNodeKey(base: string, existing: BuilderNode[]): string {
   let i = 2;
   while (existing.some((n) => n.node_key === `${base}_${i}`)) i += 1;
   return `${base}_${i}`;
+}
+
+/** Offset applied so a clone doesn't stack exactly on its source. */
+const DUPLICATE_OFFSET_PX = 48;
+
+/**
+ * Pure helper for cloning a builder node. Keeps outbound edge targets
+ * so the copy can be reused as a starting point for a similar branch;
+ * generates a fresh `node_key` from the type label (same as addNode).
+ */
+export function buildDuplicatedNode(
+  src: BuilderNode,
+  existing: BuilderNode[],
+): BuilderNode {
+  const meta = NODE_META[src.node_type];
+  const base = slugify(meta.label, src.node_type);
+  return {
+    node_key: uniqueNodeKey(base, existing),
+    node_type: src.node_type,
+    config: structuredClone(src.config),
+    position_x: Math.round((src.position_x ?? 0) + DUPLICATE_OFFSET_PX),
+    position_y: Math.round((src.position_y ?? 0) + DUPLICATE_OFFSET_PX),
+  };
 }
 
 export function defaultConfigFor(type: NodeType): Record<string, unknown> {
@@ -546,6 +571,21 @@ export function FlowEditorProvider({
     [setState],
   );
 
+  const duplicateNode = useCallback(
+    (key: string): string | null => {
+      let createdKey: string | null = null;
+      setState((s) => {
+        const src = s.nodes.find((n) => n.node_key === key);
+        if (!src) return s;
+        const clone = buildDuplicatedNode(src, s.nodes);
+        createdKey = clone.node_key;
+        return { ...s, nodes: [...s.nodes, clone] };
+      });
+      return createdKey;
+    },
+    [setState],
+  );
+
   const removeNode = useCallback(
     (key: string) => {
       // Auto-unlink inbound references so canvas / list deletes don't
@@ -575,6 +615,7 @@ export function FlowEditorProvider({
       issues,
       canActivate,
       addNode,
+      duplicateNode,
       updateNode,
       updateNodeConfig,
       updateNodePosition,
@@ -596,6 +637,7 @@ export function FlowEditorProvider({
       issues,
       canActivate,
       addNode,
+      duplicateNode,
       updateNode,
       updateNodeConfig,
       updateNodePosition,

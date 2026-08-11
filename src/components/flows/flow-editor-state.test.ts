@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   applyNodePositions,
+  buildDuplicatedNode,
   defaultConfigFor,
   uniqueNodeKey,
 } from "./flow-editor-state";
@@ -31,6 +32,54 @@ describe("uniqueNodeKey", () => {
       { node_key: "menu_3", node_type: "end", config: {} },
     ];
     expect(uniqueNodeKey("menu", existing)).toBe("menu_4");
+  });
+});
+
+describe("buildDuplicatedNode", () => {
+  it("clones type, config, and offsets position with a fresh key", () => {
+    const src: BuilderNode = {
+      node_key: "send_buttons",
+      node_type: "send_buttons",
+      config: {
+        text: "Pick a budget",
+        buttons: [
+          { reply_id: "a", title: "A", next_node_key: "next_step" },
+        ],
+      },
+      position_x: 100,
+      position_y: 200,
+    };
+    const clone = buildDuplicatedNode(src, [src]);
+
+    expect(clone.node_key).toBe("send_buttons_2");
+    expect(clone.node_type).toBe("send_buttons");
+    expect(clone.position_x).toBe(148);
+    expect(clone.position_y).toBe(248);
+    expect(clone.config).toEqual(src.config);
+    expect(clone.config).not.toBe(src.config);
+    // Nested arrays must be deep-cloned so edits don't share refs.
+    expect(
+      (clone.config as { buttons: unknown[] }).buttons,
+    ).not.toBe((src.config as { buttons: unknown[] }).buttons);
+  });
+
+  it("allocates the next free type-label key when siblings exist", () => {
+    const src: BuilderNode = {
+      node_key: "send_buttons_2",
+      node_type: "send_buttons",
+      config: { text: "hi" },
+      position_x: 0,
+      position_y: 0,
+    };
+    const existing: BuilderNode[] = [
+      {
+        node_key: "send_buttons",
+        node_type: "send_buttons",
+        config: {},
+      },
+      src,
+    ];
+    expect(buildDuplicatedNode(src, existing).node_key).toBe("send_buttons_3");
   });
 });
 

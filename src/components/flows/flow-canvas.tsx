@@ -14,7 +14,8 @@
  *     "true" / "false", list row title) so a branching flow reads
  *     as a real decision tree.
  *   - Click a node → side-sheet opens with the same per-node form
- *     the list view uses, plus "Set as entry" / "Delete".
+ *     the list view uses, plus "Set as entry" / "Duplicate" /
+ *     "Delete". Ctrl/Cmd+D duplicates the selected node.
  *   - Drag from a source handle on one node to a target handle on
  *     another → wires that slot's `next_node_key`. Per-slot handles
  *     for multi-outgoing types (condition, send_buttons, send_list)
@@ -38,6 +39,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  applyEdgeChanges,
   applyNodeChanges,
   Background,
   Controls,
@@ -49,14 +51,15 @@ import {
   ReactFlowProvider,
   useReactFlow,
   type Connection,
-  type Node as RfNode,
   type Edge as RfEdge,
+  type EdgeChange,
+  type Node as RfNode,
   type NodeChange,
   type NodeProps,
   type OnNodeDrag,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Plus, Trash2, Zap } from "lucide-react";
+import { Copy, Plus, Trash2, Zap } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -276,6 +279,7 @@ function FlowCanvasInner() {
     updateNodePosition,
     updateNodePositions,
     removeNode,
+    duplicateNode,
     flashKey,
   } = useFlowEditor();
   const reactFlow = useReactFlow();
@@ -418,10 +422,15 @@ function FlowCanvasInner() {
     setRfNodes(derivedRfNodes);
   }, [derivedRfNodes]);
 
-  const rfEdges = useMemo(() => {
+  // Edges are derived from node configs (next_node_key / button targets /
+  // etc.), same as before — but we keep a local copy so React Flow can
+  // apply selection + remove changes. Without onEdgesChange + local
+  // state, controlled `edges={...}` never persists `selected`, so
+  // Delete/Backspace never fires onEdgesDelete.
+  const derivedRfEdges = useMemo(() => {
     const canvasEdges = deriveCanvasEdges(builderNodes);
 
-    const rfEdges: RfEdge[] = canvasEdges.map((e) => ({
+    const edges: RfEdge[] = canvasEdges.map((e) => ({
       id: e.id,
       source: e.source,
       target: e.target,
@@ -438,7 +447,7 @@ function FlowCanvasInner() {
       entryNodeId &&
       builderNodes.some((n) => n.node_key === entryNodeId)
     ) {
-      rfEdges.unshift({
+      edges.unshift({
         id: `${TRIGGER_NODE_ID}--next--${entryNodeId}`,
         source: TRIGGER_NODE_ID,
         target: entryNodeId,
@@ -450,11 +459,22 @@ function FlowCanvasInner() {
         labelBgBorderRadius: 4,
         style: { stroke: "var(--primary)", strokeWidth: 2 },
         animated: true,
+        // Entry is owned by "Set as entry" / the trigger sheet — not
+        // by clearing a next_node_key slot. Block keyboard delete so
+        // the edge doesn't vanish from local state then stick gone
+        // until the next unrelated re-derive.
+        deletable: false,
       });
     }
 
-    return rfEdges;
+    return edges;
   }, [builderNodes, entryNodeId]);
+
+  const [rfEdges, setRfEdges] = useState<RfEdge[]>(derivedRfEdges);
+
+  useEffect(() => {
+    setRfEdges(derivedRfEdges);
+  }, [derivedRfEdges]);
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<RfNode>[]) => {
@@ -462,6 +482,10 @@ function FlowCanvasInner() {
     },
     [],
   );
+
+  const handleEdgesChange = useCallback((changes: EdgeChange<RfEdge>[]) => {
+    setRfEdges((edges) => applyEdgeChanges(changes, edges));
+  }, []);
 
   // Drag-to-position: React-Flow tracks the visual drag internally and
   // fires this once on release. We write the final coordinate back to
@@ -586,10 +610,40 @@ function FlowCanvasInner() {
     setSelectedNodeKey(null);
   }, [selectedNodeKey, removeNode]);
 
+  const handleDuplicateSelected = useCallback(() => {
+    if (!selectedNodeKey || selectedNodeKey === TRIGGER_NODE_ID) return;
+    const newKey = duplicateNode(selectedNodeKey);
+    if (newKey) setSelectedNodeKey(newKey);
+  }, [selectedNodeKey, duplicateNode]);
+
   const handleSetEntry = useCallback(() => {
     if (!selectedNodeKey || selectedNodeKey === TRIGGER_NODE_ID) return;
     setState((s) => ({ ...s, entry_node_id: selectedNodeKey }));
   }, [selectedNodeKey, setState]);
+
+  // Ctrl/Cmd+D duplicates the selected canvas node. Skip when focus is
+  // in a form field so we don't fight typing / browser bookmark dialogs
+  // while editing config in the sheet.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "d") return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (!selectedNodeKey || selectedNodeKey === TRIGGER_NODE_ID) return;
+      e.preventDefault();
+      handleDuplicateSelected();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedNodeKey, handleDuplicateSelected]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -603,6 +657,7 @@ function FlowCanvasInner() {
           fitViewOptions={{ padding: 0.25, maxZoom: 1.1, minZoom: 0.45 }}
           proOptions={{ hideAttribution: true }}
           onNodesChange={handleNodesChange}
+          onEdgesChange={handleEdgesChange}
           onNodeDragStop={handleNodeDragStop}
           onNodeClick={handleNodeClick}
           onConnect={handleConnect}
@@ -654,6 +709,7 @@ function FlowCanvasInner() {
         triggerType={state.trigger_type}
         onClose={() => setSelectedNodeKey(null)}
         onUpdateConfig={onSelectedUpdateConfig}
+        onDuplicate={handleDuplicateSelected}
         onDelete={handleDeleteSelected}
         onSetEntry={handleSetEntry}
       />
@@ -724,6 +780,7 @@ function NodeEditSheet({
   triggerType,
   onClose,
   onUpdateConfig,
+  onDuplicate,
   onDelete,
   onSetEntry,
 }: {
@@ -733,6 +790,7 @@ function NodeEditSheet({
   triggerType: import("./flow-editor-state").BuilderState["trigger_type"];
   onClose: () => void;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
+  onDuplicate: () => void;
   onDelete: () => void;
   onSetEntry: () => void;
 }) {
@@ -790,15 +848,21 @@ function NodeEditSheet({
           ) : (
             <span />
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onDelete}
-            className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            Delete node
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={onDuplicate}>
+              <Copy className="h-3.5 w-3.5" />
+              Duplicate
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onDelete}
+              className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete node
+            </Button>
+          </div>
         </SheetFooter>
       </SheetContent>
     </Sheet>
