@@ -88,6 +88,29 @@ export default function InboxPage() {
   // elsewhere.
   const autoSelectedForDeepLinkRef = useRef<string | null>(null);
 
+  const applyDeepLinkConversation = useCallback(
+    (match: Conversation) => {
+      if (outboundInFlight) {
+        toast.error(OUTBOUND_PENDING_TOAST);
+        return false;
+      }
+      autoSelectedForDeepLinkRef.current = match.id;
+      setActiveConversation(match);
+      setActiveContact(match.contact ?? null);
+      setMessages([]);
+      setContactPanelOpen(true);
+      if (match.unread_count > 0) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === match.id ? { ...c, unread_count: 0 } : c,
+          ),
+        );
+      }
+      return true;
+    },
+    [outboundInFlight],
+  );
+
   // Tracks conversations whose hydrate fetch is currently in flight. The
   // conv-INSERT and the first-message-INSERT events both call into
   // hydrateConversation; the dedupe here keeps it at one refetch per
@@ -399,7 +422,6 @@ export default function InboxPage() {
         autoSelectedForDeepLinkRef.current !== deepLinkConvId &&
         loaded.length > 0
       ) {
-        autoSelectedForDeepLinkRef.current = deepLinkConvId;
         // If the deep-linked conversation is already the active one
         // (e.g. because the user clicked it in the list and we
         // router.replace()'d the URL, which made the ConversationList
@@ -409,28 +431,84 @@ export default function InboxPage() {
         // conversationId didn't change, MessageThread wouldn't
         // refetch. The thread would read "No messages yet" until a
         // full page reload rehydrated state from scratch.
-        if (activeConversation?.id === deepLinkConvId) return;
+        if (activeConversation?.id === deepLinkConvId) {
+          autoSelectedForDeepLinkRef.current = deepLinkConvId;
+          return;
+        }
         const match = loaded.find((c) => c.id === deepLinkConvId);
         if (match) {
-          setActiveConversation(match);
-          setActiveContact(match.contact ?? null);
-          setMessages([]);
-          // Mirror the optimistic unread reset that handleSelectConversation
-          // does — the user just deep-linked into this conv, treat that the
-          // same as a click. Leaves activeConversation.unread_count alone so
-          // the MessageThread reset effect still fires the server UPDATE.
-          if (match.unread_count > 0) {
-            setConversations((prev) =>
-              prev.map((c) =>
-                c.id === match.id ? { ...c, unread_count: 0 } : c,
-              ),
-            );
-          }
+          applyDeepLinkConversation(match);
         }
       }
     },
-    [deepLinkConvId, activeConversation?.id]
+    [deepLinkConvId, activeConversation?.id, applyDeepLinkConversation]
   );
+
+  // Reminder bell / external links change `?c=` while the inbox is
+  // already mounted. ConversationList intentionally does not refetch on
+  // URL changes, so deep-link resolution must also run against the
+  // conversations already in memory.
+  useEffect(() => {
+    if (!deepLinkConvId) return;
+    if (autoSelectedForDeepLinkRef.current === deepLinkConvId) return;
+    if (activeConversation?.id === deepLinkConvId) {
+      autoSelectedForDeepLinkRef.current = deepLinkConvId;
+      return;
+    }
+    if (conversations.length === 0) return;
+
+    const match = conversations.find((c) => c.id === deepLinkConvId);
+    if (!match) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deep-link handoff from URL while inbox stays mounted
+    applyDeepLinkConversation(match);
+  }, [
+    deepLinkConvId,
+    conversations,
+    activeConversation?.id,
+    applyDeepLinkConversation,
+  ]);
+
+  // Fallback: `?c=` targets a conversation missing from the in-memory
+  // list — fetch that single row so reminder clicks still open it.
+  const deepLinkFetchRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!deepLinkConvId) return;
+    if (autoSelectedForDeepLinkRef.current === deepLinkConvId) return;
+    if (activeConversation?.id === deepLinkConvId) return;
+    if (conversations.some((c) => c.id === deepLinkConvId)) return;
+    if (deepLinkFetchRef.current === deepLinkConvId) return;
+
+    deepLinkFetchRef.current = deepLinkConvId;
+    let cancelled = false;
+    const supabase = createClient();
+    (async () => {
+      const { data, error } = await supabase
+        .from("conversations")
+        .select("*, contact:contacts(*)")
+        .eq("id", deepLinkConvId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (deepLinkFetchRef.current === deepLinkConvId) {
+        deepLinkFetchRef.current = null;
+      }
+      if (error || !data) return;
+      if (autoSelectedForDeepLinkRef.current === deepLinkConvId) return;
+      setConversations((prev) => {
+        if (prev.some((c) => c.id === data.id)) return prev;
+        return [data as Conversation, ...prev];
+      });
+      applyDeepLinkConversation(data as Conversation);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    deepLinkConvId,
+    conversations,
+    activeConversation?.id,
+    applyDeepLinkConversation,
+  ]);
 
   const handleSelectConversation = useCallback(
     (conv: Conversation) => {
