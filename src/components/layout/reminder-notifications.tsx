@@ -1,10 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { Bell, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
 
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -42,25 +41,6 @@ function splitDue(pending: ReminderRow[], nowMs: number) {
   return { due, upcoming }
 }
 
-function notifyReminderDue(reminder: ReminderRow) {
-  const name = contactLabel(reminder)
-  toast.message(`Follow-up due: ${name}`, {
-    description: reminder.note,
-    duration: 12_000,
-  })
-
-  if (typeof window === 'undefined' || !('Notification' in window)) return
-  if (Notification.permission !== 'granted') return
-  try {
-    new Notification(`Follow-up due: ${name}`, {
-      body: reminder.note,
-      tag: `inbox-reminder-${reminder.id}`,
-    })
-  } catch {
-    // ignore — browser may block even when permission is granted
-  }
-}
-
 export function ReminderNotifications() {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<PanelTab>('due')
@@ -69,8 +49,6 @@ export function ReminderNotifications() {
   const [history, setHistory] = useState<ReminderRow[]>([])
   const [snoozeId, setSnoozeId] = useState<string | null>(null)
   const [nowMs, setNowMs] = useState(() => Date.now())
-  const knownDueIdsRef = useRef<Set<string>>(new Set())
-  const primedRef = useRef(false)
 
   const load = useCallback(async () => {
     try {
@@ -134,31 +112,6 @@ export function ReminderNotifications() {
     }, Math.min(delay, 2_147_000_000))
     return () => window.clearTimeout(timer)
   }, [upcoming])
-
-  // Toast / browser notification for newly due items.
-  useEffect(() => {
-    const dueIds = new Set(due.map((r) => r.id))
-    if (!primedRef.current) {
-      knownDueIdsRef.current = dueIds
-      primedRef.current = true
-      return
-    }
-
-    for (const reminder of due) {
-      if (!knownDueIdsRef.current.has(reminder.id)) {
-        notifyReminderDue(reminder)
-      }
-    }
-    knownDueIdsRef.current = dueIds
-  }, [due])
-
-  // Ask once for browser notifications after the user opens the panel.
-  useEffect(() => {
-    if (!open) return
-    if (typeof window === 'undefined' || !('Notification' in window)) return
-    if (Notification.permission !== 'default') return
-    void Notification.requestPermission().catch(() => {})
-  }, [open])
 
   const count = due.length
 
