@@ -3,12 +3,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { format } from 'date-fns'
-import { Bell, Check, Clock, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { Bell, Loader2 } from 'lucide-react'
 
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
   Popover,
@@ -16,37 +13,40 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { ReminderSnoozeControls } from '@/components/inbox/reminder-snooze-controls'
 import type { InboxReminder } from '@/types'
 
-type DueReminder = InboxReminder & {
+type ReminderRow = InboxReminder & {
   contact?: { id: string; name?: string | null; phone: string } | null
 }
 
-function toDatetimeLocalValue(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
-
-function defaultSnoozeLocal(): string {
-  const d = new Date()
-  d.setHours(d.getHours() + 1, 0, 0, 0)
-  return toDatetimeLocalValue(d)
+function contactLabel(reminder: ReminderRow): string {
+  return (
+    reminder.contact?.name?.trim() ||
+    reminder.contact?.phone ||
+    'Contact'
+  )
 }
 
 export function ReminderNotifications() {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [reminders, setReminders] = useState<DueReminder[]>([])
-  const [actingId, setActingId] = useState<string | null>(null)
+  const [due, setDue] = useState<ReminderRow[]>([])
+  const [history, setHistory] = useState<ReminderRow[]>([])
   const [snoozeId, setSnoozeId] = useState<string | null>(null)
-  const [snoozeLocal, setSnoozeLocal] = useState(defaultSnoozeLocal)
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/inbox/reminders', { cache: 'no-store' })
+      const res = await fetch('/api/inbox/reminders?scope=all', {
+        cache: 'no-store',
+      })
       if (!res.ok) return
-      const data = (await res.json()) as { reminders?: DueReminder[] }
-      setReminders(data.reminders ?? [])
+      const data = (await res.json()) as {
+        reminders?: ReminderRow[]
+        history?: ReminderRow[]
+      }
+      setDue(data.reminders ?? [])
+      setHistory(data.history ?? [])
     } catch {
       // silent — header should not toast on background poll failures
     } finally {
@@ -78,75 +78,7 @@ export function ReminderNotifications() {
     }
   }, [load])
 
-  const handleComplete = useCallback(
-    async (id: string) => {
-      setActingId(id)
-      try {
-        const res = await fetch(`/api/inbox/reminders/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'complete' }),
-        })
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as {
-            error?: string
-          } | null
-          toast.error(body?.error ?? 'Failed to complete reminder')
-          return
-        }
-        setReminders((prev) => prev.filter((r) => r.id !== id))
-        toast.success('Reminder completed')
-      } catch {
-        toast.error('Failed to complete reminder')
-      } finally {
-        setActingId(null)
-      }
-    },
-    [],
-  )
-
-  const handleSnooze = useCallback(
-    async (id: string) => {
-      const due = new Date(snoozeLocal)
-      if (Number.isNaN(due.getTime())) {
-        toast.error('Pick a valid date and time')
-        return
-      }
-      if (due.getTime() <= Date.now()) {
-        toast.error('Snooze time must be in the future')
-        return
-      }
-
-      setActingId(id)
-      try {
-        const res = await fetch(`/api/inbox/reminders/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'snooze',
-            due_at: due.toISOString(),
-          }),
-        })
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as {
-            error?: string
-          } | null
-          toast.error(body?.error ?? 'Failed to snooze reminder')
-          return
-        }
-        setReminders((prev) => prev.filter((r) => r.id !== id))
-        setSnoozeId(null)
-        toast.success(`Snoozed until ${format(due, 'PPp')}`)
-      } catch {
-        toast.error('Failed to snooze reminder')
-      } finally {
-        setActingId(null)
-      }
-    },
-    [snoozeLocal],
-  )
-
-  const count = reminders.length
+  const count = due.length
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -171,12 +103,12 @@ export function ReminderNotifications() {
       <PopoverContent
         align="end"
         sideOffset={6}
-        className="w-[min(100vw-2rem,22rem)] p-0"
+        className="w-[min(100vw-2rem,22rem)] gap-0 p-0"
       >
         <div className="border-b border-border px-3 py-2">
           <p className="text-sm font-medium text-foreground">Follow-up reminders</p>
           <p className="text-xs text-muted-foreground">
-            Due now for this brand
+            Open a chat to mark complete
           </p>
         </div>
 
@@ -185,107 +117,107 @@ export function ReminderNotifications() {
             <Loader2 className="size-4 animate-spin" />
             Loading…
           </div>
-        ) : count === 0 ? (
-          <p className="px-3 py-8 text-center text-sm text-muted-foreground">
-            No reminders due
-          </p>
         ) : (
-          <ScrollArea className="max-h-80">
-            <ul className="divide-y divide-border">
-              {reminders.map((reminder) => {
-                const name =
-                  reminder.contact?.name?.trim() ||
-                  reminder.contact?.phone ||
-                  'Contact'
-                const phone = reminder.contact?.phone ?? '—'
-                const busy = actingId === reminder.id
+          <ScrollArea className="max-h-96">
+            <div className="border-b border-border px-3 py-2">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Due
+              </p>
+            </div>
+            {due.length === 0 ? (
+              <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+                No reminders due
+              </p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {due.map((reminder) => {
+                  const name = contactLabel(reminder)
+                  const phone = reminder.contact?.phone ?? '—'
 
-                return (
-                  <li key={reminder.id} className="px-3 py-3">
+                  return (
+                    <li key={reminder.id} className="px-3 py-3">
+                      <Link
+                        href={`/inbox?c=${reminder.conversation_id}`}
+                        className="block text-sm font-medium text-foreground hover:underline"
+                        onClick={() => setOpen(false)}
+                      >
+                        {name}
+                      </Link>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{phone}</p>
+                      <p className="mt-1 text-sm text-foreground/90">{reminder.note}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        Due {format(new Date(reminder.due_at), 'PPp')}
+                      </p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        Open chat → Complete in the contact panel
+                      </p>
+
+                      {snoozeId === reminder.id ? (
+                        <div className="mt-2">
+                          <ReminderSnoozeControls
+                            reminderId={reminder.id}
+                            onSnoozed={() => {
+                              setDue((prev) =>
+                                prev.filter((r) => r.id !== reminder.id),
+                              )
+                              setSnoozeId(null)
+                              void load()
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="mt-2 text-xs text-muted-foreground hover:text-foreground"
+                            onClick={() => setSnoozeId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="mt-2 text-xs font-medium text-primary hover:underline"
+                          onClick={() => setSnoozeId(reminder.id)}
+                        >
+                          Snooze…
+                        </button>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+
+            <div className="border-y border-border px-3 py-2">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                History
+              </p>
+            </div>
+            {history.length === 0 ? (
+              <p className="px-3 py-4 text-center text-sm text-muted-foreground">
+                No completed reminders yet
+              </p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {history.map((reminder) => (
+                  <li key={reminder.id} className="px-3 py-3 opacity-80">
                     <Link
                       href={`/inbox?c=${reminder.conversation_id}`}
                       className="block text-sm font-medium text-foreground hover:underline"
                       onClick={() => setOpen(false)}
                     >
-                      {name}
+                      {contactLabel(reminder)}
                     </Link>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{phone}</p>
                     <p className="mt-1 text-sm text-foreground/90">{reminder.note}</p>
                     <p className="mt-1 text-[11px] text-muted-foreground">
-                      Due {format(new Date(reminder.due_at), 'PPp')}
+                      Completed{' '}
+                      {reminder.completed_at
+                        ? format(new Date(reminder.completed_at), 'PPp')
+                        : '—'}
                     </p>
-
-                    {snoozeId === reminder.id ? (
-                      <div className="mt-2 flex flex-col gap-2">
-                        <Input
-                          type="datetime-local"
-                          value={snoozeLocal}
-                          onChange={(e) => setSnoozeLocal(e.target.value)}
-                          disabled={busy}
-                        />
-                        <div className="flex gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="flex-1"
-                            disabled={busy}
-                            onClick={() => void handleSnooze(reminder.id)}
-                          >
-                            {busy ? (
-                              <Loader2 className="size-3.5 animate-spin" />
-                            ) : (
-                              <Clock className="size-3.5" />
-                            )}
-                            Snooze
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={busy}
-                            onClick={() => setSnoozeId(null)}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="mt-2 flex gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="flex-1"
-                          disabled={busy}
-                          onClick={() => void handleComplete(reminder.id)}
-                        >
-                          {busy ? (
-                            <Loader2 className="size-3.5 animate-spin" />
-                          ) : (
-                            <Check className="size-3.5" />
-                          )}
-                          Complete
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          className="flex-1"
-                          disabled={busy}
-                          onClick={() => {
-                            setSnoozeId(reminder.id)
-                            setSnoozeLocal(defaultSnoozeLocal())
-                          }}
-                        >
-                          <Clock className="size-3.5" />
-                          Snooze
-                        </Button>
-                      </div>
-                    )}
                   </li>
-                )
-              })}
-            </ul>
+                ))}
+              </ul>
+            )}
           </ScrollArea>
         )}
       </PopoverContent>

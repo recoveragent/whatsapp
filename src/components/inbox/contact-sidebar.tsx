@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
-import type { Contact, Deal, ContactNote, Tag, ShopifyOrder } from "@/types";
+import type { Contact, Deal, ContactNote, Tag, ShopifyOrder, InboxReminder } from "@/types";
 import {
   Phone,
   Mail,
@@ -17,20 +17,27 @@ import {
   ShoppingBag,
   Loader2,
   ExternalLink,
+  Bell,
 } from "lucide-react";
 import { isFulfilledStatus } from "@/lib/shopify/order-links";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
+import { toast } from "sonner";
+import { ReminderSnoozeControls } from "@/components/inbox/reminder-snooze-controls";
 
 interface ContactSidebarProps {
   contact: Contact | null;
+  conversationId?: string | null;
 }
 
 /** Session cache so revisiting a contact shows orders instantly. */
 const shopifyOrdersCache = new Map<string, ShopifyOrder[]>();
 
-export function ContactSidebar({ contact }: ContactSidebarProps) {
+export function ContactSidebar({
+  contact,
+  conversationId,
+}: ContactSidebarProps) {
   const { accountId, isLeadGenBrand, isEcommerceBrand } = useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -40,6 +47,10 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+  const [reminders, setReminders] = useState<InboxReminder[]>([]);
+  const [remindersLoading, setRemindersLoading] = useState(false);
+  const [completingId, setCompletingId] = useState<string | null>(null);
+  const [snoozeId, setSnoozeId] = useState<string | null>(null);
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
@@ -104,12 +115,68 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     }
   }, [contact, isEcommerceBrand]);
 
+  const fetchReminders = useCallback(async () => {
+    if (!conversationId) {
+      setReminders([]);
+      return;
+    }
+    setRemindersLoading(true);
+    try {
+      const res = await fetch(
+        `/api/inbox/reminders?conversation_id=${encodeURIComponent(conversationId)}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) {
+        setReminders([]);
+        return;
+      }
+      const data = (await res.json()) as { reminders?: InboxReminder[] };
+      setReminders(data.reminders ?? []);
+    } catch {
+      setReminders([]);
+    } finally {
+      setRemindersLoading(false);
+    }
+  }, [conversationId]);
+
   // Load on contact change. setContactData/setTags run inside async
   // Supabase callbacks, not synchronously in the effect body.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchContactData();
   }, [fetchContactData]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchReminders();
+  }, [fetchReminders]);
+
+  const handleCompleteReminder = useCallback(
+    async (id: string) => {
+      setCompletingId(id);
+      try {
+        const res = await fetch(`/api/inbox/reminders/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "complete" }),
+        });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          toast.error(body?.error ?? "Failed to complete reminder");
+          return;
+        }
+        setReminders((prev) => prev.filter((r) => r.id !== id));
+        toast.success("Reminder completed");
+      } catch {
+        toast.error("Failed to complete reminder");
+      } finally {
+        setCompletingId(null);
+      }
+    },
+    [],
+  );
 
   const handleCopyPhone = useCallback(async () => {
     if (!contact?.phone) return;
@@ -213,6 +280,98 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
           {/* Divider */}
           <div className="my-4 border-t border-border" />
+
+          {/* Follow-up reminders */}
+          {conversationId ? (
+            <div className="mb-4">
+              <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <Bell className="h-3 w-3" />
+                Reminders
+              </div>
+              <div className="mt-2 space-y-2">
+                {remindersLoading ? (
+                  <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Loading…
+                  </div>
+                ) : reminders.length === 0 ? (
+                  <p className="px-1 text-xs text-muted-foreground">
+                    No open reminders
+                  </p>
+                ) : (
+                  reminders.map((reminder) => {
+                    const isDue =
+                      new Date(reminder.due_at).getTime() <= Date.now();
+                    const busy = completingId === reminder.id;
+                    return (
+                      <div
+                        key={reminder.id}
+                        className={cn(
+                          "rounded-lg border border-border px-3 py-2",
+                          isDue && "border-amber-500/40 bg-amber-500/5",
+                        )}
+                      >
+                        <p className="text-sm text-foreground">{reminder.note}</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          {isDue ? "Due" : "Scheduled"}{" "}
+                          {format(new Date(reminder.due_at), "PPp")}
+                        </p>
+                        <div className="mt-2 flex flex-col gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="w-full"
+                            disabled={busy}
+                            onClick={() =>
+                              void handleCompleteReminder(reminder.id)
+                            }
+                          >
+                            {busy ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <Check className="size-3.5" />
+                            )}
+                            Complete
+                          </Button>
+                          {snoozeId === reminder.id ? (
+                            <>
+                              <ReminderSnoozeControls
+                                reminderId={reminder.id}
+                                disabled={busy}
+                                onSnoozed={() => {
+                                  setReminders((prev) =>
+                                    prev.filter((r) => r.id !== reminder.id),
+                                  );
+                                  setSnoozeId(null);
+                                  void fetchReminders();
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="text-xs text-muted-foreground hover:text-foreground"
+                                onClick={() => setSnoozeId(null)}
+                              >
+                                Cancel snooze
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-primary hover:underline"
+                              onClick={() => setSnoozeId(reminder.id)}
+                            >
+                              Snooze…
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <div className="my-4 border-t border-border" />
+            </div>
+          ) : null}
 
           {/* Tags */}
           <div>

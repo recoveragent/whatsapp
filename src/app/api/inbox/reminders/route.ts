@@ -3,13 +3,41 @@ import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import {
   createReminder,
+  listCompletedReminders,
+  listConversationReminders,
   listDueReminders,
   REMINDER_NOTE_MAX_LENGTH,
 } from '@/lib/inbox/reminders'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const ctx = await requireRole('agent')
+    const { searchParams } = new URL(request.url)
+    const conversationId = searchParams.get('conversation_id')?.trim()
+    const scope = searchParams.get('scope') ?? 'due'
+
+    if (conversationId) {
+      const reminders = await listConversationReminders(
+        ctx.supabase,
+        ctx.accountId,
+        conversationId,
+      )
+      return NextResponse.json({ reminders })
+    }
+
+    if (scope === 'history') {
+      const history = await listCompletedReminders(ctx.supabase, ctx.accountId)
+      return NextResponse.json({ reminders: history, history })
+    }
+
+    if (scope === 'all') {
+      const [reminders, history] = await Promise.all([
+        listDueReminders(ctx.supabase, ctx.accountId),
+        listCompletedReminders(ctx.supabase, ctx.accountId),
+      ])
+      return NextResponse.json({ reminders, history })
+    }
+
     const reminders = await listDueReminders(ctx.supabase, ctx.accountId)
     return NextResponse.json({ reminders })
   } catch (err) {

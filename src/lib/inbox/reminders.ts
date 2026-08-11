@@ -75,6 +75,58 @@ export async function listDueReminders(
   )
 }
 
+export async function listCompletedReminders(
+  db: SupabaseClient,
+  accountId: string,
+  limit = 30,
+): Promise<ReminderWithContact[]> {
+  const { data, error } = await db
+    .from('inbox_reminders')
+    .select(REMINDER_SELECT)
+    .eq('account_id', accountId)
+    .eq('status', 'completed')
+    .order('completed_at', { ascending: false })
+    .limit(limit)
+
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((row) =>
+    normalizeReminderRow(row as Parameters<typeof normalizeReminderRow>[0]),
+  )
+}
+
+export async function listConversationReminders(
+  db: SupabaseClient,
+  accountId: string,
+  conversationId: string,
+): Promise<ReminderWithContact[]> {
+  const { data, error } = await db
+    .from('inbox_reminders')
+    .select(REMINDER_SELECT)
+    .eq('account_id', accountId)
+    .eq('conversation_id', conversationId)
+    .eq('status', 'pending')
+    .order('due_at', { ascending: true })
+    .limit(20)
+
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((row) =>
+    normalizeReminderRow(row as Parameters<typeof normalizeReminderRow>[0]),
+  )
+}
+
+/** Quick snooze offsets (minutes). Custom datetime is also allowed. */
+export const SNOOZE_PRESETS_MINUTES = [15, 30, 60, 180, 300] as const
+
+export function snoozePresetLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`
+  const hours = minutes / 60
+  return Number.isInteger(hours) ? `${hours}h` : `${minutes}m`
+}
+
+export function dueAtFromSnoozeMinutes(minutes: number, from = new Date()): string {
+  return new Date(from.getTime() + minutes * 60_000).toISOString()
+}
+
 export async function createReminder(
   db: SupabaseClient,
   args: {
