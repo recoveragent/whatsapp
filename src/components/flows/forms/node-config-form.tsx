@@ -254,30 +254,94 @@ export function NodeConfigForm({
         </>
       );
 
-    case "wait":
+    case "wait": {
+      const mode =
+        (cfg as { mode?: string }).mode === "until" ? "until" : "delay";
       return (
         <>
-          <TextRow
-            label="Amount"
-            value={String((cfg as { amount?: number }).amount ?? 1)}
-            onChange={(v) => onUpdateConfig({ amount: Math.max(1, Number(v) || 1) })}
-          />
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">Unit</label>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              Wait mode
+            </label>
             <Select
-              value={(cfg as { unit?: string }).unit ?? "hours"}
-              onValueChange={(v) => onUpdateConfig({ unit: v })}
+              value={mode}
+              onValueChange={(v) =>
+                onUpdateConfig({
+                  mode: v,
+                  ...(v === "until"
+                    ? { datetime_var: (cfg as { datetime_var?: string }).datetime_var || "meeting_start" }
+                    : {}),
+                })
+              }
             >
               <SelectTrigger className="bg-muted">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="minutes">Minutes</SelectItem>
-                <SelectItem value="hours">Hours</SelectItem>
-                <SelectItem value="days">Days</SelectItem>
+                <SelectItem value="delay">Delay from now</SelectItem>
+                <SelectItem value="until">Until datetime variable</SelectItem>
               </SelectContent>
             </Select>
           </div>
+          {mode === "delay" ? (
+            <>
+              <TextRow
+                label="Amount"
+                value={String((cfg as { amount?: number }).amount ?? 1)}
+                onChange={(v) =>
+                  onUpdateConfig({ amount: Math.max(1, Number(v) || 1) })
+                }
+              />
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">
+                  Unit
+                </label>
+                <Select
+                  value={(cfg as { unit?: string }).unit ?? "hours"}
+                  onValueChange={(v) => onUpdateConfig({ unit: v })}
+                >
+                  <SelectTrigger className="bg-muted">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="minutes">Minutes</SelectItem>
+                    <SelectItem value="hours">Hours</SelectItem>
+                    <SelectItem value="days">Days</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          ) : (
+            <>
+              <TextRow
+                label="Datetime variable"
+                value={
+                  (cfg as { datetime_var?: string }).datetime_var ??
+                  "meeting_start"
+                }
+                onChange={(v) => onUpdateConfig({ datetime_var: v.trim() })}
+              />
+              <TextRow
+                label="Offset minutes (negative = before)"
+                value={String(
+                  (cfg as { offset_minutes?: number }).offset_minutes ?? -60,
+                )}
+                onChange={(v) => {
+                  const n = Number(v);
+                  onUpdateConfig({
+                    offset_minutes: Number.isFinite(n) ? n : -60,
+                  });
+                }}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Example:{" "}
+                <code className="text-[10px]">meeting_start</code> with{" "}
+                <code className="text-[10px]">-60</code> = 1 hour before.
+                Uses <code className="text-[10px]">meeting_start_iso</code>{" "}
+                when present (raw ISO from webhook).
+              </p>
+            </>
+          )}
           <NextNodeRow
             value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
             allNodes={allNodes}
@@ -287,6 +351,7 @@ export function NodeConfigForm({
           />
         </>
       );
+    }
 
     case "send_webhook":
     case "http_fetch":
@@ -363,11 +428,17 @@ export function NodeConfigForm({
 // No-reply timeout (shared by suspending node types)
 // ============================================================
 
+interface ReplyTimeoutCfg {
+  reply_timeout_amount?: unknown;
+  reply_timeout_unit?: string;
+  reply_timeout_next_node_key?: string;
+}
+
 function ReplyTimeoutSection({
   cfg,
   onUpdateConfig,
 }: {
-  cfg: Record<string, unknown>;
+  cfg: ReplyTimeoutCfg;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
 }) {
   const amount =

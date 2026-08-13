@@ -82,6 +82,7 @@ describe('buildVarsFromPayload', () => {
       { meeting_time: 'payload.startTime' },
     )
     expect(vars.meeting_time).toBe('14 Aug 2026, 10:00 am')
+    expect(vars.meeting_time_iso).toBe('2026-08-14T04:30:00.000Z')
   })
 })
 

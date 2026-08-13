@@ -185,6 +185,35 @@ export function FlowWebhookTriggerPanel({
 
       <div>
         <label className="mb-1 block text-xs text-muted-foreground">
+          Allowed trigger events (optional)
+        </label>
+        <Input
+          value={(config.allowed_trigger_events ?? []).join(", ")}
+          onChange={(e) => {
+            const list = e.target.value
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+            onChange({
+              ...config,
+              allowed_trigger_events: list.length > 0 ? list : undefined,
+            });
+          }}
+          className="bg-muted"
+          placeholder="BOOKING_CREATED, BOOKING_RESCHEDULED"
+        />
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Comma-separated Cal.com <code className="text-[10px]">triggerEvent</code>{" "}
+          values. Empty = accept all.{" "}
+          <code className="text-[10px]">BOOKING_CANCELLED</code> /{" "}
+          <code className="text-[10px]">BOOKING_RESCHEDULED</code> still clear
+          pending waits for <code className="text-[10px]">booking_uid</code>;
+          reschedule can restart the flow if listed here.
+        </p>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">
           Timezone path (optional — formats ISO dates for WhatsApp)
         </label>
         <Input

@@ -1,5 +1,6 @@
 import type { WebhookTriggerConfig } from '@/types'
 import { generateWebhookToken } from './webhook-token'
+import { normalizeAllowedTriggerEvents } from '@/lib/flows/booking-lifecycle'
 
 export function defaultWebhookTriggerConfig(): WebhookTriggerConfig {
   return {
@@ -30,6 +31,9 @@ export function ensureWebhookTriggerConfig(
     email_path: typeof c.email_path === 'string' ? c.email_path : base.email_path,
     timezone_path:
       typeof c.timezone_path === 'string' ? c.timezone_path : undefined,
+    allowed_trigger_events: normalizeAllowedTriggerEvents(
+      c.allowed_trigger_events,
+    ),
     variable_mappings:
       c.variable_mappings && typeof c.variable_mappings === 'object'
         ? (c.variable_mappings as Record<string, string>)

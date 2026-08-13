@@ -9,6 +9,12 @@ import {
   normalizePayloadPath,
   resolveWebhookTimeZone,
 } from '@/lib/automations/webhook-payload'
+import {
+  cancelFlowRunsByBookingUid,
+  extractBookingUid,
+  extractWebhookTriggerEvent,
+  isTriggerEventAllowed,
+} from '@/lib/flows/booking-lifecycle'
 import type { FlowWebhookTriggerConfig } from './webhook-config'
 import { supabaseAdmin } from './admin-client'
 import { startFlowForExternalEvent } from './engine'
@@ -268,12 +274,46 @@ export async function handleFlowInboundWebhook(
     })
     .eq('id', flow.id)
 
+  const triggerEvent = extractWebhookTriggerEvent(payload)
+  const bookingUid = extractBookingUid(payload)
+
+  // Tear down reminder waits on cancel/reschedule before allow-list checks
+  // so a shared Cal.com webhook URL still clears pending runs.
+  if (
+    bookingUid &&
+    (triggerEvent === 'BOOKING_CANCELLED' ||
+      triggerEvent === 'BOOKING_RESCHEDULED')
+  ) {
+    await cancelFlowRunsByBookingUid(db, flow.account_id, bookingUid)
+  }
+
   if (flow.status !== 'active') {
     return {
       ok: true,
       status: 200,
       flow_id: flow.id,
       error: 'Flow is not active — payload stored for testing',
+    }
+  }
+
+  if (!isTriggerEventAllowed(triggerEvent, cfg.allowed_trigger_events)) {
+    return {
+      ok: true,
+      status: 200,
+      flow_id: flow.id,
+      error: `Payload stored; triggerEvent "${triggerEvent}" not in allowed_trigger_events — flow not started`,
+    }
+  }
+
+  // Cancel only — do not start a new run (reschedule falls through to restart).
+  if (triggerEvent === 'BOOKING_CANCELLED') {
+    return {
+      ok: true,
+      status: 200,
+      flow_id: flow.id,
+      error: bookingUid
+        ? 'Booking cancelled — pending reminder runs cleared'
+        : 'Booking cancelled — no booking uid in payload',
     }
   }
 
@@ -320,6 +360,9 @@ export async function handleFlowInboundWebhook(
   })
   vars.phone = contact.phone
   if (name) vars.name = name
+  if (bookingUid && vars.booking_uid == null) {
+    vars.booking_uid = bookingUid
+  }
 
   await runFlowsForTrigger({
     accountId: flow.account_id,

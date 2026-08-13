@@ -244,6 +244,15 @@ export interface WaitNodeConfig {
   amount: number;
   unit: "minutes" | "hours" | "days";
   next_node_key: string;
+  /** Relative delay from now (default). Absolute: wait until a datetime var. */
+  mode?: "delay" | "until";
+  /** Var key holding an ISO datetime (e.g. meeting_start). Used when mode=until. */
+  datetime_var?: string;
+  /**
+   * Minutes relative to datetime_var. Negative = before (e.g. -60 = 1h before).
+   * Used when mode=until.
+   */
+  offset_minutes?: number;
 }
 
 export interface SendWebhookNodeConfig {

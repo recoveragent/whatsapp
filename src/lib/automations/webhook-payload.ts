@@ -103,10 +103,17 @@ export function buildVarsFromPayload(
   const timeZone =
     opts?.timeZone ?? resolveWebhookTimeZone(payload) ?? undefined
 
+  const assignScalar = (key: string, value: unknown) => {
+    if (typeof value === 'string' && ISO_DATETIME_RE.test(value.trim())) {
+      vars[`${key}_iso`] = value.trim()
+    }
+    vars[key] = formatWebhookScalar(value, { timeZone })
+  }
+
   if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
     for (const [k, v] of Object.entries(payload as Record<string, unknown>)) {
       if (v !== null && typeof v !== 'object') {
-        vars[k] = formatWebhookScalar(v, { timeZone })
+        assignScalar(k, v)
       }
     }
   }
@@ -114,7 +121,7 @@ export function buildVarsFromPayload(
   for (const [varName, path] of Object.entries(variableMappings)) {
     const val = extractByPath(payload, path)
     if (val !== undefined && val !== null && typeof val !== 'object') {
-      vars[varName] = formatWebhookScalar(val, { timeZone })
+      assignScalar(varName, val)
     }
   }
 

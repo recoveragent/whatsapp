@@ -533,6 +533,12 @@ export interface WebhookTriggerConfig {
    */
   timezone_path?: string;
   /**
+   * When set, only these Cal.com-style `triggerEvent` values start the flow
+   * (e.g. `BOOKING_CREATED`). Empty = allow all. CANCELLED/RESCHEDULED still
+   * cancel open reminder runs by `booking_uid` when present.
+   */
+  allowed_trigger_events?: string[];
+  /**
    * Extra template variables: key = var name used as `{{ vars.key }}`,
    * value = dot-path or `{{trigger.field}}` into the payload.
    */
