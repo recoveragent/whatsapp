@@ -528,6 +528,11 @@ export interface WebhookTriggerConfig {
   /** Dot-path for contact email (optional). */
   email_path?: string;
   /**
+   * Optional IANA timezone path (e.g. Cal.com `payload.attendees.0.timeZone`)
+   * used when formatting ISO datetime fields for WhatsApp templates.
+   */
+  timezone_path?: string;
+  /**
    * Extra template variables: key = var name used as `{{ vars.key }}`,
    * value = dot-path or `{{trigger.field}}` into the payload.
    */

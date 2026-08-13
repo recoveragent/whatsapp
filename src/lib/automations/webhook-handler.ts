@@ -6,6 +6,7 @@ import {
   buildVarsFromPayload,
   extractByPath,
   normalizePayloadPath,
+  resolveWebhookTimeZone,
 } from './webhook-payload'
 import { findAutomationByWebhookToken } from './webhook-lookup'
 import type { AutomationContext } from './engine'
@@ -118,7 +119,9 @@ export async function handleInboundWebhook(
     contact.id,
   )
 
-  const vars = buildVarsFromPayload(payload, cfg.variable_mappings ?? {})
+  const vars = buildVarsFromPayload(payload, cfg.variable_mappings ?? {}, {
+    timeZone: resolveWebhookTimeZone(payload, cfg.timezone_path),
+  })
   if (name) vars.name = name
   if (email) vars.email = email
   vars.phone = contact.phone

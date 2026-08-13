@@ -29,6 +29,8 @@ export function ensureFlowWebhookConfig(
         : base.phone_path,
     name_path: typeof c.name_path === 'string' ? c.name_path : base.name_path,
     email_path: typeof c.email_path === 'string' ? c.email_path : base.email_path,
+    timezone_path:
+      typeof c.timezone_path === 'string' ? c.timezone_path : undefined,
     variable_mappings:
       c.variable_mappings && typeof c.variable_mappings === 'object'
         ? (c.variable_mappings as Record<string, string>)

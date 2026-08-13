@@ -7,6 +7,7 @@ import {
   buildVarsFromPayload,
   extractByPath,
   normalizePayloadPath,
+  resolveWebhookTimeZone,
 } from '@/lib/automations/webhook-payload'
 import type { FlowWebhookTriggerConfig } from './webhook-config'
 import { supabaseAdmin } from './admin-client'
@@ -314,7 +315,9 @@ export async function handleFlowInboundWebhook(
     return { ok: false, status: 422, error: 'Could not resolve conversation', flow_id: flow.id }
   }
 
-  const vars = buildVarsFromPayload(payload, cfg.variable_mappings ?? {})
+  const vars = buildVarsFromPayload(payload, cfg.variable_mappings ?? {}, {
+    timeZone: resolveWebhookTimeZone(payload, cfg.timezone_path),
+  })
   vars.phone = contact.phone
   if (name) vars.name = name
 

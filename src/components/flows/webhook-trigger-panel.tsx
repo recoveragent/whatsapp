@@ -183,6 +183,27 @@ export function FlowWebhookTriggerPanel({
         </div>
       </div>
 
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">
+          Timezone path (optional — formats ISO dates for WhatsApp)
+        </label>
+        <Input
+          value={config.timezone_path ?? ""}
+          onChange={(e) =>
+            onChange({ ...config, timezone_path: e.target.value })
+          }
+          className="bg-muted"
+          placeholder="payload.attendees.0.timeZone"
+          list="flow-webhook-payload-keys"
+        />
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          ISO times like{" "}
+          <code className="text-[10px]">2026-08-14T04:30:00Z</code> become{" "}
+          <code className="text-[10px]">14 Aug 2026, 10:00 am</code> in this
+          timezone (Cal.com defaults to attendee timezone if empty).
+        </p>
+      </div>
+
       <div className="flex items-center gap-2">
         <Button
           type="button"
