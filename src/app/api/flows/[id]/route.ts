@@ -78,6 +78,7 @@ interface PutBody {
   description?: string | null
   trigger_type?: FlowTriggerType
   trigger_config?: Record<string, unknown>
+  exit_config?: Record<string, unknown>
   entry_node_id?: string | null
   fallback_policy?: Record<string, unknown>
   nodes?: Array<{
@@ -157,6 +158,7 @@ export async function PUT(
     }
     flowPatch.trigger_config = cfg
   }
+  if (body.exit_config !== undefined) flowPatch.exit_config = body.exit_config
   if (body.entry_node_id !== undefined)
     flowPatch.entry_node_id = body.entry_node_id
   if (body.fallback_policy !== undefined)

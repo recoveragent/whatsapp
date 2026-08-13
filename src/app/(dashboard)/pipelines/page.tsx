@@ -217,6 +217,7 @@ export default function PipelinesPage() {
   const handleDealMoved = useCallback(
     async (dealId: string, newStageId: string) => {
       // Optimistic update — board already animated; just persist.
+      const moved = deals.find((d) => d.id === dealId);
       setDeals((prev) =>
         prev.map((d) => (d.id === dealId ? { ...d, stage_id: newStageId } : d)),
       );
@@ -227,9 +228,19 @@ export default function PipelinesPage() {
       if (error) {
         toast.error("Failed to move deal");
         refreshDeals();
+      } else if (accountId && moved?.contact_id) {
+        void fetch("/api/crm/triggers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trigger_type: "deal_stage_changed",
+            contact_id: moved.contact_id,
+            stage_id: newStageId,
+          }),
+        });
       }
     },
-    [supabase, refreshDeals],
+    [supabase, refreshDeals, accountId, deals],
   );
 
   const handleAddDeal = useCallback(

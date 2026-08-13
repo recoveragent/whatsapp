@@ -97,6 +97,7 @@ import {
   summarizeTrigger,
 } from "./trigger-panel";
 import { FLOW_TRIGGER_LABELS } from "@/lib/flows/trigger-types";
+import { parseExitConfig, summarizeExitConfig } from "@/lib/flows/exit-conditions";
 
 // React-Flow node `data` payload — the bits our custom renderer needs.
 interface NodeData extends Record<string, unknown> {
@@ -370,10 +371,12 @@ function FlowCanvasInner() {
 
   const derivedRfNodes = useMemo(() => {
     const triggerLabel = FLOW_TRIGGER_LABELS[state.trigger_type];
-    const triggerSummary = summarizeTrigger(
-      state.trigger_type,
-      state.trigger_config,
-    );
+    const triggerSummary = [
+      summarizeTrigger(state.trigger_type, state.trigger_config),
+      summarizeExitConfig(parseExitConfig(state.exit_config)),
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
     const flowNodes: RfNode<NodeData>[] = builderNodes.map((n) => {
       const fallback = autoLayoutPositions?.get(n.node_key);
@@ -414,6 +417,7 @@ function FlowCanvasInner() {
     triggerPosition,
     state.trigger_type,
     state.trigger_config,
+    state.exit_config,
   ]);
 
   const [rfNodes, setRfNodes] = useState<RfNode[]>(derivedRfNodes);
@@ -750,7 +754,7 @@ function TriggerEditSheet({
             <span>Trigger</span>
           </SheetTitle>
           <SheetDescription className="text-xs text-muted-foreground">
-            When this flow starts
+            When this flow starts, and optional conditions that end a run early
           </SheetDescription>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto px-5 py-4">

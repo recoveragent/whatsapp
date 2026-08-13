@@ -351,6 +351,11 @@ export interface FlowRow {
   status: "draft" | "active" | "archived";
   trigger_type: FlowTriggerType;
   trigger_config: KeywordTriggerConfig | FirstInboundTriggerConfig | Record<string, unknown>;
+  /**
+   * When to stop an in-progress run early. JSONB added in 049;
+   * older rows may omit it — treat missing as `{ conditions: [] }`.
+   */
+  exit_config?: import("./exit-conditions").FlowExitConfig | Record<string, unknown> | null;
   entry_node_id: string | null;
   fallback_policy: FlowFallbackPolicy;
   execution_count: number;
@@ -483,7 +488,8 @@ export interface DispatchInboundResult {
     | "handed_off"
     | "fallback_fired"
     | "duplicate_inbound_ignored"
-    | "no_match";
+    | "no_match"
+    | "ended_by_exit";
 }
 
 // ============================================================

@@ -158,6 +158,82 @@ describe("validateFlowForActivation — trigger", () => {
   });
 });
 
+describe("validateFlowForActivation — exit conditions", () => {
+  it("accepts empty exit_config", () => {
+    const issues = validateFlowForActivation(
+      { ...validFlow, exit_config: { conditions: [] } },
+      validNodes,
+    );
+    expect(issues.some((i) => i.field?.startsWith("exit_config"))).toBe(false);
+  });
+
+  it("flags tag_added without a tag", () => {
+    const issues = validateFlowForActivation(
+      {
+        ...validFlow,
+        exit_config: {
+          conditions: [{ id: "1", type: "tag_added" }],
+        },
+      },
+      validNodes,
+    );
+    expect(
+      issues.some(
+        (i) =>
+          i.severity === "error" &&
+          i.field?.includes("tag_id") &&
+          i.message.includes("tag"),
+      ),
+    ).toBe(true);
+  });
+
+  it("flags deal_stage without a stage", () => {
+    const issues = validateFlowForActivation(
+      {
+        ...validFlow,
+        exit_config: {
+          conditions: [{ id: "1", type: "deal_stage", pipeline_id: "p1" }],
+        },
+      },
+      validNodes,
+    );
+    expect(
+      issues.some((i) => i.field?.includes("stage_id") && i.severity === "error"),
+    ).toBe(true);
+  });
+
+  it("flags keyword without keywords", () => {
+    const issues = validateFlowForActivation(
+      {
+        ...validFlow,
+        exit_config: {
+          conditions: [{ id: "1", type: "keyword", keywords: [] }],
+        },
+      },
+      validNodes,
+    );
+    expect(
+      issues.some((i) => i.field?.includes("keywords") && i.severity === "error"),
+    ).toBe(true);
+  });
+
+  it("allows another_flow and conversation_assigned with no extra fields", () => {
+    const issues = validateFlowForActivation(
+      {
+        ...validFlow,
+        exit_config: {
+          conditions: [
+            { id: "1", type: "another_flow" },
+            { id: "2", type: "conversation_assigned" },
+          ],
+        },
+      },
+      validNodes,
+    );
+    expect(issues.some((i) => i.field?.startsWith("exit_config"))).toBe(false);
+  });
+});
+
 describe("validateFlowForActivation — nodes", () => {
   it("flags send_buttons without text", () => {
     const nodes = [

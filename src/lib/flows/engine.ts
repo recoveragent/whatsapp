@@ -67,6 +67,8 @@ import {
   enqueueFlowWait,
   isExtendedNodeType,
 } from "./extended-nodes";
+import { applyFlowExitEventWithClient } from "./apply-exit";
+import { parseExitConfig, exitConfigMatchesEvent } from "./exit-conditions";
 
 // ============================================================
 // Pure helpers — extracted so engine.test.ts can exercise them
@@ -601,6 +603,11 @@ async function endRun(
       end_reason: reason,
     })
     .eq("id", runId);
+  await db
+    .from("flow_pending_executions")
+    .update({ status: "failed" })
+    .eq("flow_run_id", runId)
+    .eq("status", "pending");
 }
 
 // ============================================================
@@ -890,6 +897,7 @@ async function advanceFromNodeKey(
             contactId: run.contact_id!,
             tagId: cfg.tag_id,
             conversationId: run.conversation_id ?? undefined,
+            exceptRunId: run.id,
           });
         } else {
           await db
@@ -897,6 +905,13 @@ async function advanceFromNodeKey(
             .delete()
             .eq("contact_id", run.contact_id!)
             .eq("tag_id", cfg.tag_id);
+          const { dispatchTagRemoved } = await import("@/lib/crm/dispatch-triggers");
+          dispatchTagRemoved({
+            accountId: run.account_id,
+            contactId: run.contact_id!,
+            tagId: cfg.tag_id,
+            exceptRunId: run.id,
+          });
         }
       } catch (err) {
         // Non-fatal — log + advance. A tag-write failure shouldn't
@@ -1062,10 +1077,35 @@ export async function dispatchInboundToFlows(
           outcome: "duplicate_inbound_ignored",
         };
       }
-      // One SELECT for the whole flow's nodes — advance loop is now
-      // in-memory. See loadAllNodes.
+
+      if (input.message.kind === "text") {
+        const keywordExit = await applyFlowExitEventWithClient(db, {
+          accountId: input.accountId,
+          contactId: input.contactId,
+          event: { type: "keyword", text: input.message.text },
+        });
+        if (keywordExit.endedRunIds.includes(activeRun.id)) {
+          return startMatchingFlowAfterExit(db, input, activeRun.id);
+        }
+
+        const yielded = await maybeYieldActiveRunToAnotherFlow(
+          db,
+          activeRun,
+          input,
+        );
+        if (yielded) return yielded;
+      }
+
       const nodes = await loadAllNodes(db, activeRun.flow_id);
       return handleReplyForActiveRun(db, activeRun, input.message, nodes);
+    }
+
+    if (input.message.kind === "text") {
+      await applyFlowExitEventWithClient(db, {
+        accountId: input.accountId,
+        contactId: input.contactId,
+        event: { type: "keyword", text: input.message.text },
+      });
     }
 
     // No active run → look for a flow whose entry trigger matches.
@@ -1087,6 +1127,70 @@ export async function dispatchInboundToFlows(
     );
     return { consumed: false, outcome: "no_match" };
   }
+}
+
+/**
+ * Active run's flow opted into "end when they enter another flow",
+ * and this inbound text matches a *different* flow's start trigger.
+ * End the current run so the unique index frees, then start the other.
+ */
+async function maybeYieldActiveRunToAnotherFlow(
+  db: AdminClient,
+  activeRun: FlowRunRow,
+  input: DispatchInboundInput & { isFirstInboundMessage: boolean },
+): Promise<DispatchInboundResult | null> {
+  const other = await findEntryFlow(
+    db,
+    input.accountId,
+    input.message,
+    input.isFirstInboundMessage,
+  );
+  if (!other || other.id === activeRun.flow_id || !other.entry_node_id) {
+    return null;
+  }
+  const current = await loadFlow(db, activeRun.flow_id);
+  if (!current) return null;
+  const exits = parseExitConfig(current.exit_config);
+  if (
+    !exitConfigMatchesEvent(
+      exits,
+      { type: "another_flow", incomingFlowId: other.id },
+      current.id,
+    )
+  ) {
+    return null;
+  }
+  await applyFlowExitEventWithClient(db, {
+    accountId: input.accountId,
+    contactId: input.contactId,
+    event: { type: "another_flow", incomingFlowId: other.id },
+    exceptFlowId: other.id,
+  });
+  const nodes = await loadAllNodes(db, other.id);
+  return startNewRun(db, other, input, nodes);
+}
+
+/** After a keyword exit killed the active run, try to start a matching flow. */
+async function startMatchingFlowAfterExit(
+  db: AdminClient,
+  input: DispatchInboundInput & { isFirstInboundMessage: boolean },
+  endedRunId: string,
+): Promise<DispatchInboundResult> {
+  const flow = await findEntryFlow(
+    db,
+    input.accountId,
+    input.message,
+    input.isFirstInboundMessage,
+  );
+  if (!flow || !flow.entry_node_id) {
+    return {
+      consumed: true,
+      flow_run_id: endedRunId,
+      outcome: "ended_by_exit",
+    };
+  }
+  const nodes = await loadAllNodes(db, flow.id);
+  return startNewRun(db, flow, input, nodes);
 }
 
 async function handleReplyForActiveRun(
@@ -1337,6 +1441,15 @@ async function startNewRun(
   input: DispatchInboundInput,
   nodes: Map<string, FlowNodeRow>,
 ): Promise<DispatchInboundResult> {
+  // End other open runs that opted into "stop when they enter another flow"
+  // so the unique index on active runs is free for this insert.
+  await applyFlowExitEventWithClient(db, {
+    accountId: input.accountId,
+    contactId: input.contactId,
+    event: { type: "another_flow", incomingFlowId: flow.id },
+    exceptFlowId: flow.id,
+  });
+
   // INSERT — partial unique index `idx_one_active_run_per_contact`
   // catches concurrent inserts with 23505. We catch and return as
   // consumed:true (the parallel webhook handles it).
@@ -1414,6 +1527,13 @@ export async function startFlowForExternalEvent(input: {
   if (!input.flow.entry_node_id || !nodes.has(input.flow.entry_node_id)) {
     return { ok: false };
   }
+
+  await applyFlowExitEventWithClient(db, {
+    accountId: input.flow.account_id,
+    contactId: input.contactId,
+    event: { type: "another_flow", incomingFlowId: input.flow.id },
+    exceptFlowId: input.flow.id,
+  });
 
   const { data: inserted, error: insErr } = await db
     .from("flow_runs")

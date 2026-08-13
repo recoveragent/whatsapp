@@ -28,8 +28,10 @@ import { defaultGoogleSheetRowConfig } from "@/lib/google-sheets/trigger-config"
 import { FlowWebhookTriggerPanel } from "./webhook-trigger-panel";
 import { FlowGoogleSheetTriggerPanel } from "./google-sheet-trigger-panel";
 import { IssueLine } from "./validation-panel";
+import { ExitConditionsPanel } from "./exit-panel";
 import type { BuilderState } from "./flow-editor-state";
 import type { GoogleSheetRowTriggerConfig } from "@/lib/google-sheets/trigger-config";
+import { parseExitConfig } from "@/lib/flows/exit-conditions";
 
 /** Stable React-Flow id for the virtual trigger node on the canvas. */
 export const TRIGGER_NODE_ID = "__flow_trigger__";
@@ -308,13 +310,22 @@ export function TriggerPanel({
           </div>
         )}
       </div>
-      {triggerIssues.length > 0 && (
+      {triggerIssues.filter((i) => !i.field?.startsWith("exit_config")).length >
+        0 && (
         <div className="mt-3 flex flex-col gap-1">
-          {triggerIssues.map((i, ix) => (
-            <IssueLine key={ix} issue={i} />
-          ))}
+          {triggerIssues
+            .filter((i) => !i.field?.startsWith("exit_config"))
+            .map((i, ix) => (
+              <IssueLine key={ix} issue={i} />
+            ))}
         </div>
       )}
+      <ExitConditionsPanel
+        flowId={flowId}
+        config={parseExitConfig(state.exit_config)}
+        onChange={(exit_config) => setState((s) => ({ ...s, exit_config }))}
+        issues={triggerIssues.filter((i) => i.field?.startsWith("exit_config"))}
+      />
     </>
   );
 

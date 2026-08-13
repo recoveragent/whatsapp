@@ -252,6 +252,18 @@ export async function executeExtendedNode(
             .from('conversations')
             .update({ assigned_agent_id: agentId })
             .eq('id', run.conversation_id)
+          if (run.contact_id) {
+            const { dispatchConversationAssigned } = await import(
+              '@/lib/crm/dispatch-triggers'
+            )
+            dispatchConversationAssigned({
+              accountId: run.account_id,
+              contactId: run.contact_id,
+              conversationId: run.conversation_id,
+              agentId,
+              exceptRunId: run.id,
+            })
+          }
         }
         return { kind: 'continue', nextKey: c.next_node_key }
       }
@@ -273,6 +285,17 @@ export async function executeExtendedNode(
           currency: acct?.default_currency ?? 'USD',
           status: 'open',
         })
+        if (run.contact_id && c.stage_id) {
+          const { dispatchDealStageChanged } = await import(
+            '@/lib/crm/dispatch-triggers'
+          )
+          dispatchDealStageChanged({
+            accountId: run.account_id,
+            contactId: run.contact_id,
+            stageId: c.stage_id,
+            exceptRunId: run.id,
+          })
+        }
         return { kind: 'continue', nextKey: c.next_node_key }
       }
       case 'close_conversation': {

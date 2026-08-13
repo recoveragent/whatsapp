@@ -59,7 +59,7 @@ export async function POST(
     const [{ data: flow }, { data: nodes }] = await Promise.all([
       admin
         .from('flows')
-        .select('name, trigger_type, trigger_config, entry_node_id')
+        .select('name, trigger_type, trigger_config, exit_config, entry_node_id')
         .eq('id', id)
         .maybeSingle(),
       admin
@@ -73,8 +73,9 @@ export async function POST(
     const issues = validateFlowForActivation(
       flow as {
         name: string
-        trigger_type: 'keyword' | 'first_inbound_message' | 'manual'
+        trigger_type: import('@/lib/flows/trigger-types').FlowTriggerType
         trigger_config: Record<string, unknown>
+        exit_config?: Record<string, unknown> | null
         entry_node_id: string | null
       },
       (nodes ?? []) as Array<{

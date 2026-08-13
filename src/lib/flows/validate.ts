@@ -24,6 +24,10 @@
  */
 
 import { INTERACTIVE_LIMITS } from "@/lib/whatsapp/meta-api";
+import {
+  parseExitConfig,
+  type FlowExitConfig,
+} from "./exit-conditions";
 
 export interface ValidationIssue {
   severity: "error" | "warning";
@@ -39,6 +43,7 @@ interface FlowInput {
   name: string;
   trigger_type: import("@/lib/flows/trigger-types").FlowTriggerType;
   trigger_config: Record<string, unknown>;
+  exit_config?: FlowExitConfig | Record<string, unknown> | null;
   entry_node_id: string | null;
 }
 
@@ -66,6 +71,7 @@ export function validateFlowForActivation(
 
   // ---- trigger ----
   issues.push(...validateTrigger(flow.trigger_type, flow.trigger_config));
+  issues.push(...validateExitConfig(parseExitConfig(flow.exit_config)));
 
   // ---- graph integrity ----
   if (!flow.entry_node_id) {
@@ -313,6 +319,49 @@ function validateTrigger(
   }
   // first_inbound_message / manual / message triggers — no extra config.
 
+  return issues;
+}
+
+// ============================================================
+// Exit conditions
+// ============================================================
+
+function validateExitConfig(config: FlowExitConfig): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  config.conditions.forEach((c, i) => {
+    const prefix = `exit_config.conditions.${i}`;
+    if (c.type === "tag_added" || c.type === "tag_removed") {
+      if (!nonEmpty(c.tag_id)) {
+        issues.push({
+          severity: "error",
+          scope: "trigger",
+          field: `${prefix}.tag_id`,
+          message: `End condition ${i + 1}: pick a tag.`,
+        });
+      }
+    }
+    if (c.type === "deal_stage") {
+      if (!nonEmpty(c.stage_id)) {
+        issues.push({
+          severity: "error",
+          scope: "trigger",
+          field: `${prefix}.stage_id`,
+          message: `End condition ${i + 1}: pick a lead stage.`,
+        });
+      }
+    }
+    if (c.type === "keyword") {
+      const keywords = (c.keywords ?? []).map((k) => k.trim()).filter(Boolean);
+      if (keywords.length === 0) {
+        issues.push({
+          severity: "error",
+          scope: "trigger",
+          field: `${prefix}.keywords`,
+          message: `End condition ${i + 1}: add at least one keyword.`,
+        });
+      }
+    }
+  });
   return issues;
 }
 

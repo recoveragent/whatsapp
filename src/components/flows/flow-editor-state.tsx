@@ -8,11 +8,12 @@
  * `FlowEditorShell`, so toggling views never resets unsaved edits.
  *
  * What lives here:
- *   - `BuilderState` shape (header fields, trigger config, nodes).
+ *   - `BuilderState` shape (header fields, trigger config, exit
+ *     conditions, nodes).
  *   - Dirty / saving / activating flags so the header save button
  *     and the beforeunload guard share the same source.
- *   - All mutations: name / description / trigger / fallback,
- *     addNode / duplicateNode / updateNode / updateNodeConfig /
+ *   - All mutations: name / description / trigger / exit_config /
+ *     fallback, addNode / duplicateNode / updateNode / updateNodeConfig /
  *     updateNodePosition / removeNode, setEntryNodeId.
  *   - Side effects: save (PUT), setStatus (POST /activate),
  *     deleteFlow (DELETE then router.push).
@@ -53,6 +54,7 @@ import { unlinkNodeReferences } from "@/lib/flows/edges";
 import type { FlowNodeRow, FlowRow } from "@/lib/flows/types";
 import type { FlowTriggerType } from "@/lib/flows/trigger-types";
 import { defaultFlowWebhookConfig } from "@/lib/flows/webhook-config";
+import { parseExitConfig } from "@/lib/flows/exit-conditions";
 import { NODE_META, slugify, type BuilderNode, type NodeType } from "./shared";
 
 // ============================================================
@@ -64,6 +66,7 @@ export interface BuilderState {
   description: string;
   trigger_type: FlowTriggerType;
   trigger_config: Record<string, unknown>;
+  exit_config: import("@/lib/flows/exit-conditions").FlowExitConfig;
   entry_node_id: string | null;
   status: FlowRow["status"];
   nodes: BuilderNode[];
@@ -310,6 +313,7 @@ export function FlowEditorProvider({
     description: initialFlow.description ?? "",
     trigger_type: initialFlow.trigger_type,
     trigger_config: initialFlow.trigger_config as Record<string, unknown>,
+    exit_config: parseExitConfig(initialFlow.exit_config),
     entry_node_id: initialFlow.entry_node_id,
     status: initialFlow.status,
     nodes: initialNodes.map((n) => ({
@@ -382,6 +386,7 @@ export function FlowEditorProvider({
           name: state.name,
           trigger_type: state.trigger_type,
           trigger_config: state.trigger_config,
+          exit_config: state.exit_config,
           entry_node_id: state.entry_node_id,
         },
         state.nodes,
@@ -405,6 +410,7 @@ export function FlowEditorProvider({
           description: state.description || null,
           trigger_type: state.trigger_type,
           trigger_config: state.trigger_config,
+          exit_config: state.exit_config,
           entry_node_id: state.entry_node_id,
           nodes: state.nodes,
         }),

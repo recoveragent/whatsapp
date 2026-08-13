@@ -226,6 +226,17 @@ export function ContactDetailView({
       if (!error) {
         setContactTagIds((prev) => prev.filter((id) => id !== tagId));
         onUpdated();
+        if (accountId) {
+          void fetch('/api/crm/triggers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              trigger_type: 'tag_removed',
+              contact_id: contactId,
+              tag_id: tagId,
+            }),
+          });
+        }
       }
     } else {
       const { error } = await supabase

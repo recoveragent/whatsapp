@@ -178,6 +178,22 @@ export function DealForm({
         setSaving(false);
         return;
       }
+      if (
+        accountId &&
+        contactId &&
+        stageId &&
+        deal.stage_id !== stageId
+      ) {
+        void fetch("/api/crm/triggers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trigger_type: "deal_stage_changed",
+            contact_id: contactId,
+            stage_id: stageId,
+          }),
+        });
+      }
     } else {
       const {
         data: { session },
@@ -200,6 +216,17 @@ export function DealForm({
         toast.error("Failed to create deal");
         setSaving(false);
         return;
+      }
+      if (accountId && contactId && stageId) {
+        void fetch("/api/crm/triggers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trigger_type: "deal_stage_changed",
+            contact_id: contactId,
+            stage_id: stageId,
+          }),
+        });
       }
     }
 

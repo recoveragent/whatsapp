@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server'
 import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account'
 import {
   dispatchConversationAssigned,
+  dispatchDealStageChanged,
   dispatchTagAdded,
+  dispatchTagRemoved,
 } from '@/lib/crm/dispatch-triggers'
 
 /**
@@ -35,6 +37,15 @@ export async function POST(request: Request) {
       tagId: body.tag_id,
       conversationId: body.conversation_id,
     })
+  } else if (body.trigger_type === 'tag_removed') {
+    if (!body.tag_id) {
+      return NextResponse.json({ error: 'tag_id required' }, { status: 400 })
+    }
+    dispatchTagRemoved({
+      accountId,
+      contactId: body.contact_id,
+      tagId: body.tag_id,
+    })
   } else if (body.trigger_type === 'conversation_assigned') {
     if (!body.conversation_id || !body.agent_id) {
       return NextResponse.json(
@@ -47,6 +58,15 @@ export async function POST(request: Request) {
       contactId: body.contact_id,
       conversationId: body.conversation_id,
       agentId: body.agent_id,
+    })
+  } else if (body.trigger_type === 'deal_stage_changed') {
+    if (!body.stage_id) {
+      return NextResponse.json({ error: 'stage_id required' }, { status: 400 })
+    }
+    dispatchDealStageChanged({
+      accountId,
+      contactId: body.contact_id,
+      stageId: body.stage_id,
     })
   } else {
     return NextResponse.json({ error: 'Unsupported trigger_type' }, { status: 400 })
