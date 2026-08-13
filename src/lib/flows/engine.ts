@@ -1645,7 +1645,7 @@ export async function resumeFlowPendingExecutions(): Promise<number> {
       }
 
       const run = runRow as FlowRunRow;
-      await logEvent(db, run.id, "timeout", p.source_node_key, {
+      await logEvent(db, run.id, "timeout", p.source_node_key ?? null, {
         reason: "no_reply",
       });
       const nodes = await loadAllNodes(db, p.flow_id);

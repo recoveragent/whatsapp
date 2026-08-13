@@ -506,7 +506,7 @@ function ReplyTimeoutSection({
 // send_buttons
 // ============================================================
 
-interface SendButtonsCfg {
+interface SendButtonsCfg extends ReplyTimeoutCfg {
   text?: string;
   footer_text?: string;
   buttons?: Array<{ reply_id: string; title: string; next_node_key: string }>;
@@ -636,7 +636,7 @@ function SendButtonsForm({
 // send_list
 // ============================================================
 
-interface SendListCfg {
+interface SendListCfg extends ReplyTimeoutCfg {
   text?: string;
   button_label?: string;
   footer_text?: string;
@@ -874,7 +874,7 @@ function SendListForm({
 // send_address
 // ============================================================
 
-interface SendAddressCfg {
+interface SendAddressCfg extends ReplyTimeoutCfg {
   body_text?: string;
   header_text?: string;
   footer_text?: string;
