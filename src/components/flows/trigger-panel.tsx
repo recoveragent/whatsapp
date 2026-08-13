@@ -24,9 +24,12 @@ import {
   defaultFlowWebhookConfig,
   type FlowWebhookTriggerConfig,
 } from "@/lib/flows/webhook-config";
+import { defaultGoogleSheetRowConfig } from "@/lib/google-sheets/trigger-config";
 import { FlowWebhookTriggerPanel } from "./webhook-trigger-panel";
+import { FlowGoogleSheetTriggerPanel } from "./google-sheet-trigger-panel";
 import { IssueLine } from "./validation-panel";
 import type { BuilderState } from "./flow-editor-state";
+import type { GoogleSheetRowTriggerConfig } from "@/lib/google-sheets/trigger-config";
 
 /** Stable React-Flow id for the virtual trigger node on the canvas. */
 export const TRIGGER_NODE_ID = "__flow_trigger__";
@@ -44,6 +47,12 @@ export function summarizeTrigger(
     }
     case "webhook_received":
       return "External webhook POST";
+    case "google_sheet_row": {
+      const sheet = typeof triggerConfig.sheet_name === "string"
+        ? triggerConfig.sheet_name
+        : "";
+      return sheet ? `Sheet · ${sheet}` : "Map Google Sheet columns";
+    }
     case "tag_added":
       return typeof triggerConfig.tag_id === "string" && triggerConfig.tag_id
         ? `Tag ${triggerConfig.tag_id.slice(0, 8)}…`
@@ -138,6 +147,11 @@ export function TriggerPanel({
                     ? { keywords: [] }
                     : v === "webhook_received"
                       ? (defaultFlowWebhookConfig() as unknown as Record<string, unknown>)
+                      : v === "google_sheet_row"
+                        ? (defaultGoogleSheetRowConfig() as unknown as Record<
+                            string,
+                            unknown
+                          >)
                       : v === "tag_added"
                         ? { tag_id: "" }
                         : v === "time_based"
@@ -240,6 +254,12 @@ export function TriggerPanel({
           <FlowWebhookTriggerPanel
             flowId={flowId}
             config={state.trigger_config as unknown as FlowWebhookTriggerConfig}
+            onChange={(c) => setState((s) => ({ ...s, trigger_config: c }))}
+          />
+        )}
+        {state.trigger_type === "google_sheet_row" && (
+          <FlowGoogleSheetTriggerPanel
+            config={state.trigger_config as unknown as GoogleSheetRowTriggerConfig}
             onChange={(c) => setState((s) => ({ ...s, trigger_config: c }))}
           />
         )}

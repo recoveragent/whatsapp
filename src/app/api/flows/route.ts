@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { getFlowTemplate } from '@/lib/flows/templates'
 import { ensureFlowWebhookConfig } from '@/lib/flows/webhook-config'
+import { ensureGoogleSheetRowConfig } from '@/lib/google-sheets/trigger-config'
 import type { FlowTriggerType } from '@/lib/flows/trigger-types'
 
 /**
@@ -150,6 +151,11 @@ export async function POST(request: Request) {
   let trigger_config = body.trigger_config ?? {}
   if (trigger_type === 'webhook_received') {
     trigger_config = { ...ensureFlowWebhookConfig(trigger_config) }
+  }
+  if (trigger_type === 'google_sheet_row') {
+    trigger_config = {
+      ...ensureGoogleSheetRowConfig(trigger_config),
+    } as unknown as Record<string, unknown>
   }
 
   const { data, error } = await admin

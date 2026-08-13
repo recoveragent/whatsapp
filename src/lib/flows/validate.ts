@@ -240,6 +240,32 @@ function validateTrigger(
       });
     }
   }
+  if (trigger_type === "google_sheet_row") {
+    if (!nonEmpty(trigger_config.spreadsheet_id)) {
+      issues.push({
+        severity: "error",
+        scope: "trigger",
+        field: "trigger_config.spreadsheet_id",
+        message: "Paste a Google Sheet URL and load it.",
+      });
+    }
+    if (!nonEmpty(trigger_config.sheet_name)) {
+      issues.push({
+        severity: "error",
+        scope: "trigger",
+        field: "trigger_config.sheet_name",
+        message: "Pick a sheet tab.",
+      });
+    }
+    if (!nonEmpty(trigger_config.phone_column)) {
+      issues.push({
+        severity: "error",
+        scope: "trigger",
+        field: "trigger_config.phone_column",
+        message: "Map a phone column (required).",
+      });
+    }
+  }
   // first_inbound_message / manual / message triggers — no extra config.
 
   return issues;

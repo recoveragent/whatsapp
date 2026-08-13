@@ -53,6 +53,18 @@ const WEBHOOK_OPTIONS: TemplateVariableOption[] = [
   },
 ]
 
+const GOOGLE_SHEET_OPTIONS: TemplateVariableOption[] = [
+  { label: 'Sheet phone', token: '{{ vars.phone }}', type: 'text' },
+  { label: 'Sheet name', token: '{{ vars.name }}', type: 'text' },
+  { label: 'Sheet email', token: '{{ vars.email }}', type: 'text' },
+  { label: 'Sheet row number', token: '{{ vars.sheet_row }}', type: 'text' },
+  {
+    label: 'Sheet column (by header)',
+    token: '{{ vars.ColumnName }}',
+    type: 'text',
+  },
+]
+
 export function templateVariableGroupsForFlow(
   triggerType?: FlowTriggerType,
 ): TemplateVariableGroup[] {
@@ -74,6 +86,9 @@ export function templateVariableGroupsForFlow(
   }
   if (triggerType === 'webhook_received') {
     triggerOptions.push(...WEBHOOK_OPTIONS)
+  }
+  if (triggerType === 'google_sheet_row') {
+    triggerOptions.push(...GOOGLE_SHEET_OPTIONS)
   }
 
   if (triggerOptions.length > 0) {
@@ -100,6 +115,9 @@ export function templateVariableGroupsForAutomation(
   }
   if (triggerType === 'webhook_received') {
     triggerOptions.push(...WEBHOOK_OPTIONS)
+  }
+  if (triggerType === 'google_sheet_row') {
+    triggerOptions.push(...GOOGLE_SHEET_OPTIONS)
   }
 
   if (triggerOptions.length > 0) {

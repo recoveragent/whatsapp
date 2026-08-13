@@ -35,6 +35,11 @@ interface ShopifyStatus {
   connected: boolean;
 }
 
+interface GoogleSheetsStatus {
+  configured: boolean;
+  connected: boolean;
+}
+
 export function SettingsOverview({
   onSelect,
 }: {
@@ -54,6 +59,8 @@ export function SettingsOverview({
   const [whatsappLoading, setWhatsappLoading] = useState(true);
   const [shopify, setShopify] = useState<ShopifyStatus | null>(null);
   const [shopifyLoading, setShopifyLoading] = useState(true);
+  const [googleSheets, setGoogleSheets] = useState<GoogleSheetsStatus | null>(null);
+  const [googleSheetsLoading, setGoogleSheetsLoading] = useState(true);
 
   useEffect(() => {
     if (!user || !accountId) return;
@@ -146,6 +153,19 @@ export function SettingsOverview({
       setShopifyLoading(false);
     })();
 
+    (async () => {
+      setGoogleSheetsLoading(true);
+      const health = await fetch('/api/google-sheets/connection', {
+        cache: 'no-store',
+      }).then((r) => r.json());
+      if (cancelled) return;
+      setGoogleSheets({
+        configured: !!health?.configured,
+        connected: !!health?.connected,
+      });
+      setGoogleSheetsLoading(false);
+    })();
+
     return () => {
       cancelled = true;
     };
@@ -195,6 +215,21 @@ export function SettingsOverview({
       ) : (
         <>
           <StatusDot tone="muted" /> Reconnect store
+        </>
+      ),
+    },
+    {
+      section: 'google_sheets',
+      loading: googleSheetsLoading,
+      subtitle: !googleSheets?.configured ? (
+        'Not connected yet'
+      ) : googleSheets.connected ? (
+        <>
+          <StatusDot tone="ok" /> Connected
+        </>
+      ) : (
+        <>
+          <StatusDot tone="muted" /> Reconnect Google
         </>
       ),
     },

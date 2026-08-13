@@ -16,6 +16,7 @@ export const FLOW_TRIGGER_TYPES = [
   'tag_added',
   'conversation_assigned',
   'time_based',
+  'google_sheet_row',
 ] as const
 
 export type FlowTriggerType = (typeof FLOW_TRIGGER_TYPES)[number]
@@ -31,6 +32,7 @@ export const EXTERNAL_FLOW_TRIGGERS: FlowTriggerType[] = [
   'tag_added',
   'conversation_assigned',
   'time_based',
+  'google_sheet_row',
 ]
 
 export const FLOW_TRIGGER_LABELS: Record<FlowTriggerType, string> = {
@@ -47,6 +49,7 @@ export const FLOW_TRIGGER_LABELS: Record<FlowTriggerType, string> = {
   tag_added: 'Tag added to contact',
   conversation_assigned: 'Conversation assigned',
   time_based: 'Time-based schedule',
+  google_sheet_row: 'Google Sheet: new row',
 }
 
 export function isExternalFlowTrigger(t: string): t is FlowTriggerType {

@@ -1,5 +1,6 @@
 import {
   Coins,
+  FileSpreadsheet,
   FileText,
   Inbox,
   KeyRound,
@@ -31,6 +32,7 @@ export const SETTINGS_SECTIONS = [
   'appearance',
   'whatsapp',
   'shopify',
+  'google_sheets',
   'templates',
   'fields',
   'inbox',
@@ -58,6 +60,12 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   appearance: { id: 'appearance', label: 'Appearance', icon: Palette, group: 'account' },
   whatsapp: { id: 'whatsapp', label: 'WhatsApp number', icon: PlugZap, group: 'workspace' },
   shopify: { id: 'shopify', label: 'Shopify', icon: ShoppingBag, group: 'workspace' },
+  google_sheets: {
+    id: 'google_sheets',
+    label: 'Google Sheets',
+    icon: FileSpreadsheet,
+    group: 'workspace',
+  },
   templates: { id: 'templates', label: 'Templates', icon: FileText, group: 'workspace' },
   fields: { id: 'fields', label: 'Fields & tags', icon: Tags, group: 'workspace' },
   inbox: { id: 'inbox', label: 'Inbox', icon: Inbox, group: 'workspace' },
