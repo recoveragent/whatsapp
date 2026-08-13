@@ -69,6 +69,11 @@ import {
 } from "./extended-nodes";
 import { applyFlowExitEventWithClient } from "./apply-exit";
 import { parseExitConfig, exitConfigMatchesEvent } from "./exit-conditions";
+import {
+  cancelReplyTimeout,
+  parseReplyTimeout,
+  scheduleReplyTimeout,
+} from "./reply-timeout";
 
 // ============================================================
 // Pure helpers — extracted so engine.test.ts can exercise them
@@ -751,6 +756,8 @@ async function advanceFromNodeKey(
         await logEvent(db, run.id, "error", node.node_key, {
           reason: "lost_race_during_advance",
         });
+      } else {
+        await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       }
       return { outcome: "advanced" };
     }
@@ -820,6 +827,8 @@ async function advanceFromNodeKey(
         await logEvent(db, run.id, "error", node.node_key, {
           reason: "lost_race_during_advance",
         });
+      } else {
+        await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       }
       return { outcome: "advanced" };
     }
@@ -937,6 +946,8 @@ async function advanceFromNodeKey(
         await logEvent(db, run.id, "error", node.node_key, {
           reason: "lost_race_during_advance",
         });
+      } else {
+        await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       }
       return { outcome: "advanced" };
     }
@@ -952,6 +963,8 @@ async function advanceFromNodeKey(
         await logEvent(db, run.id, "error", node.node_key, {
           reason: "lost_race_during_advance",
         });
+      } else {
+        await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       }
       return { outcome: "advanced" };
     }
@@ -984,6 +997,8 @@ async function advanceFromNodeKey(
           await logEvent(db, run.id, "error", node.node_key, {
             reason: "lost_race_during_advance",
           });
+        } else {
+          await maybeScheduleReplyTimeoutForNode(db, run, node, true);
         }
         return { outcome: "advanced" };
       }
@@ -1043,6 +1058,18 @@ async function advanceCurrentNodeKey(
     return false;
   }
   return Array.isArray(data) && data.length > 0;
+}
+
+async function maybeScheduleReplyTimeoutForNode(
+  db: AdminClient,
+  run: FlowRunRow,
+  node: FlowNodeRow,
+  advanced: boolean,
+): Promise<void> {
+  if (!advanced) return;
+  const cfg = parseReplyTimeout(node.config as Record<string, unknown>);
+  if (!cfg) return;
+  await scheduleReplyTimeout(db, run, node.node_key, cfg);
 }
 
 // ============================================================
@@ -1328,6 +1355,7 @@ async function handleReplyForActiveRun(
         .eq("id", run.id);
       if (!error) run.reprompt_count = 0;
     }
+    await cancelReplyTimeout(db, run.id, run.current_node_key);
     const outcome = await advanceFromNodeKey(db, run, matched, nodes);
     return {
       consumed: true,
@@ -1359,8 +1387,10 @@ async function handleReplyForActiveRun(
     // Re-send the same prompt. Same node, no current_node_key change.
     if (currentNode.node_type === "send_buttons") {
       await sendButtonsAndSuspend(db, run, currentNode);
+      await maybeScheduleReplyTimeoutForNode(db, run, currentNode, true);
     } else if (currentNode.node_type === "send_list") {
       await sendListAndSuspend(db, run, currentNode);
+      await maybeScheduleReplyTimeoutForNode(db, run, currentNode, true);
     } else if (currentNode.node_type === "collect_input") {
       // Customer typed something we couldn't accept (empty after trim,
       // or var_key missing — rare). Re-send the prompt so they try again.
@@ -1379,6 +1409,7 @@ async function handleReplyForActiveRun(
           detail: err instanceof Error ? err.message : String(err),
         });
       }
+      await maybeScheduleReplyTimeoutForNode(db, run, currentNode, true);
     } else if (currentNode.node_type === "send_address") {
       const cfg = currentNode.config as unknown as SendAddressNodeConfig;
       try {
@@ -1414,6 +1445,7 @@ async function handleReplyForActiveRun(
           detail: err instanceof Error ? err.message : String(err),
         });
       }
+      await maybeScheduleReplyTimeoutForNode(db, run, currentNode, true);
     }
     return { consumed: true, flow_run_id: run.id, outcome: "fallback_fired" };
   }
@@ -1590,6 +1622,48 @@ export async function resumeFlowPendingExecutions(): Promise<number> {
       flow_id: string
       next_node_key: string
       vars: Record<string, unknown>
+      execution_kind?: string
+      source_node_key?: string | null
+    };
+
+    const kind = p.execution_kind ?? "wait";
+
+    if (kind === "reply_timeout") {
+      const { data: runRow } = await db
+        .from("flow_runs")
+        .select("*")
+        .eq("id", p.flow_run_id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (!runRow || runRow.current_node_key !== p.source_node_key) {
+        await db
+          .from("flow_pending_executions")
+          .update({ status: "failed" })
+          .eq("id", p.id);
+        continue;
+      }
+
+      const run = runRow as FlowRunRow;
+      await logEvent(db, run.id, "timeout", p.source_node_key, {
+        reason: "no_reply",
+      });
+      const nodes = await loadAllNodes(db, p.flow_id);
+      await advanceFromNodeKey(db, run, p.next_node_key, nodes);
+      await db
+        .from("flow_pending_executions")
+        .update({ status: "done" })
+        .eq("id", p.id);
+      resumed += 1;
+      continue;
+    }
+
+    if (kind !== "wait") {
+      await db
+        .from("flow_pending_executions")
+        .update({ status: "failed" })
+        .eq("id", p.id);
+      continue;
     }
 
     const { data: runRow } = await db

@@ -21,9 +21,47 @@
  *   - `row:<reply_id>`    for send_list rows
  *   - `true` / `false`    for condition branches
  *   - `branch:<branch_id>` / `default` for switch branches
+ *   - `timeout`           for no-reply timeout branch on suspending nodes
  */
 
 import type { BuilderNode } from "@/components/flows/shared";
+import {
+  REPLY_TIMEOUT_HANDLE,
+  isSuspendingNodeType,
+} from "./reply-timeout";
+
+function replyTimeoutNextKey(cfg: Record<string, unknown>): string | null {
+  const next =
+    typeof cfg.reply_timeout_next_node_key === "string"
+      ? cfg.reply_timeout_next_node_key.trim()
+      : "";
+  return next || null;
+}
+
+function appendReplyTimeoutEdge(
+  edges: CanvasEdge[],
+  nodeKey: string,
+  cfg: Record<string, unknown>,
+  knownKeys: Set<string>,
+): void {
+  const next = replyTimeoutNextKey(cfg);
+  if (!next || !knownKeys.has(next)) return;
+  edges.push({
+    id: `${nodeKey}--timeout--${next}`,
+    source: nodeKey,
+    target: next,
+    sourceHandle: REPLY_TIMEOUT_HANDLE,
+    label: "No reply",
+  });
+}
+
+function replyTimeoutSlot(): OutgoingSlot {
+  return { id: REPLY_TIMEOUT_HANDLE, label: "No reply" };
+}
+
+function appendReplyTimeoutSlots(slots: OutgoingSlot[]): OutgoingSlot[] {
+  return [...slots, replyTimeoutSlot()];
+}
 
 export interface CanvasEdge {
   /** Stable per-edge id — required by React-Flow. */
@@ -59,6 +97,9 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
             target: next,
             sourceHandle: "next",
           });
+        }
+        if (node.node_type === "collect_input" || node.node_type === "send_address") {
+          appendReplyTimeoutEdge(edges, node.node_key, cfg, knownKeys);
         }
         break;
       }
@@ -144,6 +185,7 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
             label: title ?? replyId,
           });
         }
+        appendReplyTimeoutEdge(edges, node.node_key, cfg, knownKeys);
         break;
       }
 
@@ -173,6 +215,7 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
             });
           }
         }
+        appendReplyTimeoutEdge(edges, node.node_key, cfg, knownKeys);
         break;
       }
 
@@ -207,6 +250,7 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
             });
           }
         }
+        appendReplyTimeoutEdge(edges, node.node_key, cfg, knownKeys);
         break;
       }
 
@@ -275,10 +319,13 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
     case "assign_conversation":
     case "create_deal":
     case "close_conversation":
-    case "collect_input":
-    case "send_address":
     case "set_tag": {
       return [{ id: "next", label: "Next" }];
+    }
+
+    case "collect_input":
+    case "send_address": {
+      return appendReplyTimeoutSlots([{ id: "next", label: "Next" }]);
     }
 
     case "send_template": {
@@ -286,18 +333,20 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
         ? ((cfg as { buttons: Array<Record<string, unknown>> }).buttons)
         : [];
       if (buttons.length > 0) {
-        return buttons
-          .filter((b) => typeof b.reply_id === "string" && b.reply_id)
-          .map((b) => {
-            const replyId = b.reply_id as string;
-            const title = typeof b.title === "string" ? b.title : null;
-            return {
-              id: `button:${replyId}`,
-              label: title ?? replyId,
-            };
-          });
+        return appendReplyTimeoutSlots(
+          buttons
+            .filter((b) => typeof b.reply_id === "string" && b.reply_id)
+            .map((b) => {
+              const replyId = b.reply_id as string;
+              const title = typeof b.title === "string" ? b.title : null;
+              return {
+                id: `button:${replyId}`,
+                label: title ?? replyId,
+              };
+            }),
+        );
       }
-      return [{ id: "next", label: "Next" }];
+      return appendReplyTimeoutSlots([{ id: "next", label: "Next" }]);
     }
 
     case "condition":
@@ -325,16 +374,18 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
       const buttons = Array.isArray((cfg as { buttons?: unknown }).buttons)
         ? ((cfg as { buttons: Array<Record<string, unknown>> }).buttons)
         : [];
-      return buttons
-        .filter((b) => typeof b.reply_id === "string" && b.reply_id)
-        .map((b) => {
-          const replyId = b.reply_id as string;
-          const title = typeof b.title === "string" ? b.title : null;
-          return {
-            id: `button:${replyId}`,
-            label: title ?? replyId,
-          };
-        });
+      return appendReplyTimeoutSlots(
+        buttons
+          .filter((b) => typeof b.reply_id === "string" && b.reply_id)
+          .map((b) => {
+            const replyId = b.reply_id as string;
+            const title = typeof b.title === "string" ? b.title : null;
+            return {
+              id: `button:${replyId}`,
+              label: title ?? replyId,
+            };
+          }),
+      );
     }
 
     case "send_list": {
@@ -357,7 +408,7 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
           });
         }
       }
-      return slots;
+      return appendReplyTimeoutSlots(slots);
     }
 
     case "handoff":
@@ -383,6 +434,13 @@ export function applyEdgeConnection(
   sourceHandle: string,
   targetKey: string,
 ): Record<string, unknown> | null {
+  if (
+    sourceHandle === REPLY_TIMEOUT_HANDLE &&
+    isSuspendingNodeType(node.node_type)
+  ) {
+    return { reply_timeout_next_node_key: targetKey };
+  }
+
   switch (node.node_type) {
     case "start":
     case "send_message":
@@ -516,11 +574,30 @@ export function unlinkNodeReferences(
 ): BuilderNode[] {
   return nodes.map((n) => {
     const patched = patchedConfigWithoutKey(n, deletedKey);
-    return patched ? { ...n, config: patched } : n;
+    if (!patched) return n;
+    return { ...n, config: patched };
   });
 }
 
 function patchedConfigWithoutKey(
+  node: BuilderNode,
+  deletedKey: string,
+): Record<string, unknown> | null {
+  const cfg = node.config;
+  const timeoutNext = (cfg as { reply_timeout_next_node_key?: string })
+    .reply_timeout_next_node_key;
+  const timeoutMatch =
+    timeoutNext === deletedKey && isSuspendingNodeType(node.node_type);
+
+  const inner = patchedConfigWithoutKeyInner(node, deletedKey);
+  if (!inner && !timeoutMatch) return null;
+  if (timeoutMatch) {
+    return { ...(inner ?? cfg), reply_timeout_next_node_key: "" };
+  }
+  return inner;
+}
+
+function patchedConfigWithoutKeyInner(
   node: BuilderNode,
   deletedKey: string,
 ): Record<string, unknown> | null {

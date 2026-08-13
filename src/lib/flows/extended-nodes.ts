@@ -345,6 +345,7 @@ export async function enqueueFlowWait(
     vars: run.vars ?? {},
     run_at: runAt,
     status: 'pending',
+    execution_kind: 'wait',
   })
   await db
     .from('flow_runs')

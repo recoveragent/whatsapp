@@ -175,6 +175,7 @@ export function NodeConfigForm({
             onChange={(v) => onUpdateConfig({ next_node_key: v })}
             label="After capturing, advance to"
           />
+          <ReplyTimeoutSection cfg={cfg} onUpdateConfig={onUpdateConfig} />
         </>
       );
 
@@ -249,6 +250,7 @@ export function NodeConfigForm({
             variableGroups={templateVariableGroupsForFlow(triggerType)}
             variableHint="Focus a field, then pick a variable from the list. User attributes come from the contact; trigger attributes depend on your flow trigger."
           />
+          <ReplyTimeoutSection cfg={cfg} onUpdateConfig={onUpdateConfig} />
         </>
       );
 
@@ -355,6 +357,78 @@ export function NodeConfigForm({
         </p>
       );
   }
+}
+
+// ============================================================
+// No-reply timeout (shared by suspending node types)
+// ============================================================
+
+function ReplyTimeoutSection({
+  cfg,
+  onUpdateConfig,
+}: {
+  cfg: Record<string, unknown>;
+  onUpdateConfig: (patch: Record<string, unknown>) => void;
+}) {
+  const amount =
+    cfg.reply_timeout_amount === undefined || cfg.reply_timeout_amount === null
+      ? ""
+      : String(cfg.reply_timeout_amount);
+  const unit =
+    typeof cfg.reply_timeout_unit === "string" && cfg.reply_timeout_unit
+      ? cfg.reply_timeout_unit
+      : "hours";
+  const target =
+    typeof cfg.reply_timeout_next_node_key === "string"
+      ? cfg.reply_timeout_next_node_key.trim()
+      : "";
+
+  return (
+    <div className="rounded-md border border-border bg-muted/30 p-3">
+      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+        No reply timeout (optional)
+      </label>
+      <p className="mb-2 text-[10px] text-muted-foreground">
+        If the customer doesn&apos;t respond in time, the flow follows the{" "}
+        <span className="font-medium text-foreground">No reply</span> handle on
+        the canvas.
+      </p>
+      <div className="flex gap-2">
+        <Input
+          type="number"
+          min={1}
+          value={amount}
+          onChange={(e) => {
+            const v = e.target.value;
+            onUpdateConfig({
+              reply_timeout_amount: v === "" ? "" : Number(v),
+            });
+          }}
+          placeholder="e.g. 24"
+          className="bg-muted"
+        />
+        <Select
+          value={unit}
+          onValueChange={(v) => onUpdateConfig({ reply_timeout_unit: v })}
+        >
+          <SelectTrigger className="w-[120px] bg-muted">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="minutes">Minutes</SelectItem>
+            <SelectItem value="hours">Hours</SelectItem>
+            <SelectItem value="days">Days</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {target ? (
+        <p className="mt-2 text-[10px] text-muted-foreground">
+          No reply branch connected to{" "}
+          <code className="rounded bg-muted px-1 font-mono">{target}</code>
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 // ============================================================
@@ -482,6 +556,7 @@ function SendButtonsForm({
           </Button>
         )}
       </div>
+      <ReplyTimeoutSection cfg={cfg} onUpdateConfig={onUpdateConfig} />
     </>
   );
 }
@@ -719,6 +794,7 @@ function SendListForm({
           </Button>
         )}
       </div>
+      <ReplyTimeoutSection cfg={cfg} onUpdateConfig={onUpdateConfig} />
     </>
   );
 }
@@ -843,6 +919,7 @@ function SendAddressForm({
         onChange={(v) => onUpdateConfig({ next_node_key: v })}
         label="After address is submitted, advance to"
       />
+      <ReplyTimeoutSection cfg={cfg} onUpdateConfig={onUpdateConfig} />
     </>
   );
 }

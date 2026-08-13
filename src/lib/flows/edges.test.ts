@@ -306,10 +306,20 @@ describe("outgoingSlots", () => {
     ).toEqual(["next"]);
     expect(
       each({ node_key: "x", node_type: "collect_input", config: {} }),
-    ).toEqual(["next"]);
+    ).toEqual(["next", "timeout"]);
     expect(each({ node_key: "x", node_type: "set_tag", config: {} })).toEqual([
       "next",
     ]);
+  });
+
+  it("returns a No reply slot for send_address", () => {
+    expect(
+      outgoingSlots({
+        node_key: "x",
+        node_type: "send_address",
+        config: {},
+      }).map((s) => s.id),
+    ).toEqual(["next", "timeout"]);
   });
 
   it("returns true/false slots for condition", () => {
@@ -337,6 +347,7 @@ describe("outgoingSlots", () => {
     expect(slots).toEqual([
       { id: "button:yes", label: "Yes" },
       { id: "button:no", label: "No" },
+      { id: "timeout", label: "No reply" },
     ]);
   });
 
@@ -365,7 +376,7 @@ describe("outgoingSlots", () => {
         ],
       },
     });
-    expect(slots.map((s) => s.id)).toEqual(["row:o1", "row:o2"]);
+    expect(slots.map((s) => s.id)).toEqual(["row:o1", "row:o2", "timeout"]);
   });
 
   it("terminal nodes (handoff / end) have no outgoing slots", () => {
@@ -587,5 +598,75 @@ describe("unlinkNodeReferences", () => {
     expect(after).toHaveLength(2);
     expect(after[0]).toBe(nodes[0]);
     expect(after[1]).toBe(nodes[1]);
+  });
+});
+
+describe("no-reply timeout edges", () => {
+  it("derives a timeout edge from send_buttons", () => {
+    const edges = deriveCanvasEdges(
+      nodes(
+        {
+          node_key: "prompt",
+          node_type: "send_buttons",
+          config: {
+            text: "Choose",
+            buttons: [
+              { reply_id: "yes", title: "Yes", next_node_key: "yes_path" },
+            ],
+            reply_timeout_next_node_key: "timeout_path",
+          },
+        },
+        { node_key: "yes_path", node_type: "end", config: {} },
+        { node_key: "timeout_path", node_type: "end", config: {} },
+      ),
+    );
+    expect(edges).toContainEqual(
+      expect.objectContaining({
+        source: "prompt",
+        target: "timeout_path",
+        sourceHandle: "timeout",
+        label: "No reply",
+      }),
+    );
+  });
+
+  it("adds a No reply slot to outgoing handles", () => {
+    const slots = outgoingSlots({
+      node_key: "ci",
+      node_type: "collect_input",
+      config: { prompt_text: "Name?", var_key: "name", next_node_key: "next" },
+    });
+    expect(slots.at(-1)).toEqual({ id: "timeout", label: "No reply" });
+  });
+
+  it("patches reply_timeout_next_node_key when connecting the timeout handle", () => {
+    const node: BuilderNode = {
+      node_key: "prompt",
+      node_type: "send_buttons",
+      config: { text: "Hi", buttons: [] },
+    };
+    expect(applyEdgeConnection(node, "timeout", "follow_up")).toEqual({
+      reply_timeout_next_node_key: "follow_up",
+    });
+  });
+
+  it("clears reply_timeout_next_node_key when the target node is deleted", () => {
+    const before: BuilderNode[] = [
+      {
+        node_key: "prompt",
+        node_type: "collect_input",
+        config: {
+          prompt_text: "Name?",
+          var_key: "name",
+          next_node_key: "safe",
+          reply_timeout_next_node_key: "victim",
+        },
+      },
+    ];
+    const after = unlinkNodeReferences(before, "victim");
+    expect(
+      (after[0].config as { reply_timeout_next_node_key?: string })
+        .reply_timeout_next_node_key,
+    ).toBe("");
   });
 });

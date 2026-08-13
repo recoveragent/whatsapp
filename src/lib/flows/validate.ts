@@ -28,6 +28,7 @@ import {
   parseExitConfig,
   type FlowExitConfig,
 } from "./exit-conditions";
+import { parseReplyTimeout } from "./reply-timeout";
 
 export interface ValidationIssue {
   severity: "error" | "warning";
@@ -51,6 +52,64 @@ interface NodeInput {
   node_key: string;
   node_type: string;
   config: Record<string, unknown>;
+}
+
+function collectReplyTimeoutIssues(
+  node: NodeInput,
+  knownKeys: Set<string>,
+  issues: ValidationIssue[],
+): void {
+  const cfg = node.config;
+  const amountRaw = cfg.reply_timeout_amount;
+  const hasAmount =
+    amountRaw !== undefined &&
+    amountRaw !== null &&
+    String(amountRaw).trim() !== "";
+  const hasUnit =
+    typeof cfg.reply_timeout_unit === "string" &&
+    cfg.reply_timeout_unit.trim() !== "";
+  const next =
+    typeof cfg.reply_timeout_next_node_key === "string"
+      ? cfg.reply_timeout_next_node_key.trim()
+      : "";
+  const hasNext = next.length > 0;
+
+  if (!hasAmount && !hasUnit && !hasNext) return;
+
+  const parsed = parseReplyTimeout(cfg);
+  if (!parsed) {
+    if (hasAmount || hasUnit) {
+      issues.push({
+        severity: "error",
+        scope: "node",
+        node_key: node.node_key,
+        field: "reply_timeout_amount",
+        message:
+          "No-reply timeout needs a duration of at least 1 minute, hour, or day.",
+      });
+    }
+    if (hasNext) {
+      issues.push({
+        severity: "error",
+        scope: "node",
+        node_key: node.node_key,
+        field: "reply_timeout_next_node_key",
+        message:
+          "No-reply timeout needs a duration, or disconnect the No reply handle on the canvas.",
+      });
+    }
+    return;
+  }
+
+  if (!knownKeys.has(parsed.next_node_key)) {
+    issues.push({
+      severity: "error",
+      scope: "node",
+      node_key: node.node_key,
+      field: "reply_timeout_next_node_key",
+      message: `No-reply branch points to non-existent node "${parsed.next_node_key}".`,
+    });
+  }
 }
 
 export function validateFlowForActivation(
@@ -583,6 +642,7 @@ function validateNode(
           });
         }
       });
+      collectReplyTimeoutIssues(node, knownKeys, issues);
       break;
     }
 
@@ -716,6 +776,7 @@ function validateNode(
           }
         });
       });
+      collectReplyTimeoutIssues(node, knownKeys, issues);
       break;
     }
 
@@ -768,6 +829,7 @@ function validateNode(
           message: `Collect-input points to non-existent node "${cfg.next_node_key}".`,
         });
       }
+      collectReplyTimeoutIssues(node, knownKeys, issues);
       break;
     }
 
@@ -832,6 +894,7 @@ function validateNode(
           message: `Address message points to non-existent node "${cfg.next_node_key}".`,
         });
       }
+      collectReplyTimeoutIssues(node, knownKeys, issues);
       break;
     }
 
@@ -1134,6 +1197,7 @@ function validateNode(
           message: `Send-template points to non-existent node "${cfg.next_node_key}".`,
         });
       }
+      collectReplyTimeoutIssues(node, knownKeys, issues);
       break;
     }
 
