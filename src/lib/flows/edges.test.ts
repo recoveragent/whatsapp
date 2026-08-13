@@ -297,22 +297,23 @@ describe("outgoingSlots", () => {
       outgoingSlots(node).map((s) => s.id);
     expect(
       each({ node_key: "x", node_type: "start", config: { next_node_key: "y" } }),
-    ).toEqual(["next"]);
+    ).toEqual(["next", "timeout"]);
     expect(
       each({ node_key: "x", node_type: "send_message", config: {} }),
-    ).toEqual(["next"]);
+    ).toEqual(["next", "timeout"]);
     expect(
       each({ node_key: "x", node_type: "send_media", config: {} }),
-    ).toEqual(["next"]);
+    ).toEqual(["next", "timeout"]);
     expect(
       each({ node_key: "x", node_type: "collect_input", config: {} }),
     ).toEqual(["next", "timeout"]);
     expect(each({ node_key: "x", node_type: "set_tag", config: {} })).toEqual([
       "next",
+      "timeout",
     ]);
   });
 
-  it("returns a No reply slot for send_address", () => {
+  it("returns a Next step slot for send_address", () => {
     expect(
       outgoingSlots({
         node_key: "x",
@@ -328,8 +329,8 @@ describe("outgoingSlots", () => {
       node_type: "condition",
       config: {},
     });
-    expect(slots.map((s) => s.id)).toEqual(["true", "false"]);
-    expect(slots.map((s) => s.label)).toEqual(["true", "false"]);
+    expect(slots.map((s) => s.id)).toEqual(["true", "false", "timeout"]);
+    expect(slots.map((s) => s.label)).toEqual(["true", "false", "Next step"]);
   });
 
   it("returns one slot per button, labelled with the title", () => {
@@ -347,7 +348,7 @@ describe("outgoingSlots", () => {
     expect(slots).toEqual([
       { id: "button:yes", label: "Yes" },
       { id: "button:no", label: "No" },
-      { id: "timeout", label: "No reply" },
+      { id: "timeout", label: "Next step" },
     ]);
   });
 
@@ -601,8 +602,8 @@ describe("unlinkNodeReferences", () => {
   });
 });
 
-describe("no-reply timeout edges", () => {
-  it("derives a timeout edge from send_buttons", () => {
+describe("Next step timeout edges", () => {
+  it("derives a Next step edge from send_buttons", () => {
     const edges = deriveCanvasEdges(
       nodes(
         {
@@ -625,18 +626,30 @@ describe("no-reply timeout edges", () => {
         source: "prompt",
         target: "timeout_path",
         sourceHandle: "timeout",
-        label: "No reply",
+        label: "Next step",
       }),
     );
   });
 
-  it("adds a No reply slot to outgoing handles", () => {
+  it("adds a Next step slot to outgoing handles", () => {
     const slots = outgoingSlots({
       node_key: "ci",
       node_type: "collect_input",
       config: { prompt_text: "Name?", var_key: "name", next_node_key: "next" },
     });
-    expect(slots.at(-1)).toEqual({ id: "timeout", label: "No reply" });
+    expect(slots.at(-1)).toEqual({ id: "timeout", label: "Next step" });
+  });
+
+  it("adds Next step slots to send_message", () => {
+    const slots = outgoingSlots({
+      node_key: "m",
+      node_type: "send_message",
+      config: { text: "Hi", next_node_key: "next" },
+    });
+    expect(slots).toEqual([
+      { id: "next", label: "Next step" },
+      { id: "timeout", label: "Next step" },
+    ]);
   });
 
   it("patches reply_timeout_next_node_key when connecting the timeout handle", () => {

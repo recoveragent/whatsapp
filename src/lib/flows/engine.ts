@@ -70,7 +70,8 @@ import {
 import { applyFlowExitEventWithClient } from "./apply-exit";
 import { parseExitConfig, exitConfigMatchesEvent } from "./exit-conditions";
 import {
-  cancelReplyTimeout,
+  cancelAllReplyTimeouts,
+  isSuspendingNodeType,
   parseReplyTimeout,
   scheduleReplyTimeout,
 } from "./reply-timeout";
@@ -678,6 +679,7 @@ async function advanceFromNodeKey(
         return { outcome: "completed" };
       }
       currentKey = cfg.next_node_key;
+      await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       continue;
     }
     if (node.node_type === "send_media") {
@@ -709,6 +711,7 @@ async function advanceFromNodeKey(
         return { outcome: "completed" };
       }
       currentKey = cfg.next_node_key;
+      await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       continue;
     }
     if (node.node_type === "collect_input") {
@@ -853,6 +856,7 @@ async function advanceFromNodeKey(
         condition_result: branch,
         advancing_to: currentKey,
       });
+      await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       continue;
     }
     if (node.node_type === "switch") {
@@ -888,6 +892,7 @@ async function advanceFromNodeKey(
         switch_branch: matchedBranch,
         advancing_to: currentKey,
       });
+      await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       continue;
     }
     if (node.node_type === "set_tag") {
@@ -931,6 +936,7 @@ async function advanceFromNodeKey(
         });
       }
       currentKey = cfg.next_node_key;
+      await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       continue;
     }
     if (node.node_type === "send_buttons") {
@@ -1003,6 +1009,7 @@ async function advanceFromNodeKey(
         return { outcome: "advanced" };
       }
       currentKey = ext.nextKey;
+      await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       continue;
     }
     if (node.node_type === "end") {
@@ -1355,7 +1362,7 @@ async function handleReplyForActiveRun(
         .eq("id", run.id);
       if (!error) run.reprompt_count = 0;
     }
-    await cancelReplyTimeout(db, run.id, run.current_node_key);
+    await cancelAllReplyTimeouts(db, run.id);
     const outcome = await advanceFromNodeKey(db, run, matched, nodes);
     return {
       consumed: true,
@@ -1636,7 +1643,21 @@ export async function resumeFlowPendingExecutions(): Promise<number> {
         .eq("status", "active")
         .maybeSingle();
 
-      if (!runRow || runRow.current_node_key !== p.source_node_key) {
+      if (!runRow) {
+        await db
+          .from("flow_pending_executions")
+          .update({ status: "failed" })
+          .eq("id", p.id);
+        continue;
+      }
+
+      const nodes = await loadAllNodes(db, p.flow_id);
+      const sourceNode = p.source_node_key
+        ? nodes.get(p.source_node_key) ?? null
+        : null;
+      const mustStayOnSource =
+        sourceNode != null && isSuspendingNodeType(sourceNode.node_type);
+      if (mustStayOnSource && runRow.current_node_key !== p.source_node_key) {
         await db
           .from("flow_pending_executions")
           .update({ status: "failed" })
@@ -1648,7 +1669,6 @@ export async function resumeFlowPendingExecutions(): Promise<number> {
       await logEvent(db, run.id, "timeout", p.source_node_key ?? null, {
         reason: "no_reply",
       });
-      const nodes = await loadAllNodes(db, p.flow_id);
       await advanceFromNodeKey(db, run, p.next_node_key, nodes);
       await db
         .from("flow_pending_executions")

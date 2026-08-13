@@ -173,6 +173,7 @@ export function FlowBuilder() {
               node={node}
               allNodes={state.nodes}
               triggerType={state.trigger_type}
+              triggerConfig={state.trigger_config}
               expanded={expandedWithFlash.has(node.node_key)}
               isEntry={state.entry_node_id === node.node_key}
               isFlashed={flashKey === node.node_key}
@@ -243,6 +244,7 @@ function NodeCard({
   onRemove,
   onSetEntry,
   triggerType,
+  triggerConfig,
 }: {
   node: BuilderNode;
   allNodes: BuilderNode[];
@@ -257,6 +259,7 @@ function NodeCard({
   onRemove: () => void;
   onSetEntry: () => void;
   triggerType: BuilderState["trigger_type"];
+  triggerConfig: BuilderState["trigger_config"];
 }) {
   const meta = NODE_META[node.node_type];
   const hasError = issues.some((i) => i.severity === "error");
@@ -319,6 +322,7 @@ function NodeCard({
             node={node}
             allNodes={allNodes}
             triggerType={triggerType}
+            triggerConfig={triggerConfig}
             onUpdate={onUpdate}
             onUpdateConfig={onUpdateConfig}
           />
@@ -363,12 +367,14 @@ function NodeConfigWithAdvanced({
   node,
   allNodes,
   triggerType,
+  triggerConfig,
   onUpdate,
   onUpdateConfig,
 }: {
   node: BuilderNode;
   allNodes: BuilderNode[];
   triggerType: BuilderState["trigger_type"];
+  triggerConfig: BuilderState["trigger_config"];
   onUpdate: (patch: Partial<BuilderNode>) => void;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
 }) {
@@ -383,6 +389,7 @@ function NodeConfigWithAdvanced({
         showAdvanced={showAdvanced}
         onUpdateConfig={onUpdateConfig}
         triggerType={triggerType}
+        triggerConfig={triggerConfig}
       />
       <div className="border-t border-border pt-3">
         <button

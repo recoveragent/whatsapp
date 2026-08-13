@@ -26,8 +26,9 @@
 
 import type { BuilderNode } from "@/components/flows/shared";
 import {
+  NEXT_STEP_LABEL,
   REPLY_TIMEOUT_HANDLE,
-  isSuspendingNodeType,
+  nodeTypeHasReplyTimeoutSlot,
 } from "./reply-timeout";
 
 function replyTimeoutNextKey(cfg: Record<string, unknown>): string | null {
@@ -51,12 +52,16 @@ function appendReplyTimeoutEdge(
     source: nodeKey,
     target: next,
     sourceHandle: REPLY_TIMEOUT_HANDLE,
-    label: "No reply",
+    label: NEXT_STEP_LABEL,
   });
 }
 
+function nextStepSlot(): OutgoingSlot {
+  return { id: "next", label: NEXT_STEP_LABEL };
+}
+
 function replyTimeoutSlot(): OutgoingSlot {
-  return { id: REPLY_TIMEOUT_HANDLE, label: "No reply" };
+  return { id: REPLY_TIMEOUT_HANDLE, label: NEXT_STEP_LABEL };
 }
 
 function appendReplyTimeoutSlots(slots: OutgoingSlot[]): OutgoingSlot[] {
@@ -97,9 +102,6 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
             target: next,
             sourceHandle: "next",
           });
-        }
-        if (node.node_type === "collect_input" || node.node_type === "send_address") {
-          appendReplyTimeoutEdge(edges, node.node_key, cfg, knownKeys);
         }
         break;
       }
@@ -185,7 +187,6 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
             label: title ?? replyId,
           });
         }
-        appendReplyTimeoutEdge(edges, node.node_key, cfg, knownKeys);
         break;
       }
 
@@ -215,7 +216,6 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
             });
           }
         }
-        appendReplyTimeoutEdge(edges, node.node_key, cfg, knownKeys);
         break;
       }
 
@@ -250,7 +250,6 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
             });
           }
         }
-        appendReplyTimeoutEdge(edges, node.node_key, cfg, knownKeys);
         break;
       }
 
@@ -277,6 +276,9 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
       case "end":
         // Terminal nodes — no outgoing edges.
         break;
+    }
+    if (nodeTypeHasReplyTimeoutSlot(node.node_type)) {
+      appendReplyTimeoutEdge(edges, node.node_key, cfg, knownKeys);
     }
   }
 
@@ -308,6 +310,7 @@ export interface OutgoingSlot {
 
 export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
   const cfg = node.config;
+  let slots: OutgoingSlot[];
   switch (node.node_type) {
     case "start":
     case "send_message":
@@ -319,13 +322,11 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
     case "assign_conversation":
     case "create_deal":
     case "close_conversation":
-    case "set_tag": {
-      return [{ id: "next", label: "Next" }];
-    }
-
+    case "set_tag":
     case "collect_input":
     case "send_address": {
-      return appendReplyTimeoutSlots([{ id: "next", label: "Next" }]);
+      slots = [nextStepSlot()];
+      break;
     }
 
     case "send_template": {
@@ -333,49 +334,7 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
         ? ((cfg as { buttons: Array<Record<string, unknown>> }).buttons)
         : [];
       if (buttons.length > 0) {
-        return appendReplyTimeoutSlots(
-          buttons
-            .filter((b) => typeof b.reply_id === "string" && b.reply_id)
-            .map((b) => {
-              const replyId = b.reply_id as string;
-              const title = typeof b.title === "string" ? b.title : null;
-              return {
-                id: `button:${replyId}`,
-                label: title ?? replyId,
-              };
-            }),
-        );
-      }
-      return appendReplyTimeoutSlots([{ id: "next", label: "Next" }]);
-    }
-
-    case "condition":
-      return [
-        { id: "true", label: "true" },
-        { id: "false", label: "false" },
-      ];
-
-    case "switch": {
-      const branches = Array.isArray((cfg as { branches?: unknown }).branches)
-        ? ((cfg as { branches: Array<Record<string, unknown>> }).branches)
-        : [];
-      const slots = branches
-        .filter((b) => typeof b.branch_id === "string" && b.branch_id)
-        .map((b) => {
-          const branchId = b.branch_id as string;
-          const label = typeof b.label === "string" ? b.label : branchId;
-          return { id: `branch:${branchId}`, label };
-        });
-      slots.push({ id: "default", label: "else" });
-      return slots;
-    }
-
-    case "send_buttons": {
-      const buttons = Array.isArray((cfg as { buttons?: unknown }).buttons)
-        ? ((cfg as { buttons: Array<Record<string, unknown>> }).buttons)
-        : [];
-      return appendReplyTimeoutSlots(
-        buttons
+        slots = buttons
           .filter((b) => typeof b.reply_id === "string" && b.reply_id)
           .map((b) => {
             const replyId = b.reply_id as string;
@@ -384,15 +343,57 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
               id: `button:${replyId}`,
               label: title ?? replyId,
             };
-          }),
-      );
+          });
+      } else {
+        slots = [nextStepSlot()];
+      }
+      break;
+    }
+
+    case "condition":
+      slots = [
+        { id: "true", label: "true" },
+        { id: "false", label: "false" },
+      ];
+      break;
+
+    case "switch": {
+      const branches = Array.isArray((cfg as { branches?: unknown }).branches)
+        ? ((cfg as { branches: Array<Record<string, unknown>> }).branches)
+        : [];
+      slots = branches
+        .filter((b) => typeof b.branch_id === "string" && b.branch_id)
+        .map((b) => {
+          const branchId = b.branch_id as string;
+          const label = typeof b.label === "string" ? b.label : branchId;
+          return { id: `branch:${branchId}`, label };
+        });
+      slots.push({ id: "default", label: "else" });
+      break;
+    }
+
+    case "send_buttons": {
+      const buttons = Array.isArray((cfg as { buttons?: unknown }).buttons)
+        ? ((cfg as { buttons: Array<Record<string, unknown>> }).buttons)
+        : [];
+      slots = buttons
+        .filter((b) => typeof b.reply_id === "string" && b.reply_id)
+        .map((b) => {
+          const replyId = b.reply_id as string;
+          const title = typeof b.title === "string" ? b.title : null;
+          return {
+            id: `button:${replyId}`,
+            label: title ?? replyId,
+          };
+        });
+      break;
     }
 
     case "send_list": {
       const sections = Array.isArray((cfg as { sections?: unknown }).sections)
         ? ((cfg as { sections: Array<Record<string, unknown>> }).sections)
         : [];
-      const slots: OutgoingSlot[] = [];
+      slots = [];
       for (const section of sections) {
         const rows = Array.isArray(section.rows)
           ? (section.rows as Array<Record<string, unknown>>)
@@ -408,7 +409,7 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
           });
         }
       }
-      return appendReplyTimeoutSlots(slots);
+      break;
     }
 
     case "handoff":
@@ -417,6 +418,11 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
     default:
       return [];
   }
+
+  if (nodeTypeHasReplyTimeoutSlot(node.node_type)) {
+    return appendReplyTimeoutSlots(slots);
+  }
+  return slots;
 }
 
 /**
@@ -436,7 +442,7 @@ export function applyEdgeConnection(
 ): Record<string, unknown> | null {
   if (
     sourceHandle === REPLY_TIMEOUT_HANDLE &&
-    isSuspendingNodeType(node.node_type)
+    nodeTypeHasReplyTimeoutSlot(node.node_type)
   ) {
     return { reply_timeout_next_node_key: targetKey };
   }
@@ -587,7 +593,7 @@ function patchedConfigWithoutKey(
   const timeoutNext = (cfg as { reply_timeout_next_node_key?: string })
     .reply_timeout_next_node_key;
   const timeoutMatch =
-    timeoutNext === deletedKey && isSuspendingNodeType(node.node_type);
+    timeoutNext === deletedKey && nodeTypeHasReplyTimeoutSlot(node.node_type);
 
   const inner = patchedConfigWithoutKeyInner(node, deletedKey);
   if (!inner && !timeoutMatch) return null;

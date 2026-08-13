@@ -28,7 +28,7 @@ import {
   parseExitConfig,
   type FlowExitConfig,
 } from "./exit-conditions";
-import { parseReplyTimeout } from "./reply-timeout";
+import { parseReplyTimeout, nodeTypeHasReplyTimeoutSlot } from "./reply-timeout";
 
 export interface ValidationIssue {
   severity: "error" | "warning";
@@ -85,7 +85,7 @@ function collectReplyTimeoutIssues(
         node_key: node.node_key,
         field: "reply_timeout_amount",
         message:
-          "No-reply timeout needs a duration of at least 1 minute, hour, or day.",
+          "Next step timeout needs a duration of at least 1 minute, hour, or day.",
       });
     }
     if (hasNext) {
@@ -95,7 +95,7 @@ function collectReplyTimeoutIssues(
         node_key: node.node_key,
         field: "reply_timeout_next_node_key",
         message:
-          "No-reply timeout needs a duration, or disconnect the No reply handle on the canvas.",
+          "Next step timeout needs a duration, or disconnect the Next step handle on the canvas.",
       });
     }
     return;
@@ -107,7 +107,7 @@ function collectReplyTimeoutIssues(
       scope: "node",
       node_key: node.node_key,
       field: "reply_timeout_next_node_key",
-      message: `No-reply branch points to non-existent node "${parsed.next_node_key}".`,
+      message: `Next step branch points to non-existent node "${parsed.next_node_key}".`,
     });
   }
 }
@@ -642,7 +642,6 @@ function validateNode(
           });
         }
       });
-      collectReplyTimeoutIssues(node, knownKeys, issues);
       break;
     }
 
@@ -776,7 +775,6 @@ function validateNode(
           }
         });
       });
-      collectReplyTimeoutIssues(node, knownKeys, issues);
       break;
     }
 
@@ -829,7 +827,6 @@ function validateNode(
           message: `Collect-input points to non-existent node "${cfg.next_node_key}".`,
         });
       }
-      collectReplyTimeoutIssues(node, knownKeys, issues);
       break;
     }
 
@@ -894,7 +891,6 @@ function validateNode(
           message: `Address message points to non-existent node "${cfg.next_node_key}".`,
         });
       }
-      collectReplyTimeoutIssues(node, knownKeys, issues);
       break;
     }
 
@@ -1197,7 +1193,6 @@ function validateNode(
           message: `Send-template points to non-existent node "${cfg.next_node_key}".`,
         });
       }
-      collectReplyTimeoutIssues(node, knownKeys, issues);
       break;
     }
 
@@ -1253,6 +1248,10 @@ function validateNode(
         node_key: node.node_key,
         message: `Unknown node type "${node.node_type}".`,
       });
+  }
+
+  if (nodeTypeHasReplyTimeoutSlot(node.node_type)) {
+    collectReplyTimeoutIssues(node, knownKeys, issues);
   }
 
   return issues;

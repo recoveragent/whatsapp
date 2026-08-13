@@ -51,6 +51,7 @@ import {
   SHOPIFY_PAYMENT_STATUS_LABELS,
 } from "@/lib/flows/trigger-types";
 import { slugify, type BuilderNode } from "../shared";
+import { nodeTypeHasReplyTimeoutSlot } from "@/lib/flows/reply-timeout";
 import { NextNodeRow, NodeKeySelect, TextRow } from "./fields";
 import { SendTemplateFields } from "@/components/shared/send-template-fields";
 import { templateVariableGroupsForFlow } from "@/lib/flows/template-variables";
@@ -63,6 +64,7 @@ interface NodeConfigFormProps {
   showAdvanced: boolean;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
   triggerType?: FlowTriggerType;
+  triggerConfig?: Record<string, unknown>;
 }
 
 export function NodeConfigForm({
@@ -71,6 +73,32 @@ export function NodeConfigForm({
   showAdvanced,
   onUpdateConfig,
   triggerType,
+  triggerConfig,
+}: NodeConfigFormProps) {
+  return (
+    <>
+      {renderNodeConfigBody({
+        node,
+        allNodes,
+        showAdvanced,
+        onUpdateConfig,
+        triggerType,
+        triggerConfig,
+      })}
+      {nodeTypeHasReplyTimeoutSlot(node.node_type) ? (
+        <ReplyTimeoutSection cfg={node.config} onUpdateConfig={onUpdateConfig} />
+      ) : null}
+    </>
+  );
+}
+
+function renderNodeConfigBody({
+  node,
+  allNodes,
+  showAdvanced,
+  onUpdateConfig,
+  triggerType,
+  triggerConfig,
 }: NodeConfigFormProps) {
   const cfg = node.config;
   switch (node.node_type) {
@@ -175,7 +203,6 @@ export function NodeConfigForm({
             onChange={(v) => onUpdateConfig({ next_node_key: v })}
             label="After capturing, advance to"
           />
-          <ReplyTimeoutSection cfg={cfg} onUpdateConfig={onUpdateConfig} />
         </>
       );
 
@@ -247,10 +274,9 @@ export function NodeConfigForm({
             allNodes={allNodes}
             currentNodeKey={node.node_key}
             onChange={(patch) => onUpdateConfig({ ...patch })}
-            variableGroups={templateVariableGroupsForFlow(triggerType)}
+            variableGroups={templateVariableGroupsForFlow(triggerType, triggerConfig)}
             variableHint="Focus a field, then pick a variable from the list. User attributes come from the contact; trigger attributes depend on your flow trigger."
           />
-          <ReplyTimeoutSection cfg={cfg} onUpdateConfig={onUpdateConfig} />
         </>
       );
 
@@ -457,11 +483,11 @@ function ReplyTimeoutSection({
   return (
     <div className="rounded-md border border-border bg-muted/30 p-3">
       <label className="mb-1 block text-xs font-medium text-muted-foreground">
-        No reply timeout (optional)
+        Next step timeout (optional)
       </label>
       <p className="mb-2 text-[10px] text-muted-foreground">
         If the customer doesn&apos;t respond in time, the flow follows the{" "}
-        <span className="font-medium text-foreground">No reply</span> handle on
+        <span className="font-medium text-foreground">Next step</span> handle on
         the canvas.
       </p>
       <div className="flex gap-2">
@@ -494,7 +520,7 @@ function ReplyTimeoutSection({
       </div>
       {target ? (
         <p className="mt-2 text-[10px] text-muted-foreground">
-          No reply branch connected to{" "}
+          Next step connected to{" "}
           <code className="rounded bg-muted px-1 font-mono">{target}</code>
         </p>
       ) : null}
@@ -627,7 +653,6 @@ function SendButtonsForm({
           </Button>
         )}
       </div>
-      <ReplyTimeoutSection cfg={cfg} onUpdateConfig={onUpdateConfig} />
     </>
   );
 }
@@ -865,7 +890,6 @@ function SendListForm({
           </Button>
         )}
       </div>
-      <ReplyTimeoutSection cfg={cfg} onUpdateConfig={onUpdateConfig} />
     </>
   );
 }
@@ -990,7 +1014,6 @@ function SendAddressForm({
         onChange={(v) => onUpdateConfig({ next_node_key: v })}
         label="After address is submitted, advance to"
       />
-      <ReplyTimeoutSection cfg={cfg} onUpdateConfig={onUpdateConfig} />
     </>
   );
 }

@@ -108,8 +108,32 @@ export async function cancelReplyTimeout(
   }
 }
 
+/** Cancel all pending idle timeouts for a run (any customer activity). */
+export async function cancelAllReplyTimeouts(
+  db: AdminClient,
+  flowRunId: string,
+): Promise<void> {
+  const { error } = await db
+    .from("flow_pending_executions")
+    .update({ status: "failed" })
+    .eq("flow_run_id", flowRunId)
+    .eq("status", "pending")
+    .eq("execution_kind", "reply_timeout");
+  if (error) {
+    console.error("[flows] cancelAllReplyTimeouts:", error.message);
+  }
+}
+
+export const NEXT_STEP_LABEL = "Next step";
+
 export const REPLY_TIMEOUT_HANDLE = "timeout";
 
+/** Canvas + config: idle-timeout slot on every non-terminal node. */
+export function nodeTypeHasReplyTimeoutSlot(nodeType: string): boolean {
+  return nodeType !== "handoff" && nodeType !== "end";
+}
+
+/** Nodes that pause the run until the customer replies. */
 export function isSuspendingNodeType(nodeType: string): boolean {
   return (
     nodeType === "send_buttons" ||

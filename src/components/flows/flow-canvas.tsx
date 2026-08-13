@@ -711,6 +711,7 @@ function FlowCanvasInner() {
         isEntry={selectedNode?.node_key === entryNodeId}
         allNodes={builderNodes}
         triggerType={state.trigger_type}
+        triggerConfig={state.trigger_config}
         onClose={() => setSelectedNodeKey(null)}
         onUpdateConfig={onSelectedUpdateConfig}
         onDuplicate={handleDuplicateSelected}
@@ -782,6 +783,7 @@ function NodeEditSheet({
   isEntry,
   allNodes,
   triggerType,
+  triggerConfig,
   onClose,
   onUpdateConfig,
   onDuplicate,
@@ -792,6 +794,7 @@ function NodeEditSheet({
   isEntry: boolean;
   allNodes: BuilderNode[];
   triggerType: import("./flow-editor-state").BuilderState["trigger_type"];
+  triggerConfig: import("./flow-editor-state").BuilderState["trigger_config"];
   onClose: () => void;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
   onDuplicate: () => void;
@@ -841,6 +844,7 @@ function NodeEditSheet({
             showAdvanced={false}
             onUpdateConfig={onUpdateConfig}
             triggerType={triggerType}
+            triggerConfig={triggerConfig}
           />
         </div>
 
