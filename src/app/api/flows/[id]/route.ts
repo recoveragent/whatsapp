@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { ensureFlowWebhookConfig } from '@/lib/flows/webhook-config'
-import { ensureGoogleSheetRowConfig } from '@/lib/google-sheets/trigger-config'
+import { ensureGoogleSheetRowConfig, preserveGoogleSheetWatermarks } from '@/lib/google-sheets/trigger-config'
 import type { FlowTriggerType } from '@/lib/flows/trigger-types'
 
 /**
@@ -150,14 +150,10 @@ export async function PUT(
     if (effectiveTriggerType === 'google_sheet_row') {
       const ensured = ensureGoogleSheetRowConfig(cfg)
       const prev = existing?.trigger_config as Record<string, unknown> | null
-      // Preserve watermark unless the client explicitly sends a new one
-      if (
-        ensured.last_processed_row == null &&
-        typeof prev?.last_processed_row === 'number'
-      ) {
-        ensured.last_processed_row = prev.last_processed_row as number
-      }
-      cfg = ensured as unknown as Record<string, unknown>
+      cfg = preserveGoogleSheetWatermarks(ensured, prev) as unknown as Record<
+        string,
+        unknown
+      >
     }
     flowPatch.trigger_config = cfg
   }

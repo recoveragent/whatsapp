@@ -48,9 +48,17 @@ export function summarizeTrigger(
     case "webhook_received":
       return "External webhook POST";
     case "google_sheet_row": {
-      const sheet = typeof triggerConfig.sheet_name === "string"
-        ? triggerConfig.sheet_name
-        : "";
+      const sources = Array.isArray(triggerConfig.sources)
+        ? (triggerConfig.sources as Array<{ label?: string; sheet_name?: string }>)
+        : [];
+      if (sources.length > 1) {
+        return `${sources.length} Google Sheets`;
+      }
+      const one = sources[0];
+      const sheet =
+        (typeof one?.label === "string" && one.label.trim()) ||
+        (typeof one?.sheet_name === "string" && one.sheet_name) ||
+        (typeof triggerConfig.sheet_name === "string" ? triggerConfig.sheet_name : "");
       return sheet ? `Sheet · ${sheet}` : "Map Google Sheet columns";
     }
     case "tag_added":

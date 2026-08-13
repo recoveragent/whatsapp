@@ -22,8 +22,18 @@ export async function GET(request: Request) {
       .maybeSingle()
 
     if (error) {
+      console.error('[google-sheets] connection load failed:', error)
+      const missingTable =
+        error.code === '42P01' ||
+        /google_sheets_config/i.test(error.message) ||
+        /schema cache/i.test(error.message) ||
+        /does not exist/i.test(error.message)
       return NextResponse.json(
-        { error: 'Failed to load connection status' },
+        {
+          error: missingTable
+            ? 'Google Sheets tables are missing — apply migration 048_google_sheets.sql in Supabase, then refresh.'
+            : 'Failed to load connection status',
+        },
         { status: 500 },
       )
     }

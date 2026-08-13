@@ -15,7 +15,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  defaultGoogleSheetSource,
+  ensureGoogleSheetRowConfig,
   type GoogleSheetRowTriggerConfig,
+  type GoogleSheetSource,
 } from "@/lib/google-sheets/trigger-config";
 import { parseSpreadsheetId } from "@/lib/google-sheets/parse-sheet-url";
 import { cn } from "@/lib/utils";
@@ -36,20 +39,93 @@ export function FlowGoogleSheetTriggerPanel({
   config: GoogleSheetRowTriggerConfig;
   onChange: (c: Record<string, unknown>) => void;
 }) {
+  const ensured = ensureGoogleSheetRowConfig(
+    config as unknown as Record<string, unknown>,
+  );
+  const sources = ensured.sources.length > 0 ? ensured.sources : [defaultGoogleSheetSource()];
+
+  function setSources(next: GoogleSheetSource[]) {
+    onChange({ sources: next });
+  }
+
+  function updateSource(index: number, patch: Partial<GoogleSheetSource>) {
+    setSources(sources.map((s, i) => (i === index ? { ...s, ...patch } : s)));
+  }
+
+  function addSource() {
+    setSources([...sources, defaultGoogleSheetSource({ label: `Source ${sources.length + 1}` })]);
+  }
+
+  function removeSource(index: number) {
+    if (sources.length <= 1) {
+      toast.error("Keep at least one sheet source");
+      return;
+    }
+    setSources(sources.filter((_, i) => i !== index));
+  }
+
+  return (
+    <div className="md:col-span-2 space-y-3">
+      <p className="text-[11px] text-muted-foreground">
+        Connect Google in{" "}
+        <Link
+          href="/settings?tab=google_sheets"
+          className="underline underline-offset-2"
+        >
+          Settings → Google Sheets
+        </Link>
+        . Add one or more Sheet links — new rows from any of them start this
+        flow (polled every few minutes).
+      </p>
+
+      <div className="space-y-3">
+        {sources.map((source, index) => (
+          <SheetSourceCard
+            key={source.id}
+            index={index}
+            source={source}
+            canRemove={sources.length > 1}
+            onChange={(patch) => updateSource(index, patch)}
+            onRemove={() => removeSource(index)}
+          />
+        ))}
+      </div>
+
+      <Button type="button" variant="outline" size="sm" onClick={addSource}>
+        <Plus className="size-3.5" />
+        <span className="ml-1.5">Add another sheet</span>
+      </Button>
+    </div>
+  );
+}
+
+function SheetSourceCard({
+  index,
+  source,
+  canRemove,
+  onChange,
+  onRemove,
+}: {
+  index: number;
+  source: GoogleSheetSource;
+  canRemove: boolean;
+  onChange: (patch: Partial<GoogleSheetSource>) => void;
+  onRemove: () => void;
+}) {
   const [urlDraft, setUrlDraft] = useState(
-    config.spreadsheet_url ||
-      (config.spreadsheet_id
-        ? `https://docs.google.com/spreadsheets/d/${config.spreadsheet_id}`
+    source.spreadsheet_url ||
+      (source.spreadsheet_id
+        ? `https://docs.google.com/spreadsheets/d/${source.spreadsheet_id}`
         : ""),
   );
   const [loading, setLoading] = useState(false);
   const [tabs, setTabs] = useState<string[]>(
-    config.sheet_name ? [config.sheet_name] : [],
+    source.sheet_name ? [source.sheet_name] : [],
   );
   const [headers, setHeaders] = useState<string[]>([]);
   const [sheetTitle, setSheetTitle] = useState<string | null>(null);
 
-  const mappings = config.variable_mappings ?? {};
+  const mappings = source.variable_mappings ?? {};
 
   async function loadPreview(sheetName?: string) {
     const id = parseSpreadsheetId(urlDraft);
@@ -65,7 +141,7 @@ export function FlowGoogleSheetTriggerPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           spreadsheet_url: urlDraft.trim(),
-          sheet_name: sheetName || config.sheet_name || undefined,
+          sheet_name: sheetName || source.sheet_name || undefined,
         }),
       });
       const data = (await res.json()) as PreviewResponse;
@@ -81,32 +157,32 @@ export function FlowGoogleSheetTriggerPanel({
       const nextSheet = data.sheetName || tabTitles[0] || "";
       const nextHeaders = data.headers ?? [];
       const phoneGuess =
-        config.phone_column && nextHeaders.includes(config.phone_column)
-          ? config.phone_column
+        source.phone_column && nextHeaders.includes(source.phone_column)
+          ? source.phone_column
           : nextHeaders.find((h) => /phone|mobile|whatsapp/i.test(h)) ||
             nextHeaders[0] ||
             "phone";
       const nameGuess =
-        config.name_column && nextHeaders.includes(config.name_column)
-          ? config.name_column
+        source.name_column && nextHeaders.includes(source.name_column)
+          ? source.name_column
           : nextHeaders.find((h) => /^name$/i.test(h) || /full.?name/i.test(h)) ||
-            config.name_column ||
+            source.name_column ||
             "name";
       const emailGuess =
-        config.email_column && nextHeaders.includes(config.email_column)
-          ? config.email_column
+        source.email_column && nextHeaders.includes(source.email_column)
+          ? source.email_column
           : nextHeaders.find((h) => /email/i.test(h)) ||
-            config.email_column ||
+            source.email_column ||
             "email";
 
       onChange({
-        ...config,
         spreadsheet_id: data.spreadsheetId || id,
         spreadsheet_url: urlDraft.trim(),
         sheet_name: nextSheet,
         phone_column: phoneGuess,
         name_column: nameGuess,
         email_column: emailGuess,
+        label: source.label?.trim() || data.title || `Source ${index + 1}`,
       });
       toast.success("Sheet loaded");
     } catch (err) {
@@ -116,35 +192,40 @@ export function FlowGoogleSheetTriggerPanel({
     }
   }
 
-  function setField<K extends keyof GoogleSheetRowTriggerConfig>(
-    key: K,
-    value: GoogleSheetRowTriggerConfig[K],
-  ) {
-    onChange({ ...config, [key]: value });
-  }
-
   const columnOptions =
     headers.length > 0
       ? headers
-      : [
-          config.phone_column,
-          config.name_column,
-          config.email_column,
-        ].filter((h): h is string => Boolean(h && h.trim()));
+      : [source.phone_column, source.name_column, source.email_column].filter(
+          (h): h is string => Boolean(h && h.trim()),
+        );
 
   return (
-    <div className="md:col-span-2 space-y-3">
-      <p className="text-[11px] text-muted-foreground">
-        Connect Google in{" "}
-        <Link
-          href="/settings?tab=google_sheets"
-          className="underline underline-offset-2"
-        >
-          Settings → Google Sheets
-        </Link>
-        , paste the Sheet link, then map the phone column. New rows start this
-        flow (polled every few minutes).
-      </p>
+    <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <label className="mb-1 block text-xs text-muted-foreground">
+            Source label
+          </label>
+          <Input
+            value={source.label ?? ""}
+            onChange={(e) => onChange({ label: e.target.value })}
+            placeholder={`Source ${index + 1}`}
+            className="bg-muted"
+          />
+        </div>
+        {canRemove && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="mt-5 shrink-0"
+            onClick={onRemove}
+            aria-label="Remove sheet source"
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        )}
+      </div>
 
       <div>
         <label className="mb-1 block text-xs text-muted-foreground">
@@ -175,23 +256,23 @@ export function FlowGoogleSheetTriggerPanel({
         {sheetTitle && (
           <p className="mt-1 text-[10px] text-muted-foreground">
             Loaded: {sheetTitle}
-            {config.spreadsheet_id
-              ? ` · id ${config.spreadsheet_id.slice(0, 8)}…`
+            {source.spreadsheet_id
+              ? ` · id ${source.spreadsheet_id.slice(0, 8)}…`
               : ""}
           </p>
         )}
       </div>
 
-      {(tabs.length > 0 || config.sheet_name) && (
+      {(tabs.length > 0 || source.sheet_name) && (
         <div>
           <label className="mb-1 block text-xs text-muted-foreground">
             Sheet tab
           </label>
           <Select
-            value={config.sheet_name || undefined}
+            value={source.sheet_name || undefined}
             onValueChange={(v) => {
               if (!v) return;
-              setField("sheet_name", v);
+              onChange({ sheet_name: v });
               void loadPreview(v);
             }}
           >
@@ -199,7 +280,7 @@ export function FlowGoogleSheetTriggerPanel({
               <SelectValue placeholder="Select tab" />
             </SelectTrigger>
             <SelectContent>
-              {(tabs.length > 0 ? tabs : [config.sheet_name]).map((t) => (
+              {(tabs.length > 0 ? tabs : [source.sheet_name]).map((t) => (
                 <SelectItem key={t} value={t}>
                   {t}
                 </SelectItem>
@@ -213,22 +294,22 @@ export function FlowGoogleSheetTriggerPanel({
         <ColumnSelect
           label="Phone column"
           required
-          value={config.phone_column}
+          value={source.phone_column}
           options={columnOptions}
-          onChange={(v) => setField("phone_column", v)}
+          onChange={(v) => onChange({ phone_column: v })}
         />
         <ColumnSelect
           label="Name column"
-          value={config.name_column ?? ""}
+          value={source.name_column ?? ""}
           options={columnOptions}
-          onChange={(v) => setField("name_column", v)}
+          onChange={(v) => onChange({ name_column: v })}
           allowEmpty
         />
         <ColumnSelect
           label="Email column"
-          value={config.email_column ?? ""}
+          value={source.email_column ?? ""}
           options={columnOptions}
-          onChange={(v) => setField("email_column", v)}
+          onChange={(v) => onChange({ email_column: v })}
           allowEmpty
         />
       </div>
@@ -237,8 +318,8 @@ export function FlowGoogleSheetTriggerPanel({
         <input
           type="checkbox"
           className="mt-0.5"
-          checked={Boolean(config.sync_existing)}
-          onChange={(e) => setField("sync_existing", e.target.checked)}
+          checked={Boolean(source.sync_existing)}
+          onChange={(e) => onChange({ sync_existing: e.target.checked })}
         />
         <span>
           Process existing rows on first run (default: only new rows after
@@ -257,8 +338,12 @@ export function FlowGoogleSheetTriggerPanel({
             size="sm"
             className="h-7 px-2"
             onClick={() => {
-              const next = { ...mappings, "": columnOptions[0] ?? "" };
-              setField("variable_mappings", next);
+              onChange({
+                variable_mappings: {
+                  ...mappings,
+                  "": columnOptions[0] ?? "",
+                },
+              });
             }}
           >
             <Plus className="size-3.5" />
@@ -275,10 +360,11 @@ export function FlowGoogleSheetTriggerPanel({
                 onChange={(e) => {
                   const entries = Object.entries(mappings);
                   entries[idx] = [e.target.value, column];
-                  setField(
-                    "variable_mappings",
-                    Object.fromEntries(entries.filter(([k]) => k !== undefined)),
-                  );
+                  onChange({
+                    variable_mappings: Object.fromEntries(
+                      entries.filter(([k]) => k !== undefined),
+                    ),
+                  });
                 }}
               />
               <Select
@@ -287,10 +373,14 @@ export function FlowGoogleSheetTriggerPanel({
                   if (v == null) return;
                   const entries = Object.entries(mappings);
                   entries[idx] = [varName, v];
-                  setField("variable_mappings", Object.fromEntries(entries));
+                  onChange({
+                    variable_mappings: Object.fromEntries(entries),
+                  });
                 }}
               >
-                <SelectTrigger className={cn("bg-muted", !column && "text-muted-foreground")}>
+                <SelectTrigger
+                  className={cn("bg-muted", !column && "text-muted-foreground")}
+                >
                   <SelectValue placeholder="Column" />
                 </SelectTrigger>
                 <SelectContent>
@@ -309,7 +399,7 @@ export function FlowGoogleSheetTriggerPanel({
                 onClick={() => {
                   const next = { ...mappings };
                   delete next[varName];
-                  setField("variable_mappings", next);
+                  onChange({ variable_mappings: next });
                 }}
               >
                 <Trash2 className="size-4" />

@@ -58,6 +58,7 @@ const GOOGLE_SHEET_OPTIONS: TemplateVariableOption[] = [
   { label: 'Sheet name', token: '{{ vars.name }}', type: 'text' },
   { label: 'Sheet email', token: '{{ vars.email }}', type: 'text' },
   { label: 'Sheet row number', token: '{{ vars.sheet_row }}', type: 'text' },
+  { label: 'Sheet source label', token: '{{ vars.sheet_source }}', type: 'text' },
   {
     label: 'Sheet column (by header)',
     token: '{{ vars.ColumnName }}',

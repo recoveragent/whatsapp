@@ -241,28 +241,73 @@ function validateTrigger(
     }
   }
   if (trigger_type === "google_sheet_row") {
-    if (!nonEmpty(trigger_config.spreadsheet_id)) {
+    const sources = Array.isArray(trigger_config.sources)
+      ? (trigger_config.sources as unknown[])
+      : null;
+    // Legacy flat config still validates as one source
+    if (!sources) {
+      if (!nonEmpty(trigger_config.spreadsheet_id)) {
+        issues.push({
+          severity: "error",
+          scope: "trigger",
+          field: "trigger_config.spreadsheet_id",
+          message: "Paste a Google Sheet URL and load it.",
+        });
+      }
+      if (!nonEmpty(trigger_config.sheet_name)) {
+        issues.push({
+          severity: "error",
+          scope: "trigger",
+          field: "trigger_config.sheet_name",
+          message: "Pick a sheet tab.",
+        });
+      }
+      if (!nonEmpty(trigger_config.phone_column)) {
+        issues.push({
+          severity: "error",
+          scope: "trigger",
+          field: "trigger_config.phone_column",
+          message: "Map a phone column (required).",
+        });
+      }
+    } else if (sources.length === 0) {
       issues.push({
         severity: "error",
         scope: "trigger",
-        field: "trigger_config.spreadsheet_id",
-        message: "Paste a Google Sheet URL and load it.",
+        field: "trigger_config.sources",
+        message: "Add at least one Google Sheet source.",
       });
-    }
-    if (!nonEmpty(trigger_config.sheet_name)) {
-      issues.push({
-        severity: "error",
-        scope: "trigger",
-        field: "trigger_config.sheet_name",
-        message: "Pick a sheet tab.",
-      });
-    }
-    if (!nonEmpty(trigger_config.phone_column)) {
-      issues.push({
-        severity: "error",
-        scope: "trigger",
-        field: "trigger_config.phone_column",
-        message: "Map a phone column (required).",
+    } else {
+      sources.forEach((raw, i) => {
+        const s =
+          raw && typeof raw === "object"
+            ? (raw as Record<string, unknown>)
+            : {};
+        const prefix = `trigger_config.sources[${i}]`;
+        if (!nonEmpty(s.spreadsheet_id)) {
+          issues.push({
+            severity: "error",
+            scope: "trigger",
+            field: `${prefix}.spreadsheet_id`,
+            message: `Source ${i + 1}: paste a Google Sheet URL and load it.`,
+          });
+        }
+        if (!nonEmpty(s.sheet_name)) {
+          issues.push({
+            severity: "error",
+            scope: "trigger",
+            field: `${prefix}.sheet_name`,
+            message: `Source ${i + 1}: pick a sheet tab.`,
+          });
+        }
+        if (!nonEmpty(s.phone_column)) {
+          issues.push({
+            severity: "error",
+            scope: "trigger",
+            field: `${prefix}.phone_column`,
+            message: `Source ${i + 1}: map a phone column (required).`,
+          });
+        }
       });
     }
   }
