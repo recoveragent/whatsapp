@@ -84,6 +84,18 @@ describe('buildVarsFromPayload', () => {
     expect(vars.meeting_time).toBe('14 Aug 2026, 10:00 am')
     expect(vars.meeting_time_iso).toBe('2026-08-14T04:30:00.000Z')
   })
+
+  it('exposes scalar leaf paths as dot-notation vars', () => {
+    const vars = buildVarsFromPayload({
+      payload: {
+        startTime: '2026-08-14T04:30:00.000Z',
+        attendees: [{ name: 'Jane' }],
+      },
+    })
+    expect(vars['payload.startTime']).toBeDefined()
+    expect(vars['payload.attendees.0.name']).toBe('Jane')
+    expect(vars['payload.attendees']).toBeUndefined()
+  })
 })
 
 describe('resolveWebhookTimeZone', () => {

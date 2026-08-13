@@ -557,6 +557,7 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
               steps={state.steps}
               parentPath={[]}
               triggerType={state.trigger_type}
+              triggerConfig={state.trigger_config}
               expandedId={expandedId}
               setExpandedId={setExpandedId}
               updateStep={updateStep}
@@ -1052,6 +1053,7 @@ interface StepListProps {
   steps: BuilderStep[]
   parentPath: StepPath
   triggerType: AutomationTriggerType
+  triggerConfig: Record<string, unknown>
   expandedId: string | null
   setExpandedId: (id: string | null) => void
   updateStep: (path: StepPath, updater: (s: BuilderStep) => BuilderStep) => void
@@ -1154,6 +1156,7 @@ function StepRenderer({
               <StepEditor
                 step={step}
                 triggerType={props.triggerType}
+                triggerConfig={props.triggerConfig}
                 onChange={(next) => props.updateStep(path, () => next)}
               />
               <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3">
@@ -1298,10 +1301,12 @@ function AddButton({ onPick }: { onPick: (t: AutomationStepType) => void }) {
 function StepEditor({
   step,
   triggerType,
+  triggerConfig,
   onChange,
 }: {
   step: BuilderStep
   triggerType: AutomationTriggerType
+  triggerConfig: Record<string, unknown>
   onChange: (s: BuilderStep) => void
 }) {
   const cfg = step.step_config
@@ -1327,7 +1332,7 @@ function StepEditor({
           language={(cfg.language as string) ?? ""}
           variables={(cfg.variables as Record<string, string>) ?? undefined}
           onChange={(patch) => set({ ...patch })}
-          variableGroups={templateVariableGroupsForAutomation(triggerType)}
+          variableGroups={templateVariableGroupsForAutomation(triggerType, triggerConfig)}
           variableHint="Focus a field, then pick a variable. User attributes come from the contact; trigger attributes depend on your automation trigger."
         />
       )

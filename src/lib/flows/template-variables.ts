@@ -1,4 +1,9 @@
 import {
+  extractByPath,
+  flattenPayloadKeys,
+  normalizePayloadPath,
+} from '@/lib/automations/webhook-payload'
+import {
   isShopifyOrderFlowTrigger,
   type FlowTriggerType,
 } from './trigger-types'
@@ -45,13 +50,60 @@ const MESSAGE_OPTIONS: TemplateVariableOption[] = [
   { label: 'Last message', token: '{{ message.text }}', type: 'text' },
 ]
 
-const WEBHOOK_OPTIONS: TemplateVariableOption[] = [
+const WEBHOOK_FALLBACK_OPTIONS: TemplateVariableOption[] = [
   {
     label: 'Webhook field',
     token: '{{ trigger.field_name }}',
     type: 'text',
   },
 ]
+
+/** Build picker options from webhook trigger config (mappings + last payload). */
+export function webhookTemplateVariableOptions(
+  config?: Record<string, unknown> | null,
+): TemplateVariableOption[] {
+  const options: TemplateVariableOption[] = []
+  const seenTokens = new Set<string>()
+  const mappedPaths = new Set<string>()
+
+  const add = (label: string, token: string) => {
+    if (seenTokens.has(token)) return
+    seenTokens.add(token)
+    options.push({ label, token, type: 'text' })
+  }
+
+  const mappings =
+    config?.variable_mappings && typeof config.variable_mappings === 'object'
+      ? (config.variable_mappings as Record<string, string>)
+      : {}
+
+  for (const [varName, path] of Object.entries(mappings).sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    if (!varName.trim()) continue
+    const normalized = normalizePayloadPath(path)
+    if (normalized) mappedPaths.add(normalized)
+    const trimmedPath = path.trim()
+    const label = trimmedPath ? `${varName} (${trimmedPath})` : varName
+    add(label, `{{ vars.${varName} }}`)
+  }
+
+  const payload = config?.last_received_payload
+  if (payload) {
+    for (const path of flattenPayloadKeys(payload).sort()) {
+      if (mappedPaths.has(path)) continue
+      const val = extractByPath(payload, path)
+      if (val === null || val === undefined || typeof val === 'object') continue
+      add(path, `{{ trigger.${path} }}`)
+    }
+  }
+
+  if (options.length === 0) {
+    return [...WEBHOOK_FALLBACK_OPTIONS]
+  }
+
+  return options
+}
 
 const GOOGLE_SHEET_OPTIONS: TemplateVariableOption[] = [
   { label: 'Sheet phone', token: '{{ vars.phone }}', type: 'text' },
@@ -68,6 +120,7 @@ const GOOGLE_SHEET_OPTIONS: TemplateVariableOption[] = [
 
 export function templateVariableGroupsForFlow(
   triggerType?: FlowTriggerType,
+  triggerConfig?: Record<string, unknown>,
 ): TemplateVariableGroup[] {
   const groups: TemplateVariableGroup[] = [
     { id: 'contact', label: 'User attributes', options: CONTACT_OPTIONS },
@@ -86,7 +139,7 @@ export function templateVariableGroupsForFlow(
     triggerOptions.push(...MESSAGE_OPTIONS)
   }
   if (triggerType === 'webhook_received') {
-    triggerOptions.push(...WEBHOOK_OPTIONS)
+    triggerOptions.push(...webhookTemplateVariableOptions(triggerConfig))
   }
   if (triggerType === 'google_sheet_row') {
     triggerOptions.push(...GOOGLE_SHEET_OPTIONS)
@@ -105,6 +158,7 @@ export function templateVariableGroupsForFlow(
 
 export function templateVariableGroupsForAutomation(
   triggerType?: string,
+  triggerConfig?: Record<string, unknown>,
 ): TemplateVariableGroup[] {
   const groups: TemplateVariableGroup[] = [
     { id: 'contact', label: 'User attributes', options: CONTACT_OPTIONS },
@@ -115,7 +169,7 @@ export function templateVariableGroupsForAutomation(
     triggerOptions.push(...SHOPIFY_OPTIONS)
   }
   if (triggerType === 'webhook_received') {
-    triggerOptions.push(...WEBHOOK_OPTIONS)
+    triggerOptions.push(...webhookTemplateVariableOptions(triggerConfig))
   }
   if (triggerType === 'google_sheet_row') {
     triggerOptions.push(...GOOGLE_SHEET_OPTIONS)

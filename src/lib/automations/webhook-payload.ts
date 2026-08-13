@@ -125,6 +125,16 @@ export function buildVarsFromPayload(
     }
   }
 
+  // Scalar leaf paths (e.g. payload.startTime) are also available as
+  // {{ trigger.path }} / {{ vars.path }} in template nodes.
+  for (const path of flattenPayloadKeys(payload)) {
+    if (path in vars) continue
+    const val = extractByPath(payload, path)
+    if (val !== undefined && val !== null && typeof val !== 'object') {
+      assignScalar(path, val)
+    }
+  }
+
   return vars
 }
 
