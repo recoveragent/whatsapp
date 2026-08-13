@@ -14,11 +14,13 @@ export async function findFlowByWebhookToken(
   const token = normalizeFlowWebhookToken(rawToken)
   if (!token) return null
 
+  // Include draft/paused flows so Cal.com (and other) ping tests can
+  // store a sample payload. handleFlowInboundWebhook only *runs* the
+  // flow when status === 'active'.
   const { data: byPath } = await db
     .from('flows')
     .select('*')
     .eq('trigger_type', 'webhook_received')
-    .eq('status', 'active')
     .filter('trigger_config->>webhook_token', 'eq', token)
     .maybeSingle()
 
@@ -28,7 +30,6 @@ export async function findFlowByWebhookToken(
     .from('flows')
     .select('*')
     .eq('trigger_type', 'webhook_received')
-    .eq('status', 'active')
 
   return (
     ((rows as FlowRow[] | null) ?? []).find((f) => {

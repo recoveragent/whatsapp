@@ -70,11 +70,13 @@ export async function handleInboundWebhook(
   const phoneRaw = extractByPath(payload, cfg.phone_path)
   const phone = phoneRaw != null ? String(phoneRaw).trim() : ''
   if (!phone) {
+    // 200 so external systems (e.g. Cal.com ping) don't mark the webhook
+    // failed — payload is already stored for path mapping in the UI.
     return {
-      ok: false,
-      status: 422,
-      error: `Phone not found at path "${normalizePayloadPath(cfg.phone_path)}"`,
+      ok: true,
+      status: 200,
       automation_id: row.id,
+      error: `Payload stored; phone not found at path "${normalizePayloadPath(cfg.phone_path)}" — automation not started`,
     }
   }
 

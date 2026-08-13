@@ -11,14 +11,20 @@ export function normalizePayloadPath(path: string): string {
   return trimmed
 }
 
-/** Read a nested value from an object using dot notation. */
+/** Read a nested value from an object using dot notation (supports `0` array indexes). */
 export function extractByPath(payload: unknown, path: string): unknown {
   const normalized = normalizePayloadPath(path)
   if (!normalized) return undefined
   const parts = normalized.split('.').filter(Boolean)
   let cur: unknown = payload
   for (const part of parts) {
-    if (cur == null || typeof cur !== 'object' || Array.isArray(cur)) return undefined
+    if (cur == null || typeof cur !== 'object') return undefined
+    if (Array.isArray(cur)) {
+      const idx = Number(part)
+      if (!Number.isInteger(idx) || idx < 0 || idx >= cur.length) return undefined
+      cur = cur[idx]
+      continue
+    }
     cur = (cur as Record<string, unknown>)[part]
   }
   return cur
@@ -52,13 +58,20 @@ export function flattenPayloadKeys(payload: unknown, prefix = ''): string[] {
   const keys: string[] = []
   if (payload == null || typeof payload !== 'object') return keys
   if (Array.isArray(payload)) {
-    keys.push(prefix || '[]')
+    if (!prefix) keys.push('[]')
+    payload.forEach((item, i) => {
+      const path = prefix ? `${prefix}.${i}` : String(i)
+      keys.push(path)
+      if (item != null && typeof item === 'object') {
+        keys.push(...flattenPayloadKeys(item, path))
+      }
+    })
     return keys
   }
   for (const [k, v] of Object.entries(payload as Record<string, unknown>)) {
     const path = prefix ? `${prefix}.${k}` : k
     keys.push(path)
-    if (v != null && typeof v === 'object' && !Array.isArray(v)) {
+    if (v != null && typeof v === 'object') {
       keys.push(...flattenPayloadKeys(v, path))
     }
   }
