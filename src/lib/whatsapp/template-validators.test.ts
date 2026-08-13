@@ -57,7 +57,21 @@ describe('validateBody', () => {
     expect(() => validateBody('Hi {{1}} {{3}}')).toThrow(/contiguous/);
   });
   it('accepts contiguous variables', () => {
-    expect(validateBody('Hi {{1}} {{2}}')).toEqual([1, 2]);
+    expect(validateBody('Hi {{1}} {{2}}.')).toEqual([1, 2]);
+  });
+  it('rejects leading variable (Meta 2388299)', () => {
+    expect(() => validateBody('{{1}}, your order is ready.')).toThrow(
+      /cannot start with/,
+    );
+  });
+  it('rejects trailing variable (Meta 2388299)', () => {
+    expect(() => validateBody('Meeting link: {{1}}')).toThrow(/cannot end with/);
+  });
+  it('rejects trailing variable after whitespace', () => {
+    expect(() => validateBody('Meeting link: {{1}}\n')).toThrow(/cannot end with/);
+  });
+  it('accepts variable with static text on both sides', () => {
+    expect(validateBody('Meeting link: {{1}}.')).toEqual([1]);
   });
 });
 
@@ -93,6 +107,19 @@ describe('validateHeader', () => {
     expect(() =>
       validateHeader({ header_type: 'text', header_content: 'Hello {{2}}' }),
     ).toThrow(/must be \{\{1\}\}/);
+  });
+  it('text header rejects trailing variable', () => {
+    expect(() =>
+      validateHeader({ header_type: 'text', header_content: 'Hello {{1}}' }),
+    ).toThrow(/cannot end with/);
+  });
+  it('text header accepts variable with surrounding text', () => {
+    expect(
+      validateHeader({
+        header_type: 'text',
+        header_content: 'Hello {{1}}!',
+      }),
+    ).toEqual({ variableCount: 1 });
   });
   it('image header requires a URL or handle', () => {
     expect(() => validateHeader({ header_type: 'image' })).toThrow(
@@ -270,7 +297,7 @@ describe('validateTemplatePayload — integration', () => {
     expect(() =>
       validateTemplatePayload({
         ...baseValid,
-        body_text: 'Hi {{1}}',
+        body_text: 'Hi {{1}}.',
       }),
     ).toThrow(/exactly 1 sample/);
   });

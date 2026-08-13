@@ -31,9 +31,70 @@ interface MetaErrorResponse {
     code?: number
     error_subcode?: number
     type?: string
+    error_user_title?: string
+    error_user_msg?: string
     error_data?: { details?: string }
     fbtrace_id?: string
   }
+}
+
+/**
+ * Meta template create/edit subcodes → user-facing copy.
+ * Official titles from:
+ * https://developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes/
+ */
+const META_TEMPLATE_SUBCODE_MESSAGES: Record<number, string> = {
+  2388019:
+    'Message template limit exceeded for this WhatsApp Business account.',
+  2388039:
+    'This template’s status can’t be changed right now (e.g. still in review). Wait until review finishes, then try again.',
+  2388040: 'A field in your template exceeds Meta’s character limit.',
+  2388047: 'Message header format is incorrect.',
+  2388072: 'Message body format is incorrect.',
+  2388073: 'Message footer format is incorrect.',
+  2388293:
+    'Too many variables for this template’s length — reduce variables or add more static text.',
+  2388299:
+    'Variables cannot start or end the body/header — add static text around them (e.g. "Meeting link: {{1}}.").',
+}
+
+function isOpaqueMetaMessage(message: string | undefined): boolean {
+  if (!message) return true
+  const normalized = message.replace(/^\(#\d+\)\s*/i, '').trim()
+  return /^invalid parameter\.?$/i.test(normalized)
+}
+
+/**
+ * Build a toast-friendly Meta error. Prefer Meta’s user message / details /
+ * known subcode text over the generic “Invalid parameter (code …)” form.
+ */
+export function formatMetaErrorMessage(
+  err: NonNullable<MetaErrorResponse['error']>,
+): string {
+  const userMsg = err.error_user_msg?.trim()
+  const details = err.error_data?.details?.trim()
+  const userTitle = err.error_user_title?.trim()
+  const mapped =
+    err.error_subcode != null
+      ? META_TEMPLATE_SUBCODE_MESSAGES[err.error_subcode]
+      : undefined
+  const rawMessage = err.message?.replace(/^\(#\d+\)\s*/i, '').trim()
+
+  const primary =
+    userMsg ||
+    (details && details !== rawMessage ? details : undefined) ||
+    mapped ||
+    userTitle ||
+    (!isOpaqueMetaMessage(rawMessage) ? rawMessage : undefined) ||
+    rawMessage ||
+    'Meta API request failed.'
+
+  // Keep the numeric code only when we still lack a specific explanation.
+  const needsCode = !userMsg && !details && !mapped && isOpaqueMetaMessage(primary)
+  if (!needsCode) return primary
+
+  const codeBits = [err.code, err.error_subcode].filter((n) => n != null).join('/')
+  return codeBits ? `${primary} (code ${codeBits})` : primary
 }
 
 async function throwMetaError(response: Response, fallback: string): Promise<never> {
@@ -42,18 +103,7 @@ async function throwMetaError(response: Response, fallback: string): Promise<nev
     const data = (await response.json()) as MetaErrorResponse
     const err = data.error
     if (err) {
-      // Compose the most useful single line: Meta's headline message plus
-      // `error_data.details` (usually the actionable part, e.g. "template
-      // name does not exist in the translation" or a param-count mismatch)
-      // and the error code so it can be looked up in Meta's docs.
-      const parts: string[] = []
-      if (err.message) parts.push(err.message)
-      if (err.error_data?.details && err.error_data.details !== err.message) {
-        parts.push(err.error_data.details)
-      }
-      const codeBits = [err.code, err.error_subcode].filter(Boolean).join('/')
-      if (codeBits) parts.push(`(code ${codeBits})`)
-      if (parts.length > 0) message = parts.join(' — ')
+      message = formatMetaErrorMessage(err)
       // Full payload to server logs for anything the summary line drops.
       console.error('[meta-api] send rejected:', JSON.stringify(err))
     }

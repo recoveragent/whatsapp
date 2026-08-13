@@ -87,6 +87,25 @@ function assertContiguous(indices: number[], where: string): void {
   }
 }
 
+/**
+ * Meta error 2388299 — variables cannot sit at the absolute start or
+ * end of body/header text. Surround them with static copy, e.g.
+ * `Meeting link: {{1}}.` not `Meeting link: {{1}}`.
+ */
+function assertNoLeadingOrTrailingVariables(text: string, where: string): void {
+  const trimmed = text.trim();
+  if (/^\{\{\d+\}\}/.test(trimmed)) {
+    throw new Error(
+      `${where} cannot start with a {{N}} variable (Meta rule) — add static text before it.`,
+    );
+  }
+  if (/\{\{\d+\}\}$/.test(trimmed)) {
+    throw new Error(
+      `${where} cannot end with a {{N}} variable (Meta rule) — add static text after it (e.g. a period).`,
+    );
+  }
+}
+
 export function validateBody(bodyText: string): number[] {
   if (!bodyText.trim()) throw new Error('Body text is required.');
   if (bodyText.length > TEMPLATE_LIMITS.bodyMaxLength) {
@@ -96,6 +115,9 @@ export function validateBody(bodyText: string): number[] {
   }
   const indices = extractVariableIndices(bodyText);
   assertContiguous(indices, 'Body');
+  if (indices.length > 0) {
+    assertNoLeadingOrTrailingVariables(bodyText, 'Body');
+  }
   return indices;
 }
 
@@ -142,6 +164,9 @@ export function validateHeader(
     }
     if (indices.length === 1 && indices[0] !== 1) {
       throw new Error('Text header variable must be {{1}} (Meta rule).');
+    }
+    if (indices.length > 0) {
+      assertNoLeadingOrTrailingVariables(header_content, 'Header');
     }
     return { variableCount: indices.length };
   }

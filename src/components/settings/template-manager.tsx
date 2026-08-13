@@ -886,7 +886,8 @@ export function TemplateManager() {
               />
               <p className="text-[11px] text-muted-foreground">
                 Use {`{{1}}`}, {`{{2}}`} for variables (must be contiguous
-                starting at {`{{1}}`}).
+                starting at {`{{1}}`}). Variables cannot start or end the
+                body — add static text around them (e.g. {`Meeting link: {{1}}.`}).
               </p>
 
               {bodyVarCount > 0 && (
