@@ -322,10 +322,14 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
     case "assign_conversation":
     case "create_deal":
     case "close_conversation":
-    case "set_tag":
+    case "set_tag": {
+      slots = [nextStepSlot()];
+      break;
+    }
+
     case "collect_input":
     case "send_address": {
-      slots = [nextStepSlot()];
+      slots = [{ id: "next", label: "On reply" }];
       break;
     }
 

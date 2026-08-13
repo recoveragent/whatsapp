@@ -679,7 +679,6 @@ async function advanceFromNodeKey(
         return { outcome: "completed" };
       }
       currentKey = cfg.next_node_key;
-      await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       continue;
     }
     if (node.node_type === "send_media") {
@@ -711,7 +710,6 @@ async function advanceFromNodeKey(
         return { outcome: "completed" };
       }
       currentKey = cfg.next_node_key;
-      await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       continue;
     }
     if (node.node_type === "collect_input") {
@@ -856,7 +854,6 @@ async function advanceFromNodeKey(
         condition_result: branch,
         advancing_to: currentKey,
       });
-      await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       continue;
     }
     if (node.node_type === "switch") {
@@ -892,7 +889,6 @@ async function advanceFromNodeKey(
         switch_branch: matchedBranch,
         advancing_to: currentKey,
       });
-      await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       continue;
     }
     if (node.node_type === "set_tag") {
@@ -936,7 +932,6 @@ async function advanceFromNodeKey(
         });
       }
       currentKey = cfg.next_node_key;
-      await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       continue;
     }
     if (node.node_type === "send_buttons") {
@@ -1009,7 +1004,6 @@ async function advanceFromNodeKey(
         return { outcome: "advanced" };
       }
       currentKey = ext.nextKey;
-      await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       continue;
     }
     if (node.node_type === "end") {

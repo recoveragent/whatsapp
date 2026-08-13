@@ -128,9 +128,9 @@ export const NEXT_STEP_LABEL = "Next step";
 
 export const REPLY_TIMEOUT_HANDLE = "timeout";
 
-/** Canvas + config: idle-timeout slot on every non-terminal node. */
+/** Canvas + config: idle-timeout slot on nodes that wait for customer input. */
 export function nodeTypeHasReplyTimeoutSlot(nodeType: string): boolean {
-  return nodeType !== "handoff" && nodeType !== "end";
+  return isSuspendingNodeType(nodeType);
 }
 
 /** Nodes that pause the run until the customer replies. */

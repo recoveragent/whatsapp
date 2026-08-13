@@ -297,23 +297,31 @@ describe("outgoingSlots", () => {
       outgoingSlots(node).map((s) => s.id);
     expect(
       each({ node_key: "x", node_type: "start", config: { next_node_key: "y" } }),
-    ).toEqual(["next", "timeout"]);
+    ).toEqual(["next"]);
     expect(
       each({ node_key: "x", node_type: "send_message", config: {} }),
-    ).toEqual(["next", "timeout"]);
+    ).toEqual(["next"]);
     expect(
       each({ node_key: "x", node_type: "send_media", config: {} }),
-    ).toEqual(["next", "timeout"]);
+    ).toEqual(["next"]);
     expect(
       each({ node_key: "x", node_type: "collect_input", config: {} }),
     ).toEqual(["next", "timeout"]);
     expect(each({ node_key: "x", node_type: "set_tag", config: {} })).toEqual([
       "next",
-      "timeout",
     ]);
   });
 
-  it("returns a Next step slot for send_address", () => {
+  it("labels single-outgoing handles as Next step", () => {
+    const slots = outgoingSlots({
+      node_key: "m",
+      node_type: "send_message",
+      config: { text: "Hi", next_node_key: "next" },
+    });
+    expect(slots).toEqual([{ id: "next", label: "Next step" }]);
+  });
+
+  it("returns a Next step slot on send_address", () => {
     expect(
       outgoingSlots({
         node_key: "x",
@@ -329,8 +337,8 @@ describe("outgoingSlots", () => {
       node_type: "condition",
       config: {},
     });
-    expect(slots.map((s) => s.id)).toEqual(["true", "false", "timeout"]);
-    expect(slots.map((s) => s.label)).toEqual(["true", "false", "Next step"]);
+    expect(slots.map((s) => s.id)).toEqual(["true", "false"]);
+    expect(slots.map((s) => s.label)).toEqual(["true", "false"]);
   });
 
   it("returns one slot per button, labelled with the title", () => {
@@ -631,23 +639,14 @@ describe("Next step timeout edges", () => {
     );
   });
 
-  it("adds a Next step slot to outgoing handles", () => {
+  it("labels collect_input reply vs idle handles distinctly", () => {
     const slots = outgoingSlots({
       node_key: "ci",
       node_type: "collect_input",
       config: { prompt_text: "Name?", var_key: "name", next_node_key: "next" },
     });
-    expect(slots.at(-1)).toEqual({ id: "timeout", label: "Next step" });
-  });
-
-  it("adds Next step slots to send_message", () => {
-    const slots = outgoingSlots({
-      node_key: "m",
-      node_type: "send_message",
-      config: { text: "Hi", next_node_key: "next" },
-    });
     expect(slots).toEqual([
-      { id: "next", label: "Next step" },
+      { id: "next", label: "On reply" },
       { id: "timeout", label: "Next step" },
     ]);
   });
