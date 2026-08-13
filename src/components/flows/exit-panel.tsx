@@ -20,10 +20,9 @@ import {
   type FlowExitConditionType,
   type FlowExitConfig,
 } from "@/lib/flows/exit-conditions";
+import { cn } from "@/lib/utils";
 import type { ValidationIssue } from "@/lib/flows/validate";
 import { IssueLine } from "./validation-panel";
-
-const ANY_FLOW = "__any__";
 
 interface TagRow {
   id: string;
@@ -235,36 +234,11 @@ function ConditionRow({
       </div>
 
       {condition.type === "another_flow" && (
-        <div className="mt-2">
-          <label className="mb-1 block text-xs text-muted-foreground">
-            Which flow
-          </label>
-          <Select
-            value={condition.flow_id?.trim() || ANY_FLOW}
-            onValueChange={(v) => {
-              if (!v) return;
-              onPatch({ flow_id: v === ANY_FLOW ? "" : v });
-            }}
-          >
-            <SelectTrigger className="bg-background">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ANY_FLOW}>Any other flow</SelectItem>
-              {flows.map((f) => (
-                <SelectItem key={f.id} value={f.id}>
-                  {f.name}
-                </SelectItem>
-              ))}
-              {condition.flow_id &&
-                !flows.some((f) => f.id === condition.flow_id) && (
-                  <SelectItem value={condition.flow_id}>
-                    Unknown flow
-                  </SelectItem>
-                )}
-            </SelectContent>
-          </Select>
-        </div>
+        <AnotherFlowPicker
+          flows={flows}
+          selectedIds={condition.flow_ids ?? []}
+          onChange={(flow_ids) => onPatch({ flow_ids, flow_id: undefined })}
+        />
       )}
 
       {(condition.type === "tag_added" || condition.type === "tag_removed") && (
@@ -373,6 +347,85 @@ function ConditionRow({
             Case-insensitive. Ends the run if the customer sends one of these.
           </p>
         </div>
+      )}
+    </div>
+  );
+}
+
+function AnotherFlowPicker({
+  flows,
+  selectedIds,
+  onChange,
+}: {
+  flows: FlowOption[];
+  selectedIds: string[];
+  onChange: (flowIds: string[]) => void;
+}) {
+  const selected = new Set(selectedIds);
+  const unknownSelected = selectedIds.filter(
+    (id) => !flows.some((f) => f.id === id),
+  );
+
+  function toggle(id: string, checked: boolean) {
+    const next = new Set(selectedIds);
+    if (checked) next.add(id);
+    else next.delete(id);
+    onChange([...next]);
+  }
+
+  return (
+    <div className="mt-2">
+      <label className="mb-1 block text-xs text-muted-foreground">
+        Which flow(s)
+      </label>
+      <p className="mb-2 text-[10px] text-muted-foreground">
+        Leave all unchecked to end on any other flow. Select one or more to
+        end only when they enter those flows.
+      </p>
+      <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-border bg-background p-2">
+        {flows.length === 0 && unknownSelected.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No other flows yet.</p>
+        ) : (
+          flows.map((f) => (
+            <label
+              key={f.id}
+              className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted/60"
+            >
+              <input
+                type="checkbox"
+                className="rounded border-border"
+                checked={selected.has(f.id)}
+                onChange={(e) => toggle(f.id, e.target.checked)}
+              />
+              <span className="truncate">{f.name}</span>
+            </label>
+          ))
+        )}
+        {unknownSelected.map((id) => (
+          <label
+            key={id}
+            className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted/60"
+          >
+            <input
+              type="checkbox"
+              className="rounded border-border"
+              checked
+              onChange={(e) => toggle(id, e.target.checked)}
+            />
+            <span className="truncate">Unknown flow ({id.slice(0, 8)}…)</span>
+          </label>
+        ))}
+      </div>
+      {selectedIds.length > 0 && (
+        <button
+          type="button"
+          className={cn(
+            "mt-2 text-[11px] text-primary underline-offset-2 hover:underline",
+          )}
+          onClick={() => onChange([])}
+        >
+          Clear selection (any other flow)
+        </button>
       )}
     </div>
   );

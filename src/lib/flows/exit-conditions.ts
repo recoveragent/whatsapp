@@ -37,9 +37,11 @@ export interface FlowExitCondition {
   pipeline_id?: string;
   stage_id?: string;
   /**
-   * another_flow: empty / omitted = any other flow; otherwise that
-   * specific flow id.
+   * another_flow: empty / omitted = any other flow; otherwise end when
+   * the contact enters any of these flow ids.
    */
+  flow_ids?: string[];
+  /** @deprecated Use `flow_ids`. Parsed for backward compat only. */
   flow_id?: string;
   /** keyword */
   keywords?: string[];
@@ -72,6 +74,9 @@ export function emptyExitCondition(type: FlowExitConditionType): FlowExitConditi
   if (type === "keyword") {
     return { id, type, keywords: [], match_type: "contains" };
   }
+  if (type === "another_flow") {
+    return { id, type, flow_ids: [] };
+  }
   return { id, type };
 }
 
@@ -97,7 +102,13 @@ export function parseExitConfig(raw: unknown): FlowExitConfig {
     if (typeof row.tag_id === "string") next.tag_id = row.tag_id;
     if (typeof row.pipeline_id === "string") next.pipeline_id = row.pipeline_id;
     if (typeof row.stage_id === "string") next.stage_id = row.stage_id;
-    if (typeof row.flow_id === "string") next.flow_id = row.flow_id;
+    if (Array.isArray(row.flow_ids)) {
+      next.flow_ids = row.flow_ids.filter(
+        (id): id is string => typeof id === "string" && id.trim().length > 0,
+      );
+    } else if (typeof row.flow_id === "string" && row.flow_id.trim()) {
+      next.flow_ids = [row.flow_id.trim()];
+    }
     if (Array.isArray(row.keywords)) {
       next.keywords = row.keywords.filter((k): k is string => typeof k === "string");
     }
@@ -137,8 +148,9 @@ export function conditionMatchesEvent(
   switch (event.type) {
     case "another_flow": {
       if (event.incomingFlowId === thisFlowId) return false;
-      const want = condition.flow_id?.trim();
-      return !want || want === event.incomingFlowId;
+      const ids = resolveAnotherFlowIds(condition);
+      if (ids.length === 0) return true;
+      return ids.includes(event.incomingFlowId);
     }
     case "tag_added":
     case "tag_removed": {
@@ -170,6 +182,16 @@ export function summarizeExitConfig(config: FlowExitConfig): string | null {
 
 export function endReasonForExit(event: FlowExitEvent): string {
   return `exit_condition:${event.type}`;
+}
+
+/** Normalized list for another_flow matching. Empty = any other flow. */
+export function resolveAnotherFlowIds(condition: FlowExitCondition): string[] {
+  if (condition.type !== "another_flow") return [];
+  if (Array.isArray(condition.flow_ids) && condition.flow_ids.length > 0) {
+    return condition.flow_ids.map((id) => id.trim()).filter(Boolean);
+  }
+  const legacy = condition.flow_id?.trim();
+  return legacy ? [legacy] : [];
 }
 
 /** Same contains/exact rules as the keyword start trigger, always case-insensitive. */

@@ -35,7 +35,7 @@ describe("parseExitConfig", () => {
 });
 
 describe("conditionMatchesEvent", () => {
-  it("ends on any other flow when flow_id is empty", () => {
+  it("ends on any other flow when flow_ids is empty", () => {
     const c = emptyExitCondition("another_flow");
     expect(
       conditionMatchesEvent(c, { type: "another_flow", incomingFlowId: FLOW_B }, FLOW_A),
@@ -45,14 +45,27 @@ describe("conditionMatchesEvent", () => {
     ).toBe(false);
   });
 
-  it("ends only when the incoming flow matches flow_id", () => {
-    const c = { ...emptyExitCondition("another_flow"), flow_id: FLOW_B };
+  it("ends only when the incoming flow is in flow_ids", () => {
+    const c = {
+      ...emptyExitCondition("another_flow"),
+      flow_ids: [FLOW_B, "flow-c"],
+    };
     expect(
       conditionMatchesEvent(c, { type: "another_flow", incomingFlowId: FLOW_B }, FLOW_A),
     ).toBe(true);
     expect(
       conditionMatchesEvent(c, { type: "another_flow", incomingFlowId: "flow-c" }, FLOW_A),
+    ).toBe(true);
+    expect(
+      conditionMatchesEvent(c, { type: "another_flow", incomingFlowId: "flow-d" }, FLOW_A),
     ).toBe(false);
+  });
+
+  it("migrates legacy flow_id on parse", () => {
+    const parsed = parseExitConfig({
+      conditions: [{ id: "1", type: "another_flow", flow_id: FLOW_B }],
+    });
+    expect(parsed.conditions[0]?.flow_ids).toEqual([FLOW_B]);
   });
 
   it("matches tag added / removed by id", () => {
