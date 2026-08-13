@@ -108,6 +108,20 @@ export function FlowWebhookTriggerPanel({
     });
   }
 
+  function renameMapping(oldName: string, newName: string, path: string) {
+    const nextName = newName.replace(/[^a-zA-Z0-9_]/g, "");
+    if (!nextName || nextName === oldName) return;
+    if (nextName in mappings && nextName !== oldName) {
+      toast.error(`Variable "${nextName}" already exists`);
+      return;
+    }
+    const next: Record<string, string> = {};
+    for (const [k, v] of Object.entries(mappings)) {
+      next[k === oldName ? nextName : k] = k === oldName ? path : v;
+    }
+    onChange({ ...config, variable_mappings: next });
+  }
+
   function removeMapping(varName: string) {
     const next = { ...mappings };
     delete next[varName];
@@ -256,27 +270,14 @@ export function FlowWebhookTriggerPanel({
           <code className="text-[10px]">{"{{ vars.name }}"}</code>)
         </label>
         {Object.entries(mappings).map(([varName, path]) => (
-          <div key={varName} className="mb-2 flex gap-1">
-            <Input
-              value={varName}
-              readOnly
-              className="w-28 bg-muted text-xs"
-            />
-            <Input
-              value={path}
-              onChange={(e) => setMapping(varName, e.target.value)}
-              className="flex-1 bg-muted text-xs"
-              list="flow-webhook-payload-keys"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => removeMapping(varName)}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
+          <MappingNameRow
+            key={varName}
+            varName={varName}
+            path={path}
+            onRename={(next) => renameMapping(varName, next, path)}
+            onPathChange={(nextPath) => setMapping(varName, nextPath)}
+            onRemove={() => removeMapping(varName)}
+          />
         ))}
         <Button
           type="button"
@@ -295,6 +296,55 @@ export function FlowWebhookTriggerPanel({
           </datalist>
         )}
       </div>
+    </div>
+  );
+}
+
+function MappingNameRow({
+  varName,
+  path,
+  onRename,
+  onPathChange,
+  onRemove,
+}: {
+  varName: string;
+  path: string;
+  onRename: (next: string) => void;
+  onPathChange: (nextPath: string) => void;
+  onRemove: () => void;
+}) {
+  const [draftName, setDraftName] = useState(varName);
+
+  useEffect(() => {
+    setDraftName(varName);
+  }, [varName]);
+
+  return (
+    <div className="mb-2 flex gap-1">
+      <Input
+        value={draftName}
+        onChange={(e) =>
+          setDraftName(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))
+        }
+        onBlur={() => onRename(draftName)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.currentTarget.blur();
+          }
+        }}
+        placeholder="meeting_time"
+        className="w-28 bg-muted font-mono text-xs"
+      />
+      <Input
+        value={path}
+        onChange={(e) => onPathChange(e.target.value)}
+        className="flex-1 bg-muted text-xs"
+        list="flow-webhook-payload-keys"
+        placeholder="payload.startTime"
+      />
+      <Button type="button" variant="ghost" size="icon" onClick={onRemove}>
+        <Trash2 className="h-4 w-4" />
+      </Button>
     </div>
   );
 }
