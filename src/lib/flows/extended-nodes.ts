@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FlowNodeRow, FlowRunRow } from './types'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { buildSendTimeParamsFromVariables } from '@/lib/flows/template-send-params'
+import { interpolateTemplateString } from '@/lib/flows/template-interpolate'
 import { templateConfigHasQuickReplies } from './template-buttons'
 
 type AdminClient = SupabaseClient
@@ -80,17 +81,7 @@ export function interpolateFlowVars(
   vars: Record<string, unknown>,
   messageText?: string,
 ): string {
-  if (!template) return ''
-  return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (match, key: string) => {
-    if (key === 'message.text') return messageText ?? ''
-    let lookup = key
-    const hadPrefix = key.startsWith('vars.') || key.startsWith('trigger.')
-    if (key.startsWith('vars.')) lookup = key.slice(5)
-    else if (key.startsWith('trigger.')) lookup = key.slice(8)
-    if (lookup in vars) return String(vars[lookup] ?? '')
-    if (hadPrefix) return ''
-    return match
-  })
+  return interpolateTemplateString(template, vars, messageText)
 }
 
 function waitMs(cfg: WaitNodeConfig): number {

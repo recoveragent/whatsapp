@@ -288,7 +288,7 @@ export function SendTemplateFields({
   allNodes = [],
   currentNodeKey = "",
   onChange,
-  variableHint = "Click a variable on the right or type {{ vars.field }} manually.",
+  variableHint = "Click a variable on the right or type {{ vars.field }} manually. Use Fallback options when a field may be empty.",
   variableGroups = [],
 }: SendTemplateFieldsProps) {
   const { templates, loading, reload } = useApprovedTemplates();

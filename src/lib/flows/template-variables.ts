@@ -52,8 +52,27 @@ const MESSAGE_OPTIONS: TemplateVariableOption[] = [
 
 const WEBHOOK_FALLBACK_OPTIONS: TemplateVariableOption[] = [
   {
-    label: 'Webhook field',
+    label: 'Webhook field (any path)',
     token: '{{ trigger.field_name }}',
+    type: 'text',
+  },
+]
+
+/** Presets for {{ vars.x | "fallback" }} — shown in every flow/automation form. */
+const FALLBACK_OPTIONS: TemplateVariableOption[] = [
+  {
+    label: 'Name or "there"',
+    token: '{{ vars.name | "there" }}',
+    type: 'text',
+  },
+  {
+    label: 'First name or "there"',
+    token: '{{ vars.first_name | "there" }}',
+    type: 'text',
+  },
+  {
+    label: 'Custom field with fallback',
+    token: '{{ vars.field | "fallback text" }}',
     type: 'text',
   },
 ]
@@ -100,6 +119,10 @@ export function webhookTemplateVariableOptions(
 
   if (options.length === 0) {
     return [...WEBHOOK_FALLBACK_OPTIONS]
+  }
+
+  for (const fallback of WEBHOOK_FALLBACK_OPTIONS) {
+    add(fallback.label, fallback.token)
   }
 
   return options
@@ -153,6 +176,12 @@ export function templateVariableGroupsForFlow(
     })
   }
 
+  groups.push({
+    id: 'fallback',
+    label: 'Fallback (when empty)',
+    options: FALLBACK_OPTIONS,
+  })
+
   return groups
 }
 
@@ -182,6 +211,12 @@ export function templateVariableGroupsForAutomation(
       options: triggerOptions,
     })
   }
+
+  groups.push({
+    id: 'fallback',
+    label: 'Fallback (when empty)',
+    options: FALLBACK_OPTIONS,
+  })
 
   return groups
 }

@@ -5,6 +5,7 @@ import { interpolateFlowVars } from './extended-nodes'
 describe('interpolateFlowVars', () => {
   const vars = {
     name: 'Tarun Singh',
+    first_name: '',
     'payload.startTime': '17 Aug 2026, 4:00 pm',
   }
 
@@ -28,5 +29,9 @@ describe('interpolateFlowVars', () => {
 
   it('returns empty for missing prefixed vars', () => {
     expect(interpolateFlowVars('Hi {{ vars.missing }}', vars)).toBe('Hi ')
+  })
+
+  it('uses pipe fallback when value is empty', () => {
+    expect(interpolateFlowVars('Hi {{ vars.first_name | "there" }}', vars)).toBe('Hi there')
   })
 })

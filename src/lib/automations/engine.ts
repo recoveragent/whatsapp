@@ -14,6 +14,7 @@ import type {
   CreateDealStepConfig,
   AssignConversationStepConfig,
 } from '@/types'
+import { interpolateTemplateString } from '@/lib/flows/template-interpolate'
 import { supabaseAdmin } from './admin-client'
 import { engineSendText, engineSendTemplate } from './meta-send'
 
@@ -709,17 +710,11 @@ function waitMs(cfg: WaitStepConfig): number {
 }
 
 function interpolate(s: string, args: ExecuteArgs): string {
-  return s.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (match, key: string) => {
-    if (key === 'message.text') return String(args.context.message_text ?? '')
-    let lookup = key
-    const hadPrefix = key.startsWith('vars.') || key.startsWith('trigger.')
-    if (key.startsWith('vars.')) lookup = key.slice(5)
-    else if (key.startsWith('trigger.')) lookup = key.slice(8)
-    const vars = args.context.vars
-    if (vars && lookup in vars) return String(vars[lookup] ?? '')
-    if (hadPrefix) return ''
-    return match
-  })
+  return interpolateTemplateString(
+    s,
+    args.context.vars ?? {},
+    args.context.message_text,
+  )
 }
 
 async function appendResults(
