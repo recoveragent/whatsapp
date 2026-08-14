@@ -306,10 +306,24 @@ describe("outgoingSlots", () => {
     ).toEqual(["next"]);
     expect(
       each({ node_key: "x", node_type: "collect_input", config: {} }),
-    ).toEqual(["next", "timeout"]);
+    ).toEqual(["next"]);
     expect(each({ node_key: "x", node_type: "set_tag", config: {} })).toEqual([
       "next",
     ]);
+  });
+
+  it("shows Timeout handle only when enabled with duration", () => {
+    expect(
+      outgoingSlots({
+        node_key: "x",
+        node_type: "collect_input",
+        config: {
+          reply_timeout_enabled: true,
+          reply_timeout_amount: 2,
+          reply_timeout_unit: "hours",
+        },
+      }).map((s) => s.id),
+    ).toEqual(["next", "timeout"]);
   });
 
   it("labels single-outgoing handles as Next step", () => {
@@ -328,7 +342,7 @@ describe("outgoingSlots", () => {
         node_type: "send_address",
         config: {},
       }).map((s) => s.id),
-    ).toEqual(["next", "timeout"]);
+    ).toEqual(["next"]);
   });
 
   it("returns true/false slots for condition", () => {
@@ -356,8 +370,22 @@ describe("outgoingSlots", () => {
     expect(slots).toEqual([
       { id: "button:yes", label: "Yes" },
       { id: "button:no", label: "No" },
-      { id: "timeout", label: "Next step" },
     ]);
+  });
+
+  it("adds Timeout slot to send_buttons when configured", () => {
+    const slots = outgoingSlots({
+      node_key: "m",
+      node_type: "send_buttons",
+      config: {
+        text: "Pick",
+        buttons: [{ reply_id: "yes", title: "Yes", next_node_key: "" }],
+        reply_timeout_enabled: true,
+        reply_timeout_amount: 1,
+        reply_timeout_unit: "days",
+      },
+    });
+    expect(slots.at(-1)).toEqual({ id: "timeout", label: "Timeout" });
   });
 
   it("falls back to reply_id for buttons with no title", () => {
@@ -385,7 +413,7 @@ describe("outgoingSlots", () => {
         ],
       },
     });
-    expect(slots.map((s) => s.id)).toEqual(["row:o1", "row:o2", "timeout"]);
+    expect(slots.map((s) => s.id)).toEqual(["row:o1", "row:o2"]);
   });
 
   it("terminal nodes (handoff / end) have no outgoing slots", () => {
@@ -610,8 +638,8 @@ describe("unlinkNodeReferences", () => {
   });
 });
 
-describe("Next step timeout edges", () => {
-  it("derives a Next step edge from send_buttons", () => {
+describe("Timeout branch edges", () => {
+  it("derives a Timeout edge from send_buttons when configured", () => {
     const edges = deriveCanvasEdges(
       nodes(
         {
@@ -622,6 +650,9 @@ describe("Next step timeout edges", () => {
             buttons: [
               { reply_id: "yes", title: "Yes", next_node_key: "yes_path" },
             ],
+            reply_timeout_enabled: true,
+            reply_timeout_amount: 1,
+            reply_timeout_unit: "hours",
             reply_timeout_next_node_key: "timeout_path",
           },
         },
@@ -634,20 +665,27 @@ describe("Next step timeout edges", () => {
         source: "prompt",
         target: "timeout_path",
         sourceHandle: "timeout",
-        label: "Next step",
+        label: "Timeout",
       }),
     );
   });
 
-  it("labels collect_input reply vs idle handles distinctly", () => {
+  it("labels collect_input Next step and Timeout distinctly when configured", () => {
     const slots = outgoingSlots({
       node_key: "ci",
       node_type: "collect_input",
-      config: { prompt_text: "Name?", var_key: "name", next_node_key: "next" },
+      config: {
+        prompt_text: "Name?",
+        var_key: "name",
+        next_node_key: "next",
+        reply_timeout_enabled: true,
+        reply_timeout_amount: 1,
+        reply_timeout_unit: "hours",
+      },
     });
     expect(slots).toEqual([
-      { id: "next", label: "On reply" },
-      { id: "timeout", label: "Next step" },
+      { id: "next", label: "Next step" },
+      { id: "timeout", label: "Timeout" },
     ]);
   });
 

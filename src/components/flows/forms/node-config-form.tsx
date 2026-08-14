@@ -51,7 +51,11 @@ import {
   SHOPIFY_PAYMENT_STATUS_LABELS,
 } from "@/lib/flows/trigger-types";
 import { slugify, type BuilderNode } from "../shared";
-import { nodeTypeHasReplyTimeoutSlot } from "@/lib/flows/reply-timeout";
+import {
+  nodeTypeHasReplyTimeoutSlot,
+  hasReplyTimeoutTiming,
+  showReplyTimeoutHandle,
+} from "@/lib/flows/reply-timeout";
 import { NextNodeRow, NodeKeySelect, TextRow } from "./fields";
 import { SendTemplateFields } from "@/components/shared/send-template-fields";
 import { templateVariableGroupsForFlow } from "@/lib/flows/template-variables";
@@ -451,10 +455,11 @@ function renderNodeConfigBody({
 }
 
 // ============================================================
-// No-reply timeout (shared by suspending node types)
+// Timeout branch (optional, on nodes that wait for customer input)
 // ============================================================
 
 interface ReplyTimeoutCfg {
+  reply_timeout_enabled?: boolean;
   reply_timeout_amount?: unknown;
   reply_timeout_unit?: string;
   reply_timeout_next_node_key?: string;
@@ -467,6 +472,10 @@ function ReplyTimeoutSection({
   cfg: ReplyTimeoutCfg;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
 }) {
+  const enabled =
+    cfg.reply_timeout_enabled === true ||
+    (cfg.reply_timeout_enabled !== false &&
+      hasReplyTimeoutTiming(cfg as Record<string, unknown>));
   const amount =
     cfg.reply_timeout_amount === undefined || cfg.reply_timeout_amount === null
       ? ""
@@ -479,50 +488,90 @@ function ReplyTimeoutSection({
     typeof cfg.reply_timeout_next_node_key === "string"
       ? cfg.reply_timeout_next_node_key.trim()
       : "";
+  const handleVisible = showReplyTimeoutHandle(cfg as Record<string, unknown>);
 
   return (
     <div className="rounded-md border border-border bg-muted/30 p-3">
-      <label className="mb-1 block text-xs font-medium text-muted-foreground">
-        Next step timeout (optional)
-      </label>
-      <p className="mb-2 text-[10px] text-muted-foreground">
-        If the customer doesn&apos;t respond in time, the flow follows the{" "}
-        <span className="font-medium text-foreground">Next step</span> handle on
-        the canvas.
-      </p>
-      <div className="flex gap-2">
-        <Input
-          type="number"
-          min={1}
-          value={amount}
+      <label className="flex items-start gap-2 text-xs">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={enabled}
           onChange={(e) => {
-            const v = e.target.value;
+            if (e.target.checked) {
+              onUpdateConfig({ reply_timeout_enabled: true });
+              return;
+            }
             onUpdateConfig({
-              reply_timeout_amount: v === "" ? "" : Number(v),
+              reply_timeout_enabled: false,
+              reply_timeout_amount: "",
+              reply_timeout_next_node_key: "",
             });
           }}
-          placeholder="e.g. 24"
-          className="bg-muted"
         />
-        <Select
-          value={unit}
-          onValueChange={(v) => onUpdateConfig({ reply_timeout_unit: v })}
-        >
-          <SelectTrigger className="w-[120px] bg-muted">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="minutes">Minutes</SelectItem>
-            <SelectItem value="hours">Hours</SelectItem>
-            <SelectItem value="days">Days</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      {target ? (
-        <p className="mt-2 text-[10px] text-muted-foreground">
-          Next step connected to{" "}
-          <code className="rounded bg-muted px-1 font-mono">{target}</code>
-        </p>
+        <span>
+          <span className="font-medium text-foreground">
+            Timeout branch (if no reply)
+          </span>
+          <span className="mt-0.5 block text-[10px] text-muted-foreground">
+            Separate from the Wait node. Use this only when you want a path if
+            the customer ignores buttons or text prompts after this step.
+          </span>
+        </span>
+      </label>
+      {enabled ? (
+        <>
+          <div className="mt-3 flex gap-2">
+            <Input
+              type="number"
+              min={1}
+              value={amount}
+              onChange={(e) => {
+                const v = e.target.value;
+                onUpdateConfig({
+                  reply_timeout_amount: v === "" ? "" : Number(v),
+                });
+              }}
+              placeholder="e.g. 24"
+              className="bg-muted"
+            />
+            <Select
+              value={unit}
+              onValueChange={(v) => onUpdateConfig({ reply_timeout_unit: v })}
+            >
+              <SelectTrigger className="w-[120px] bg-muted">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="minutes">Minutes</SelectItem>
+                <SelectItem value="hours">Hours</SelectItem>
+                <SelectItem value="days">Days</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {handleVisible ? (
+            <p className="mt-2 text-[10px] text-muted-foreground">
+              A <span className="font-medium text-foreground">Timeout</span>{" "}
+              handle is on the canvas
+              {target ? (
+                <>
+                  {" "}
+                  — connected to{" "}
+                  <code className="rounded bg-muted px-1 font-mono">
+                    {target}
+                  </code>
+                </>
+              ) : (
+                <> — connect it to the node to run after that time</>
+              )}
+              .
+            </p>
+          ) : (
+            <p className="mt-2 text-[10px] text-muted-foreground">
+              Set a duration above to show the Timeout handle on the canvas.
+            </p>
+          )}
+        </>
       ) : null}
     </div>
   );

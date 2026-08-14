@@ -4,6 +4,10 @@ import {
   replyTimeoutMs,
   REPLY_TIMEOUT_HANDLE,
   isSuspendingNodeType,
+  isReplyTimeoutEnabled,
+  hasReplyTimeoutTiming,
+  showReplyTimeoutHandle,
+  TIMEOUT_LABEL,
 } from "./reply-timeout";
 
 describe("parseReplyTimeout", () => {
@@ -25,6 +29,7 @@ describe("parseReplyTimeout", () => {
   it("parses a valid timeout config", () => {
     expect(
       parseReplyTimeout({
+        reply_timeout_enabled: true,
         reply_timeout_amount: 30,
         reply_timeout_unit: "minutes",
         reply_timeout_next_node_key: "nudge",
@@ -34,6 +39,33 @@ describe("parseReplyTimeout", () => {
       unit: "minutes",
       next_node_key: "nudge",
     });
+  });
+
+  it("requires enabled flag for new configs", () => {
+    expect(
+      parseReplyTimeout({
+        reply_timeout_enabled: false,
+        reply_timeout_amount: 30,
+        reply_timeout_unit: "minutes",
+        reply_timeout_next_node_key: "nudge",
+      }),
+    ).toBeNull();
+  });
+
+  it("shows canvas handle only when enabled with timing", () => {
+    expect(showReplyTimeoutHandle({ reply_timeout_enabled: true })).toBe(false);
+    expect(
+      showReplyTimeoutHandle({
+        reply_timeout_enabled: true,
+        reply_timeout_amount: 2,
+        reply_timeout_unit: "hours",
+      }),
+    ).toBe(true);
+    expect(
+      showReplyTimeoutHandle({
+        reply_timeout_next_node_key: "orphan",
+      }),
+    ).toBe(false);
   });
 
   it("rejects invalid amounts and units", () => {
@@ -79,8 +111,8 @@ describe("isSuspendingNodeType", () => {
   });
 });
 
-describe("REPLY_TIMEOUT_HANDLE", () => {
-  it("is stable for canvas wiring", () => {
-    expect(REPLY_TIMEOUT_HANDLE).toBe("timeout");
+describe("TIMEOUT_LABEL", () => {
+  it("is distinct from the Next step label", () => {
+    expect(TIMEOUT_LABEL).toBe("Timeout");
   });
 });

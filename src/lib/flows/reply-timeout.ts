@@ -21,9 +21,45 @@ export interface ReplyTimeoutConfig {
 
 const UNITS: ReplyTimeoutUnit[] = ["minutes", "hours", "days"];
 
+export function hasReplyTimeoutTiming(
+  config: Record<string, unknown>,
+): boolean {
+  const amountRaw = config.reply_timeout_amount;
+  const amount =
+    typeof amountRaw === "number"
+      ? amountRaw
+      : typeof amountRaw === "string"
+        ? Number(amountRaw)
+        : NaN;
+  if (!Number.isFinite(amount) || amount < 1) return false;
+
+  const unit = config.reply_timeout_unit;
+  return typeof unit === "string" && UNITS.includes(unit as ReplyTimeoutUnit);
+}
+
+/** User opted in via the node panel checkbox (legacy: timing alone counts). */
+export function isReplyTimeoutEnabled(
+  config: Record<string, unknown>,
+): boolean {
+  if (config.reply_timeout_enabled === true) return true;
+  if (config.reply_timeout_enabled === false) return false;
+  return hasReplyTimeoutTiming(config);
+}
+
+/** Show the Timeout canvas handle — enabled plus a valid duration. */
+export function showReplyTimeoutHandle(
+  config: Record<string, unknown>,
+): boolean {
+  return isReplyTimeoutEnabled(config) && hasReplyTimeoutTiming(config);
+}
+
 export function parseReplyTimeout(
   config: Record<string, unknown>,
 ): ReplyTimeoutConfig | null {
+  if (!isReplyTimeoutEnabled(config) || !hasReplyTimeoutTiming(config)) {
+    return null;
+  }
+
   const amountRaw = config.reply_timeout_amount;
   const amount =
     typeof amountRaw === "number"
@@ -125,6 +161,8 @@ export async function cancelAllReplyTimeouts(
 }
 
 export const NEXT_STEP_LABEL = "Next step";
+
+export const TIMEOUT_LABEL = "Timeout";
 
 export const REPLY_TIMEOUT_HANDLE = "timeout";
 

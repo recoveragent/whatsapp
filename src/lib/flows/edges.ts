@@ -28,7 +28,9 @@ import type { BuilderNode } from "@/components/flows/shared";
 import {
   NEXT_STEP_LABEL,
   REPLY_TIMEOUT_HANDLE,
+  TIMEOUT_LABEL,
   nodeTypeHasReplyTimeoutSlot,
+  showReplyTimeoutHandle,
 } from "./reply-timeout";
 
 function replyTimeoutNextKey(cfg: Record<string, unknown>): string | null {
@@ -45,6 +47,7 @@ function appendReplyTimeoutEdge(
   cfg: Record<string, unknown>,
   knownKeys: Set<string>,
 ): void {
+  if (!showReplyTimeoutHandle(cfg)) return;
   const next = replyTimeoutNextKey(cfg);
   if (!next || !knownKeys.has(next)) return;
   edges.push({
@@ -52,7 +55,7 @@ function appendReplyTimeoutEdge(
     source: nodeKey,
     target: next,
     sourceHandle: REPLY_TIMEOUT_HANDLE,
-    label: NEXT_STEP_LABEL,
+    label: TIMEOUT_LABEL,
   });
 }
 
@@ -61,10 +64,14 @@ function nextStepSlot(): OutgoingSlot {
 }
 
 function replyTimeoutSlot(): OutgoingSlot {
-  return { id: REPLY_TIMEOUT_HANDLE, label: NEXT_STEP_LABEL };
+  return { id: REPLY_TIMEOUT_HANDLE, label: TIMEOUT_LABEL };
 }
 
-function appendReplyTimeoutSlots(slots: OutgoingSlot[]): OutgoingSlot[] {
+function maybeAppendReplyTimeoutSlots(
+  slots: OutgoingSlot[],
+  cfg: Record<string, unknown>,
+): OutgoingSlot[] {
+  if (!showReplyTimeoutHandle(cfg)) return slots;
   return [...slots, replyTimeoutSlot()];
 }
 
@@ -329,7 +336,7 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
 
     case "collect_input":
     case "send_address": {
-      slots = [{ id: "next", label: "On reply" }];
+      slots = [nextStepSlot()];
       break;
     }
 
@@ -424,7 +431,7 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
   }
 
   if (nodeTypeHasReplyTimeoutSlot(node.node_type)) {
-    return appendReplyTimeoutSlots(slots);
+    return maybeAppendReplyTimeoutSlots(slots, cfg);
   }
   return slots;
 }

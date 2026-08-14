@@ -28,7 +28,12 @@ import {
   parseExitConfig,
   type FlowExitConfig,
 } from "./exit-conditions";
-import { parseReplyTimeout, nodeTypeHasReplyTimeoutSlot } from "./reply-timeout";
+import {
+  parseReplyTimeout,
+  nodeTypeHasReplyTimeoutSlot,
+  isReplyTimeoutEnabled,
+  hasReplyTimeoutTiming,
+} from "./reply-timeout";
 
 export interface ValidationIssue {
   severity: "error" | "warning";
@@ -60,46 +65,43 @@ function collectReplyTimeoutIssues(
   issues: ValidationIssue[],
 ): void {
   const cfg = node.config;
-  const amountRaw = cfg.reply_timeout_amount;
-  const hasAmount =
-    amountRaw !== undefined &&
-    amountRaw !== null &&
-    String(amountRaw).trim() !== "";
-  const hasUnit =
-    typeof cfg.reply_timeout_unit === "string" &&
-    cfg.reply_timeout_unit.trim() !== "";
   const next =
     typeof cfg.reply_timeout_next_node_key === "string"
       ? cfg.reply_timeout_next_node_key.trim()
       : "";
   const hasNext = next.length > 0;
 
-  if (!hasAmount && !hasUnit && !hasNext) return;
+  if (!isReplyTimeoutEnabled(cfg)) {
+    return;
+  }
 
-  const parsed = parseReplyTimeout(cfg);
-  if (!parsed) {
-    if (hasAmount || hasUnit) {
+  if (!hasReplyTimeoutTiming(cfg)) {
+    if (hasNext) {
       issues.push({
         severity: "error",
         scope: "node",
         node_key: node.node_key,
         field: "reply_timeout_amount",
         message:
-          "Next step timeout needs a duration of at least 1 minute, hour, or day.",
-      });
-    }
-    if (hasNext) {
-      issues.push({
-        severity: "error",
-        scope: "node",
-        node_key: node.node_key,
-        field: "reply_timeout_next_node_key",
-        message:
-          "Next step timeout needs a duration, or disconnect the Next step handle on the canvas.",
+          "Timeout branch needs a duration, or disconnect the Timeout handle on the canvas.",
       });
     }
     return;
   }
+
+  if (!hasNext) {
+    issues.push({
+      severity: "error",
+      scope: "node",
+      node_key: node.node_key,
+      field: "reply_timeout_next_node_key",
+      message: "Connect the Timeout handle on the canvas to a target node.",
+    });
+    return;
+  }
+
+  const parsed = parseReplyTimeout(cfg);
+  if (!parsed) return;
 
   if (!knownKeys.has(parsed.next_node_key)) {
     issues.push({
@@ -107,7 +109,7 @@ function collectReplyTimeoutIssues(
       scope: "node",
       node_key: node.node_key,
       field: "reply_timeout_next_node_key",
-      message: `Next step branch points to non-existent node "${parsed.next_node_key}".`,
+      message: `Timeout branch points to non-existent node "${parsed.next_node_key}".`,
     });
   }
 }
