@@ -766,8 +766,9 @@ export function SendTemplateFields({
           )}
           {hasQuickReplies && (
             <p className="text-[10px] text-muted-foreground">
-              Next step runs when the template has no quick-reply buttons. Keep
-              it connected even when wiring button branches above.
+              Next step is optional when this template has quick-reply buttons.
+              Connect it only if you need a path when the template sends without
+              waiting for a tap.
             </p>
           )}
         </>

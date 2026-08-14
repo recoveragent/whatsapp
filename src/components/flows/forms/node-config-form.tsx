@@ -499,7 +499,19 @@ function ReplyTimeoutSection({
           checked={enabled}
           onChange={(e) => {
             if (e.target.checked) {
-              onUpdateConfig({ reply_timeout_enabled: true });
+              const hasAmount =
+                cfg.reply_timeout_amount !== undefined &&
+                cfg.reply_timeout_amount !== null &&
+                String(cfg.reply_timeout_amount).trim() !== "";
+              onUpdateConfig({
+                reply_timeout_enabled: true,
+                reply_timeout_amount: hasAmount ? cfg.reply_timeout_amount : 1,
+                reply_timeout_unit:
+                  typeof cfg.reply_timeout_unit === "string" &&
+                  cfg.reply_timeout_unit
+                    ? cfg.reply_timeout_unit
+                    : "hours",
+              });
               return;
             }
             onUpdateConfig({

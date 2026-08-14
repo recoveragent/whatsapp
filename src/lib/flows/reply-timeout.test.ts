@@ -52,6 +52,15 @@ describe("parseReplyTimeout", () => {
     ).toBeNull();
   });
 
+  it("shows canvas handle when enabled with amount but no persisted unit", () => {
+    expect(
+      showReplyTimeoutHandle({
+        reply_timeout_enabled: true,
+        reply_timeout_amount: 1,
+      }),
+    ).toBe(true);
+  });
+
   it("shows canvas handle only when enabled with timing", () => {
     expect(showReplyTimeoutHandle({ reply_timeout_enabled: true })).toBe(false);
     expect(

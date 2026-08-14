@@ -236,7 +236,7 @@ export interface SendTemplateNodeConfig {
     title: string;
     next_node_key: string;
   }>;
-  /** Always wired on the canvas as Next step; used at runtime when the template has no quick-reply buttons. */
+  /** Optional on canvas when quick-reply buttons exist; used at runtime when the template has no quick-reply buttons. */
   next_node_key: string;
 }
 

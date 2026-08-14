@@ -1179,15 +1179,28 @@ function validateNode(
           }
         }
       }
-      if (!cfg.next_node_key) {
-        issues.push({
-          severity: "error",
-          scope: "node",
-          node_key: node.node_key,
-          field: "next_node_key",
-          message: "Send-template must connect Next step to a target node.",
-        });
-      } else if (!knownKeys.has(cfg.next_node_key)) {
+      if (qrButtons.length === 0) {
+        if (!cfg.next_node_key) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: "next_node_key",
+            message: "Send-template must connect Next step to a target node.",
+          });
+        } else if (!knownKeys.has(cfg.next_node_key)) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: "next_node_key",
+            message: `Send-template Next step points to non-existent node "${cfg.next_node_key}".`,
+          });
+        }
+      } else if (
+        cfg.next_node_key &&
+        !knownKeys.has(cfg.next_node_key)
+      ) {
         issues.push({
           severity: "error",
           scope: "node",

@@ -21,6 +21,33 @@ export interface ReplyTimeoutConfig {
 
 const UNITS: ReplyTimeoutUnit[] = ["minutes", "hours", "days"];
 
+const DEFAULT_REPLY_TIMEOUT_UNIT: ReplyTimeoutUnit = "hours";
+
+function resolveReplyTimeoutUnit(
+  config: Record<string, unknown>,
+): ReplyTimeoutUnit | null {
+  const unit = config.reply_timeout_unit;
+  if (typeof unit === "string" && unit.trim() !== "") {
+    return UNITS.includes(unit as ReplyTimeoutUnit)
+      ? (unit as ReplyTimeoutUnit)
+      : null;
+  }
+  if (config.reply_timeout_enabled === true) {
+    return DEFAULT_REPLY_TIMEOUT_UNIT;
+  }
+  const amountRaw = config.reply_timeout_amount;
+  const amount =
+    typeof amountRaw === "number"
+      ? amountRaw
+      : typeof amountRaw === "string"
+        ? Number(amountRaw)
+        : NaN;
+  if (Number.isFinite(amount) && amount >= 1) {
+    return DEFAULT_REPLY_TIMEOUT_UNIT;
+  }
+  return null;
+}
+
 export function hasReplyTimeoutTiming(
   config: Record<string, unknown>,
 ): boolean {
@@ -33,8 +60,7 @@ export function hasReplyTimeoutTiming(
         : NaN;
   if (!Number.isFinite(amount) || amount < 1) return false;
 
-  const unit = config.reply_timeout_unit;
-  return typeof unit === "string" && UNITS.includes(unit as ReplyTimeoutUnit);
+  return resolveReplyTimeoutUnit(config) !== null;
 }
 
 /** User opted in via the node panel checkbox (legacy: timing alone counts). */
@@ -69,10 +95,8 @@ export function parseReplyTimeout(
         : NaN;
   if (!Number.isFinite(amount) || amount < 1) return null;
 
-  const unit = config.reply_timeout_unit;
-  if (typeof unit !== "string" || !UNITS.includes(unit as ReplyTimeoutUnit)) {
-    return null;
-  }
+  const unit = resolveReplyTimeoutUnit(config);
+  if (!unit) return null;
 
   const next =
     typeof config.reply_timeout_next_node_key === "string"
