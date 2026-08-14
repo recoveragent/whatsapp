@@ -76,6 +76,46 @@ function isMediaHeaderType(value: unknown): value is MediaHeaderType {
   return MEDIA_HEADER_TYPES.includes(value as MediaHeaderType);
 }
 
+/** Side-by-side variable inputs + picker only on very wide panels. */
+const VARIABLE_FIELDS_LAYOUT =
+  "grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_min(100%,280px)]";
+
+function variableInputClass(active: boolean) {
+  return cn(
+    "h-auto min-h-8 w-full min-w-0 bg-muted py-1.5 font-mono text-xs leading-normal",
+    active && "ring-1 ring-primary",
+  );
+}
+
+function VariableMappingInput({
+  value,
+  onChange,
+  onFocus,
+  active,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onFocus: () => void;
+  active: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <textarea
+      rows={value.length > 36 ? 2 : 1}
+      value={value}
+      title={value}
+      onFocus={onFocus}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className={cn(
+        variableInputClass(active),
+        "resize-none break-all rounded-lg border border-input outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+      )}
+    />
+  );
+}
+
 function renderPreviewBody(
   body: string,
   variables: Record<string, string>,
@@ -547,29 +587,26 @@ export function SendTemplateFields({
           </div>
 
           {placeholders.length > 0 && (
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_11rem]">
-              <div className="space-y-2">
+            <div className={VARIABLE_FIELDS_LAYOUT}>
+              <div className="min-w-0 space-y-2">
                 <p className="text-[11px] text-muted-foreground">{variableHint}</p>
                 {placeholders.map((key) => (
-                  <div key={key}>
+                  <div key={key} className="min-w-0">
                     <label className="mb-1 block text-xs text-muted-foreground">
                       Variable {`{{${key}}}`}
                     </label>
-                    <Input
+                    <VariableMappingInput
                       value={variables[key] ?? ""}
                       onFocus={() => setActiveField(key)}
-                      onChange={(e) =>
+                      onChange={(next) =>
                         onChange({
                           template_name: templateName,
                           language: lang,
-                          variables: { ...variables, [key]: e.target.value },
+                          variables: { ...variables, [key]: next },
                         })
                       }
                       placeholder="Select from the list →"
-                      className={cn(
-                        "bg-muted font-mono text-xs",
-                        activeField === key && "ring-1 ring-primary",
-                      )}
+                      active={activeField === key}
                     />
                   </div>
                 ))}
@@ -593,10 +630,7 @@ export function SendTemplateFields({
                         })
                       }
                       placeholder="{{ vars.product_image }} or https://…"
-                      className={cn(
-                        "bg-muted font-mono text-xs",
-                        activeField === "header_media" && "ring-1 ring-primary",
-                      )}
+                      className={variableInputClass(activeField === "header_media")}
                     />
                     <p className="mt-1 text-[10px] text-muted-foreground">
                       Public image URL sent as the template header. Map{" "}
@@ -613,21 +647,18 @@ export function SendTemplateFields({
                       <label className="mb-1 block text-xs text-muted-foreground">
                         Header variable
                       </label>
-                      <Input
+                      <VariableMappingInput
                         value={variables.header_1 ?? ""}
                         onFocus={() => setActiveField("header_1")}
-                        onChange={(e) =>
+                        onChange={(next) =>
                           onChange({
                             template_name: templateName,
                             language: lang,
-                            variables: { ...variables, header_1: e.target.value },
+                            variables: { ...variables, header_1: next },
                           })
                         }
                         placeholder="Header {{1}} value"
-                        className={cn(
-                          "bg-muted font-mono text-xs",
-                          activeField === "header_1" && "ring-1 ring-primary",
-                        )}
+                        active={activeField === "header_1"}
                       />
                     </div>
                   )}
@@ -647,26 +678,23 @@ export function SendTemplateFields({
             selectedTemplate.header_type === "text" &&
             selectedTemplate.header_content &&
             extractVariableIndices(selectedTemplate.header_content).length > 0 && (
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_11rem]">
-                <div>
+              <div className={VARIABLE_FIELDS_LAYOUT}>
+                <div className="min-w-0">
                   <label className="mb-1 block text-xs text-muted-foreground">
                     Header variable
                   </label>
-                  <Input
+                  <VariableMappingInput
                     value={variables.header_1 ?? ""}
                     onFocus={() => setActiveField("header_1")}
-                    onChange={(e) =>
+                    onChange={(next) =>
                       onChange({
                         template_name: templateName,
                         language: lang,
-                        variables: { ...variables, header_1: e.target.value },
+                        variables: { ...variables, header_1: next },
                       })
                     }
                     placeholder="Header {{1}} value"
-                    className={cn(
-                      "bg-muted font-mono text-xs",
-                      activeField === "header_1" && "ring-1 ring-primary",
-                    )}
+                    active={activeField === "header_1"}
                   />
                 </div>
                 {variableGroups.length > 0 && (
@@ -679,8 +707,8 @@ export function SendTemplateFields({
             )}
 
           {placeholders.length === 0 && mediaHeaderType && (
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_11rem]">
-              <div>
+            <div className={VARIABLE_FIELDS_LAYOUT}>
+              <div className="min-w-0">
                 <label className="mb-1 block text-xs text-muted-foreground">
                   Header media URL ({mediaHeaderType})
                 </label>
@@ -698,10 +726,7 @@ export function SendTemplateFields({
                     })
                   }
                   placeholder="{{ vars.product_image }} or https://…"
-                  className={cn(
-                    "bg-muted font-mono text-xs",
-                    activeField === "header_media" && "ring-1 ring-primary",
-                  )}
+                  className={variableInputClass(activeField === "header_media")}
                 />
                 <p className="mt-1 text-[10px] text-muted-foreground">
                   Public image URL sent as the template header. Map{" "}

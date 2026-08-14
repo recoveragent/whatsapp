@@ -809,7 +809,7 @@ function NodeEditSheet({
         side="right"
         className={cn(
           "flex w-full flex-col gap-0 border-l border-border bg-popover p-0",
-          node.node_type === "send_template" ? "sm:max-w-xl" : "sm:max-w-md",
+          node.node_type === "send_template" ? "sm:max-w-2xl" : "sm:max-w-md",
         )}
       >
         <SheetHeader className="border-b border-border px-5 py-4">

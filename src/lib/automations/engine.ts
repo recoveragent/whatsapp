@@ -709,13 +709,16 @@ function waitMs(cfg: WaitStepConfig): number {
 }
 
 function interpolate(s: string, args: ExecuteArgs): string {
-  return s.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => {
-    const [ns, prop] = String(key).split('.')
-    if (ns === 'message' && prop === 'text') return String(args.context.message_text ?? '')
-    if ((ns === 'vars' || ns === 'trigger') && prop) {
-      return String(args.context.vars?.[prop] ?? '')
-    }
-    return ''
+  return s.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (match, key: string) => {
+    if (key === 'message.text') return String(args.context.message_text ?? '')
+    let lookup = key
+    const hadPrefix = key.startsWith('vars.') || key.startsWith('trigger.')
+    if (key.startsWith('vars.')) lookup = key.slice(5)
+    else if (key.startsWith('trigger.')) lookup = key.slice(8)
+    const vars = args.context.vars
+    if (vars && lookup in vars) return String(vars[lookup] ?? '')
+    if (hadPrefix) return ''
+    return match
   })
 }
 

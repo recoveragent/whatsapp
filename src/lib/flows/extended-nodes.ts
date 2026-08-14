@@ -81,10 +81,16 @@ export function interpolateFlowVars(
   messageText?: string,
 ): string {
   if (!template) return ''
-  return template
-    .replace(/\{\{\s*vars\.([\w.]+)\s*\}\}/g, (_, k) => String(vars[k] ?? ''))
-    .replace(/\{\{\s*trigger\.([\w.]+)\s*\}\}/g, (_, k) => String(vars[k] ?? ''))
-    .replace(/\{\{\s*message\.text\s*\}\}/g, () => messageText ?? '')
+  return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (match, key: string) => {
+    if (key === 'message.text') return messageText ?? ''
+    let lookup = key
+    const hadPrefix = key.startsWith('vars.') || key.startsWith('trigger.')
+    if (key.startsWith('vars.')) lookup = key.slice(5)
+    else if (key.startsWith('trigger.')) lookup = key.slice(8)
+    if (lookup in vars) return String(vars[lookup] ?? '')
+    if (hadPrefix) return ''
+    return match
+  })
 }
 
 function waitMs(cfg: WaitNodeConfig): number {
