@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { shouldShowInInboxList } from "@/lib/inbox/conversation-list";
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -88,6 +89,7 @@ export function ConversationList({
       const { data, error } = await supabase
         .from("conversations")
         .select("*, contact:contacts(*)")
+        .not("last_message_at", "is", null)
         .order("last_message_at", { ascending: false });
 
       if (cancelled) return;
@@ -117,7 +119,7 @@ export function ConversationList({
   }, [resyncToken]);
 
   const filtered = useMemo(() => {
-    let result = conversations;
+    let result = conversations.filter(shouldShowInInboxList);
 
     if (filter === "unread") {
       result = result.filter((c) => c.unread_count > 0);

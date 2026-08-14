@@ -15,6 +15,7 @@ import {
 import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { shouldShowInInboxList } from "@/lib/inbox/conversation-list";
 
 // Remembers the agent's show/hide choice for the desktop contact panel
 // across reloads and sessions (device-scoped, like the theme prefs).
@@ -168,6 +169,9 @@ export default function InboxPage() {
       const fetched = data as Conversation;
       setConversations((prev) => {
         const existing = prev.find((c) => c.id === fetched.id);
+        if (!existing && !shouldShowInInboxList(fetched)) {
+          return prev;
+        }
         if (existing) {
           // Already in state — keep its fields (a realtime UPDATE may
           // have landed while the fetch was in flight and patched
@@ -294,12 +298,13 @@ export default function InboxPage() {
       const conv = event.new;
 
       if (event.eventType === "INSERT") {
-        // Prepend immediately for snappy UX so the new conv shows in the
-        // list right away, then hydrate to fill in the `contact` join
-        // (realtime payloads never include joins). Skip both if we
-        // already have the row — that shouldn't happen normally, but
-        // out-of-order delivery would have us prepending a duplicate.
-        if (!knownConvIdsRef.current.has(conv.id)) {
+        // Empty conversation shells (e.g. outbound prep) must not appear
+        // in the sidebar until a message lands — the message INSERT or
+        // subsequent UPDATE will hydrate the row with a preview.
+        if (
+          !knownConvIdsRef.current.has(conv.id) &&
+          shouldShowInInboxList(conv)
+        ) {
           setConversations((prev) => {
             if (prev.some((c) => c.id === conv.id)) return prev;
             return [conv, ...prev];
@@ -493,11 +498,14 @@ export default function InboxPage() {
       }
       if (error || !data) return;
       if (autoSelectedForDeepLinkRef.current === deepLinkConvId) return;
-      setConversations((prev) => {
-        if (prev.some((c) => c.id === data.id)) return prev;
-        return [data as Conversation, ...prev];
-      });
-      applyDeepLinkConversation(data as Conversation);
+      const fetched = data as Conversation;
+      if (shouldShowInInboxList(fetched)) {
+        setConversations((prev) => {
+          if (prev.some((c) => c.id === fetched.id)) return prev;
+          return [fetched, ...prev];
+        });
+      }
+      applyDeepLinkConversation(fetched);
     })();
 
     return () => {
@@ -554,13 +562,15 @@ export default function InboxPage() {
 
   const handleConversationCreated = useCallback(
     (conv: Conversation) => {
-      setConversations((prev) => {
-        const exists = prev.some((c) => c.id === conv.id);
-        if (exists) {
-          return prev.map((c) => (c.id === conv.id ? { ...c, ...conv } : c));
-        }
-        return [conv, ...prev];
-      });
+      if (shouldShowInInboxList(conv)) {
+        setConversations((prev) => {
+          const exists = prev.some((c) => c.id === conv.id);
+          if (exists) {
+            return prev.map((c) => (c.id === conv.id ? { ...c, ...conv } : c));
+          }
+          return [conv, ...prev];
+        });
+      }
       handleSelectConversation(conv);
     },
     [handleSelectConversation],
