@@ -88,6 +88,12 @@ export default function InboxPage() {
   // back to the deep-linked conversation if they've already clicked
   // elsewhere.
   const autoSelectedForDeepLinkRef = useRef<string | null>(null);
+  /** Tracks the last `?c=` seen by handleConversationsLoaded so we can
+   *  tell a stale URL (list click before router.replace lands) from a
+   *  genuine external navigation (reminder / dashboard link). */
+  const lastSeenDeepLinkOnLoadRef = useRef<string | null>(null);
+  const conversationsForDeepLinkRef = useRef<Conversation[]>([]);
+  const activeConversationForDeepLinkRef = useRef<Conversation | null>(null);
 
   const applyDeepLinkConversation = useCallback(
     (match: Conversation) => {
@@ -134,7 +140,12 @@ export default function InboxPage() {
     const next = new Set<string>();
     for (const c of conversations) next.add(c.id);
     knownConvIdsRef.current = next;
+    conversationsForDeepLinkRef.current = conversations;
   }, [conversations]);
+
+  useEffect(() => {
+    activeConversationForDeepLinkRef.current = activeConversation;
+  }, [activeConversation]);
 
   // Pull the conversation row with its `contact` joined and merge it
   // into state. Needed because Supabase Realtime payloads only carry the
@@ -422,56 +433,78 @@ export default function InboxPage() {
       // react-hooks/set-state-in-effect. Runs once per ?c=<id> URL value
       // via the ref, so realtime refreshes of the list can't snap the
       // user back to the deep-linked thread after they've navigated.
+      if (!deepLinkConvId || loaded.length === 0) {
+        lastSeenDeepLinkOnLoadRef.current = deepLinkConvId;
+        return;
+      }
+
+      if (autoSelectedForDeepLinkRef.current === deepLinkConvId) {
+        lastSeenDeepLinkOnLoadRef.current = deepLinkConvId;
+        return;
+      }
+
+      // List click sets activeConversation + autoSelectedForDeepLinkRef
+      // immediately but ?c= updates asynchronously. A resync that lands
+      // before searchParams catch up used to read ref !== deepLinkConvId
+      // as "haven't auto-selected for this URL yet" and snap back to the
+      // stale ?c= target (usually the first row).
+      const deepLinkUnchanged =
+        deepLinkConvId === lastSeenDeepLinkOnLoadRef.current;
+      lastSeenDeepLinkOnLoadRef.current = deepLinkConvId;
+
       if (
-        deepLinkConvId &&
-        autoSelectedForDeepLinkRef.current !== deepLinkConvId &&
-        loaded.length > 0
+        deepLinkUnchanged &&
+        activeConversation &&
+        activeConversation.id !== deepLinkConvId
       ) {
-        // If the deep-linked conversation is already the active one
-        // (e.g. because the user clicked it in the list and we
-        // router.replace()'d the URL, which made the ConversationList
-        // refetch and land us back here), do NOT re-apply it. Doing so
-        // would setMessages([]) on a thread whose messages have
-        // already been loaded by MessageThread — and because
-        // conversationId didn't change, MessageThread wouldn't
-        // refetch. The thread would read "No messages yet" until a
-        // full page reload rehydrated state from scratch.
-        if (activeConversation?.id === deepLinkConvId) {
-          autoSelectedForDeepLinkRef.current = deepLinkConvId;
-          return;
-        }
-        const match = loaded.find((c) => c.id === deepLinkConvId);
-        if (match) {
-          applyDeepLinkConversation(match);
-        }
+        return;
+      }
+
+      // If the deep-linked conversation is already the active one
+      // (e.g. because the user clicked it in the list and we
+      // router.replace()'d the URL), do NOT re-apply it. Doing so
+      // would setMessages([]) on a thread whose messages have
+      // already been loaded by MessageThread — and because
+      // conversationId didn't change, MessageThread wouldn't
+      // refetch. The thread would read "No messages yet" until a
+      // full page reload rehydrated state from scratch.
+      if (activeConversation?.id === deepLinkConvId) {
+        autoSelectedForDeepLinkRef.current = deepLinkConvId;
+        return;
+      }
+
+      const match = loaded.find((c) => c.id === deepLinkConvId);
+      if (match) {
+        applyDeepLinkConversation(match);
       }
     },
-    [deepLinkConvId, activeConversation?.id, applyDeepLinkConversation]
+    [deepLinkConvId, activeConversation, applyDeepLinkConversation]
   );
 
   // Reminder bell / external links change `?c=` while the inbox is
   // already mounted. ConversationList intentionally does not refetch on
   // URL changes, so deep-link resolution must also run against the
-  // conversations already in memory.
+  // conversations already in memory. Only react to ?c= changes — list
+  // refreshes/realtime must not re-run this and clobber a manual pick
+  // while the URL is still catching up.
   useEffect(() => {
     if (!deepLinkConvId) return;
     if (autoSelectedForDeepLinkRef.current === deepLinkConvId) return;
-    if (activeConversation?.id === deepLinkConvId) {
+
+    const activeId = activeConversationForDeepLinkRef.current?.id;
+    if (activeId === deepLinkConvId) {
       autoSelectedForDeepLinkRef.current = deepLinkConvId;
       return;
     }
-    if (conversations.length === 0) return;
 
-    const match = conversations.find((c) => c.id === deepLinkConvId);
+    const convs = conversationsForDeepLinkRef.current;
+    if (convs.length === 0) return;
+
+    const match = convs.find((c) => c.id === deepLinkConvId);
     if (!match) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- deep-link handoff from URL while inbox stays mounted
     applyDeepLinkConversation(match);
-  }, [
-    deepLinkConvId,
-    conversations,
-    activeConversation?.id,
-    applyDeepLinkConversation,
-  ]);
+  }, [deepLinkConvId, applyDeepLinkConversation]);
 
   // Fallback: `?c=` targets a conversation missing from the in-memory
   // list — fetch that single row so reminder clicks still open it.

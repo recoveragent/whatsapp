@@ -76,9 +76,9 @@ function isMediaHeaderType(value: unknown): value is MediaHeaderType {
   return MEDIA_HEADER_TYPES.includes(value as MediaHeaderType);
 }
 
-/** Side-by-side variable inputs + picker only on very wide panels. */
+/** Side-by-side variable inputs + picker when the panel is wide enough. */
 const VARIABLE_FIELDS_LAYOUT =
-  "grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_min(100%,280px)]";
+  "grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_min(100%,240px)]";
 
 function variableInputClass(active: boolean) {
   return cn(
