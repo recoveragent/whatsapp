@@ -230,32 +230,30 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
         const buttons = Array.isArray((cfg as { buttons?: unknown }).buttons)
           ? ((cfg as { buttons: Array<Record<string, unknown>> }).buttons)
           : [];
-        if (buttons.length > 0) {
-          for (const btn of buttons) {
-            const replyId =
-              typeof btn.reply_id === "string" ? btn.reply_id : null;
-            const next =
-              typeof btn.next_node_key === "string" ? btn.next_node_key : null;
-            const title = typeof btn.title === "string" ? btn.title : null;
-            if (!replyId || !next || !knownKeys.has(next)) continue;
-            edges.push({
-              id: `${node.node_key}--button:${replyId}--${next}`,
-              source: node.node_key,
-              target: next,
-              sourceHandle: `button:${replyId}`,
-              label: title ?? replyId,
-            });
-          }
-        } else {
-          const next = (cfg as { next_node_key?: string }).next_node_key;
-          if (next && knownKeys.has(next)) {
-            edges.push({
-              id: `${node.node_key}--next--${next}`,
-              source: node.node_key,
-              target: next,
-              sourceHandle: "next",
-            });
-          }
+        for (const btn of buttons) {
+          const replyId =
+            typeof btn.reply_id === "string" ? btn.reply_id : null;
+          const next =
+            typeof btn.next_node_key === "string" ? btn.next_node_key : null;
+          const title = typeof btn.title === "string" ? btn.title : null;
+          if (!replyId || !next || !knownKeys.has(next)) continue;
+          edges.push({
+            id: `${node.node_key}--button:${replyId}--${next}`,
+            source: node.node_key,
+            target: next,
+            sourceHandle: `button:${replyId}`,
+            label: title ?? replyId,
+          });
+        }
+        const next = (cfg as { next_node_key?: string }).next_node_key;
+        if (next && knownKeys.has(next)) {
+          edges.push({
+            id: `${node.node_key}--next--${next}`,
+            source: node.node_key,
+            target: next,
+            sourceHandle: "next",
+            label: NEXT_STEP_LABEL,
+          });
         }
         break;
       }
@@ -344,20 +342,17 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
       const buttons = Array.isArray((cfg as { buttons?: unknown }).buttons)
         ? ((cfg as { buttons: Array<Record<string, unknown>> }).buttons)
         : [];
-      if (buttons.length > 0) {
-        slots = buttons
-          .filter((b) => typeof b.reply_id === "string" && b.reply_id)
-          .map((b) => {
-            const replyId = b.reply_id as string;
-            const title = typeof b.title === "string" ? b.title : null;
-            return {
-              id: `button:${replyId}`,
-              label: title ?? replyId,
-            };
-          });
-      } else {
-        slots = [nextStepSlot()];
-      }
+      slots = buttons
+        .filter((b) => typeof b.reply_id === "string" && b.reply_id)
+        .map((b) => {
+          const replyId = b.reply_id as string;
+          const title = typeof b.title === "string" ? b.title : null;
+          return {
+            id: `button:${replyId}`,
+            label: title ?? replyId,
+          };
+        });
+      slots.push(nextStepSlot());
       break;
     }
 

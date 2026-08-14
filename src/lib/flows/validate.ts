@@ -1178,13 +1178,14 @@ function validateNode(
             });
           }
         }
-      } else if (!cfg.next_node_key) {
+      }
+      if (!cfg.next_node_key) {
         issues.push({
           severity: "error",
           scope: "node",
           node_key: node.node_key,
           field: "next_node_key",
-          message: "Send-template must point to a next node.",
+          message: "Send-template must connect Next step to a target node.",
         });
       } else if (!knownKeys.has(cfg.next_node_key)) {
         issues.push({
@@ -1192,7 +1193,7 @@ function validateNode(
           scope: "node",
           node_key: node.node_key,
           field: "next_node_key",
-          message: `Send-template points to non-existent node "${cfg.next_node_key}".`,
+          message: `Send-template Next step points to non-existent node "${cfg.next_node_key}".`,
         });
       }
       break;

@@ -638,6 +638,62 @@ describe("unlinkNodeReferences", () => {
   });
 });
 
+describe("send_template slots and edges", () => {
+  it("always includes a Next step slot alongside quick-reply buttons", () => {
+    const slots = outgoingSlots({
+      node_key: "tpl",
+      node_type: "send_template",
+      config: {
+        template_name: "reminder",
+        buttons: [
+          { reply_id: "yes", title: "Got It", next_node_key: "yes_path" },
+        ],
+        next_node_key: "fallback",
+      },
+    });
+    expect(slots).toEqual([
+      { id: "button:yes", label: "Got It" },
+      { id: "next", label: "Next step" },
+    ]);
+  });
+
+  it("derives both button and Next step edges from send_template", () => {
+    const edges = deriveCanvasEdges(
+      nodes(
+        {
+          node_key: "tpl",
+          node_type: "send_template",
+          config: {
+            template_name: "reminder",
+            buttons: [
+              { reply_id: "yes", title: "Got It", next_node_key: "yes_path" },
+            ],
+            next_node_key: "next_path",
+          },
+        },
+        { node_key: "yes_path", node_type: "end", config: {} },
+        { node_key: "next_path", node_type: "end", config: {} },
+      ),
+    );
+    expect(edges).toContainEqual(
+      expect.objectContaining({
+        source: "tpl",
+        target: "yes_path",
+        sourceHandle: "button:yes",
+        label: "Got It",
+      }),
+    );
+    expect(edges).toContainEqual(
+      expect.objectContaining({
+        source: "tpl",
+        target: "next_path",
+        sourceHandle: "next",
+        label: "Next step",
+      }),
+    );
+  });
+});
+
 describe("Timeout branch edges", () => {
   it("derives a Timeout edge from send_buttons when configured", () => {
     const edges = deriveCanvasEdges(

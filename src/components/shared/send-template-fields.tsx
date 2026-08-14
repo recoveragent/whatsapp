@@ -747,7 +747,7 @@ export function SendTemplateFields({
             </div>
           )}
 
-          {!hasQuickReplies && allNodes.length > 0 && (
+          {allNodes.length > 0 && (
             <NextNodeRow
               value={nextNodeKey}
               allNodes={allNodes}
@@ -761,8 +761,14 @@ export function SendTemplateFields({
                   next_node_key: v,
                 })
               }
-              label="Advances to"
+              label={hasQuickReplies ? "Next step →" : "Advances to"}
             />
+          )}
+          {hasQuickReplies && (
+            <p className="text-[10px] text-muted-foreground">
+              Next step runs when the template has no quick-reply buttons. Keep
+              it connected even when wiring button branches above.
+            </p>
           )}
         </>
       )}
