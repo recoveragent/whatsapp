@@ -8,6 +8,7 @@ import {
   Plus,
   Trash2,
   Pencil,
+  Copy,
   Loader2,
   MessageSquare,
   PlayCircle,
@@ -191,6 +192,25 @@ export default function FlowsPage() {
     }
   }
 
+  async function handleDuplicate(flow: FlowRow) {
+    try {
+      const res = await fetch(`/api/flows/${flow.id}/duplicate`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error ?? `Duplicate failed: ${res.status}`);
+      }
+      const json = (await res.json()) as { flow: FlowRow };
+      setFlows((prev) => [json.flow, ...prev]);
+      toast.success("Flow duplicated.");
+    } catch (err) {
+      console.error(err);
+      const msg = err instanceof Error ? err.message : "Couldn't duplicate flow.";
+      toast.error(msg);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -236,6 +256,7 @@ export default function FlowsPage() {
               key={flow.id}
               flow={flow}
               onEdit={() => router.push(`/flows/${flow.id}`)}
+              onDuplicate={() => handleDuplicate(flow)}
               onDelete={() => handleDelete(flow)}
             />
           ))}
@@ -358,10 +379,12 @@ function EmptyState({
 function FlowCard({
   flow,
   onEdit,
+  onDuplicate,
   onDelete,
 }: {
   flow: FlowRow;
   onEdit: () => void;
+  onDuplicate: () => void;
   onDelete: () => void;
 }) {
   const triggerSummary = describeTrigger(flow);
@@ -407,6 +430,10 @@ function FlowCard({
         <Button variant="ghost" size="sm" onClick={onEdit}>
           <Pencil className="h-3.5 w-3.5" />
           Edit
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onDuplicate}>
+          <Copy className="h-3.5 w-3.5" />
+          Duplicate
         </Button>
         <Button
           variant="ghost"
