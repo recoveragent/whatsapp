@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,10 @@ import {
 import { TemplateVariablePicker } from "@/components/shared/template-variable-picker";
 import { NextNodeRow } from "@/components/flows/forms/fields";
 import type { BuilderNode } from "@/components/flows/shared";
+import {
+  MEDIA_MAX_BYTES_BY_KIND,
+  uploadAccountMedia,
+} from "@/lib/storage/upload-media";
 
 export interface SendTemplateFieldsValue {
   template_name: string;
@@ -74,6 +78,113 @@ type MediaHeaderType = (typeof MEDIA_HEADER_TYPES)[number];
 
 function isMediaHeaderType(value: unknown): value is MediaHeaderType {
   return MEDIA_HEADER_TYPES.includes(value as MediaHeaderType);
+}
+
+function isStaticMediaUrl(value: string): boolean {
+  const trimmed = value.trim();
+  return trimmed.length > 0 && !trimmed.includes("{{");
+}
+
+function HeaderMediaField({
+  mediaHeaderType,
+  value,
+  active,
+  onFocus,
+  onChange,
+}: {
+  mediaHeaderType: MediaHeaderType;
+  value: string;
+  active: boolean;
+  onFocus: () => void;
+  onChange: (url: string) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleHeaderImageFile(file: File) {
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      toast.error("Header image must be a JPEG or PNG.");
+      return;
+    }
+    if (file.size > MEDIA_MAX_BYTES_BY_KIND.image) {
+      toast.error(
+        `Image is ${(file.size / 1024 / 1024).toFixed(1)} MB — Meta's limit is 5 MB.`,
+      );
+      return;
+    }
+    setUploading(true);
+    try {
+      const { publicUrl } = await uploadAccountMedia("chat-media", file);
+      onChange(publicUrl);
+      toast.success("Image uploaded.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div>
+      {mediaHeaderType === "image" && (
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/jpeg,image/png"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleHeaderImageFile(file);
+              e.target.value = "";
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={uploading}
+            onClick={() => fileRef.current?.click()}
+          >
+            {uploading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Upload className="h-3.5 w-3.5" />
+            )}
+            Upload image
+          </Button>
+          <span className="text-[10px] text-muted-foreground">
+            JPEG or PNG, ≤5 MB — or paste a public URL / variable below
+          </span>
+        </div>
+      )}
+      <label className="mb-1 block text-xs text-muted-foreground">
+        Header media URL ({mediaHeaderType})
+      </label>
+      <Input
+        value={value}
+        onFocus={onFocus}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="{{ vars.product_image }} or https://…"
+        className={variableInputClass(active)}
+      />
+      {mediaHeaderType === "image" &&
+        isStaticMediaUrl(value) && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={value.trim()}
+            alt="Header preview"
+            className="mt-2 max-h-28 rounded-md border border-border object-contain"
+          />
+        )}
+      <p className="mt-1 text-[10px] text-muted-foreground">
+        Public URL sent as the template header at send time. Upload a JPEG/PNG
+        for a static image, map{" "}
+        <span className="font-mono">Product image</span> from trigger attributes
+        for Shopify orders, or paste any public HTTPS link.
+      </p>
+    </div>
+  );
 }
 
 /** Side-by-side variable inputs + picker when the panel is wide enough. */
@@ -612,32 +723,19 @@ export function SendTemplateFields({
                 ))}
 
                 {mediaHeaderType && (
-                  <div>
-                    <label className="mb-1 block text-xs text-muted-foreground">
-                      Header media URL ({mediaHeaderType})
-                    </label>
-                    <Input
-                      value={variables.header_media ?? ""}
-                      onFocus={() => setActiveField("header_media")}
-                      onChange={(e) =>
-                        onChange({
-                          template_name: templateName,
-                          language: lang,
-                          variables: {
-                            ...variables,
-                            header_media: e.target.value,
-                          },
-                        })
-                      }
-                      placeholder="{{ vars.product_image }} or https://…"
-                      className={variableInputClass(activeField === "header_media")}
-                    />
-                    <p className="mt-1 text-[10px] text-muted-foreground">
-                      Public image URL sent as the template header. Map{" "}
-                      <span className="font-mono">Product image</span> from
-                      trigger attributes for Shopify orders.
-                    </p>
-                  </div>
+                  <HeaderMediaField
+                    mediaHeaderType={mediaHeaderType}
+                    value={variables.header_media ?? ""}
+                    active={activeField === "header_media"}
+                    onFocus={() => setActiveField("header_media")}
+                    onChange={(header_media) =>
+                      onChange({
+                        template_name: templateName,
+                        language: lang,
+                        variables: { ...variables, header_media },
+                      })
+                    }
+                  />
                 )}
 
                 {selectedTemplate.header_type === "text" &&
@@ -709,30 +807,19 @@ export function SendTemplateFields({
           {placeholders.length === 0 && mediaHeaderType && (
             <div className={VARIABLE_FIELDS_LAYOUT}>
               <div className="min-w-0">
-                <label className="mb-1 block text-xs text-muted-foreground">
-                  Header media URL ({mediaHeaderType})
-                </label>
-                <Input
+                <HeaderMediaField
+                  mediaHeaderType={mediaHeaderType}
                   value={variables.header_media ?? ""}
+                  active={activeField === "header_media"}
                   onFocus={() => setActiveField("header_media")}
-                  onChange={(e) =>
+                  onChange={(header_media) =>
                     onChange({
                       template_name: templateName,
                       language: lang,
-                      variables: {
-                        ...variables,
-                        header_media: e.target.value,
-                      },
+                      variables: { ...variables, header_media },
                     })
                   }
-                  placeholder="{{ vars.product_image }} or https://…"
-                  className={variableInputClass(activeField === "header_media")}
                 />
-                <p className="mt-1 text-[10px] text-muted-foreground">
-                  Public image URL sent as the template header. Map{" "}
-                  <span className="font-mono">Product image</span> from trigger
-                  attributes for Shopify orders.
-                </p>
               </div>
               {variableGroups.length > 0 && (
                 <TemplateVariablePicker
