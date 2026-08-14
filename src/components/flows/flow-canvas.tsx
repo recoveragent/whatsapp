@@ -13,8 +13,8 @@
  *   - Renders edges between nodes, labeled per slot (button title,
  *     "true" / "false", list row title) so a branching flow reads
  *     as a real decision tree.
- *   - Click a node → side-sheet opens with the same per-node form
- *     the list view uses, plus "Set as entry" / "Duplicate" /
+ *   - Click a node → side-sheet (centered dialog for Send template)
+ *     opens with the same per-node form the list view uses, plus "Set as entry" / "Duplicate" /
  *     "Delete". Ctrl/Cmd+D duplicates the selected node.
  *   - Drag from a source handle on one node to a target handle on
  *     another → wires that slot's `next_node_key`. Per-slot handles
@@ -63,6 +63,13 @@ import { Copy, Plus, Trash2, Zap } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Sheet,
   SheetContent,
@@ -768,6 +775,86 @@ function TriggerEditSheet({
 // identically to the list view's per-card editor.
 // ============================================================
 
+function NodeEditPanelBody({
+  node,
+  isEntry,
+  allNodes,
+  triggerType,
+  triggerConfig,
+  onUpdateConfig,
+  onDuplicate,
+  onDelete,
+  onSetEntry,
+}: {
+  node: BuilderNode;
+  isEntry: boolean;
+  allNodes: BuilderNode[];
+  triggerType: import("./flow-editor-state").BuilderState["trigger_type"];
+  triggerConfig: import("./flow-editor-state").BuilderState["trigger_config"];
+  onUpdateConfig: (patch: Record<string, unknown>) => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  onSetEntry: () => void;
+}) {
+  const meta = NODE_META[node.node_type];
+  const Icon = meta.icon;
+
+  return (
+    <>
+      <div className="border-b border-border px-5 py-4">
+        <div className="flex items-center gap-2 text-popover-foreground">
+          <Icon className={cn("h-4 w-4 shrink-0", meta.color)} />
+          <span className="font-heading text-base font-medium">{meta.label}</span>
+          {isEntry && (
+            <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+              Entry
+            </span>
+          )}
+        </div>
+        <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+          {node.node_key}
+        </p>
+      </div>
+
+      <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
+        <NodeConfigForm
+          node={node}
+          allNodes={allNodes}
+          showAdvanced={false}
+          onUpdateConfig={onUpdateConfig}
+          triggerType={triggerType}
+          triggerConfig={triggerConfig}
+        />
+      </div>
+
+      <div className="flex flex-col gap-2 border-t border-border px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+        {!isEntry ? (
+          <Button variant="ghost" size="sm" onClick={onSetEntry}>
+            Set as entry
+          </Button>
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={onDuplicate}>
+            <Copy className="h-3.5 w-3.5" />
+            Duplicate
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDelete}
+            className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete node
+          </Button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function NodeEditSheet({
   node,
   isEntry,
@@ -791,9 +878,39 @@ function NodeEditSheet({
   onDelete: () => void;
   onSetEntry: () => void;
 }) {
-  // Sheet is controlled — opens when a node is selected, closes via
-  // Esc / overlay / close button (all delegated to onClose).
   const open = node !== null;
+  const isTemplateDialog = node?.node_type === "send_template";
+
+  if (isTemplateDialog && node) {
+    return (
+      <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+        <DialogContent
+          showCloseButton
+          className={cn(
+            "flex max-h-[90vh] w-[min(92vw,960px)] max-w-[min(92vw,960px)] flex-col gap-0 overflow-hidden p-0",
+            "sm:max-w-[min(92vw,960px)]",
+          )}
+        >
+          <DialogHeader className="sr-only">
+            <DialogTitle>{NODE_META.send_template.label}</DialogTitle>
+            <DialogDescription>{node.node_key}</DialogDescription>
+          </DialogHeader>
+          <NodeEditPanelBody
+            node={node}
+            isEntry={isEntry}
+            allNodes={allNodes}
+            triggerType={triggerType}
+            triggerConfig={triggerConfig}
+            onUpdateConfig={onUpdateConfig}
+            onDuplicate={onDuplicate}
+            onDelete={onDelete}
+            onSetEntry={onSetEntry}
+          />
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   if (!node) {
     return (
       <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
@@ -801,18 +918,14 @@ function NodeEditSheet({
       </Sheet>
     );
   }
+
   const meta = NODE_META[node.node_type];
   const Icon = meta.icon;
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent
         side="right"
-        className={cn(
-          "flex w-full flex-col gap-0 border-l border-border bg-popover p-0",
-          node.node_type === "send_template"
-            ? "w-[40vw] max-w-[40vw] sm:max-w-[40vw]"
-            : "sm:max-w-md",
-        )}
+        className="flex w-full flex-col gap-0 border-l border-border bg-popover p-0 sm:max-w-md"
       >
         <SheetHeader className="border-b border-border px-5 py-4">
           <SheetTitle className="flex items-center gap-2 text-popover-foreground">
