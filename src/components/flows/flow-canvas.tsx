@@ -98,6 +98,7 @@ import {
 } from "./trigger-panel";
 import { FLOW_TRIGGER_LABELS } from "@/lib/flows/trigger-types";
 import { parseExitConfig, summarizeExitConfig } from "@/lib/flows/exit-conditions";
+import { NEXT_STEP_LABEL } from "@/lib/flows/reply-timeout";
 
 // React-Flow node `data` payload — the bits our custom renderer needs.
 interface NodeData extends Record<string, unknown> {
@@ -131,11 +132,6 @@ function FlowNodeCard({ data, selected }: NodeProps) {
   // incoming edges (including terminal handoff / end — they're the
   // common targets).
   const hasTarget = node.node_type !== "start";
-  // Single-slot nodes get a single source handle floated on the right
-  // edge of the card. Multi-slot nodes (condition, send_buttons,
-  // send_list) render slot rows inline so each handle visually sits
-  // next to the slot it represents.
-  const isMultiSlot = slots.length > 1;
   return (
     <div
       className={cn(
@@ -177,7 +173,7 @@ function FlowNodeCard({ data, selected }: NodeProps) {
         </div>
       )}
 
-      {isMultiSlot && (
+      {slots.length > 0 && (
         <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2">
           {slots.map((slot) => (
             <div
@@ -200,15 +196,6 @@ function FlowNodeCard({ data, selected }: NodeProps) {
             </div>
           ))}
         </div>
-      )}
-
-      {!isMultiSlot && slots.length === 1 && (
-        <Handle
-          type="source"
-          id={slots[0].id}
-          position={Position.Right}
-          className="!h-2.5 !w-2.5 !border-border !bg-muted"
-        />
       )}
     </div>
   );
@@ -240,12 +227,15 @@ function TriggerNodeCard({ data, selected }: NodeProps) {
       </div>
       <div className="mt-1 truncate text-sm font-medium text-foreground">{label}</div>
       <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{summary}</div>
-      <Handle
-        type="source"
-        id="next"
-        position={Position.Right}
-        className="!h-2.5 !w-2.5 !border-border !bg-muted"
-      />
+      <div className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2 text-[11px] text-muted-foreground">
+        <span>{NEXT_STEP_LABEL}</span>
+        <Handle
+          type="source"
+          id="next"
+          position={Position.Right}
+          className="!relative !right-auto !top-auto !h-2.5 !w-2.5 !translate-x-[12px] !transform-none !border-border !bg-muted"
+        />
+      </div>
     </div>
   );
 }
