@@ -7,9 +7,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-sans: "Cabinet Grotesk", sans-serif;
+  --font-mono: "Cabinet Grotesk", sans-serif;
+  --font-heading: "Cabinet Grotesk", sans-serif;
+  --font-cabinet: "Cabinet Grotesk", sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -26,7 +27,11 @@
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
+  --color-border-lit: var(--border-lit);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warn: var(--warn);
+  --color-warn-foreground: var(--warn-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -39,11 +44,9 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  /* Secondary card surface (tile / hover backgrounds) and the accent
-   * extras the Settings redesign leans on. The raw --primary-* vars
-   * already exist per-accent below; these mappings expose them (and
-   * --card-2) as Tailwind utilities: bg-card-2, bg-primary-soft,
-   * bg-primary-soft-2, hover:bg-primary-hover. */
+  --color-surface: var(--surface);
+  --color-dim: var(--dim);
+  /* Kept so existing utilities (bg-card-2, bg-primary-soft, …) keep working. */
   --color-card-2: var(--card-2);
   --color-primary-hover: var(--primary-hover);
   --color-primary-soft: var(--primary-soft);
@@ -58,173 +61,207 @@
 }
 
 /* ============================================================
- * THEMING — two orthogonal dimensions
+ * RecoverAgent visual language — light cool-gray ops console.
  *
- *   1. MODE   (light / dark)  → neutral surfaces. Selected with
- *      `document.documentElement.dataset.mode`. Defaults to dark.
- *   2. ACCENT (violet / …)    → the primary color only. Selected
- *      with `document.documentElement.dataset.theme`.
- *
- * The two compose: any accent works in either mode. Neutral
- * tokens (background / card / border / muted / sidebar surfaces /
- * neutral charts / radius) live in the MODE blocks below; accent
- * tokens (--primary*, --ring, --chart-1, --sidebar-primary*,
- * --sidebar-ring) live in the ACCENT blocks. They set disjoint
- * variables, so cascade order between them doesn't matter.
- *
- * `:root` carries the dark-mode + violet defaults so a visitor
- * renders correctly before JS runs; the boot script in
- * layout.tsx replays the saved mode + accent before first paint.
- *
- * The three `--primary-*` extras (hover / soft / soft-2) feed
- * hovered primary buttons and tinted-primary surfaces (sidebar
- * active pill, validation badges).
- *
- * Token shapes come straight from the design handoff at
- * project/Color Themes.html — change one, change the other.
+ * Surfaces live on MODE (light default / optional dark).
+ * Brand green lives on ACCENT (emerald is the product default).
+ * Accent picker still works; light + emerald is the shipped look.
  * ============================================================ */
 
-/* ---- MODE: neutral surfaces ---- */
-
 :root,
-html[data-mode="dark"] {
-  --background: oklch(0.13 0.01 260);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.18 0.01 260);
-  --card-2: oklch(0.205 0.01 260);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.18 0.01 260);
-  --popover-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.22 0.01 260);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.22 0.01 260);
-  --muted-foreground: oklch(0.65 0.01 260);
-  --accent: oklch(0.22 0.01 260);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.28 0.01 260);
-  --input: oklch(0.28 0.01 260);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.16 0.01 260);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.22 0.01 260);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.28 0.01 260);
-}
-
 html[data-mode="light"] {
-  --background: oklch(0.99 0.002 260);
-  --foreground: oklch(0.21 0.01 260);
-  --card: oklch(1 0 0);
-  --card-2: oklch(0.985 0.002 260);
-  --card-foreground: oklch(0.21 0.01 260);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.01 260);
-  --secondary: oklch(0.967 0.003 260);
-  --secondary-foreground: oklch(0.25 0.01 260);
-  --muted: oklch(0.967 0.003 260);
-  --muted-foreground: oklch(0.52 0.015 260);
-  --accent: oklch(0.96 0.004 260);
-  --accent-foreground: oklch(0.25 0.01 260);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0.004 260);
-  --input: oklch(0.922 0.004 260);
-  --chart-2: oklch(0.6 0.1 260);
-  --chart-3: oklch(0.7 0.06 260);
-  --chart-4: oklch(0.8 0.04 260);
-  --chart-5: oklch(0.87 0.03 260);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0.002 260);
-  --sidebar-foreground: oklch(0.21 0.01 260);
-  --sidebar-accent: oklch(0.96 0.004 260);
-  --sidebar-accent-foreground: oklch(0.25 0.01 260);
-  --sidebar-border: oklch(0.922 0.004 260);
+  --background: hsl(220 20% 97%);
+  --foreground: hsl(222 18% 12%);
+  --card: hsl(0 0% 100%);
+  --card-2: hsl(220 14% 95%);
+  --card-foreground: hsl(222 18% 12%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(222 18% 12%);
+  --muted: hsl(220 14% 90%);
+  --muted-foreground: hsl(220 10% 46%);
+  --accent: hsl(220 14% 94%);
+  --accent-foreground: hsl(222 18% 12%);
+  --destructive: hsl(11 100% 50%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --warn: hsl(37 100% 50%);
+  --warn-foreground: hsl(222 18% 12%);
+  --border: hsl(220 14% 88%);
+  --border-lit: hsl(220 14% 82%);
+  --input: hsl(220 14% 88%);
+  --surface: hsl(220 14% 95%);
+  --dim: hsl(220 14% 82%);
+  --chart-2: hsl(213 94% 68%);
+  --chart-3: hsl(220 9% 46%);
+  --chart-4: hsl(37 100% 50%);
+  --chart-5: hsl(11 100% 50%);
+  --radius: 0.5rem;
+  --sidebar: hsl(220 14% 95%);
+  --sidebar-foreground: hsl(222 18% 12%);
+  --sidebar-accent: hsl(220 14% 94%);
+  --sidebar-accent-foreground: hsl(222 18% 12%);
+  --sidebar-border: hsl(220 14% 88%);
 }
 
-/* ---- ACCENT: primary color ---- */
+html[data-mode="dark"] {
+  --background: hsl(222 18% 8%);
+  --foreground: hsl(220 20% 97%);
+  --card: hsl(222 16% 12%);
+  --card-2: hsl(222 16% 15%);
+  --card-foreground: hsl(220 20% 97%);
+  --popover: hsl(222 16% 12%);
+  --popover-foreground: hsl(220 20% 97%);
+  --muted: hsl(220 14% 18%);
+  --muted-foreground: hsl(220 10% 64%);
+  --accent: hsl(220 14% 16%);
+  --accent-foreground: hsl(220 20% 97%);
+  --destructive: hsl(11 100% 50%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --warn: hsl(37 100% 50%);
+  --warn-foreground: hsl(222 18% 12%);
+  --border: hsl(220 14% 22%);
+  --border-lit: hsl(220 14% 30%);
+  --input: hsl(220 14% 22%);
+  --surface: hsl(222 16% 10%);
+  --dim: hsl(220 14% 32%);
+  --chart-2: hsl(213 94% 68%);
+  --chart-3: hsl(220 9% 64%);
+  --chart-4: hsl(37 100% 50%);
+  --chart-5: hsl(11 100% 50%);
+  --radius: 0.5rem;
+  --sidebar: hsl(222 16% 10%);
+  --sidebar-foreground: hsl(220 20% 97%);
+  --sidebar-accent: hsl(220 14% 16%);
+  --sidebar-accent-foreground: hsl(220 20% 97%);
+  --sidebar-border: hsl(220 14% 22%);
+}
 
 :root,
-html[data-theme="violet"] {
-  --primary: oklch(0.526 0.247 293);
-  --primary-foreground: oklch(0.985 0 0);
-  --primary-hover: oklch(0.6 0.22 293);
-  --primary-soft: oklch(0.526 0.247 293 / 0.12);
-  --primary-soft-2: oklch(0.526 0.247 293 / 0.2);
-  --ring: oklch(0.526 0.247 293);
-  --chart-1: oklch(0.526 0.247 293);
-  --sidebar-primary: oklch(0.526 0.247 293);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-ring: oklch(0.526 0.247 293);
+html[data-theme="emerald"] {
+  --primary: hsl(152 100% 32%);
+  --primary-foreground: hsl(0 0% 100%);
+  --primary-hover: hsl(152 100% 28%);
+  --primary-soft: hsl(152 100% 32% / 0.15);
+  --primary-soft-2: hsl(152 100% 32% / 0.25);
+  --secondary: hsl(215 100% 50%);
+  --secondary-foreground: hsl(0 0% 100%);
+  --ring: hsl(152 100% 32%);
+  --chart-1: hsl(152 100% 32%);
+  --sidebar-primary: hsl(152 100% 32%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-ring: hsl(152 100% 32%);
 }
 
-html[data-theme="emerald"] {
-  --primary: oklch(0.62 0.16 162);
-  --primary-foreground: oklch(0.16 0.02 162);
-  --primary-hover: oklch(0.68 0.15 162);
-  --primary-soft: oklch(0.62 0.16 162 / 0.12);
-  --primary-soft-2: oklch(0.62 0.16 162 / 0.22);
-  --ring: oklch(0.62 0.16 162);
-  --chart-1: oklch(0.62 0.16 162);
-  --chart-2: oklch(0.7 0.14 195);
-  --sidebar-primary: oklch(0.62 0.16 162);
-  --sidebar-primary-foreground: oklch(0.16 0.02 162);
-  --sidebar-ring: oklch(0.62 0.16 162);
+html[data-theme="violet"] {
+  --primary: hsl(263 70% 50%);
+  --primary-foreground: hsl(0 0% 100%);
+  --primary-hover: hsl(263 70% 44%);
+  --primary-soft: hsl(263 70% 50% / 0.15);
+  --primary-soft-2: hsl(263 70% 50% / 0.25);
+  --secondary: hsl(215 100% 50%);
+  --secondary-foreground: hsl(0 0% 100%);
+  --ring: hsl(263 70% 50%);
+  --chart-1: hsl(263 70% 50%);
+  --sidebar-primary: hsl(263 70% 50%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-ring: hsl(263 70% 50%);
 }
 
 html[data-theme="cobalt"] {
-  --primary: oklch(0.585 0.2 254);
-  --primary-foreground: oklch(0.985 0 0);
-  --primary-hover: oklch(0.66 0.18 254);
-  --primary-soft: oklch(0.585 0.2 254 / 0.12);
-  --primary-soft-2: oklch(0.585 0.2 254 / 0.22);
-  --ring: oklch(0.585 0.2 254);
-  --chart-1: oklch(0.585 0.2 254);
-  --chart-2: oklch(0.7 0.15 220);
-  --sidebar-primary: oklch(0.585 0.2 254);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-ring: oklch(0.585 0.2 254);
+  --primary: hsl(215 100% 50%);
+  --primary-foreground: hsl(0 0% 100%);
+  --primary-hover: hsl(215 100% 44%);
+  --primary-soft: hsl(215 100% 50% / 0.15);
+  --primary-soft-2: hsl(215 100% 50% / 0.25);
+  --secondary: hsl(152 100% 32%);
+  --secondary-foreground: hsl(0 0% 100%);
+  --ring: hsl(215 100% 50%);
+  --chart-1: hsl(215 100% 50%);
+  --sidebar-primary: hsl(215 100% 50%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-ring: hsl(215 100% 50%);
 }
 
 html[data-theme="amber"] {
-  --primary: oklch(0.745 0.16 65);
-  --primary-foreground: oklch(0.18 0.03 65);
-  --primary-hover: oklch(0.8 0.15 65);
-  --primary-soft: oklch(0.745 0.16 65 / 0.12);
-  --primary-soft-2: oklch(0.745 0.16 65 / 0.22);
-  --ring: oklch(0.745 0.16 65);
-  --chart-1: oklch(0.745 0.16 65);
-  --chart-2: oklch(0.7 0.15 35);
-  --sidebar-primary: oklch(0.745 0.16 65);
-  --sidebar-primary-foreground: oklch(0.18 0.03 65);
-  --sidebar-ring: oklch(0.745 0.16 65);
+  --primary: hsl(37 100% 46%);
+  --primary-foreground: hsl(222 18% 12%);
+  --primary-hover: hsl(37 100% 40%);
+  --primary-soft: hsl(37 100% 46% / 0.15);
+  --primary-soft-2: hsl(37 100% 46% / 0.25);
+  --secondary: hsl(215 100% 50%);
+  --secondary-foreground: hsl(0 0% 100%);
+  --ring: hsl(37 100% 46%);
+  --chart-1: hsl(37 100% 46%);
+  --sidebar-primary: hsl(37 100% 46%);
+  --sidebar-primary-foreground: hsl(222 18% 12%);
+  --sidebar-ring: hsl(37 100% 46%);
 }
 
 html[data-theme="rose"] {
-  --primary: oklch(0.645 0.22 16);
-  --primary-foreground: oklch(0.985 0 0);
-  --primary-hover: oklch(0.71 0.2 16);
-  --primary-soft: oklch(0.645 0.22 16 / 0.12);
-  --primary-soft-2: oklch(0.645 0.22 16 / 0.22);
-  --ring: oklch(0.645 0.22 16);
-  --chart-1: oklch(0.645 0.22 16);
-  --chart-2: oklch(0.7 0.18 340);
-  --sidebar-primary: oklch(0.645 0.22 16);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-ring: oklch(0.645 0.22 16);
+  --primary: hsl(11 100% 50%);
+  --primary-foreground: hsl(0 0% 100%);
+  --primary-hover: hsl(11 100% 44%);
+  --primary-soft: hsl(11 100% 50% / 0.15);
+  --primary-soft-2: hsl(11 100% 50% / 0.25);
+  --secondary: hsl(215 100% 50%);
+  --secondary-foreground: hsl(0 0% 100%);
+  --ring: hsl(11 100% 50%);
+  --chart-1: hsl(11 100% 50%);
+  --sidebar-primary: hsl(11 100% 50%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-ring: hsl(11 100% 50%);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
   html {
     @apply font-sans;
   }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "Cabinet Grotesk", sans-serif;
+  }
+  .font-cabinet,
+  .font-mono-dm,
+  .font-mono {
+    font-family: "Cabinet Grotesk", sans-serif;
+  }
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@layer utilities {
+  .animate-blink {
+    animation: blink 1.5s ease-in-out infinite;
+  }
+  .font-cabinet,
+  .font-mono-dm {
+    font-family: "Cabinet Grotesk", sans-serif;
+  }
+}
+
+/* 4px cool-gray scrollbar — RecoverAgent chrome */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dim) transparent;
+}
+*::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--dim);
+  border-radius: 2px;
 }

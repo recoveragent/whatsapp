@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { useCan } from "@/hooks/use-can";
 import { useAuth } from "@/hooks/use-auth";
 import { GatedButton } from "@/components/ui/gated-button";
+import { PageHeader } from "@/components/layout/page-header";
 import { useRouter } from "next/navigation";
 
 // Pipeline creation is admin-class (settings-tier write under
@@ -336,6 +337,11 @@ export default function PipelinesPage() {
 
   return (
     <div className="space-y-6">
+      <PageHeader
+        eyebrow="Workspace"
+        title="Pipelines"
+        subtitle="Tap a stage to drill into deals. Cards expand in place."
+      />
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">

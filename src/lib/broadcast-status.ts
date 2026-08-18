@@ -1,14 +1,8 @@
 /**
  * Shared status badge config for broadcasts + recipients.
  *
- * Previously `statusConfig` was defined inline in both
- * /broadcasts/page.tsx and /broadcasts/[id]/page.tsx with slight
- * drift risk. One source of truth now.
- *
- * Badge shape: bg-*-500/10 + text-*-400 + border-*-500/20. The
- * translucent fills sit fine on both light and dark surfaces; neutral
- * statuses use text-muted-foreground so the label stays legible in
- * light mode (a solid slate-400 would be too faint on white).
+ * Badge shape is the RecoverAgent tint recipe:
+ *   bg-{color}/15  text-{color}  border border-{color}/25
  */
 
 import type { BroadcastStatus, RecipientStatus } from "@/types";
@@ -26,51 +20,51 @@ export interface StatusDisplay {
 export const broadcastStatusConfig: Record<BroadcastStatus, StatusDisplay> = {
   draft: {
     label: "Draft",
-    classes: "bg-slate-500/10 text-muted-foreground border-slate-500/20",
+    classes: "border-border bg-accent text-muted-foreground",
   },
   scheduled: {
     label: "Scheduled",
-    classes: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+    classes: "border-secondary/25 bg-secondary/15 text-secondary",
   },
   sending: {
     label: "Sending",
-    classes: "bg-yellow-500/10 text-yellow-400 border-yellow-500/20",
+    classes: "border-amber-500/30 bg-amber-500/15 text-amber-700",
     pulse: true,
   },
   sent: {
     label: "Sent",
-    classes: "bg-primary/10 text-primary border-primary/20",
+    classes: "border-primary/25 bg-primary/15 text-primary",
   },
   failed: {
     label: "Failed",
-    classes: "bg-red-500/10 text-red-400 border-red-500/20",
+    classes: "border-destructive/25 bg-destructive/15 text-destructive",
   },
 };
 
 export const recipientStatusConfig: Record<RecipientStatus, StatusDisplay> = {
   pending: {
     label: "Pending",
-    classes: "bg-slate-500/10 text-muted-foreground border-slate-500/20",
+    classes: "border-border bg-accent text-muted-foreground",
   },
   sent: {
     label: "Sent",
-    classes: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+    classes: "border-secondary/25 bg-secondary/15 text-secondary",
   },
   delivered: {
     label: "Delivered",
-    classes: "bg-primary/10 text-primary border-primary/20",
+    classes: "border-primary/25 bg-primary/15 text-primary",
   },
   read: {
     label: "Read",
-    classes: "bg-primary/10 text-primary border-primary/20",
+    classes: "border-primary/25 bg-primary/15 text-primary",
   },
   replied: {
     label: "Replied",
-    classes: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+    classes: "border-purple-400/30 bg-purple-400/15 text-purple-700",
   },
   failed: {
     label: "Failed",
-    classes: "bg-red-500/10 text-red-400 border-red-500/20",
+    classes: "border-destructive/25 bg-destructive/15 text-destructive",
   },
 };
 

@@ -685,7 +685,7 @@ function FlowCanvasInner() {
             pannable
             zoomable
             nodeColor="var(--muted-foreground)"
-            maskColor="color-mix(in oklch, var(--background) 70%, transparent)"
+            maskColor="color-mix(in srgb, var(--background) 70%, transparent)"
             className="!border !border-border !bg-card"
           />
           <Panel position="bottom-center" className="!bottom-4">

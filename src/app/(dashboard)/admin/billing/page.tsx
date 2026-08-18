@@ -1,17 +1,17 @@
 'use client';
 
 import { PaymentConfigPanel } from '@/components/admin/payment-config-panel';
+import { PageHeader } from '@/components/layout/page-header';
 
 export default function AdminBillingPage() {
   return (
     <div>
-      <h1 className="text-2xl font-bold tracking-tight text-foreground">
-        Payment gateway
-      </h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Configure Razorpay for Recover Agent. Brands recharge their wallets
-        through this gateway with GST applied automatically.
-      </p>
+      <PageHeader
+        size="admin"
+        eyebrow="Admin"
+        title="Payment gateway"
+        subtitle="Configure Razorpay for Recover Agent. Brands recharge their wallets through this gateway with GST applied automatically."
+      />
       <div className="mt-6">
         <PaymentConfigPanel />
       </div>

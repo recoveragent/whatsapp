@@ -44,6 +44,7 @@ export function ThemedToaster() {
           background: "var(--popover)",
           border: "1px solid var(--border)",
           color: "var(--popover-foreground)",
+          boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)",
         },
       }}
     />

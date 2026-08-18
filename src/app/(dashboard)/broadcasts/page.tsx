@@ -17,6 +17,7 @@ import { Radio, Plus, Loader2 } from 'lucide-react';
 import { useCan } from '@/hooks/use-can';
 import { GatedButton } from '@/components/ui/gated-button';
 import { getBroadcastStatus } from '@/lib/broadcast-status';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * Poll cadence while any broadcast is sending. Kept modest so we don't
@@ -177,23 +178,21 @@ export default function BroadcastsPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Broadcasts</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Send bulk messages to your contacts using approved templates.
-          </p>
-        </div>
-        <GatedButton
-          canAct={canCreate}
-          gateReason="create broadcasts"
-          onClick={() => router.push('/broadcasts/new')}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4" />
-          New Broadcast
-        </GatedButton>
-      </div>
+      <PageHeader
+        eyebrow="Automation"
+        title="Broadcasts"
+        subtitle="Send bulk messages to your contacts using approved templates."
+        actions={
+          <GatedButton
+            canAct={canCreate}
+            gateReason="create broadcasts"
+            onClick={() => router.push('/broadcasts/new')}
+          >
+            <Plus className="h-4 w-4" />
+            New Broadcast
+          </GatedButton>
+        }
+      />
 
       {broadcasts.length === 0 ? (
         <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-border bg-card">

@@ -58,7 +58,7 @@ export function BrandLogo({
 export function BrandLogoMark({ className }: { className?: string }) {
   return (
     <div className={cn('flex justify-center', className)}>
-      <BrandLogo height={44} priority />
+      <BrandLogo height={48} priority />
     </div>
   );
 }

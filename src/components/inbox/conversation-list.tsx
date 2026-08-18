@@ -160,11 +160,13 @@ export function ConversationList({
     // w-full on mobile so the list occupies the whole viewport when it's
     // the single pane showing; fixed 320px on desktop where it shares the
     // row with the thread + contact sidebar.
-    <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-80">
+    <div className="flex h-full w-full flex-col border-r border-border bg-surface lg:w-80">
       {/* Search + Filter */}
       <div className="space-y-2 border-b border-border p-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-foreground">Inbox</h2>
+          <h2 className="font-cabinet text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+            Inbox
+          </h2>
           {onConversationCreated && (
             <NewMessageDialog onCreated={onConversationCreated} />
           )}
@@ -175,7 +177,7 @@ export function ConversationList({
             value={search}
             onChange={handleSearchChange}
             placeholder="Search conversations..."
-            className="border-border bg-muted pl-9 text-sm text-foreground placeholder-muted-foreground focus:border-primary/50"
+            className="rounded-[10px] border-border bg-accent pl-9 text-sm text-foreground placeholder-muted-foreground focus-visible:border-border-lit focus-visible:ring-0"
           />
         </div>
 
@@ -267,8 +269,8 @@ function ConversationItem({
     <button
       onClick={handleClick}
       className={cn(
-        "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50",
-        isActive && "border-l-2 border-primary bg-muted/70"
+        "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-accent/50",
+        isActive && "border-l-[3px] border-primary bg-primary/5"
       )}
     >
       {/* Avatar */}
@@ -298,7 +300,7 @@ function ConversationItem({
           </p>
           <div className="flex shrink-0 items-center gap-1.5">
             {conversation.unread_count > 0 && (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
                 {conversation.unread_count}
               </span>
             )}

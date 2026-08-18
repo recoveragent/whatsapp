@@ -7,7 +7,6 @@ import { Bell, Loader2 } from 'lucide-react'
 
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
-import { Badge } from '@/components/ui/badge'
 import {
   Popover,
   PopoverContent,
@@ -118,27 +117,24 @@ export function ReminderNotifications() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        className="relative flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className="relative flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         aria-label={
           count > 0
             ? `Follow-up reminders, ${count} due`
             : 'Follow-up reminders'
         }
       >
-        <Bell className="h-5 w-5" />
+        <Bell className="h-[18px] w-[18px]" />
         {count > 0 ? (
-          <Badge
-            variant="default"
-            className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center px-1 text-[10px] leading-none"
-          >
-            {count > 99 ? '99+' : count}
-          </Badge>
+          <span className="absolute -top-0.5 -right-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
+            {count > 9 ? '9+' : count}
+          </span>
         ) : null}
       </PopoverTrigger>
       <PopoverContent
         align="end"
         sideOffset={6}
-        className="w-[min(100vw-2rem,22rem)] gap-0 p-0"
+        className="w-[min(100vw-2rem,22.5rem)] gap-0 rounded-xl p-0 shadow-xl"
       >
         <div className="border-b border-border px-3 py-2">
           <p className="text-sm font-medium text-foreground">Follow-up reminders</p>
@@ -153,7 +149,7 @@ export function ReminderNotifications() {
             className={cn(
               'flex-1 px-3 py-2 text-xs font-medium transition-colors',
               tab === 'due'
-                ? 'border-b-2 border-primary text-foreground'
+                ? 'border-b-2 border-primary text-primary'
                 : 'text-muted-foreground hover:text-foreground',
             )}
             onClick={() => setTab('due')}
@@ -165,7 +161,7 @@ export function ReminderNotifications() {
             className={cn(
               'flex-1 px-3 py-2 text-xs font-medium transition-colors',
               tab === 'history'
-                ? 'border-b-2 border-primary text-foreground'
+                ? 'border-b-2 border-primary text-primary'
                 : 'text-muted-foreground hover:text-foreground',
             )}
             onClick={() => setTab('history')}

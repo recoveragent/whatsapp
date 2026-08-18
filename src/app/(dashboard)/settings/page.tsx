@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
+import { PageHeader } from '@/components/layout/page-header';
 import { SettingsRail } from '@/components/settings/settings-rail';
 import { SettingsOverview } from '@/components/settings/settings-overview';
 import { ProfileForm } from '@/components/settings/profile-form';
@@ -74,15 +75,12 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          Settings
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Everything in one place — your account and your workspace. Pick a
-          section to manage it.
-        </p>
-      </div>
+      <PageHeader
+        size="admin"
+        eyebrow="Admin"
+        title="Settings"
+        subtitle="Everything in one place — your account and your workspace. Pick a section to manage it."
+      />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[236px_minmax(0,1fr)] lg:items-start">
         {/* z-10 keeps the sticky rail above panel stacking contexts so

@@ -325,8 +325,8 @@ export function SettingsOverview({
               type="button"
               onClick={() => onSelect(section)}
               className={cn(
-                'group flex items-start gap-3.5 rounded-xl border border-border bg-card p-4 text-left transition-colors',
-                'hover:border-primary-soft-2 hover:bg-card-2',
+                'group flex items-start gap-3.5 rounded-lg border border-border bg-card p-4 text-left transition-all duration-200',
+                'hover:border-border-lit',
               )}
             >
               <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary">

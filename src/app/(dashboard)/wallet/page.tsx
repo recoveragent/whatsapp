@@ -1,14 +1,17 @@
 'use client';
 
 import { WalletPanel } from '@/components/wallet/wallet-panel';
+import { PageHeader } from '@/components/layout/page-header';
 
 export default function WalletPage() {
   return (
     <div>
-      <h1 className="text-2xl font-bold tracking-tight text-foreground">Wallet</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Manage your prepaid balance for WhatsApp messaging.
-      </p>
+      <PageHeader
+        size="admin"
+        eyebrow="Billing"
+        title="Wallet"
+        subtitle="Manage your prepaid balance for WhatsApp messaging."
+      />
       <div className="mt-6">
         <WalletPanel />
       </div>

@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { LogOut, Menu, Settings as SettingsIcon, User } from "lucide-react";
 import {
@@ -18,32 +17,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "@/components/layout/mode-toggle";
 import { ReminderNotifications } from "@/components/layout/reminder-notifications";
-
-const pageTitles: Record<string, string> = {
-  "/dashboard": "Dashboard",
-  "/inbox": "Inbox",
-  "/contacts": "Contacts",
-  "/pipelines": "Pipelines",
-  "/broadcasts": "Broadcasts",
-  "/automations": "Automations",
-  "/settings": "Settings",
-  "/admin/brands": "Brands",
-  "/admin/templates": "Templates",
-};
-
-function getPageTitle(pathname: string): string {
-  if (pathname.includes("/admin/brands") && pathname.includes("/whatsapp")) {
-    return "WhatsApp setup";
-  }
-  if (pathname.includes("/admin/brands") && pathname.includes("/shopify")) {
-    return "Shopify setup";
-  }
-  if (pageTitles[pathname]) return pageTitles[pathname];
-  const match = Object.entries(pageTitles).find(([path]) =>
-    pathname.startsWith(path),
-  );
-  return match ? match[1] : "Dashboard";
-}
+import { BRAND_ICON_PATH, BRAND_NAME } from "@/components/brand/brand-logo";
+import Image from "next/image";
 
 interface HeaderProps {
   /** Wired to the shell's drawer state. Used only on mobile — the
@@ -52,9 +27,7 @@ interface HeaderProps {
 }
 
 export function Header({ onOpenSidebar }: HeaderProps) {
-  const pathname = usePathname();
   const { profile, signOut } = useAuth();
-  const title = getPageTitle(pathname);
 
   const initial =
     profile?.full_name?.charAt(0)?.toUpperCase() ??
@@ -62,20 +35,28 @@ export function Header({ onOpenSidebar }: HeaderProps) {
     "U";
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-background px-4 lg:px-6">
+    <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4 lg:bg-background/95 lg:px-9 lg:backdrop-blur-sm">
       <div className="flex min-w-0 items-center gap-2">
-        {/* Hamburger — mobile only. 44×44 hit target per Apple HIG. */}
         <button
           type="button"
           onClick={onOpenSidebar}
           aria-label="Open menu"
-          className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
+          className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
         >
           <Menu className="h-5 w-5" />
         </button>
-        <h1 className="truncate text-base font-semibold text-foreground sm:text-lg">
-          {title}
-        </h1>
+        <div className="flex items-center gap-2 lg:hidden">
+          <Image
+            src={BRAND_ICON_PATH}
+            alt=""
+            width={28}
+            height={28}
+            className="h-7 w-7 rounded-lg"
+          />
+          <span className="truncate text-[13px] font-bold text-foreground">
+            {BRAND_NAME}
+          </span>
+        </div>
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
@@ -84,7 +65,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
 
         <DropdownMenu>
         <DropdownMenuTrigger
-          className="flex items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted/70 focus:bg-muted/70 focus:outline-none data-popup-open:bg-muted/70 sm:gap-3 sm:pl-1 sm:pr-3"
+          className="flex items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-accent focus:bg-accent focus:outline-none data-popup-open:bg-accent sm:gap-3 sm:pl-1 sm:pr-3"
           aria-label="Open account menu"
         >
           <Avatar className="size-8">
@@ -94,7 +75,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
                 alt={profile.full_name ?? "Avatar"}
               />
             ) : null}
-            <AvatarFallback className="bg-primary/10 text-sm font-medium text-primary">
+            <AvatarFallback className="bg-primary/15 text-sm font-medium text-primary">
               {initial}
             </AvatarFallback>
           </Avatar>
@@ -141,7 +122,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
           <DropdownMenuSeparator className="bg-border" />
           <DropdownMenuItem
             onClick={signOut}
-            className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
+            className="text-destructive focus:bg-destructive/10 focus:text-destructive"
           >
             <LogOut className="size-4" />
             Sign out

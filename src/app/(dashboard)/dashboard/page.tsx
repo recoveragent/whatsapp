@@ -124,10 +124,14 @@ export default function DashboardPage() {
   )
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+    <div className="space-y-6">
+      <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-5">
+        <p className="font-cabinet text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+          Performance overview
+        </p>
+        <h1 className="font-cabinet text-2xl font-bold text-foreground sm:text-3xl">
+          Conversations vs <span className="text-primary">outreach</span>
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Live analytics across conversations, contacts, deals, broadcasts, and automations.
         </p>

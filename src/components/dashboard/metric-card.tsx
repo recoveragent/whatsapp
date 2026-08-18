@@ -23,14 +23,16 @@ interface MetricCardProps {
 
 export function MetricCard({ title, value, icon: Icon, delta, subtitle }: MetricCardProps) {
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
+    <div className="rounded-lg border border-border bg-card p-5 transition-all duration-200 hover:border-border-lit">
       <div className="flex items-start justify-between">
-        <p className="text-sm font-medium text-muted-foreground">{title}</p>
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+        <p className="font-cabinet text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+          {title}
+        </p>
+        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-muted-foreground">
           <Icon className="h-4 w-4" />
         </div>
       </div>
-      <p className="mt-3 text-[28px] leading-none font-bold tabular-nums text-foreground">
+      <p className="mt-3 font-cabinet text-2xl leading-none font-bold text-foreground">
         {value}
       </p>
       {delta ? <DeltaRow sign={delta.sign} label={delta.label} /> : subtitle ? (
@@ -45,13 +47,13 @@ function DeltaRow({ sign, label }: { sign: number; label: string }) {
     sign > 0
       ? 'text-primary'
       : sign < 0
-      ? 'text-red-400'
+      ? 'text-destructive'
       : 'text-muted-foreground'
   const Arrow = sign > 0 ? ArrowUp : sign < 0 ? ArrowDown : Minus
   return (
     <div className={cn('mt-2 flex items-center gap-1 text-sm', tone)}>
       <Arrow className="h-4 w-4" aria-hidden />
-      <span className="tabular-nums">{label}</span>
+      <span>{label}</span>
     </div>
   )
 }

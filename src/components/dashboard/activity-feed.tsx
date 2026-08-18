@@ -31,11 +31,11 @@ interface KindTheme {
 }
 
 const KIND_THEME: Record<ActivityKind, KindTheme> = {
-  message: { icon: MessageSquare, badge: 'bg-blue-500/10 text-blue-400' },
-  contact: { icon: UserPlus, badge: 'bg-primary/10 text-primary' },
-  deal: { icon: Briefcase, badge: 'bg-primary/10 text-primary' },
-  broadcast: { icon: Radio, badge: 'bg-amber-500/10 text-amber-400' },
-  automation: { icon: Zap, badge: 'bg-rose-500/10 text-rose-400' },
+  message: { icon: MessageSquare, badge: 'border border-secondary/25 bg-secondary/15 text-secondary' },
+  contact: { icon: UserPlus, badge: 'border border-primary/25 bg-primary/15 text-primary' },
+  deal: { icon: Briefcase, badge: 'border border-primary/25 bg-primary/15 text-primary' },
+  broadcast: { icon: Radio, badge: 'border border-amber-500/30 bg-amber-500/15 text-amber-700' },
+  automation: { icon: Zap, badge: 'border border-rose-400/30 bg-rose-400/15 text-rose-600' },
 }
 
 export function ActivityFeed({ items, loading }: ActivityFeedProps) {
@@ -54,7 +54,7 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
     i === 0 || totalLoaded > PAGE_SIZES[i - 1]
 
   return (
-    <section className="rounded-xl border border-border bg-card">
+    <section className="rounded-lg border border-border bg-card transition-all duration-200 hover:border-border-lit">
       <header className="flex items-center justify-between border-b border-border px-5 py-4">
         <h2 className="text-sm font-semibold text-foreground">Recent Activity</h2>
         <Link
@@ -136,9 +136,9 @@ export function ActivityFeed({ items, loading }: ActivityFeedProps) {
                     onClick={() => setPageSize(size)}
                     disabled={disabled}
                     className={cn(
-                      'rounded-md px-2 py-1 font-medium tabular-nums transition-colors',
+                      'rounded-md px-2 py-1 font-medium transition-colors',
                       pageSize === size
-                        ? 'bg-secondary text-secondary-foreground'
+                        ? 'border border-primary/30 bg-primary/15 text-primary'
                         : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                       disabled && 'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-muted-foreground',
                     )}

@@ -96,7 +96,7 @@ function ModeCard({
         "flex items-center gap-3 rounded-lg border bg-card p-4 text-left transition-colors",
         isActive
           ? "border-primary/60 ring-2 ring-primary/40"
-          : "border-border hover:border-border hover:bg-muted/40",
+          : "border-border hover:border-border-lit hover:bg-accent/40",
       )}
     >
       <span
@@ -143,7 +143,7 @@ function ThemeCard({
         "flex flex-col gap-3 rounded-lg border bg-card p-4 text-left transition-colors",
         isActive
           ? "border-primary/60 ring-2 ring-primary/40"
-          : "border-border hover:border-border hover:bg-muted/40",
+          : "border-border hover:border-border-lit hover:bg-accent/40",
       )}
     >
       <div className="flex items-center justify-between">

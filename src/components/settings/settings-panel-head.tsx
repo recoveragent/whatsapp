@@ -26,7 +26,7 @@ export function SettingsPanelHead({
       )}
     >
       <div className="min-w-0">
-        <h2 className="text-lg font-semibold tracking-tight text-foreground">
+        <h2 className="font-cabinet text-lg font-bold tracking-tight text-foreground">
           {title}
         </h2>
         {description ? (

@@ -8,6 +8,8 @@ import { Header } from "@/components/layout/header";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 import { cn } from "@/lib/utils";
 
+const SIDEBAR_COLLAPSED_KEY = "wacrm.sidebar.collapsed";
+
 // Auth-gated dashboard shell. Extracted from the layout so the layout
 // itself can stay a server component and export metadata (noindex) —
 // client components can't export Next's metadata object.
@@ -30,6 +32,27 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   // always visible and this stays at `false` (ignored by the component).
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
+    } catch {
+      // localStorage can throw in private-browsing / sandboxed contexts.
+    }
+  }, []);
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      } catch {
+        // Persistence is best-effort.
+      }
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -80,17 +103,24 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
     pathname !== null && /^\/flows\/[^/]+$/.test(pathname);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Reports this tab's online/away presence once we know a user is
-          signed in. Headless — renders nothing. */}
+    <div className="h-screen overflow-hidden bg-background">
       <PresenceHeartbeat />
-      <Sidebar open={sidebarOpen} onClose={closeSidebar} />
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <Sidebar
+        open={sidebarOpen}
+        onClose={closeSidebar}
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={toggleSidebarCollapsed}
+      />
+      <div
+        className={cn(
+          "flex h-screen flex-col overflow-hidden transition-[margin] duration-200",
+          sidebarCollapsed ? "lg:ml-[60px]" : "lg:ml-[220px]",
+        )}
+      >
         <Header onOpenSidebar={() => setSidebarOpen(true)} />
-        {/* Thinner horizontal padding on mobile so cards have room to breathe. */}
         <main
           className={cn(
-            "flex-1 p-4 sm:p-6",
+            "flex-1 px-4 py-5 lg:px-9 lg:py-7",
             isFullHeightEditor
               ? "flex min-h-0 flex-col overflow-hidden"
               : "overflow-y-auto",

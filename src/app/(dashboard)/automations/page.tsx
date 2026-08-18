@@ -23,6 +23,7 @@ import { useCan } from "@/hooks/use-can"
 import type { Automation } from "@/types"
 import { Button } from "@/components/ui/button"
 import { GatedButton } from "@/components/ui/gated-button"
+import { PageHeader } from "@/components/layout/page-header"
 import { Switch } from "@/components/ui/switch"
 import {
   DropdownMenu,
@@ -158,23 +159,21 @@ export default function AutomationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Automations</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Build workflows that react to WhatsApp® events automatically.
-          </p>
-        </div>
-        <GatedButton
-          canAct={canCreate}
-          gateReason="create automations"
-          onClick={() => router.push("/automations/new")}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4" />
-          Create Automation
-        </GatedButton>
-      </div>
+      <PageHeader
+        eyebrow="Automation"
+        title="Automations"
+        subtitle="Build workflows that react to WhatsApp® events automatically."
+        actions={
+          <GatedButton
+            canAct={canCreate}
+            gateReason="create automations"
+            onClick={() => router.push("/automations/new")}
+          >
+            <Plus className="h-4 w-4" />
+            Create Automation
+          </GatedButton>
+        }
+      />
 
       {showTemplates && (
         <section>
