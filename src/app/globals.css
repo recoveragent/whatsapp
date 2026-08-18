@@ -51,6 +51,11 @@
   --color-primary-hover: var(--primary-hover);
   --color-primary-soft: var(--primary-soft);
   --color-primary-soft-2: var(--primary-soft-2);
+  --font-weight-normal: 500;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 700;
+  --font-weight-bold: 700;
+  --font-weight-extrabold: 800;
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -219,8 +224,9 @@ html[data-theme="rose"] {
     @apply font-sans;
   }
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background font-medium text-foreground;
     font-family: "Cabinet Grotesk", sans-serif;
+    font-weight: 500;
   }
   .font-cabinet,
   .font-mono-dm,

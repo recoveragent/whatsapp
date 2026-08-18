@@ -81,7 +81,7 @@ export default function RootLayout({
       lang="en"
       data-theme={DEFAULT_THEME}
       data-mode={DEFAULT_MODE}
-      className="h-full antialiased"
+      className="h-full"
       // The `theme-boot` script below rewrites `data-theme` and
       // `data-mode` on <html> from localStorage before React hydrates,
       // so for any non-default choice the client DOM intentionally
@@ -94,7 +94,7 @@ export default function RootLayout({
       <head>
         <link
           rel="stylesheet"
-          href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,700,800&display=swap"
+          href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@500,600,700,800,900&display=swap"
         />
         <Script
           id="theme-boot"
