@@ -56,6 +56,7 @@ import type {
   WebhookTriggerConfig,
 } from "@/types"
 import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/hooks/use-auth"
 import { cn } from "@/lib/utils"
 import { defaultWebhookTriggerConfig } from "@/lib/automations/webhook-config"
 import { generateWebhookToken } from "@/lib/automations/webhook-token"
@@ -209,12 +210,14 @@ function useResources(): AutomationResources {
 }
 
 function ResourcesProvider({ children }: { children: ReactNode }) {
+  const { accountId } = useAuth()
   const [tags, setTags] = useState<TagRecord[]>([])
   const [members, setMembers] = useState<AccountMember[]>([])
   const [templates, setTemplates] = useState<MessageTemplate[]>([])
   const [customFields, setCustomFields] = useState<CustomField[]>([])
 
   useEffect(() => {
+    if (!accountId) return
     let cancelled = false
     const supabase = createClient()
 
@@ -228,6 +231,7 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
         supabase
           .from("message_templates")
           .select("*")
+          .eq("account_id", accountId)
           .eq("status", "APPROVED")
           .order("name"),
         supabase.from("custom_fields").select("*").order("field_name"),
@@ -255,7 +259,7 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [accountId])
 
   return (
     <ResourcesContext.Provider value={{ tags, members, templates, customFields }}>

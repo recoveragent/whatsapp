@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/hooks/use-auth';
 import { MessageTemplate } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Loader2, FileText, ArrowRight } from 'lucide-react';
@@ -20,12 +21,18 @@ interface Step1Props {
 }
 
 export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack }: Step1Props) {
+  const { accountId } = useAuth();
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchTemplates() {
+      if (!accountId) {
+        setTemplates([]);
+        setLoading(false);
+        return;
+      }
       try {
         const supabase = createClient();
         // Only APPROVED templates can be sent via Meta — anything else
@@ -34,6 +41,7 @@ export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack
         const { data, error: fetchError } = await supabase
           .from('message_templates')
           .select('*')
+          .eq('account_id', accountId)
           .eq('status', 'APPROVED')
           .order('created_at', { ascending: false });
 
@@ -47,7 +55,7 @@ export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack
     }
 
     fetchTemplates();
-  }, []);
+  }, [accountId]);
 
   if (loading) {
     return (

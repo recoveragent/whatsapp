@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { createClient } from '@/lib/supabase/server'
+import {
+  ForbiddenError,
+  UnauthorizedError,
+  requireRole,
+  toErrorResponse,
+} from '@/lib/auth/account'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { submitMessageTemplate } from '@/lib/whatsapp/meta-api'
 import {
@@ -31,9 +36,9 @@ function buildUpsertRow(
     // of migration 017. Without this an INSERT throws on the
     // not-null constraint.
     account_id: accountId,
-    // Original author — kept as audit only. The unique index is
-    // still on (user_id, name, language) — see the upsert helper
-    // for the cross-teammate dedup follow-up.
+    // Original author — kept as audit only. Upsert looks up the
+    // existing row by (account_id, name, language) so teammates
+    // update the shared catalog instead of inserting a shadow copy.
     user_id: userId,
     name: payload.name,
     category: payload.category,
@@ -60,23 +65,37 @@ async function upsertTemplateRow(
   supabase: SupabaseClient,
   row: ReturnType<typeof buildUpsertRow>,
 ) {
-  // TODO(account-sharing): conflict target is still scoped to
-  // user_id. Once a follow-up migration drops the legacy unique
-  // index on (user_id, name, language) and adds (account_id,
-  // name, language), switch `onConflict` here so two teammates
-  // can't shadow each other's same-named template.
-  return supabase
+  // Unique index is still (user_id, name, language), so onConflict
+  // would miss a teammate's existing row. Look up by account instead.
+  const { data: existing, error: lookupErr } = await supabase
     .from('message_templates')
-    .upsert(row, { onConflict: 'user_id,name,language' })
-    .select()
-    .single()
+    .select('id')
+    .eq('account_id', row.account_id)
+    .eq('name', row.name)
+    .eq('language', row.language)
+    .maybeSingle()
+
+  if (lookupErr) {
+    return { data: null, error: lookupErr }
+  }
+
+  if (existing?.id) {
+    return supabase
+      .from('message_templates')
+      .update(row)
+      .eq('id', existing.id)
+      .select()
+      .single()
+  }
+
+  return supabase.from('message_templates').insert(row).select().single()
 }
 
 /**
  * Submit a template to Meta for approval AND persist it locally.
  *
  * Auth → fetch whatsapp_config → validate → (DRY_RUN short-circuit) →
- * POST to Meta → upsert local row by (user_id, name, language) with
+ * POST to Meta → upsert local row by (account_id, name, language) with
  * status, meta_template_id, sample_values, last_submitted_at.
  *
  * When WHATSAPP_TEMPLATES_DRY_RUN=true, we skip the network call and
@@ -88,29 +107,10 @@ async function upsertTemplateRow(
  */
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Resolve the caller's account_id — whatsapp_config + the
-    // message_templates row are account-scoped post-multi-user.
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('account_id')
-      .eq('user_id', user.id)
-      .maybeSingle()
-    const accountId = profile?.account_id as string | undefined
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
-        { status: 403 },
-      )
-    }
+    const ctx = await requireRole('admin')
+    const supabase = ctx.supabase
+    const accountId = ctx.accountId
+    const userId = ctx.userId
 
     let payload: TemplatePayload
     try {
@@ -203,7 +203,7 @@ export async function POST(request: Request) {
         // until they fix and re-submit.
         await upsertTemplateRow(
           supabase,
-          buildUpsertRow(accountId, user.id, payload, {
+          buildUpsertRow(accountId, userId, payload, {
             status: 'DRAFT',
             metaTemplateId: null,
             submissionError: message,
@@ -223,7 +223,7 @@ export async function POST(request: Request) {
 
     const { data: row, error: upsertErr } = await upsertTemplateRow(
       supabase,
-      buildUpsertRow(accountId, user.id, payload, {
+      buildUpsertRow(accountId, userId, payload, {
         status: normalizeStatus(metaStatus),
         metaTemplateId,
         submissionError: null,
@@ -249,6 +249,9 @@ export async function POST(request: Request) {
       dry_run: dryRun,
     })
   } catch (error) {
+    if (error instanceof UnauthorizedError || error instanceof ForbiddenError) {
+      return toErrorResponse(error)
+    }
     console.error('Error submitting template:', error)
     return NextResponse.json(
       {

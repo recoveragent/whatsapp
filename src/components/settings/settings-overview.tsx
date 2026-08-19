@@ -82,11 +82,11 @@ export function SettingsOverview({
           supabase
             .from('message_templates')
             .select('id', { count: 'exact', head: true })
-            .eq('user_id', userId),
+            .eq('account_id', accountId),
           supabase
             .from('message_templates')
             .select('id', { count: 'exact', head: true })
-            .eq('user_id', userId)
+            .eq('account_id', accountId)
             .eq('status', 'PENDING'),
           supabase
             .from('tags')

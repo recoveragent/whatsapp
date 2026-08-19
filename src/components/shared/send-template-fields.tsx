@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 import { extractVariableIndices } from "@/lib/whatsapp/template-validators";
 import type { MessageTemplate } from "@/types";
 import type { TemplateVariableGroup } from "@/lib/flows/template-variables";
@@ -243,6 +244,7 @@ function renderPreviewBody(
 }
 
 function useApprovedTemplates() {
+  const { accountId } = useAuth();
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [reloadToken, setReloadToken] = useState(0);
@@ -254,11 +256,17 @@ function useApprovedTemplates() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      if (!accountId) {
+        setTemplates([]);
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       const supabase = createClient();
       const { data, error } = await supabase
         .from("message_templates")
         .select("*")
+        .eq("account_id", accountId)
         .eq("status", "APPROVED")
         .order("name");
 
@@ -274,7 +282,7 @@ function useApprovedTemplates() {
     return () => {
       cancelled = true;
     };
-  }, [reloadToken]);
+  }, [reloadToken, accountId]);
 
   return { templates, loading, reload };
 }
@@ -291,6 +299,7 @@ export function SendTemplateFields({
   variableHint = "Click a variable on the right or type {{ vars.field }} manually. Use Fallback options when a field may be empty.",
   variableGroups = [],
 }: SendTemplateFieldsProps) {
+  const { accountId } = useAuth();
   const { templates, loading, reload } = useApprovedTemplates();
   const lang = language || "en_US";
   const [activeField, setActiveField] = useState<string | null>(null);
@@ -313,7 +322,7 @@ export function SendTemplateFields({
   }, [templates, templateName, lang, freshTemplate]);
 
   useEffect(() => {
-    if (!templateName) {
+    if (!templateName || !accountId) {
       setFreshTemplate(null);
       return;
     }
@@ -323,6 +332,7 @@ export function SendTemplateFields({
       const { data: rows } = await supabase
         .from("message_templates")
         .select("*")
+        .eq("account_id", accountId)
         .eq("name", templateName)
         .eq("status", "APPROVED");
       const data =
@@ -336,7 +346,7 @@ export function SendTemplateFields({
     return () => {
       cancelled = true;
     };
-  }, [templateName, lang]);
+  }, [templateName, lang, accountId]);
 
   const placeholders = useMemo(
     () => (selectedTemplate ? bodyPlaceholders(selectedTemplate.body_text) : []),
@@ -430,6 +440,7 @@ export function SendTemplateFields({
         const { data: rows } = await supabase
           .from("message_templates")
           .select("*")
+          .eq("account_id", accountId)
           .eq("name", templateName)
           .eq("status", "APPROVED");
         const data =
