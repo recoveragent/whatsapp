@@ -592,6 +592,73 @@ describe("validateFlowForActivation — send_media", () => {
   });
 });
 
+describe("validateFlowForActivation — create_deal", () => {
+  const baseFlow = { ...validFlow, entry_node_id: "s" };
+  const nodesWith = (dealConfig: Record<string, unknown>) => [
+    { node_key: "s", node_type: "start", config: { next_node_key: "d" } },
+    { node_key: "d", node_type: "create_deal", config: dealConfig },
+    { node_key: "h", node_type: "handoff", config: {} },
+  ];
+
+  it("passes when pipeline, stage, title, and next node are set", () => {
+    const issues = validateFlowForActivation(
+      baseFlow,
+      nodesWith({
+        pipeline_id: "pipe-1",
+        stage_id: "stage-1",
+        title: "{{ vars.name }} deal",
+        next_node_key: "h",
+      }),
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it("flags missing sales pipeline", () => {
+    const issues = validateFlowForActivation(
+      baseFlow,
+      nodesWith({
+        pipeline_id: "",
+        stage_id: "stage-1",
+        title: "New deal",
+        next_node_key: "h",
+      }),
+    );
+    expect(
+      issues.some((i) => i.node_key === "d" && i.field === "pipeline_id"),
+    ).toBe(true);
+  });
+
+  it("flags missing lead stage", () => {
+    const issues = validateFlowForActivation(
+      baseFlow,
+      nodesWith({
+        pipeline_id: "pipe-1",
+        stage_id: "",
+        title: "New deal",
+        next_node_key: "h",
+      }),
+    );
+    expect(
+      issues.some((i) => i.node_key === "d" && i.field === "stage_id"),
+    ).toBe(true);
+  });
+
+  it("flags missing title", () => {
+    const issues = validateFlowForActivation(
+      baseFlow,
+      nodesWith({
+        pipeline_id: "pipe-1",
+        stage_id: "stage-1",
+        title: "  ",
+        next_node_key: "h",
+      }),
+    );
+    expect(
+      issues.some((i) => i.node_key === "d" && i.field === "title"),
+    ).toBe(true);
+  });
+});
+
 describe("reachableFromEntry", () => {
   it("walks the graph from the entry", () => {
     const set = reachableFromEntry("start", validNodes);

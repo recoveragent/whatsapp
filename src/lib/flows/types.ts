@@ -275,8 +275,11 @@ export interface AssignConversationNodeConfig {
 }
 
 export interface CreateDealNodeConfig {
+  /** Sales pipeline the deal is created in. */
   pipeline_id: string;
+  /** Lead stage the new deal is placed in (must belong to `pipeline_id`). */
   stage_id: string;
+  /** Supports `{{ vars.* }}` interpolation at runtime. */
   title: string;
   value?: number;
   next_node_key: string;

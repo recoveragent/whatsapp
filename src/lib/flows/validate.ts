@@ -1231,6 +1231,40 @@ function validateNode(
           });
         }
       }
+      if (node.node_type === "create_deal") {
+        const deal = node.config as {
+          pipeline_id?: string;
+          stage_id?: string;
+          title?: string;
+        };
+        if (!nonEmpty(deal.pipeline_id)) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: "pipeline_id",
+            message: "Create-deal node needs a sales pipeline.",
+          });
+        }
+        if (!nonEmpty(deal.stage_id)) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: "stage_id",
+            message: "Create-deal node needs a lead stage.",
+          });
+        }
+        if (!nonEmpty(deal.title)) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: "title",
+            message: "Create-deal node needs a title.",
+          });
+        }
+      }
       if (!cfg.next_node_key) {
         issues.push({
           severity: "error",

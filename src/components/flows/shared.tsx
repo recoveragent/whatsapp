@@ -377,8 +377,13 @@ export function summarizeNode(node: BuilderNode): string | null {
     }
     case "assign_conversation":
       return "Assign conversation";
-    case "create_deal":
-      return "Create deal";
+    case "create_deal": {
+      const title = typeof cfg.title === "string" ? cfg.title.trim() : "";
+      const stageId = typeof cfg.stage_id === "string" ? cfg.stage_id : "";
+      if (title) return truncate(title, 50);
+      if (stageId) return `Stage ${stageId.slice(0, 8)}…`;
+      return "Pick pipeline & stage";
+    }
     case "close_conversation":
       return "Close conversation";
     default:

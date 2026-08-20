@@ -59,7 +59,9 @@ export interface AssignConversationNodeConfig {
 }
 
 export interface CreateDealNodeConfig {
+  /** Sales pipeline the deal is created in. */
   pipeline_id: string
+  /** Lead stage the new deal is placed in (must belong to `pipeline_id`). */
   stage_id: string
   title: string
   value?: number
@@ -318,6 +320,12 @@ export async function executeExtendedNode(
       }
       case 'create_deal': {
         const c = cfg as unknown as CreateDealNodeConfig
+        if (!c.pipeline_id?.trim() || !c.stage_id?.trim()) {
+          return { kind: 'error', message: 'create_deal needs a sales pipeline and lead stage' }
+        }
+        if (!c.title?.trim()) {
+          return { kind: 'error', message: 'create_deal needs a title' }
+        }
         const { data: acct } = await db
           .from('accounts')
           .select('default_currency')

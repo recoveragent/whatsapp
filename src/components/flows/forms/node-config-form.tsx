@@ -61,6 +61,7 @@ import { SendTemplateFields } from "@/components/shared/send-template-fields";
 import { templateVariableGroupsForFlow } from "@/lib/flows/template-variables";
 import type { TemplateQuickReplyButton } from "@/lib/flows/template-buttons";
 import type { FlowTriggerType } from "@/lib/flows/trigger-types";
+import { createClient } from "@/lib/supabase/client";
 
 interface NodeConfigFormProps {
   node: BuilderNode;
@@ -432,7 +433,6 @@ function renderNodeConfigBody({
       );
 
     case "assign_conversation":
-    case "create_deal":
     case "close_conversation":
       return (
         <NextNodeRow
@@ -441,6 +441,16 @@ function renderNodeConfigBody({
           currentKey={node.node_key}
           onChange={(v) => onUpdateConfig({ next_node_key: v })}
           label="Advances to"
+        />
+      );
+
+    case "create_deal":
+      return (
+        <CreateDealForm
+          cfg={cfg as CreateDealCfg}
+          allNodes={allNodes}
+          currentKey={node.node_key}
+          onUpdateConfig={onUpdateConfig}
         />
       );
 
@@ -1477,6 +1487,203 @@ function SwitchForm({
       />
     </>
   );
+}
+
+// ============================================================
+// create_deal
+// ============================================================
+
+interface PipelineRow {
+  id: string;
+  name: string;
+}
+
+interface StageRow {
+  id: string;
+  pipeline_id: string;
+  name: string;
+}
+
+interface CreateDealCfg {
+  pipeline_id?: string;
+  stage_id?: string;
+  title?: string;
+  value?: number;
+  next_node_key?: string;
+}
+
+function CreateDealForm({
+  cfg,
+  allNodes,
+  currentKey,
+  onUpdateConfig,
+}: {
+  cfg: CreateDealCfg;
+  allNodes: BuilderNode[];
+  currentKey: string;
+  onUpdateConfig: (patch: Record<string, unknown>) => void;
+}) {
+  const { pipelines, stages, loaded } = useAccountPipelines();
+  const pipelineId = cfg.pipeline_id ?? "";
+  const stageId = cfg.stage_id ?? "";
+  const stagesForPipeline = pipelineId
+    ? stages.filter((s) => s.pipeline_id === pipelineId)
+    : [];
+
+  return (
+    <>
+      <p className="text-[11px] text-muted-foreground">
+        Creates a deal on the contact in the selected sales pipeline, at the
+        chosen lead stage.
+      </p>
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">
+          Sales pipeline
+        </label>
+        {!loaded ? (
+          <p className="text-xs text-muted-foreground">Loading pipelines…</p>
+        ) : pipelines.length > 0 ? (
+          <Select
+            value={pipelineId || undefined}
+            onValueChange={(v) => {
+              if (!v) return;
+              onUpdateConfig({
+                pipeline_id: v,
+                stage_id: stages.some(
+                  (s) => s.pipeline_id === v && s.id === stageId,
+                )
+                  ? stageId
+                  : "",
+              });
+            }}
+          >
+            <SelectTrigger className="bg-muted">
+              <SelectValue placeholder="Pick a pipeline…" />
+            </SelectTrigger>
+            <SelectContent>
+              {pipelines.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
+              {pipelineId && !pipelines.some((p) => p.id === pipelineId) && (
+                <SelectItem value={pipelineId}>Unknown pipeline</SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Input
+            value={pipelineId}
+            onChange={(e) =>
+              onUpdateConfig({ pipeline_id: e.target.value, stage_id: "" })
+            }
+            placeholder="Pipeline UUID — or create one under Pipelines"
+            className="bg-muted font-mono text-xs"
+          />
+        )}
+      </div>
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">
+          Lead stage
+        </label>
+        {!loaded ? (
+          <p className="text-xs text-muted-foreground">Loading stages…</p>
+        ) : stagesForPipeline.length > 0 ? (
+          <Select
+            value={stageId || undefined}
+            onValueChange={(v) => {
+              if (v) onUpdateConfig({ stage_id: v });
+            }}
+          >
+            <SelectTrigger className="bg-muted">
+              <SelectValue placeholder="Pick a lead stage…" />
+            </SelectTrigger>
+            <SelectContent>
+              {stagesForPipeline.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+              {stageId &&
+                !stagesForPipeline.some((s) => s.id === stageId) && (
+                  <SelectItem value={stageId}>Unknown stage</SelectItem>
+                )}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Input
+            value={stageId}
+            onChange={(e) => onUpdateConfig({ stage_id: e.target.value })}
+            placeholder={
+              pipelineId
+                ? "Stage UUID"
+                : "Pick a sales pipeline first"
+            }
+            disabled={!pipelineId}
+            className="bg-muted font-mono text-xs"
+          />
+        )}
+      </div>
+      <TextRow
+        label="Deal title (supports {{vars.x}})"
+        value={cfg.title ?? ""}
+        onChange={(v) => onUpdateConfig({ title: v })}
+      />
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">
+          Value (optional)
+        </label>
+        <Input
+          type="number"
+          min={0}
+          value={cfg.value ?? 0}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            onUpdateConfig({ value: Number.isFinite(n) ? n : 0 });
+          }}
+          className="bg-muted"
+        />
+      </div>
+      <NextNodeRow
+        value={cfg.next_node_key ?? ""}
+        allNodes={allNodes}
+        currentKey={currentKey}
+        onChange={(v) => onUpdateConfig({ next_node_key: v })}
+        label="Advances to"
+      />
+    </>
+  );
+}
+
+function useAccountPipelines(): {
+  pipelines: PipelineRow[];
+  stages: StageRow[];
+  loaded: boolean;
+} {
+  const [pipelines, setPipelines] = useState<PipelineRow[]>([]);
+  const [stages, setStages] = useState<StageRow[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    void (async () => {
+      const [pipesRes, stagesRes] = await Promise.all([
+        supabase.from("pipelines").select("id, name").order("name"),
+        supabase
+          .from("pipeline_stages")
+          .select("id, pipeline_id, name")
+          .order("position"),
+      ]);
+      if (cancelled) return;
+      setPipelines((pipesRes.data as PipelineRow[] | null) ?? []);
+      setStages((stagesRes.data as StageRow[] | null) ?? []);
+      setLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return { pipelines, stages, loaded };
 }
 
 // ============================================================
