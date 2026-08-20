@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -111,6 +111,7 @@ export function Sidebar({
   onToggleCollapsed,
 }: SidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const {
     profile,
     profileLoading,
@@ -122,6 +123,17 @@ export function Sidebar({
     isLeadGenBrand,
   } = useAuth();
   const opsOnlyNav = isSuperAdmin && !isSuperAdminActing;
+  const brandAdminId = pathname.match(/^\/admin\/brands\/([^/]+)\//)?.[1] ?? null;
+  const templatesHref = brandAdminId
+    ? `/admin/brands/${brandAdminId}/templates`
+    : isSuperAdminActing
+      ? "/settings?tab=templates"
+      : "/admin/templates";
+  const templatesActive = brandAdminId
+    ? pathname.startsWith(`/admin/brands/${brandAdminId}/templates`)
+    : isSuperAdminActing
+      ? pathname === "/settings" && searchParams.get("tab") === "templates"
+      : pathname.startsWith("/admin/templates");
   const totalUnread = useTotalUnread();
   const showAccountStrip =
     !opsOnlyNav &&
@@ -274,10 +286,10 @@ export function Sidebar({
                   collapsed={collapsed}
                 />
                 <NavRow
-                  href="/admin/templates"
+                  href={templatesHref}
                   label="Templates"
                   icon={FileText}
-                  active={pathname.startsWith("/admin/templates")}
+                  active={templatesActive}
                   collapsed={collapsed}
                 />
               </>

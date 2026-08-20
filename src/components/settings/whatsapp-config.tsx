@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   RotateCcw,
   ArrowLeft,
+  FileText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -439,13 +440,20 @@ export function WhatsAppConfig({
   return (
     <section className="animate-in fade-in-50 duration-200">
       {!embeddedInSettings && (
-        <div className="mb-4">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <Link
             href="/admin/brands"
-            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <ArrowLeft className="size-4" />
             Back to brands
+          </Link>
+          <Link
+            href={`/admin/brands/${brandId}/templates`}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-transparent px-3 text-sm font-medium text-foreground hover:bg-muted"
+          >
+            <FileText className="size-4" />
+            Templates
           </Link>
         </div>
       )}
