@@ -84,6 +84,12 @@ describe("parseSsoConsumeResponse", () => {
       },
       hashed_token: "tok",
     });
+    expect(
+      parseSsoConsumeResponse({
+        identity: { email: "ada@brand.com" },
+        token_hash: "alt",
+      }).hashed_token,
+    ).toBe("alt");
   });
 
   it("rejects a payload without email", () => {
@@ -163,11 +169,45 @@ describe("completeSsoLogin", () => {
     await completeSsoLogin("ticket", client());
 
     expect(verifyOtp).toHaveBeenCalledWith({
-      type: "magiclink",
+      type: "email",
       token_hash: "shared-hash",
-      email: "ada@brand.com",
     });
     expect(generateLink).not.toHaveBeenCalled();
+  });
+
+  it("falls back to this app's session when hashed_token verify fails", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = SHARED_URL;
+    verifyOtp
+      .mockResolvedValueOnce({ error: { message: "invalid" } })
+      .mockResolvedValueOnce({ error: { message: "invalid" } })
+      .mockResolvedValueOnce({ error: null });
+    generateLink.mockResolvedValue({
+      data: { properties: { hashed_token: "local-hash" } },
+      error: null,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            identity: { email: "ada@brand.com" },
+            hashed_token: "stale-hash",
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    await completeSsoLogin("ticket", client());
+
+    expect(generateLink).toHaveBeenCalledWith({
+      type: "magiclink",
+      email: "ada@brand.com",
+    });
+    expect(verifyOtp).toHaveBeenCalledWith({
+      type: "email",
+      token_hash: "local-hash",
+    });
   });
 
   it("falls back to this app's magic-link session from identity", async () => {
@@ -200,9 +240,8 @@ describe("completeSsoLogin", () => {
       email: "ada@brand.com",
     });
     expect(verifyOtp).toHaveBeenCalledWith({
-      type: "magiclink",
+      type: "email",
       token_hash: "local-hash",
-      email: "ada@brand.com",
     });
   });
 

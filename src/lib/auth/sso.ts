@@ -109,7 +109,9 @@ export function parseSsoConsumeResponse(raw: unknown): SsoConsumeResponse {
     );
   }
 
-  const hashed = asNonEmptyString(body.hashed_token);
+  const hashed =
+    asNonEmptyString(body.hashed_token) ??
+    asNonEmptyString(body.token_hash);
   return {
     identity: {
       email,
@@ -166,22 +168,35 @@ export async function consumeSsoTicket(
   return parseSsoConsumeResponse(raw);
 }
 
-async function verifyMagicLink(
+const OTP_TYPES = ["email", "magiclink"] as const;
+
+/**
+ * Exchange a GoTrue email-link hash for a session.
+ *
+ * `token_hash` verification must not include `email` — that shape is the
+ * 6-digit OTP API (`email` + `token`). `magiclink` is deprecated; `email`
+ * is the universal type. We try both so older tokens still work.
+ */
+async function verifyTokenHash(
   supabase: SupabaseClient,
-  email: string,
   tokenHash: string,
-): Promise<void> {
-  const { error } = await supabase.auth.verifyOtp({
-    type: "magiclink",
-    token_hash: tokenHash,
-    email,
-  });
-  if (error) {
-    throw new SsoError(
-      "Could not start a session for this account.",
-      error.message,
-    );
+  preferredType?: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const types = [
+    preferredType,
+    ...OTP_TYPES,
+  ].filter((type, i, all): type is string => Boolean(type) && all.indexOf(type) === i);
+
+  let lastMessage = "verifyOtp failed";
+  for (const type of types) {
+    const { error } = await supabase.auth.verifyOtp({
+      type: type as (typeof OTP_TYPES)[number],
+      token_hash: tokenHash,
+    });
+    if (!error) return { ok: true };
+    lastMessage = error.message;
   }
+  return { ok: false, message: lastMessage };
 }
 
 /**
@@ -205,7 +220,8 @@ export async function createSessionFromIdentity(
     email,
   });
 
-  const tokenHash = data.properties?.hashed_token;
+  const properties = data.properties;
+  const tokenHash = properties?.hashed_token;
   if (error || !tokenHash) {
     throw new SsoError(
       "No WhatsApp CRM account for this email. Ask an admin to invite you, then try again from the dashboard.",
@@ -213,7 +229,31 @@ export async function createSessionFromIdentity(
     );
   }
 
-  await verifyMagicLink(supabase, email, tokenHash);
+  const hashed = await verifyTokenHash(
+    supabase,
+    tokenHash,
+    properties.verification_type,
+  );
+  if (hashed.ok) return;
+
+  const emailOtp = asNonEmptyString(properties.email_otp);
+  if (emailOtp) {
+    const { error: otpError } = await supabase.auth.verifyOtp({
+      type: "email",
+      email,
+      token: emailOtp,
+    });
+    if (!otpError) return;
+    throw new SsoError(
+      "Could not start a session for this account.",
+      otpError.message,
+    );
+  }
+
+  throw new SsoError(
+    "Could not start a session for this account.",
+    hashed.message,
+  );
 }
 
 export function shouldUseSharedHashedToken(
@@ -240,13 +280,13 @@ export async function completeSsoLogin(
 
   const consumed = await consumeSsoTicket(trimmed);
 
-  if (shouldUseSharedHashedToken(consumed.hashed_token)) {
-    await verifyMagicLink(
-      supabase,
-      consumed.identity.email,
-      consumed.hashed_token as string,
-    );
-    return consumed.identity;
+  // Prefer the dashboard-issued hash whenever it is present. Detecting the
+  // shared project by hostname misses custom Supabase domains; a hash from
+  // a different project simply fails verify and we fall through.
+  if (consumed.hashed_token) {
+    const verified = await verifyTokenHash(supabase, consumed.hashed_token);
+    if (verified.ok) return consumed.identity;
+    console.error("[sso] hashed_token verify failed:", verified.message);
   }
 
   await createSessionFromIdentity(supabase, consumed.identity);
