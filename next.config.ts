@@ -115,7 +115,12 @@ const nextConfig: NextConfig = {
         headers: [{ key: "Cache-Control", value: "no-store" }],
       },
       {
-        source: "/:path((?!_next/static|_next/image|api).*)",
+        // SSO consumes a one-time 60s ticket and sets auth cookies.
+        source: "/sso",
+        headers: [{ key: "Cache-Control", value: "no-store" }],
+      },
+      {
+        source: "/:path((?!_next/static|_next/image|api|sso).*)",
         headers: [
           {
             key: "Cache-Control",
