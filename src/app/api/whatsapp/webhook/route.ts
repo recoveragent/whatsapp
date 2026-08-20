@@ -681,6 +681,17 @@ async function processMessage(
     return
   }
 
+  try {
+    const { pauseCadenceOnReply } = await import('@/lib/leads/pause')
+    await pauseCadenceOnReply({
+      db: supabaseAdmin(),
+      accountId,
+      contactId: contactRecord.id,
+    })
+  } catch (err) {
+    console.error('[webhook] pause cadence on reply failed:', err)
+  }
+
   // Update conversation. Customer reply should reopen the thread —
   // closed/followup chats staying closed hid replies from the Open
   // inbox (agents only saw them if they switched filter).

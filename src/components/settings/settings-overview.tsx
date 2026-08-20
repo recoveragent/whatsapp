@@ -234,6 +234,11 @@ export function SettingsOverview({
       ),
     },
     {
+      section: 'cadences',
+      loading: false,
+      subtitle: 'Follow-up playbooks for Instant Form leads',
+    },
+    {
       section: 'members',
       loading: countsLoading,
       subtitle:

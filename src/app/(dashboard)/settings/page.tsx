@@ -14,6 +14,7 @@ import { AppearancePanel } from '@/components/settings/appearance-panel';
 import { WhatsAppBrandConnection } from '@/components/settings/whatsapp-brand-connection';
 import { ShopifyBrandConnection } from '@/components/settings/shopify-brand-connection';
 import { GoogleSheetsBrandConnection } from '@/components/settings/google-sheets-brand-connection';
+import { LeadCadencesSettings } from '@/components/settings/lead-cadences-settings';
 import { TemplateManager } from '@/components/settings/template-manager';
 import { FieldsAndTagsPanel } from '@/components/settings/fields-and-tags-panel';
 import { InboxFollowupSettings } from '@/components/settings/inbox-followup-settings';
@@ -65,6 +66,7 @@ export default function SettingsPage() {
     whatsapp: <WhatsAppBrandConnection />,
     shopify: <ShopifyBrandConnection />,
     google_sheets: <GoogleSheetsBrandConnection />,
+    cadences: <LeadCadencesSettings />,
     templates: <TemplateManager />,
     fields: <FieldsAndTagsPanel />,
     inbox: <InboxFollowupSettings />,

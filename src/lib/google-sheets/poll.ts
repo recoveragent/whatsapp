@@ -17,6 +17,13 @@ import {
   type GoogleSheetsConfigRow,
 } from './sheets-client'
 import { quoteSheetName } from './parse-sheet-url'
+import {
+  columnLetters,
+  detectHeaderRow,
+  guessPhoneColumn,
+  looksLikePhoneCell,
+  normalizeSheetPhone,
+} from './sheet-columns'
 
 /** Cap WhatsApp sends per cron tick so Hostinger/proxy timeouts cannot
  *  abort a large backlog mid-batch with the watermark uncommitted. */
@@ -107,20 +114,40 @@ async function processOneSource(
     }
   }
 
-  const patchSource = (patch: Partial<GoogleSheetSource>): GoogleSheetRowTriggerConfig => ({
-    sources: cfg.sources.map((s, i) =>
-      i === sourceIndex ? { ...s, ...patch } : s,
-    ),
-  })
+  let workingCfg = cfg
+  const patchSource = (patch: Partial<GoogleSheetSource>): GoogleSheetRowTriggerConfig => {
+    workingCfg = {
+      sources: workingCfg.sources.map((s, i) =>
+        i === sourceIndex ? { ...s, ...patch } : s,
+      ),
+    }
+    return workingCfg
+  }
 
-  const headerRange = `${quoteSheetName(source.sheet_name)}!1:1`
-  const headerRows = await fetchSheetValues(
+  const previewRows = await fetchSheetValues(
     accessToken,
     source.spreadsheet_id,
-    headerRange,
+    `${quoteSheetName(source.sheet_name)}!A1:Z20`,
   )
-  const headers = (headerRows[0] ?? []).map((h) => h.trim())
-  if (headers.length === 0) {
+
+  const headerRow =
+    typeof source.header_row === 'number' && Number.isFinite(source.header_row)
+      ? Math.max(0, Math.floor(source.header_row))
+      : detectHeaderRow(previewRows)
+
+  const headerCells = headerRow > 0 ? (previewRows[headerRow - 1] ?? []) : []
+  const namedHeaders = headerCells.map((h) => h.trim())
+  const previewData =
+    headerRow > 0 ? previewRows.slice(headerRow) : previewRows
+  const letterHeaders = columnLetters(
+    Math.max(
+      namedHeaders.length,
+      ...previewData.map((r) => r.length),
+      1,
+    ),
+  )
+  const headers = headerRow > 0 ? namedHeaders : letterHeaders
+  if (headers.every((h) => !h.trim())) {
     return {
       rows: 0,
       started: 0,
@@ -129,7 +156,27 @@ async function processOneSource(
       cfg,
     }
   }
-  if (!headers.includes(source.phone_column)) {
+
+  let phoneColumn = source.phone_column
+  const guessed = guessPhoneColumn(headers, previewData)
+  const configuredHits = previewData.filter((r) =>
+    looksLikePhoneCell(rowToObject(headers, r)[phoneColumn]),
+  ).length
+  const guessedHits = previewData.filter((r) =>
+    looksLikePhoneCell(rowToObject(headers, r)[guessed]),
+  ).length
+  if (configuredHits === 0 && guessedHits > 0) {
+    console.warn(
+      `[google-sheets] source "${label}": phone column "${phoneColumn}" has no numbers; using "${guessed}"`,
+    )
+    phoneColumn = guessed
+    cfg = patchSource({ phone_column: guessed, header_row: headerRow })
+    await updateFlowSources(db, flow, cfg)
+  } else if (!headers.includes(phoneColumn) && guessedHits > 0) {
+    phoneColumn = guessed
+    cfg = patchSource({ phone_column: guessed, header_row: headerRow })
+    await updateFlowSources(db, flow, cfg)
+  } else if (!headers.includes(phoneColumn)) {
     return {
       rows: 0,
       started: 0,
@@ -144,12 +191,13 @@ async function processOneSource(
     source.spreadsheet_id,
     source.sheet_name,
     headers,
-    source.phone_column,
+    phoneColumn,
   )
 
-  if (lastRow <= 1) {
+  const minRow = headerRow > 0 ? headerRow : 0
+  if (lastRow <= minRow) {
     if (source.last_processed_row == null) {
-      const next = patchSource({ last_processed_row: 1 })
+      const next = patchSource({ last_processed_row: minRow })
       await updateFlowSources(db, flow, next)
       return { rows: 0, started: 0, skipped: 0, cfg: next }
     }
@@ -159,7 +207,7 @@ async function processOneSource(
   let watermark = source.last_processed_row
   if (watermark == null) {
     if (source.sync_existing) {
-      watermark = 1
+      watermark = minRow
     } else {
       const next = patchSource({ last_processed_row: lastRow })
       await updateFlowSources(db, flow, next)
@@ -180,6 +228,19 @@ async function processOneSource(
     dataRange,
   )
 
+  const validInBatch = dataRows.filter((r) =>
+    looksLikePhoneCell(rowToObject(headers, r)[phoneColumn]),
+  ).length
+  if (dataRows.length > 0 && validInBatch === 0) {
+    return {
+      rows: 0,
+      started: 0,
+      skipped: dataRows.length,
+      error: `Flow ${flow.id} source "${label}": phone column "${phoneColumn}" has no phone numbers — pick the column that contains mobile numbers, then save`,
+      cfg,
+    }
+  }
+
   let started = 0
   let skipped = 0
   let processedThrough = watermark
@@ -190,7 +251,7 @@ async function processOneSource(
 
     const absoluteRow = startRow + i
     const rowObj = rowToObject(headers, dataRows[i] ?? [])
-    const phoneRaw = (rowObj[source.phone_column] ?? '').trim()
+    const phoneRaw = normalizeSheetPhone(rowObj[phoneColumn] ?? '')
 
     const persistWatermark = async (row: number) => {
       processedThrough = row
@@ -198,7 +259,7 @@ async function processOneSource(
       await updateFlowSources(db, flow, nextCfg)
     }
 
-    if (!phoneRaw) {
+    if (!looksLikePhoneCell(phoneRaw)) {
       skipped += 1
       await persistWatermark(absoluteRow)
       continue
@@ -304,7 +365,16 @@ async function processFlowSheets(
   let skipped = 0
   const errors: string[] = []
 
-  for (let i = 0; i < cfg.sources.length; i++) {
+  const indexes = cfg.sources.map((_, i) => i)
+  indexes.sort((a, b) => {
+    const wa = cfg.sources[a]?.last_processed_row
+    const wb = cfg.sources[b]?.last_processed_row
+    if (wa == null && wb != null) return -1
+    if (wb == null && wa != null) return 1
+    return a - b
+  })
+
+  for (const i of indexes) {
     if (budget.remainingStarts <= 0) break
     try {
       const outcome = await processOneSource(

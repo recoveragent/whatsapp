@@ -18,7 +18,9 @@ export interface GoogleSheetSource {
   email_column?: string
   /** Flow var name → sheet column header */
   variable_mappings?: Record<string, string>
-  /** 1-based inclusive watermark (header = 1). */
+  /** 1-based header row. 0 = no header row (first row is a lead). */
+  header_row?: number
+  /** 1-based inclusive watermark (header = 1, or 0 when headerless). */
   last_processed_row?: number
   /**
    * When true on first poll (no watermark), process existing data rows.
@@ -61,10 +63,14 @@ export function defaultGoogleSheetSource(
       partial?.variable_mappings && typeof partial.variable_mappings === 'object'
         ? (partial.variable_mappings as Record<string, string>)
         : {},
+    header_row:
+      typeof partial?.header_row === 'number' && Number.isFinite(partial.header_row)
+        ? Math.max(0, Math.floor(partial.header_row))
+        : undefined,
     last_processed_row:
       typeof partial?.last_processed_row === 'number' &&
       Number.isFinite(partial.last_processed_row)
-        ? Math.max(1, Math.floor(partial.last_processed_row))
+        ? Math.max(0, Math.floor(partial.last_processed_row))
         : undefined,
     sync_existing: Boolean(partial?.sync_existing),
   }

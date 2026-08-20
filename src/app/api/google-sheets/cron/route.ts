@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { pollGoogleSheetFlows } from '@/lib/google-sheets/poll'
+import { processDueCadences } from '@/lib/leads/engine'
+import { pollLeadSources } from '@/lib/leads/poll-sources'
 
 /**
  * GET /api/google-sheets/cron — poll connected Sheets for new rows.
@@ -20,6 +22,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const result = await pollGoogleSheetFlows(supabaseAdmin())
-  return NextResponse.json(result)
+  const db = supabaseAdmin()
+  const flows = await pollGoogleSheetFlows(db)
+  const lead_sheets = await pollLeadSources(db)
+  const cadences = await processDueCadences(db)
+  return NextResponse.json({ ...flows, lead_sheets, cadences })
 }

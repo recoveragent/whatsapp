@@ -18,6 +18,7 @@ import {
   LayoutDashboard,
   LogOut,
   MessageSquare,
+  PhoneCall,
   Radio,
   Settings,
   Shield,
@@ -83,6 +84,7 @@ const homeItems: NavItem[] = [
 
 const workspaceItems: NavItem[] = [
   { href: "/inbox", label: "Inbox", icon: MessageSquare },
+  { href: "/leads", label: "Leads", icon: PhoneCall },
   { href: "/contacts", label: "Contacts", icon: Users },
   { href: "/pipelines", label: "Pipelines", icon: GitBranch },
 ];

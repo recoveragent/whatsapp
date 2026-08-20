@@ -3,6 +3,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { decrypt, encrypt } from '@/lib/whatsapp/encryption'
 import { refreshGoogleAccessToken } from './oauth'
 import { quoteSheetName } from './parse-sheet-url'
+import {
+  columnLetters,
+  detectHeaderRow,
+  guessPhoneColumn,
+} from './sheet-columns'
 
 export interface GoogleSheetsConfigRow {
   id: string
@@ -28,6 +33,10 @@ export interface SheetPreview {
   tabs: SheetTabInfo[]
   headers: string[]
   sheetName: string
+  /** 1-based header row, or 0 when the first row is data. */
+  header_row: number
+  headerless: boolean
+  suggested_phone_column: string
 }
 
 const TOKEN_SKEW_MS = 60_000
@@ -130,13 +139,26 @@ export async function previewSpreadsheet(args: {
     meta.tabs[0]?.title ||
     'Sheet1'
 
-  const headerRange = `${quoteSheetName(sheetName)}!1:1`
+  const sampleRange = `${quoteSheetName(sheetName)}!A1:Z20`
   const rows = await fetchSheetValues(
     args.accessToken,
     args.spreadsheetId,
-    headerRange,
+    sampleRange,
   )
-  const headers = (rows[0] ?? []).map((h) => h.trim()).filter(Boolean)
+  const headerRow = detectHeaderRow(rows)
+  const headerCells = headerRow > 0 ? (rows[headerRow - 1] ?? []) : []
+  const namedHeaders = headerCells.map((h) => h.trim()).filter(Boolean)
+  const dataRows = headerRow > 0 ? rows.slice(headerRow) : rows
+  const letterHeaders = columnLetters(
+    Math.max(
+      headerCells.length,
+      namedHeaders.length,
+      ...dataRows.map((r) => r.length),
+      1,
+    ),
+  )
+  const headers = headerRow > 0 ? namedHeaders : letterHeaders
+  const suggestedPhone = guessPhoneColumn(headers, dataRows)
 
   return {
     spreadsheetId: args.spreadsheetId,
@@ -144,6 +166,9 @@ export async function previewSpreadsheet(args: {
     tabs: meta.tabs,
     headers,
     sheetName,
+    header_row: headerRow,
+    headerless: headerRow === 0,
+    suggested_phone_column: suggestedPhone,
   }
 }
 

@@ -107,6 +107,19 @@ export interface Contact {
   email?: string;
   company?: string;
   avatar_url?: string;
+  lead_status?:
+    | 'new'
+    | 'in_cadence'
+    | 'replied'
+    | 'meeting_booked'
+    | 'onboarded'
+    | 'expired'
+    | 'lost';
+  lead_language?: 'en' | 'hi' | null;
+  lead_source_id?: string | null;
+  last_touch_at?: string | null;
+  next_action_at?: string | null;
+  next_action_type?: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -21,6 +21,7 @@ import {
   type GoogleSheetSource,
 } from "@/lib/google-sheets/trigger-config";
 import { parseSpreadsheetId } from "@/lib/google-sheets/parse-sheet-url";
+import { guessEmailColumn, guessNameColumn } from "@/lib/google-sheets/sheet-columns";
 import { cn } from "@/lib/utils";
 
 interface PreviewResponse {
@@ -29,6 +30,9 @@ interface PreviewResponse {
   tabs?: Array<{ title: string; sheetId: number; index: number }>;
   headers?: string[];
   sheetName?: string;
+  header_row?: number;
+  headerless?: boolean;
+  suggested_phone_column?: string;
   error?: string;
 }
 
@@ -124,6 +128,7 @@ function SheetSourceCard({
   );
   const [headers, setHeaders] = useState<string[]>([]);
   const [sheetTitle, setSheetTitle] = useState<string | null>(null);
+  const [headerless, setHeaderless] = useState(false);
 
   const mappings = source.variable_mappings ?? {};
 
@@ -153,27 +158,29 @@ function SheetSourceCard({
       setTabs(tabTitles);
       setHeaders(data.headers ?? []);
       setSheetTitle(data.title ?? null);
+      setHeaderless(Boolean(data.headerless));
 
       const nextSheet = data.sheetName || tabTitles[0] || "";
       const nextHeaders = data.headers ?? [];
       const phoneGuess =
-        source.phone_column && nextHeaders.includes(source.phone_column)
-          ? source.phone_column
-          : nextHeaders.find((h) => /phone|mobile|whatsapp/i.test(h)) ||
-            nextHeaders[0] ||
-            "phone";
-      const nameGuess =
+        data.suggested_phone_column &&
+        nextHeaders.includes(data.suggested_phone_column)
+          ? data.suggested_phone_column
+          : nextHeaders.includes(source.phone_column)
+            ? source.phone_column
+            : nextHeaders[0] || "phone";
+      const nameGuessRaw =
         source.name_column && nextHeaders.includes(source.name_column)
           ? source.name_column
-          : nextHeaders.find((h) => /^name$/i.test(h) || /full.?name/i.test(h)) ||
-            source.name_column ||
-            "name";
-      const emailGuess =
+          : guessNameColumn(nextHeaders);
+      const emailGuessRaw =
         source.email_column && nextHeaders.includes(source.email_column)
           ? source.email_column
-          : nextHeaders.find((h) => /email/i.test(h)) ||
-            source.email_column ||
-            "email";
+          : guessEmailColumn(nextHeaders);
+      const nameGuess = nextHeaders.includes(nameGuessRaw) ? nameGuessRaw : "";
+      const emailGuess = nextHeaders.includes(emailGuessRaw)
+        ? emailGuessRaw
+        : "";
 
       onChange({
         spreadsheet_id: data.spreadsheetId || id,
@@ -182,9 +189,14 @@ function SheetSourceCard({
         phone_column: phoneGuess,
         name_column: nameGuess,
         email_column: emailGuess,
+        header_row: data.header_row ?? (data.headerless ? 0 : 1),
         label: source.label?.trim() || data.title || `Source ${index + 1}`,
       });
-      toast.success("Sheet loaded");
+      toast.success(
+        data.headerless
+          ? "Sheet loaded — this tab has no header row; phone was detected from cell values"
+          : "Sheet loaded",
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not load sheet");
     } finally {
@@ -259,6 +271,13 @@ function SheetSourceCard({
             {source.spreadsheet_id
               ? ` · id ${source.spreadsheet_id.slice(0, 8)}…`
               : ""}
+          </p>
+        )}
+        {(headerless || source.header_row === 0) && (
+          <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
+            This tab has no header row — the first row is a lead. Phone is
+            detected from values (not ad names that mention WhatsApp). Pick the
+            column that actually contains numbers, then save the flow.
           </p>
         )}
       </div>

@@ -17,6 +17,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SettingsPanelHead } from './settings-panel-head';
+import { LeadSourcesPanel } from './lead-sources-panel';
 
 interface AccountContextPayload {
   linked?: boolean;
@@ -167,7 +168,7 @@ export function GoogleSheetsBrandConnection() {
     <div className="space-y-6">
       <SettingsPanelHead
         title="Google Sheets"
-        description="Connect a Google account so Flows can watch a spreadsheet for new lead rows and start messaging."
+        description="One Google login. Add each Instant Form spreadsheet as a campaign below — new rows enroll in a follow-up cadence."
       />
 
       {loading ? (
@@ -274,16 +275,22 @@ export function GoogleSheetsBrandConnection() {
             )}
 
             <p className="text-xs text-muted-foreground">
-              After connecting, create a Flow with trigger{' '}
-              <strong>Google Sheet: new row</strong>, paste your sheet link, map the
-              phone column, and add a send-template step.{' '}
-              <Link href="/flows" className="underline underline-offset-2">
-                Open Flows
+              Instant Form dumps belong below as campaign sheets — they enroll
+              silent leads into a cadence. Flows with a Google Sheet trigger
+              are still available for chat graphs.{' '}
+              <Link href="/settings?tab=cadences" className="underline underline-offset-2">
+                Edit cadences
               </Link>
             </p>
           </CardContent>
         </Card>
       )}
+
+      {connection?.connected ? (
+        <div className="mt-6">
+          <LeadSourcesPanel googleConnected={connection.connected} />
+        </div>
+      ) : null}
     </div>
   );
 }
