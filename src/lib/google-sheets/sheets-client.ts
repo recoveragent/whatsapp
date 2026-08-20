@@ -147,13 +147,19 @@ export async function previewSpreadsheet(args: {
   }
 }
 
-/** 1-based last non-empty row index (header counts as row 1). */
+/**
+ * 1-based last non-empty row index for a single column (header counts as row 1).
+ * Trailing empty cells are omitted by the Sheets API, so `values.length` is the
+ * last occupied row in that column — not the grid height.
+ */
 export async function getLastRowIndex(
   accessToken: string,
   spreadsheetId: string,
   sheetName: string,
+  column = 'A',
 ): Promise<number> {
-  const range = `${quoteSheetName(sheetName)}!A:A`
+  const col = column.trim() || 'A'
+  const range = `${quoteSheetName(sheetName)}!${col}:${col}`
   const rows = await fetchSheetValues(accessToken, spreadsheetId, range)
   return rows.length
 }

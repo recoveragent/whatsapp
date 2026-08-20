@@ -6,6 +6,9 @@ import { pollGoogleSheetFlows } from '@/lib/google-sheets/poll'
 /**
  * GET /api/google-sheets/cron — poll connected Sheets for new rows.
  * Protected by AUTOMATION_CRON_SECRET (same as automations / Shopify cron).
+ *
+ * Also invoked from GET /api/automations/cron so Hostinger's documented
+ * single cron job is enough for Sheet-triggered flows.
  */
 export async function GET(request: Request) {
   const expected = process.env.AUTOMATION_CRON_SECRET

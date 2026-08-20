@@ -18,11 +18,20 @@ import {
 } from './sheets-client'
 import { quoteSheetName } from './parse-sheet-url'
 
+/** Cap WhatsApp sends per cron tick so Hostinger/proxy timeouts cannot
+ *  abort a large backlog mid-batch with the watermark uncommitted. */
+export const MAX_FLOW_STARTS_PER_POLL = 8
+
 export interface PollResult {
   flows_checked: number
   rows_processed: number
   flows_started: number
+  rows_skipped: number
   errors: string[]
+}
+
+interface PollBudget {
+  remainingStarts: number
 }
 
 async function updateFlowSources(
@@ -49,16 +58,41 @@ function buildVarsFromRow(
   return vars
 }
 
+async function lastOccupiedRow(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetName: string,
+  headers: string[],
+  phoneColumn: string,
+): Promise<number> {
+  const phoneIdx = headers.findIndex((h) => h === phoneColumn)
+  const phoneCol = phoneIdx >= 0 ? columnLetter(phoneIdx) : 'A'
+  const [fromA, fromPhone] = await Promise.all([
+    getLastRowIndex(accessToken, spreadsheetId, sheetName, 'A'),
+    phoneCol === 'A'
+      ? Promise.resolve(0)
+      : getLastRowIndex(accessToken, spreadsheetId, sheetName, phoneCol),
+  ])
+  return Math.max(fromA, fromPhone)
+}
+
 async function processOneSource(
   db: SupabaseClient,
   flow: FlowRow,
   accessToken: string,
   cfg: GoogleSheetRowTriggerConfig,
   sourceIndex: number,
-): Promise<{ rows: number; started: number; error?: string; cfg: GoogleSheetRowTriggerConfig }> {
+  budget: PollBudget,
+): Promise<{
+  rows: number
+  started: number
+  skipped: number
+  error?: string
+  cfg: GoogleSheetRowTriggerConfig
+}> {
   const source = cfg.sources[sourceIndex]
   if (!source) {
-    return { rows: 0, started: 0, cfg }
+    return { rows: 0, started: 0, skipped: 0, cfg }
   }
 
   const label = source.label?.trim() || source.sheet_name || source.id.slice(0, 8)
@@ -67,16 +101,11 @@ async function processOneSource(
     return {
       rows: 0,
       started: 0,
+      skipped: 0,
       error: `Flow ${flow.id} source "${label}": incomplete sheet config`,
       cfg,
     }
   }
-
-  const lastRow = await getLastRowIndex(
-    accessToken,
-    source.spreadsheet_id,
-    source.sheet_name,
-  )
 
   const patchSource = (patch: Partial<GoogleSheetSource>): GoogleSheetRowTriggerConfig => ({
     sources: cfg.sources.map((s, i) =>
@@ -84,31 +113,6 @@ async function processOneSource(
     ),
   })
 
-  if (lastRow <= 1) {
-    if (source.last_processed_row == null) {
-      const next = patchSource({ last_processed_row: 1 })
-      await updateFlowSources(db, flow, next)
-      return { rows: 0, started: 0, cfg: next }
-    }
-    return { rows: 0, started: 0, cfg }
-  }
-
-  let watermark = source.last_processed_row
-  if (watermark == null) {
-    if (source.sync_existing) {
-      watermark = 1
-    } else {
-      const next = patchSource({ last_processed_row: lastRow })
-      await updateFlowSources(db, flow, next)
-      return { rows: 0, started: 0, cfg: next }
-    }
-  }
-
-  if (watermark >= lastRow) {
-    return { rows: 0, started: 0, cfg }
-  }
-
-  const startRow = watermark + 1
   const headerRange = `${quoteSheetName(source.sheet_name)}!1:1`
   const headerRows = await fetchSheetValues(
     accessToken,
@@ -120,11 +124,54 @@ async function processOneSource(
     return {
       rows: 0,
       started: 0,
+      skipped: 0,
       error: `Flow ${flow.id} source "${label}": empty header row`,
       cfg,
     }
   }
+  if (!headers.includes(source.phone_column)) {
+    return {
+      rows: 0,
+      started: 0,
+      skipped: 0,
+      error: `Flow ${flow.id} source "${label}": phone column "${source.phone_column}" not in header row`,
+      cfg,
+    }
+  }
 
+  const lastRow = await lastOccupiedRow(
+    accessToken,
+    source.spreadsheet_id,
+    source.sheet_name,
+    headers,
+    source.phone_column,
+  )
+
+  if (lastRow <= 1) {
+    if (source.last_processed_row == null) {
+      const next = patchSource({ last_processed_row: 1 })
+      await updateFlowSources(db, flow, next)
+      return { rows: 0, started: 0, skipped: 0, cfg: next }
+    }
+    return { rows: 0, started: 0, skipped: 0, cfg }
+  }
+
+  let watermark = source.last_processed_row
+  if (watermark == null) {
+    if (source.sync_existing) {
+      watermark = 1
+    } else {
+      const next = patchSource({ last_processed_row: lastRow })
+      await updateFlowSources(db, flow, next)
+      return { rows: 0, started: 0, skipped: 0, cfg: next }
+    }
+  }
+
+  if (watermark >= lastRow) {
+    return { rows: 0, started: 0, skipped: 0, cfg }
+  }
+
+  const startRow = watermark + 1
   const endCol = columnLetter(Math.max(headers.length - 1, 0))
   const dataRange = `${quoteSheetName(source.sheet_name)}!A${startRow}:${endCol}${lastRow}`
   const dataRows = await fetchSheetValues(
@@ -134,16 +181,28 @@ async function processOneSource(
   )
 
   let started = 0
+  let skipped = 0
   let processedThrough = watermark
+  let nextCfg = cfg
 
   for (let i = 0; i < dataRows.length; i++) {
+    if (budget.remainingStarts <= 0) break
+
     const absoluteRow = startRow + i
     const rowObj = rowToObject(headers, dataRows[i] ?? [])
     const phoneRaw = (rowObj[source.phone_column] ?? '').trim()
 
-    processedThrough = absoluteRow
+    const persistWatermark = async (row: number) => {
+      processedThrough = row
+      nextCfg = patchSource({ last_processed_row: row })
+      await updateFlowSources(db, flow, nextCfg)
+    }
 
-    if (!phoneRaw) continue
+    if (!phoneRaw) {
+      skipped += 1
+      await persistWatermark(absoluteRow)
+      continue
+    }
 
     const nameCol = source.name_column?.trim()
     const name = nameCol ? (rowObj[nameCol] ?? '').trim() : ''
@@ -161,6 +220,8 @@ async function processOneSource(
       console.warn(
         `[google-sheets] skip row ${absoluteRow} (${label}): could not resolve contact`,
       )
+      skipped += 1
+      await persistWatermark(absoluteRow)
       continue
     }
 
@@ -180,12 +241,14 @@ async function processOneSource(
     )
     if (!conversation) {
       console.warn(`[google-sheets] skip row ${absoluteRow} (${label}): no conversation`)
+      skipped += 1
+      await persistWatermark(absoluteRow)
       continue
     }
 
     const vars = buildVarsFromRow(rowObj, source)
     vars.phone = contact.phone
-    if (name) vars.name = name
+    vars.name = name || String(vars.name ?? '').trim() || 'there'
     if (email) vars.email = email
     vars.sheet_row = absoluteRow
     vars.sheet_source = label
@@ -199,13 +262,30 @@ async function processOneSource(
       flowId: flow.id,
       context: { vars },
     })
+
+    if (outcome.no_active_flows) {
+      console.warn(
+        `[google-sheets] stop at row ${absoluteRow} (${label}): flow is not active`,
+      )
+      break
+    }
+
+    budget.remainingStarts -= 1
     started += outcome.started.length
+    if (outcome.started.length === 0) {
+      skipped += 1
+      const reason = outcome.skipped[0]?.reason ?? 'not_started'
+      console.warn(`[google-sheets] skip row ${absoluteRow} (${label}): ${reason}`)
+    }
+    await persistWatermark(absoluteRow)
   }
 
-  const next = patchSource({ last_processed_row: processedThrough })
-  await updateFlowSources(db, flow, next)
-
-  return { rows: dataRows.length, started, cfg: next }
+  return {
+    rows: Math.max(0, processedThrough - watermark),
+    started,
+    skipped,
+    cfg: nextCfg,
+  }
 }
 
 async function processFlowSheets(
@@ -213,21 +293,32 @@ async function processFlowSheets(
   _config: GoogleSheetsConfigRow,
   flow: FlowRow,
   accessToken: string,
-): Promise<{ rows: number; started: number; errors: string[] }> {
+  budget: PollBudget,
+): Promise<{ rows: number; started: number; skipped: number; errors: string[] }> {
   let cfg = ensureGoogleSheetRowConfig(
     flow.trigger_config as Record<string, unknown>,
   )
 
   let rows = 0
   let started = 0
+  let skipped = 0
   const errors: string[] = []
 
   for (let i = 0; i < cfg.sources.length; i++) {
+    if (budget.remainingStarts <= 0) break
     try {
-      const outcome = await processOneSource(db, flow, accessToken, cfg, i)
+      const outcome = await processOneSource(
+        db,
+        flow,
+        accessToken,
+        cfg,
+        i,
+        budget,
+      )
       cfg = outcome.cfg
       rows += outcome.rows
       started += outcome.started
+      skipped += outcome.skipped
       if (outcome.error) errors.push(outcome.error)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'source poll failed'
@@ -238,7 +329,7 @@ async function processFlowSheets(
     }
   }
 
-  return { rows, started, errors }
+  return { rows, started, skipped, errors }
 }
 
 /**
@@ -249,6 +340,7 @@ export async function pollGoogleSheetFlows(db: SupabaseClient): Promise<PollResu
     flows_checked: 0,
     rows_processed: 0,
     flows_started: 0,
+    rows_skipped: 0,
     errors: [],
   }
 
@@ -278,7 +370,10 @@ export async function pollGoogleSheetFlows(db: SupabaseClient): Promise<PollResu
     configByAccount.set(row.account_id, row)
   }
 
+  const budget: PollBudget = { remainingStarts: MAX_FLOW_STARTS_PER_POLL }
+
   for (const flow of list) {
+    if (budget.remainingStarts <= 0) break
     result.flows_checked += 1
     const config = configByAccount.get(flow.account_id)
     if (!config) {
@@ -288,9 +383,10 @@ export async function pollGoogleSheetFlows(db: SupabaseClient): Promise<PollResu
 
     try {
       const accessToken = await getValidAccessToken(db, config)
-      const outcome = await processFlowSheets(db, config, flow, accessToken)
+      const outcome = await processFlowSheets(db, config, flow, accessToken, budget)
       result.rows_processed += outcome.rows
       result.flows_started += outcome.started
+      result.rows_skipped += outcome.skipped
       result.errors.push(...outcome.errors)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'poll failed'
