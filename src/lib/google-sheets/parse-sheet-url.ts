@@ -19,6 +19,14 @@ export function parseSpreadsheetId(input: string): string | null {
   return null
 }
 
+/** Tab id from `#gid=` / `?gid=` on a spreadsheet URL. */
+export function parseSheetGid(input: string): number | null {
+  const m = input.trim().match(/[?#&]gid=(\d+)/)
+  if (!m?.[1]) return null
+  const gid = Number(m[1])
+  return Number.isFinite(gid) ? gid : null
+}
+
 /** Sheet tab title safe for A1 notation (quote if needed). */
 export function quoteSheetName(sheetName: string): string {
   const escaped = sheetName.replace(/'/g, "''")

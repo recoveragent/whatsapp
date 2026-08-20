@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseSpreadsheetId, quoteSheetName } from './parse-sheet-url'
+import { parseSheetGid, parseSpreadsheetId, quoteSheetName } from './parse-sheet-url'
 
 describe('parseSpreadsheetId', () => {
   it('extracts id from edit URL', () => {
@@ -20,6 +20,25 @@ describe('parseSpreadsheetId', () => {
   it('rejects empty / short strings', () => {
     expect(parseSpreadsheetId('')).toBeNull()
     expect(parseSpreadsheetId('not-a-sheet')).toBeNull()
+  })
+})
+
+describe('parseSheetGid', () => {
+  it('reads gid from hash and query', () => {
+    expect(
+      parseSheetGid(
+        'https://docs.google.com/spreadsheets/d/abc/edit#gid=123',
+      ),
+    ).toBe(123)
+    expect(
+      parseSheetGid(
+        'https://docs.google.com/spreadsheets/d/abc/edit?gid=456#gid=456',
+      ),
+    ).toBe(456)
+  })
+
+  it('returns null when gid is absent', () => {
+    expect(parseSheetGid('https://docs.google.com/spreadsheets/d/abc/edit')).toBeNull()
   })
 })
 

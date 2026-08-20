@@ -20,15 +20,19 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { parseSpreadsheetId } from '@/lib/google-sheets/parse-sheet-url';
+import {
+  parseSheetGid,
+  parseSpreadsheetId,
+} from '@/lib/google-sheets/parse-sheet-url';
 import type { Cadence, LeadLanguage, LeadSource } from '@/lib/leads/types';
 import { useCan } from '@/hooks/use-can';
 
 interface PreviewResponse {
   title?: string;
-  tabs?: Array<{ title: string }>;
+  tabs?: Array<{ title: string; sheetId?: number }>;
   headers?: string[];
   sheetName?: string;
+  suggested_phone_column?: string;
   error?: string;
 }
 
@@ -99,31 +103,59 @@ export function LeadSourcesPanel({ googleConnected }: { googleConnected: boolean
     void load();
   }, [load]);
 
-  async function loadPreview() {
-    const id = parseSpreadsheetId(form.spreadsheet_url);
+  async function loadPreview(sheetName?: string) {
+    const url = form.spreadsheet_url.trim();
+    const id = parseSpreadsheetId(url);
     if (!id) {
       toast.error('Paste a valid Google Sheet URL');
       return;
     }
     setPreviewing(true);
     try {
-      const res = await fetch('/api/google-sheets/preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          spreadsheet_url: form.spreadsheet_url.trim(),
-          sheet_name: form.sheet_name || undefined,
-        }),
-      });
-      const data = (await res.json()) as PreviewResponse;
-      if (!res.ok) throw new Error(data.error ?? 'Could not load spreadsheet');
-      const nextTabs = (data.tabs ?? []).map((t) => t.title).filter(Boolean);
-      setTabs(nextTabs);
+      const requestedTab = (sheetName ?? form.sheet_name).trim() || undefined;
+      const preview = async (tab?: string) => {
+        const res = await fetch('/api/google-sheets/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            spreadsheet_url: url,
+            sheet_name: tab,
+          }),
+        });
+        const data = (await res.json()) as PreviewResponse;
+        if (!res.ok) throw new Error(data.error ?? 'Could not load spreadsheet');
+        return data;
+      };
+
+      let data = await preview(requestedTab);
+      const tabInfos = data.tabs ?? [];
+      const nextTabs = tabInfos.map((t) => t.title).filter(Boolean);
+      const gid = parseSheetGid(url);
+      const gidTab =
+        gid != null
+          ? tabInfos.find((t) => t.sheetId === gid)?.title
+          : undefined;
+      const nextSheet =
+        requestedTab && nextTabs.includes(requestedTab)
+          ? requestedTab
+          : gidTab || data.sheetName || nextTabs[0] || '';
+
+      if (nextSheet && nextSheet !== data.sheetName) {
+        data = await preview(nextSheet);
+      }
+
+      setTabs(nextTabs.length > 0 ? nextTabs : data.tabs?.map((t) => t.title).filter(Boolean) ?? []);
       setHeaders(data.headers ?? []);
+      const phoneGuess =
+        data.suggested_phone_column &&
+        (data.headers ?? []).includes(data.suggested_phone_column)
+          ? data.suggested_phone_column
+          : undefined;
       setForm((prev) => ({
         ...prev,
-        sheet_name: data.sheetName || prev.sheet_name || nextTabs[0] || '',
+        sheet_name: nextSheet || prev.sheet_name,
         name: prev.name || data.title || prev.name,
+        phone_column: phoneGuess || prev.phone_column,
       }));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Preview failed');
@@ -134,6 +166,10 @@ export function LeadSourcesPanel({ googleConnected }: { googleConnected: boolean
 
   async function addSource() {
     if (!canEdit) return;
+    if (!form.sheet_name.trim()) {
+      toast.error('Click Load, then pick a sheet tab');
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch('/api/leads/sources', {
@@ -293,29 +329,45 @@ export function LeadSourcesPanel({ googleConnected }: { googleConnected: boolean
               </Button>
             </div>
           </div>
-          {(tabs.length > 0 || form.sheet_name) && (
-            <div>
-              <Label className="text-xs">Sheet tab</Label>
-              <Select
-                value={form.sheet_name || undefined}
-                onValueChange={(v) => {
-                  if (!v) return;
-                  setForm((p) => ({ ...p, sheet_name: v }));
-                }}
-              >
-                <SelectTrigger className="mt-1 w-full bg-background">
-                  <SelectValue placeholder="Select tab" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(tabs.length > 0 ? tabs : [form.sheet_name]).map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          <div>
+            <Label className="text-xs">Sheet tab</Label>
+            <Select
+              value={form.sheet_name || undefined}
+              onValueChange={(v) => {
+                if (!v) return;
+                setForm((p) => ({ ...p, sheet_name: v }));
+                void loadPreview(v);
+              }}
+            >
+              <SelectTrigger className="mt-1 w-full bg-background">
+                <SelectValue
+                  placeholder={
+                    tabs.length === 0
+                      ? 'Click Load to list tabs'
+                      : 'Select tab'
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {(tabs.length > 0
+                  ? tabs
+                  : form.sheet_name
+                    ? [form.sheet_name]
+                    : []
+                ).map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {tabs.length === 0 ? (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Paste the spreadsheet URL and click Load — every tab in the
+                file will show up here.
+              </p>
+            ) : null}
+          </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <ColumnField
               label="Phone"
