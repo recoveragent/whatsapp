@@ -115,3 +115,73 @@ describe('runFlowsForTrigger — Shopify payment filter', () => {
     expect(outcome.started).toHaveLength(1)
   })
 })
+
+describe('runFlowsForTrigger — Shopify shipment filter', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    contactQuery.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'contact-1' } }),
+    })
+    startFlowForExternalEvent.mockResolvedValue({
+      ok: true,
+      flow_run_id: 'run-1',
+    })
+  })
+
+  const fulfilledFlow = (shipment_status: string): FlowRow =>
+    baseFlow({
+      name: 'In transit',
+      trigger_type: 'shopify_order_fulfilled',
+      trigger_config: { payment_status: 'any', shipment_status },
+    })
+
+  it('starts fulfilled flow when shipment_status is any', async () => {
+    mockFlowsChain([fulfilledFlow('any')])
+
+    const outcome = await runFlowsForTrigger({
+      accountId: 'acc-1',
+      triggerType: 'shopify_order_fulfilled',
+      contactId: 'contact-1',
+      conversationId: 'conv-1',
+      context: { vars: { shipment_status: null } },
+    })
+
+    expect(outcome.started).toHaveLength(1)
+  })
+
+  it('skips fulfilled flow when In transit filter does not match first fulfill', async () => {
+    mockFlowsChain([fulfilledFlow('in_transit')])
+
+    const outcome = await runFlowsForTrigger({
+      accountId: 'acc-1',
+      triggerType: 'shopify_order_fulfilled',
+      contactId: 'contact-1',
+      conversationId: 'conv-1',
+      context: { vars: { shipment_status: null } },
+    })
+
+    expect(outcome.started).toHaveLength(0)
+    expect(outcome.skipped).toEqual([
+      expect.objectContaining({
+        reason: 'shipment_status_mismatch',
+        flow_name: 'In transit',
+      }),
+    ])
+  })
+
+  it('starts fulfilled flow when shipment_status is in_transit', async () => {
+    mockFlowsChain([fulfilledFlow('in_transit')])
+
+    const outcome = await runFlowsForTrigger({
+      accountId: 'acc-1',
+      triggerType: 'shopify_order_fulfilled',
+      contactId: 'contact-1',
+      conversationId: 'conv-1',
+      context: { vars: { shipment_status: 'in_transit' } },
+    })
+
+    expect(outcome.started).toHaveLength(1)
+  })
+})

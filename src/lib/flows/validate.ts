@@ -34,6 +34,7 @@ import {
   isReplyTimeoutEnabled,
   hasReplyTimeoutTiming,
 } from "./reply-timeout";
+import { SHOPIFY_SHIPMENT_STATUSES } from "./trigger-types";
 
 export interface ValidationIssue {
   severity: "error" | "warning";
@@ -305,6 +306,21 @@ function validateTrigger(
         field: "trigger_config.payment_status",
         message: "Payment status must be any, paid, pending, or partially paid.",
       });
+    }
+    if (
+      trigger_type === "shopify_order_fulfilled" ||
+      trigger_type === "shopify_order_partially_fulfilled"
+    ) {
+      const ss = trigger_config.shipment_status as string | undefined;
+      if (ss && !(SHOPIFY_SHIPMENT_STATUSES as readonly string[]).includes(ss)) {
+        issues.push({
+          severity: "error",
+          scope: "trigger",
+          field: "trigger_config.shipment_status",
+          message:
+            "Shipment status must be any, in_transit, out_for_delivery, delivered, or another Shopify shipment status.",
+        });
+      }
     }
   }
   if (trigger_type === "google_sheet_row") {

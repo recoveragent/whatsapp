@@ -40,8 +40,15 @@ const SHOPIFY_OPTIONS: TemplateVariableOption[] = [
   { label: 'Shipping address', token: '{{ vars.shipping_address }}', type: 'text' },
   { label: 'Payment status', token: '{{ vars.payment_status }}', type: 'text' },
   { label: 'Fulfillment status', token: '{{ vars.fulfillment_status }}', type: 'text' },
+  { label: 'Shipment status', token: '{{ vars.shipment_status }}', type: 'text' },
   { label: 'Tracking number', token: '{{ vars.tracking_number }}', type: 'text' },
-  { label: 'Tracking URL', token: '{{ vars.tracking_url }}', type: 'text' },
+  { label: 'Tracking URL (courier)', token: '{{ vars.tracking_url }}', type: 'text' },
+  { label: 'Order status URL', token: '{{ vars.order_status_url }}', type: 'text' },
+  {
+    label: 'Order status URL suffix (Track button)',
+    token: '{{ vars.order_status_url_suffix }}',
+    type: 'text',
+  },
   { label: 'Checkout URL', token: '{{ vars.checkout_url }}', type: 'text' },
   { label: 'Shop name', token: '{{ vars.shop_name }}', type: 'text' },
 ]

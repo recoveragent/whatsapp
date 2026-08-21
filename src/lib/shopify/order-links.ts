@@ -10,6 +10,40 @@ export function buildShopifyAdminOrderUrl(
   return `https://${domain}/admin/orders/${shopifyOrderId}`;
 }
 
+/**
+ * Split a public HTTPS URL into the static origin Meta needs on a
+ * URL button (`https://store.com/`) and the dynamic suffix that
+ * replaces `{{1}}`. Courier tracking links cannot use this because
+ * their domains change; Shopify `order_status_url` can.
+ */
+export function splitPublicUrlForWhatsApp(raw: string | null | undefined): {
+  url: string | null;
+  prefix: string | null;
+  suffix: string | null;
+} {
+  const url = typeof raw === 'string' ? raw.trim() : '';
+  if (!url) return { url: null, prefix: null, suffix: null };
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { url, prefix: null, suffix: null };
+    }
+    const prefix = `${parsed.origin}/`;
+    const suffix =
+      `${parsed.pathname.replace(/^\//, '')}${parsed.search}${parsed.hash}` ||
+      null;
+    return { url: parsed.toString(), prefix, suffix };
+  } catch {
+    return { url, prefix: null, suffix: null };
+  }
+}
+
+export function extractOrderStatusUrl(
+  order: Pick<ShopifyOrderPayload, 'order_status_url'> | null | undefined,
+): string | null {
+  return splitPublicUrlForWhatsApp(order?.order_status_url).url;
+}
+
 export function extractOrderTracking(order: ShopifyOrderPayload): {
   tracking_url: string | null;
   tracking_number: string | null;

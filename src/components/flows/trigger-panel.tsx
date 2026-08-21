@@ -13,12 +13,17 @@ import {
 import { type ValidationIssue } from "@/lib/flows/validate";
 import {
   FLOW_TRIGGER_LABELS,
-  FLOW_TRIGGER_TYPES,
+  flowTriggersForBrand,
+  isShopifyFulfillmentFlowTrigger,
   isShopifyOrderFlowTrigger,
+  defaultShopifyTriggerConfig,
   SHOPIFY_PAYMENT_STATUSES,
   SHOPIFY_PAYMENT_STATUS_LABELS,
+  SHOPIFY_SHIPMENT_STATUSES,
+  SHOPIFY_SHIPMENT_STATUS_LABELS,
   type FlowTriggerType,
   type ShopifyPaymentStatus,
+  type ShopifyShipmentStatus,
 } from "@/lib/flows/trigger-types";
 import {
   defaultFlowWebhookConfig,
@@ -32,6 +37,7 @@ import { ExitConditionsPanel } from "./exit-panel";
 import type { BuilderState } from "./flow-editor-state";
 import type { GoogleSheetRowTriggerConfig } from "@/lib/google-sheets/trigger-config";
 import { parseExitConfig } from "@/lib/flows/exit-conditions";
+import { useAuth } from "@/hooks/use-auth";
 
 /** Stable React-Flow id for the virtual trigger node on the canvas. */
 export const TRIGGER_NODE_ID = "__flow_trigger__";
@@ -82,11 +88,12 @@ export function summarizeTrigger(
     default:
       if (isShopifyOrderFlowTrigger(triggerType)) {
         const ps = triggerConfig.payment_status as ShopifyPaymentStatus | undefined;
+        const ss = triggerConfig.shipment_status as ShopifyShipmentStatus | undefined;
         const base = FLOW_TRIGGER_LABELS[triggerType] ?? triggerType;
-        if (ps && ps !== "any") {
-          return `${base} · ${SHOPIFY_PAYMENT_STATUS_LABELS[ps]}`;
-        }
-        return base;
+        const bits = [base];
+        if (ps && ps !== "any") bits.push(SHOPIFY_PAYMENT_STATUS_LABELS[ps]);
+        if (ss && ss !== "any") bits.push(SHOPIFY_SHIPMENT_STATUS_LABELS[ss]);
+        return bits.join(" · ");
       }
       return FLOW_TRIGGER_LABELS[triggerType] ?? triggerType;
   }
@@ -141,6 +148,8 @@ export function TriggerPanel({
   triggerIssues: ValidationIssue[];
   embedded?: boolean;
 }) {
+  const { brandCategory } = useAuth();
+  const triggerOptions = flowTriggersForBrand(brandCategory, state.trigger_type);
   const body = (
     <>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -167,7 +176,7 @@ export function TriggerPanel({
                         : v === "time_based"
                           ? { schedule: "", tag_id: "" }
                           : v && isShopifyOrderFlowTrigger(v)
-                            ? { payment_status: "any" }
+                            ? defaultShopifyTriggerConfig(v)
                             : {},
               }))
             }
@@ -180,7 +189,7 @@ export function TriggerPanel({
               alignItemWithTrigger={false}
               className="min-w-[20rem] w-max max-w-[min(calc(100vw-2rem),24rem)]"
             >
-              {FLOW_TRIGGER_TYPES.map((t) => (
+              {triggerOptions.map((t) => (
                 <SelectItem key={t} value={t} className="[&_span]:whitespace-normal">
                   {FLOW_TRIGGER_LABELS[t]}
                 </SelectItem>
@@ -306,6 +315,45 @@ export function TriggerPanel({
             <p className="mt-1 text-[10px] text-muted-foreground">
               Only run this flow when the order matches this payment status. Use a
               Condition node to branch different actions per status.
+            </p>
+          </div>
+        )}
+        {isShopifyFulfillmentFlowTrigger(state.trigger_type) && (
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              Shipment status
+            </label>
+            <Select
+              value={
+                (state.trigger_config.shipment_status as ShopifyShipmentStatus) ??
+                "any"
+              }
+              onValueChange={(v) =>
+                setState((s) => ({
+                  ...s,
+                  trigger_config: {
+                    ...s.trigger_config,
+                    shipment_status: v as ShopifyShipmentStatus,
+                  },
+                }))
+              }
+            >
+              <SelectTrigger className="bg-muted">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SHOPIFY_SHIPMENT_STATUSES.map((ss) => (
+                  <SelectItem key={ss} value={ss}>
+                    {SHOPIFY_SHIPMENT_STATUS_LABELS[ss]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              Filters fulfillment updates from Shopify. Choose{" "}
+              <span className="text-foreground">In transit</span> to message when
+              the courier marks the package in transit — not when you first
+              fulfill the order.
             </p>
           </div>
         )}

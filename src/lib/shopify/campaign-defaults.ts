@@ -29,7 +29,7 @@ export const SHOPIFY_CAMPAIGN_DEFINITIONS: CampaignDefinition[] = [
       '1': 'customer_name',
       '2': 'order_number',
       '3': 'tracking_number',
-      '4': 'tracking_url',
+      '4': 'order_status_url',
     },
   },
   {

@@ -20,7 +20,9 @@ import { supabaseAdmin } from './admin-client'
 import { startFlowForExternalEvent } from './engine'
 import type { FlowRow } from './types'
 import {
+  isShopifyFulfillmentFlowTrigger,
   isShopifyOrderFlowTrigger,
+  shipmentStatusMatchesFilter,
   type FlowTriggerType,
 } from './trigger-types'
 
@@ -53,6 +55,7 @@ export interface FlowDispatchSkipped {
   flow_name: string
   reason:
     | 'payment_status_mismatch'
+    | 'shipment_status_mismatch'
     | 'no_entry_node'
     | 'no_conversation'
     | 'start_failed'
@@ -98,6 +101,13 @@ function flowMatchesTrigger(
     }
   }
 
+  if (isShopifyFulfillmentFlowTrigger(input.triggerType)) {
+    const want = cfg.shipment_status as string | undefined
+    if (!shipmentStatusMatchesFilter(want, input.context?.vars?.shipment_status)) {
+      return false
+    }
+  }
+
   return true
 }
 
@@ -112,6 +122,20 @@ function shopifyPaymentMismatchReason(
   const actual = input.context?.vars?.payment_status
   if (actual === want) return null
   return `expected "${want}", got "${actual ?? 'null'}"`
+}
+
+function shopifyShipmentMismatchReason(
+  flow: FlowRow,
+  input: FlowDispatchInput,
+): string | null {
+  if (!isShopifyFulfillmentFlowTrigger(input.triggerType)) return null
+  const cfg = flow.trigger_config as Record<string, unknown>
+  const want = cfg.shipment_status as string | undefined
+  if (shipmentStatusMatchesFilter(want, input.context?.vars?.shipment_status)) {
+    return null
+  }
+  const actual = input.context?.vars?.shipment_status
+  return `expected "${want}", got "${typeof actual === 'string' ? actual : 'null'}"`
 }
 
 /**
@@ -172,6 +196,16 @@ export async function runFlowsForTrigger(
           flow_id: flow.id,
           flow_name: flow.name,
           reason: 'payment_status_mismatch',
+        })
+        continue
+      }
+
+      const shipmentMismatch = shopifyShipmentMismatchReason(flow, input)
+      if (shipmentMismatch) {
+        outcome.skipped.push({
+          flow_id: flow.id,
+          flow_name: flow.name,
+          reason: 'shipment_status_mismatch',
         })
         continue
       }

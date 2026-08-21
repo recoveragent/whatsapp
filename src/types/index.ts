@@ -186,6 +186,8 @@ export interface ShopifyOrder {
   fulfillment_status?: string | null;
   tracking_url?: string | null;
   tracking_number?: string | null;
+  /** Customer-facing Shopify order status page (not courier tracking). */
+  order_status_url?: string | null;
   /** Populated by the orders API — opens the order in Shopify Admin. */
   admin_url?: string | null;
   tags: string[];

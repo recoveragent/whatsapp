@@ -107,6 +107,12 @@ export async function sendShopifyCampaign(args: {
   }
 
   const params = buildTemplateParams(campaign.variable_mapping ?? {}, context);
+  const suffix = context.orderStatusUrlSuffix?.trim() || undefined;
+  const messageParams = {
+    body: params,
+    headerMediaUrl: context.productImage?.trim() || undefined,
+    defaultUrlButtonSuffix: suffix,
+  };
 
   try {
     const result = await engineSendTemplate({
@@ -117,9 +123,10 @@ export async function sendShopifyCampaign(args: {
       templateName: campaign.template_name,
       language: campaign.template_language,
       params,
-      messageParams: context.productImage
-        ? { body: params, headerMediaUrl: context.productImage }
-        : undefined,
+      messageParams:
+        messageParams.headerMediaUrl || messageParams.defaultUrlButtonSuffix
+          ? messageParams
+          : undefined,
     });
 
     await db.from('shopify_message_log').insert({

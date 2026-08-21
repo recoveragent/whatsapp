@@ -4,6 +4,7 @@ import {
   normalizeTemplateButtons,
   quickReplyButtonsFromTemplate,
   syncTemplateButtonConfig,
+  urlButtonsNeedingSuffix,
 } from './template-buttons'
 
 describe('normalizeTemplateButtons', () => {
@@ -36,6 +37,22 @@ describe('quickReplyButtonsFromTemplate', () => {
         ],
       }),
     ).toEqual([{ reply_id: 'Address is correct', title: 'Address is correct' }])
+  })
+})
+
+describe('urlButtonsNeedingSuffix', () => {
+  it('returns URL buttons that contain {{1}}, keyed by template index', () => {
+    expect(
+      urlButtonsNeedingSuffix({
+        buttons: [
+          { type: 'QUICK_REPLY', text: 'Yes' },
+          { type: 'URL', text: 'Shop', url: 'https://store.com' },
+          { type: 'URL', text: 'Track', url: 'https://store.com/{{1}}' },
+        ],
+      }),
+    ).toEqual([
+      { index: 2, text: 'Track', url: 'https://store.com/{{1}}' },
+    ])
   })
 })
 

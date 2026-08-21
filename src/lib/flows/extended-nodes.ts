@@ -209,6 +209,12 @@ export async function executeExtendedNode(
             messageParams.headerMediaUrl = productImage.trim()
           }
         }
+        if (!messageParams.defaultUrlButtonSuffix) {
+          const statusSuffix = vars.order_status_url_suffix
+          if (typeof statusSuffix === 'string' && statusSuffix.trim()) {
+            messageParams.defaultUrlButtonSuffix = statusSuffix.trim()
+          }
+        }
         const { whatsapp_message_id } = await engineSendTemplate({
           accountId: run.account_id,
           userId: run.user_id,

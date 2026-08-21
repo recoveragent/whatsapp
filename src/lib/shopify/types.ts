@@ -12,8 +12,11 @@ export type ShopifyVariableKey =
   | 'shipping_address'
   | 'tracking_number'
   | 'tracking_url'
+  | 'order_status_url'
+  | 'order_status_url_suffix'
   | 'checkout_url'
   | 'fulfillment_status'
+  | 'shipment_status'
   | 'shop_name';
 
 /** Subset of Shopify address fields we read from order/checkout payloads. */
@@ -79,8 +82,14 @@ export interface ShopifyEventContext {
   shippingAddressFields: ShopifyAddressFields | null;
   trackingNumber: string | null;
   trackingUrl: string | null;
+  /** Shopify order status page — same store domain for every courier. */
+  orderStatusUrl: string | null;
+  /** Path + query for a WhatsApp URL button `https://store.com/{{1}}`. */
+  orderStatusUrlSuffix: string | null;
   checkoutUrl: string | null;
   fulfillmentStatus: string | null;
+  /** Shopify fulfillment `shipment_status` (in_transit, delivered, …). */
+  shipmentStatus: string | null;
   /** Shopify `financial_status` on orders (paid, pending, partially_paid, …). */
   financialStatus: string | null;
   shopName: string;
@@ -124,11 +133,14 @@ export interface ShopifyOrderPayload {
   phone?: string;
   contact_phone?: string;
   email?: string;
+  /** Customer-facing order status page (same domain across couriers). */
+  order_status_url?: string | null;
   fulfillments?: Array<{
     status?: string;
     tracking_number?: string | null;
     tracking_url?: string | null;
     tracking_company?: string | null;
+    shipment_status?: string | null;
   }>;
 }
 
@@ -159,4 +171,6 @@ export interface ShopifyFulfillmentPayload {
   tracking_number?: string;
   tracking_url?: string;
   tracking_company?: string;
+  /** Carrier scan status: in_transit, out_for_delivery, delivered, … */
+  shipment_status?: string | null;
 }

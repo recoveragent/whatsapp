@@ -64,6 +64,22 @@ describe('templateVariableGroupsForFlow', () => {
     expect(fallback?.options.some((o) => o.token.includes('|'))).toBe(true)
   })
 
+  it('includes Shopify order status tokens for order triggers', () => {
+    const groups = templateVariableGroupsForFlow('shopify_order_fulfilled')
+    const trigger = groups.find((g) => g.id === 'trigger')
+    expect(
+      trigger?.options.some((o) => o.token === '{{ vars.order_status_url }}'),
+    ).toBe(true)
+    expect(
+      trigger?.options.some(
+        (o) => o.token === '{{ vars.order_status_url_suffix }}',
+      ),
+    ).toBe(true)
+    expect(
+      trigger?.options.some((o) => o.token === '{{ vars.shipment_status }}'),
+    ).toBe(true)
+  })
+
   it('includes webhook trigger attributes from config', () => {
     const groups = templateVariableGroupsForFlow('webhook_received', {
       variable_mappings: { meeting_time: 'payload.startTime' },

@@ -1,4 +1,5 @@
 import type { MessageTemplate, TemplateButton } from '@/types'
+import { extractVariableIndices } from '@/lib/whatsapp/template-validators'
 
 export interface TemplateQuickReplyButton {
   reply_id: string
@@ -109,4 +110,16 @@ export function configQuickReplyIdsKey(
   buttons: TemplateQuickReplyButton[] | undefined,
 ): string {
   return (buttons ?? []).map((b) => b.reply_id).join('\0')
+}
+
+/** URL buttons whose href contains {{1}} — need a send-time suffix. */
+export function urlButtonsNeedingSuffix(
+  template: Pick<MessageTemplate, 'buttons'> | { buttons?: unknown } | null | undefined,
+): Array<{ index: number; text: string; url: string }> {
+  if (!template) return []
+  return normalizeTemplateButtons(template.buttons).flatMap((button, index) => {
+    if (button.type !== 'URL') return []
+    if (extractVariableIndices(button.url).length === 0) return []
+    return [{ index, text: button.text, url: button.url }]
+  })
 }

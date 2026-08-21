@@ -25,6 +25,7 @@ import {
   syncTemplateButtonConfig,
   configQuickReplyIdsKey,
   normalizeTemplateButtons,
+  urlButtonsNeedingSuffix,
   type TemplateQuickReplyButton,
 } from "@/lib/flows/template-buttons";
 import { TemplateVariablePicker } from "@/components/shared/template-variable-picker";
@@ -383,6 +384,39 @@ export function SendTemplateFields({
     // clobbering a URL the user already cleared or edited.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mediaHeaderType, selectedTemplate?.id, variableGroups]);
+
+  const urlSuffixButtons = useMemo(
+    () => urlButtonsNeedingSuffix(selectedTemplate),
+    [selectedTemplate],
+  );
+
+  // Shopify order-status suffix for Track buttons (same store domain,
+  // path changes per order). Only seed empty slots.
+  useEffect(() => {
+    if (!selectedTemplate || urlSuffixButtons.length === 0) return;
+    const hasStatusSuffix = variableGroups.some((g) =>
+      g.options.some((o) => o.token.includes("vars.order_status_url_suffix")),
+    );
+    if (!hasStatusSuffix) return;
+
+    const next = { ...variables };
+    let changed = false;
+    for (const slot of urlSuffixButtons) {
+      const key = `button_${slot.index}`;
+      if (next[key]?.trim()) continue;
+      next[key] = "{{ vars.order_status_url_suffix }}";
+      changed = true;
+    }
+    if (!changed) return;
+    onChange({
+      template_name: templateName,
+      language: lang,
+      variables: next,
+      buttons,
+      next_node_key: nextNodeKey,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTemplate?.id, urlSuffixButtons, variableGroups]);
 
   const buttonBranches = useMemo(
     () =>
@@ -771,6 +805,34 @@ export function SendTemplateFields({
                       />
                     </div>
                   )}
+
+                {urlSuffixButtons.map((slot) => (
+                  <div key={`button_${slot.index}`}>
+                    <label className="mb-1 block text-xs text-muted-foreground">
+                      URL button “{slot.text}” — suffix for {`{{1}}`}
+                    </label>
+                    <VariableMappingInput
+                      value={variables[`button_${slot.index}`] ?? ""}
+                      onFocus={() => setActiveField(`button_${slot.index}`)}
+                      onChange={(next) =>
+                        onChange({
+                          template_name: templateName,
+                          language: lang,
+                          variables: {
+                            ...variables,
+                            [`button_${slot.index}`]: next,
+                          },
+                        })
+                      }
+                      placeholder="{{ vars.order_status_url_suffix }}"
+                      active={activeField === `button_${slot.index}`}
+                    />
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      Static part of the button URL stays in the template. This
+                      value replaces {`{{1}}`} at send time.
+                    </p>
+                  </div>
+                ))}
               </div>
 
               {variableGroups.length > 0 && (
@@ -831,6 +893,46 @@ export function SendTemplateFields({
                     })
                   }
                 />
+              </div>
+              {variableGroups.length > 0 && (
+                <TemplateVariablePicker
+                  groups={variableGroups}
+                  onInsert={insertToken}
+                />
+              )}
+            </div>
+          )}
+
+          {placeholders.length === 0 && urlSuffixButtons.length > 0 && (
+            <div className={VARIABLE_FIELDS_LAYOUT}>
+              <div className="min-w-0 space-y-2">
+                {urlSuffixButtons.map((slot) => (
+                  <div key={`button_${slot.index}`}>
+                    <label className="mb-1 block text-xs text-muted-foreground">
+                      URL button “{slot.text}” — suffix for {`{{1}}`}
+                    </label>
+                    <VariableMappingInput
+                      value={variables[`button_${slot.index}`] ?? ""}
+                      onFocus={() => setActiveField(`button_${slot.index}`)}
+                      onChange={(next) =>
+                        onChange({
+                          template_name: templateName,
+                          language: lang,
+                          variables: {
+                            ...variables,
+                            [`button_${slot.index}`]: next,
+                          },
+                        })
+                      }
+                      placeholder="{{ vars.order_status_url_suffix }}"
+                      active={activeField === `button_${slot.index}`}
+                    />
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      Static part of the button URL stays in the template. This
+                      value replaces {`{{1}}`} at send time.
+                    </p>
+                  </div>
+                ))}
               </div>
               {variableGroups.length > 0 && (
                 <TemplateVariablePicker

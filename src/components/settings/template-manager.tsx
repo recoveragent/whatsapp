@@ -1032,14 +1032,23 @@ export function TemplateManager() {
                             className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
                           />
                           {extractVariableIndices(btn.url).length > 0 && (
-                            <Input
-                              placeholder="Example value for {{1}} (required when URL has a variable)"
-                              value={btn.example ?? ''}
-                              onChange={(e) =>
-                                updateButton(i, { example: e.target.value })
-                              }
-                              className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
-                            />
+                            <>
+                              <Input
+                                placeholder="Example value for {{1}} (required when URL has a variable)"
+                                value={btn.example ?? ''}
+                                onChange={(e) =>
+                                  updateButton(i, { example: e.target.value })
+                                }
+                                className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
+                              />
+                              <p className="text-[10px] text-muted-foreground">
+                                For Shopify fulfilled: use your storefront domain
+                                as the static part, e.g.{' '}
+                                {`https://www.yourstore.com/{{1}}`}. The suffix is
+                                the order status path, not a courier tracking
+                                link.
+                              </p>
+                            </>
                           )}
                         </div>
                       )}

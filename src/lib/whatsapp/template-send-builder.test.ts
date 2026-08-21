@@ -193,6 +193,42 @@ describe('buildSendComponents — buttons', () => {
     ).toThrow(/URL button #1 uses \{\{1\}\}/);
   });
 
+  it('uses defaultUrlButtonSuffix when buttonParams is omitted', () => {
+    const components = buildSendComponents(
+      row({
+        buttons: [
+          { type: 'URL', text: 'Track', url: 'https://store.com/{{1}}' },
+        ],
+      }),
+      { defaultUrlButtonSuffix: '123/orders/abc' },
+    );
+    expect(components).toEqual([
+      {
+        type: 'button',
+        sub_type: 'url',
+        index: '0',
+        parameters: [{ type: 'text', text: '123/orders/abc' }],
+      },
+    ]);
+  });
+
+  it('prefers explicit buttonParams over defaultUrlButtonSuffix', () => {
+    const components = buildSendComponents(
+      row({
+        buttons: [
+          { type: 'URL', text: 'Track', url: 'https://store.com/{{1}}' },
+        ],
+      }),
+      {
+        buttonParams: { 0: 'explicit' },
+        defaultUrlButtonSuffix: 'fallback',
+      },
+    );
+    expect(components[0]).toMatchObject({
+      parameters: [{ type: 'text', text: 'explicit' }],
+    });
+  });
+
   it('uses the correct index when QR buttons precede the URL button', () => {
     // sub_type:url at index "2" because two QUICK_REPLY buttons came first.
     const components = buildSendComponents(

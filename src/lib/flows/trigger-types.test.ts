@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { shopifyTopicToFlowTrigger } from './trigger-types'
+import { shopifyTopicToFlowTrigger, shipmentStatusMatchesFilter } from './trigger-types'
 
 describe('shopifyTopicToFlowTrigger', () => {
   it('maps orders/create → shopify_order_placed', () => {
@@ -50,5 +50,19 @@ describe('shopifyTopicToFlowTrigger', () => {
 
   it('returns null for unrelated topics', () => {
     expect(shopifyTopicToFlowTrigger('checkouts/create')).toBeNull()
+  })
+})
+
+describe('shipmentStatusMatchesFilter', () => {
+  it('treats any / empty as a match', () => {
+    expect(shipmentStatusMatchesFilter('any', null)).toBe(true)
+    expect(shipmentStatusMatchesFilter(undefined, 'in_transit')).toBe(true)
+  })
+
+  it('matches Shopify in_transit including spaced labels', () => {
+    expect(shipmentStatusMatchesFilter('in_transit', 'in_transit')).toBe(true)
+    expect(shipmentStatusMatchesFilter('in_transit', 'In transit')).toBe(true)
+    expect(shipmentStatusMatchesFilter('in_transit', null)).toBe(false)
+    expect(shipmentStatusMatchesFilter('in_transit', 'delivered')).toBe(false)
   })
 })

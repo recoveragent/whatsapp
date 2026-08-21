@@ -1,3 +1,5 @@
+import { isLeadGenBrand, type BrandCategory } from '@/lib/auth/brand-category'
+
 /**
  * Flow trigger types — parity with automations where applicable.
  */
@@ -56,6 +58,19 @@ export function isExternalFlowTrigger(t: string): t is FlowTriggerType {
   return (EXTERNAL_FLOW_TRIGGERS as string[]).includes(t)
 }
 
+/** Triggers offered in the flow builder for this brand category. */
+export function flowTriggersForBrand(
+  category: BrandCategory | null | undefined,
+  current?: FlowTriggerType,
+): FlowTriggerType[] {
+  return FLOW_TRIGGER_TYPES.filter((t) => {
+    if (t === 'google_sheet_row') {
+      return isLeadGenBrand(category) || current === 'google_sheet_row'
+    }
+    return true
+  })
+}
+
 /** Shopify order webhook triggers that support payment-status filtering. */
 export const SHOPIFY_ORDER_FLOW_TRIGGERS = [
   'shopify_order_placed',
@@ -87,6 +102,73 @@ export function isShopifyOrderFlowTrigger(
   t: string,
 ): t is ShopifyOrderFlowTrigger {
   return (SHOPIFY_ORDER_FLOW_TRIGGERS as readonly string[]).includes(t)
+}
+
+/** Fulfilled / partially-fulfilled — driven by fulfillments/create and update. */
+export const SHOPIFY_FULFILLMENT_FLOW_TRIGGERS = [
+  'shopify_order_fulfilled',
+  'shopify_order_partially_fulfilled',
+] as const satisfies readonly FlowTriggerType[]
+
+export type ShopifyFulfillmentFlowTrigger =
+  (typeof SHOPIFY_FULFILLMENT_FLOW_TRIGGERS)[number]
+
+export function isShopifyFulfillmentFlowTrigger(
+  t: string,
+): t is ShopifyFulfillmentFlowTrigger {
+  return (SHOPIFY_FULFILLMENT_FLOW_TRIGGERS as readonly string[]).includes(t)
+}
+
+export const SHOPIFY_SHIPMENT_STATUSES = [
+  'any',
+  'confirmed',
+  'in_transit',
+  'out_for_delivery',
+  'delivered',
+  'ready_for_pickup',
+  'attempted_delivery',
+  'label_printed',
+  'label_purchased',
+  'failure',
+] as const
+
+export type ShopifyShipmentStatus = (typeof SHOPIFY_SHIPMENT_STATUSES)[number]
+
+export const SHOPIFY_SHIPMENT_STATUS_LABELS: Record<ShopifyShipmentStatus, string> = {
+  any: 'Any shipment status',
+  confirmed: 'Confirmed',
+  in_transit: 'In transit',
+  out_for_delivery: 'Out for delivery',
+  delivered: 'Delivered',
+  ready_for_pickup: 'Ready for pickup',
+  attempted_delivery: 'Attempted delivery',
+  label_printed: 'Label printed',
+  label_purchased: 'Label purchased',
+  failure: 'Failure',
+}
+
+export function normalizeShopifyShipmentStatus(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const value = raw.trim().toLowerCase().replace(/[\s-]+/g, '_')
+  return value || null
+}
+
+export function shipmentStatusMatchesFilter(
+  want: string | undefined,
+  actual: unknown,
+): boolean {
+  if (!want || want === 'any') return true
+  return normalizeShopifyShipmentStatus(actual) === want
+}
+
+export function defaultShopifyTriggerConfig(
+  triggerType: string,
+): Record<string, unknown> {
+  const config: Record<string, unknown> = { payment_status: 'any' }
+  if (isShopifyFulfillmentFlowTrigger(triggerType)) {
+    config.shipment_status = 'any'
+  }
+  return config
 }
 
 /** Map Shopify webhook topics to flow trigger types. */

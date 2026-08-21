@@ -181,7 +181,12 @@ describe('handleShopifyWebhook — Shopify → flow dispatch', () => {
   })
 
   it('fulfillments/create: dispatches flows even when fulfillment campaign is disabled', async () => {
-    const order = baseOrder({ fulfillment_status: 'fulfilled', financial_status: 'paid' })
+    const order = baseOrder({
+      fulfillment_status: 'fulfilled',
+      financial_status: 'paid',
+      order_status_url:
+        'https://www.brand.com/690933842/orders/abc123/authenticate?key=secret',
+    })
     fetchOrder.mockResolvedValue(order)
     loadCampaign.mockResolvedValue(null)
 
@@ -191,6 +196,7 @@ describe('handleShopifyWebhook — Shopify → flow dispatch', () => {
       status: 'success',
       tracking_number: 'TRACK123',
       tracking_url: 'https://track.example/123',
+      shipment_status: 'in_transit',
     }
     const db = mockDb()
 
@@ -209,6 +215,11 @@ describe('handleShopifyWebhook — Shopify → flow dispatch', () => {
         context: expect.objectContaining({
           trackingNumber: 'TRACK123',
           phone: '919788274333',
+          shipmentStatus: 'in_transit',
+          orderStatusUrl:
+            'https://www.brand.com/690933842/orders/abc123/authenticate?key=secret',
+          orderStatusUrlSuffix:
+            '690933842/orders/abc123/authenticate?key=secret',
         }),
       }),
     )

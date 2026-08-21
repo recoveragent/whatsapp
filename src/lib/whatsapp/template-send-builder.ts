@@ -49,6 +49,12 @@ export interface SendTimeParams {
    * override at send time.
    */
   buttonParams?: Record<number, string>;
+  /**
+   * Fallback suffix for every URL button that has `{{1}}` and no
+   * explicit `buttonParams[i]`. Used for Shopify order-status pages
+   * (same store domain, path differs per order).
+   */
+  defaultUrlButtonSuffix?: string;
 }
 
 export type MetaSendComponent =
@@ -166,6 +172,7 @@ function buildButtonComponent(
   button: TemplateButton,
   index: number,
   override: string | undefined,
+  defaultUrlSuffix?: string,
 ): MetaSendComponent | null {
   if (!buttonNeedsSendParam(button, override)) return null;
 
@@ -173,7 +180,8 @@ function buildButtonComponent(
     case 'URL': {
       // Each URL button is its own component with sub_type=url and
       // the button's index in the template's buttons array.
-      if (!override || !override.trim()) {
+      const value = (override || defaultUrlSuffix || '').trim();
+      if (!value) {
         throw new Error(
           `URL button #${index + 1} uses {{1}} — requires a buttonParams[${index}] value.`,
         );
@@ -182,7 +190,7 @@ function buildButtonComponent(
         type: 'button',
         sub_type: 'url',
         index: String(index),
-        parameters: [{ type: 'text', text: override }],
+        parameters: [{ type: 'text', text: value }],
       };
     }
     case 'COPY_CODE': {
@@ -228,7 +236,12 @@ export function buildSendComponents(
   if (template.buttons?.length) {
     template.buttons.forEach((btn, i) => {
       const override = params.buttonParams?.[i];
-      const component = buildButtonComponent(btn, i, override);
+      const component = buildButtonComponent(
+        btn,
+        i,
+        override,
+        params.defaultUrlButtonSuffix,
+      );
       if (component) out.push(component);
     });
   }

@@ -11,6 +11,7 @@ import { syncShopifyOrder } from '@/lib/shopify/sync-order';
 import { hasShopifyOrdersTable } from '@/lib/inbox/tables';
 import {
   buildShopifyAdminOrderUrl,
+  extractOrderStatusUrl,
   extractOrderTracking,
 } from '@/lib/shopify/order-links';
 import { decrypt } from '@/lib/whatsapp/encryption';
@@ -49,6 +50,7 @@ function mapLiveOrder(
     fulfillment_status: order.fulfillment_status ?? 'unfulfilled',
     tracking_url: tracking.tracking_url,
     tracking_number: tracking.tracking_number,
+    order_status_url: extractOrderStatusUrl(order),
     admin_url: shopDomain ? buildShopifyAdminOrderUrl(shopDomain, shopifyOrderId) : null,
     tags: parseTags(order.tags),
     ordered_at: order.created_at ?? null,

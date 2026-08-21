@@ -7,6 +7,7 @@ import type {
   ShopifyOrderPayload,
   ShopifyVariableKey,
 } from './types';
+import { splitPublicUrlForWhatsApp } from './order-links';
 import { normalizePhone } from '@/lib/whatsapp/phone-utils';
 
 function fullName(
@@ -124,6 +125,21 @@ export function formatShippingAddress(
   return parts.length > 0 ? parts.join(', ') : null;
 }
 
+function orderStatusFields(
+  order: Pick<ShopifyOrderPayload, 'order_status_url'> | null | undefined,
+): { orderStatusUrl: string | null; orderStatusUrlSuffix: string | null } {
+  const split = splitPublicUrlForWhatsApp(order?.order_status_url);
+  return {
+    orderStatusUrl: split.url,
+    orderStatusUrlSuffix: split.suffix,
+  };
+}
+
+function normalizeShipmentStatus(raw: string | null | undefined): string | null {
+  if (!raw?.trim()) return null;
+  return raw.trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
 export function contextFromOrder(
   order: ShopifyOrderPayload,
   shopName: string,
@@ -147,8 +163,10 @@ export function contextFromOrder(
     shippingAddressFields: order.shipping_address ?? order.billing_address ?? null,
     trackingNumber: null,
     trackingUrl: null,
+    ...orderStatusFields(order),
     checkoutUrl: null,
     fulfillmentStatus: order.fulfillment_status ?? null,
+    shipmentStatus: null,
     financialStatus: order.financial_status ?? null,
     shopName,
     resourceKey: `order:${order.id}`,
@@ -179,8 +197,11 @@ export function contextFromCheckout(
       checkout.shipping_address ?? checkout.billing_address ?? null,
     trackingNumber: null,
     trackingUrl: null,
+    orderStatusUrl: null,
+    orderStatusUrlSuffix: null,
     checkoutUrl: checkout.abandoned_checkout_url ?? null,
     fulfillmentStatus: null,
+    shipmentStatus: null,
     financialStatus: null,
     shopName,
     resourceKey: `checkout:${checkout.id ?? checkout.token}`,
@@ -204,8 +225,11 @@ export function contextFromFulfillment(
     shippingAddressFields: null,
     trackingNumber: null,
     trackingUrl: null,
+    orderStatusUrl: null,
+    orderStatusUrlSuffix: null,
     checkoutUrl: null,
     fulfillmentStatus: null,
+    shipmentStatus: null,
     financialStatus: null,
     shopName,
     resourceKey: `fulfillment:${fulfillment.id}`,
@@ -216,6 +240,7 @@ export function contextFromFulfillment(
     trackingNumber: fulfillment.tracking_number ?? fulfillment.tracking_company ?? null,
     trackingUrl: fulfillment.tracking_url ?? null,
     fulfillmentStatus: fulfillment.status ?? 'updated',
+    shipmentStatus: normalizeShipmentStatus(fulfillment.shipment_status),
     resourceKey: `fulfillment:${fulfillment.id}`,
   };
 }
@@ -259,10 +284,16 @@ function resolveVariable(key: ShopifyVariableKey, ctx: ShopifyEventContext): str
       return ctx.trackingNumber ?? '';
     case 'tracking_url':
       return ctx.trackingUrl ?? '';
+    case 'order_status_url':
+      return ctx.orderStatusUrl ?? '';
+    case 'order_status_url_suffix':
+      return ctx.orderStatusUrlSuffix ?? '';
     case 'checkout_url':
       return ctx.checkoutUrl ?? '';
     case 'fulfillment_status':
       return ctx.fulfillmentStatus ?? '';
+    case 'shipment_status':
+      return ctx.shipmentStatus ?? '';
     case 'shop_name':
       return ctx.shopName;
     default:

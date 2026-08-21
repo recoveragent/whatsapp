@@ -451,7 +451,23 @@ export function ContactSidebar({
                           {formatFulfillment(order.fulfillment_status)}
                         </span>
                       </p>
-                      {isFulfilledStatus(order.fulfillment_status) && order.tracking_url && (
+                      {isFulfilledStatus(order.fulfillment_status) && order.tracking_number && (
+                        <p>
+                          Tracking:{" "}
+                          <span className="text-foreground">{order.tracking_number}</span>
+                        </p>
+                      )}
+                      {order.order_status_url ? (
+                        <a
+                          href={order.order_status_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          View order status
+                        </a>
+                      ) : isFulfilledStatus(order.fulfillment_status) && order.tracking_url ? (
                         <a
                           href={order.tracking_url}
                           target="_blank"
@@ -462,7 +478,7 @@ export function ContactSidebar({
                           Track shipment
                           {order.tracking_number ? ` (${order.tracking_number})` : ""}
                         </a>
-                      )}
+                      ) : null}
                       {order.tags.length > 0 && (
                         <div className="mt-1 flex flex-wrap gap-1">
                           {order.tags.map((tag) => (
