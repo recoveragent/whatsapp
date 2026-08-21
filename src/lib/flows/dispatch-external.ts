@@ -20,9 +20,11 @@ import { supabaseAdmin } from './admin-client'
 import { startFlowForExternalEvent } from './engine'
 import type { FlowRow } from './types'
 import {
+  flowMatchesShipmentConfig,
   isShopifyFulfillmentFlowTrigger,
   isShopifyOrderFlowTrigger,
-  shipmentStatusMatchesFilter,
+  resolveFlowStartNodeKey,
+  selectedShipmentStatuses,
   type FlowTriggerType,
 } from './trigger-types'
 
@@ -102,8 +104,7 @@ function flowMatchesTrigger(
   }
 
   if (isShopifyFulfillmentFlowTrigger(input.triggerType)) {
-    const want = cfg.shipment_status as string | undefined
-    if (!shipmentStatusMatchesFilter(want, input.context?.vars?.shipment_status)) {
+    if (!flowMatchesShipmentConfig(cfg, input.context?.vars?.shipment_status)) {
       return false
     }
   }
@@ -130,12 +131,12 @@ function shopifyShipmentMismatchReason(
 ): string | null {
   if (!isShopifyFulfillmentFlowTrigger(input.triggerType)) return null
   const cfg = flow.trigger_config as Record<string, unknown>
-  const want = cfg.shipment_status as string | undefined
-  if (shipmentStatusMatchesFilter(want, input.context?.vars?.shipment_status)) {
-    return null
+  if (!flowMatchesShipmentConfig(cfg, input.context?.vars?.shipment_status)) {
+    const want = selectedShipmentStatuses(cfg).join(', ') || 'any'
+    const actual = input.context?.vars?.shipment_status
+    return `expected "${want}", got "${typeof actual === 'string' ? actual : 'null'}"`
   }
-  const actual = input.context?.vars?.shipment_status
-  return `expected "${want}", got "${typeof actual === 'string' ? actual : 'null'}"`
+  return null
 }
 
 /**
@@ -212,7 +213,13 @@ export async function runFlowsForTrigger(
 
       if (!flowMatchesTrigger(flow, input)) continue
 
-      if (!flow.entry_node_id) {
+      const startNodeKey = resolveFlowStartNodeKey({
+        entry_node_id: flow.entry_node_id,
+        trigger_type: flow.trigger_type,
+        trigger_config: flow.trigger_config as Record<string, unknown>,
+        vars: input.context?.vars,
+      })
+      if (!startNodeKey) {
         outcome.skipped.push({
           flow_id: flow.id,
           flow_name: flow.name,
@@ -244,6 +251,7 @@ export async function runFlowsForTrigger(
         flow,
         contactId: input.contactId,
         conversationId,
+        startNodeKey,
         initialVars: {
           ...(input.context?.vars ?? {}),
           ...(input.context?.message_text

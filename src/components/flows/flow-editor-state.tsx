@@ -53,6 +53,10 @@ import {
 import { unlinkNodeReferences } from "@/lib/flows/edges";
 import type { FlowNodeRow, FlowRow } from "@/lib/flows/types";
 import type { FlowTriggerType } from "@/lib/flows/trigger-types";
+import {
+  selectedShipmentStatuses,
+  shipmentRoutesFromConfig,
+} from "@/lib/flows/trigger-types";
 import { defaultFlowWebhookConfig } from "@/lib/flows/webhook-config";
 import { parseExitConfig } from "@/lib/flows/exit-conditions";
 import { NODE_META, slugify, type BuilderNode, type NodeType } from "./shared";
@@ -80,9 +84,9 @@ export interface FlowEditorContextValue {
   state: BuilderState;
   /**
    * Dirty-tracking React setState. Flips `dirty` on every call. Used
-   * by the list view's existing subcomponents (Header, TriggerPanel,
-   * EntryPicker) which mutate multiple fields atomically — granular
-   * setters below would force them to fan out the update.
+   * by the list view's existing subcomponents (Header, TriggerPanel)
+   * which mutate multiple fields atomically — granular setters below
+   * would force them to fan out the update.
    */
   setState: (
     updaterOrValue:
@@ -565,11 +569,10 @@ export function FlowEditorProvider({
         return {
           ...s,
           nodes: [...s.nodes, next],
-          // If this is the first node and it's a start, pick it as
-          // the entry automatically. Saves a click.
           entry_node_id:
-            s.entry_node_id ??
-            (type === "start" ? node_key : s.entry_node_id ?? null),
+            selectedShipmentStatuses(s.trigger_config).length > 0
+              ? s.entry_node_id
+              : (s.entry_node_id ?? node_key),
         };
       });
       return createdKey;
@@ -598,14 +601,24 @@ export function FlowEditorProvider({
       // leave dangling arrows behind that the validator would flag.
       // Cleared refs become "" (the "no target picked" sentinel the
       // builder forms already use).
-      setState((s) => ({
-        ...s,
-        nodes: unlinkNodeReferences(
-          s.nodes.filter((n) => n.node_key !== key),
-          key,
-        ),
-        entry_node_id: s.entry_node_id === key ? null : s.entry_node_id,
-      }));
+      setState((s) => {
+        const routes = { ...shipmentRoutesFromConfig(s.trigger_config) };
+        for (const [status, next] of Object.entries(routes)) {
+          if (next === key) delete routes[status];
+        }
+        return {
+          ...s,
+          nodes: unlinkNodeReferences(
+            s.nodes.filter((n) => n.node_key !== key),
+            key,
+          ),
+          entry_node_id: s.entry_node_id === key ? null : s.entry_node_id,
+          trigger_config: {
+            ...s.trigger_config,
+            shipment_routes: routes,
+          },
+        };
+      });
     },
     [setState],
   );

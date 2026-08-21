@@ -3,10 +3,10 @@
 /**
  * Linear-list flow editor.
  *
- * Renders the trigger panel, entry-node picker, and the per-node card
- * list. Header and validation panel are NOT owned here — they live
- * once in FlowEditorShell so they show in both views (lifted in PR 3
- * so canvas users can also save + see validator issues).
+ * Renders the trigger panel and the per-node card list. Header and
+ * validation panel are NOT owned here — they live once in
+ * FlowEditorShell so they show in both views (lifted in PR 3 so
+ * canvas users can also save + see validator issues).
  *
  * State lives in the shared `useFlowEditor()` context — toggling
  * Canvas ⇄ List never loses edits, and a drag on the canvas updates
@@ -24,9 +24,7 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
-  CornerDownRight,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -53,7 +51,6 @@ import {
 } from "./shared";
 import { TriggerPanel } from "./trigger-panel";
 import { NodeConfigForm } from "./forms/node-config-form";
-import { NodeKeySelect } from "./forms/fields";
 import { IssueLine } from "./validation-panel";
 import {
   useFlowEditor,
@@ -150,8 +147,6 @@ export function FlowBuilder() {
         triggerIssues={issues.filter((i) => i.scope === "trigger")}
       />
 
-      <EntryPicker state={state} setState={setState} />
-
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-foreground">
@@ -175,7 +170,6 @@ export function FlowBuilder() {
               triggerType={state.trigger_type}
               triggerConfig={state.trigger_config}
               expanded={expandedWithFlash.has(node.node_key)}
-              isEntry={state.entry_node_id === node.node_key}
               isFlashed={flashKey === node.node_key}
               cardRef={setNodeRef(node.node_key)}
               issues={issues.filter(
@@ -185,9 +179,6 @@ export function FlowBuilder() {
               onUpdate={(patch) => updateNode(node.node_key, patch)}
               onUpdateConfig={(patch) => updateNodeConfig(node.node_key, patch)}
               onRemove={() => removeNode(node.node_key)}
-              onSetEntry={() =>
-                setState((s) => ({ ...s, entry_node_id: node.node_key }))
-              }
             />
           ))
         )}
@@ -198,35 +189,6 @@ export function FlowBuilder() {
 
 
 // ============================================================
-// Entry-node picker
-// ============================================================
-
-function EntryPicker({
-  state,
-  setState,
-}: {
-  state: BuilderState;
-  setState: React.Dispatch<React.SetStateAction<BuilderState>>;
-}) {
-  if (state.nodes.length === 0) return null;
-  return (
-    <section className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
-      <CornerDownRight className="h-4 w-4 shrink-0 text-primary" />
-      <span className="text-xs text-muted-foreground">Entry node:</span>
-      <NodeKeySelect
-        value={state.entry_node_id}
-        nodes={state.nodes}
-        onChange={(key) =>
-          setState((s) => ({ ...s, entry_node_id: key }))
-        }
-        placeholder="Pick the first node…"
-        className="flex-1 max-w-xs"
-      />
-    </section>
-  );
-}
-
-// ============================================================
 // Node card — collapsed summary + expanded config form
 // ============================================================
 
@@ -234,7 +196,6 @@ function NodeCard({
   node,
   allNodes,
   expanded,
-  isEntry,
   isFlashed,
   cardRef,
   issues,
@@ -242,14 +203,12 @@ function NodeCard({
   onUpdate,
   onUpdateConfig,
   onRemove,
-  onSetEntry,
   triggerType,
   triggerConfig,
 }: {
   node: BuilderNode;
   allNodes: BuilderNode[];
   expanded: boolean;
-  isEntry: boolean;
   isFlashed: boolean;
   cardRef: (el: HTMLDivElement | null) => void;
   issues: ValidationIssue[];
@@ -257,7 +216,6 @@ function NodeCard({
   onUpdate: (patch: Partial<BuilderNode>) => void;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
   onRemove: () => void;
-  onSetEntry: () => void;
   triggerType: BuilderState["trigger_type"];
   triggerConfig: BuilderState["trigger_config"];
 }) {
@@ -269,11 +227,7 @@ function NodeCard({
       ref={cardRef}
       className={cn(
         "rounded-lg border bg-card transition-shadow duration-500",
-        hasError
-          ? "border-red-500/40"
-          : isEntry
-            ? "border-primary/50"
-            : "border-border",
+        hasError ? "border-red-500/40" : "border-border",
         isFlashed &&
           "ring-2 ring-primary ring-offset-2 ring-offset-background",
       )}
@@ -292,14 +246,6 @@ function NodeCard({
             <code className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
               {node.node_key}
             </code>
-            {isEntry && (
-              <Badge
-                variant="outline"
-                className="border-primary/40 bg-primary/10 text-[10px] text-primary"
-              >
-                Entry
-              </Badge>
-            )}
           </div>
           {!expanded && preview && (
             <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -326,14 +272,7 @@ function NodeCard({
             onUpdate={onUpdate}
             onUpdateConfig={onUpdateConfig}
           />
-          <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
-            <div className="flex items-center gap-2">
-              {!isEntry && (
-                <Button variant="ghost" size="sm" onClick={onSetEntry}>
-                  Set as entry
-                </Button>
-              )}
-            </div>
+          <div className="mt-4 flex items-center justify-end border-t border-border pt-3">
             <Button
               variant="ghost"
               size="sm"

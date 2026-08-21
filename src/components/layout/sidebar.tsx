@@ -6,7 +6,7 @@ import { useEffect } from "react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-import { useTotalUnread } from "@/hooks/use-total-unread";
+import { useInboxNavCounts } from "@/hooks/use-total-unread";
 import { BRAND_ICON_PATH, BRAND_NAME } from "@/components/brand/brand-logo";
 import {
   Building2,
@@ -136,7 +136,7 @@ export function Sidebar({
     : isSuperAdminActing
       ? pathname === "/settings" && searchParams.get("tab") === "templates"
       : pathname.startsWith("/admin/templates");
-  const totalUnread = useTotalUnread();
+  const { unread: totalUnread, open: openInboxCount } = useInboxNavCounts();
   const showAccountStrip =
     !opsOnlyNav &&
     !profileLoading &&
@@ -163,7 +163,10 @@ export function Sidebar({
   }, [open, onClose]);
 
   const filterWorkspace = (items: NavItem[]) =>
-    items.filter((item) => item.href !== "/pipelines" || isLeadGenBrand);
+    items.filter(
+      (item) =>
+        (item.href !== "/pipelines" && item.href !== "/leads") || isLeadGenBrand,
+    );
 
   return (
     <TooltipProvider delay={0}>
@@ -237,6 +240,7 @@ export function Sidebar({
                 items={homeItems}
                 pathname={pathname}
                 totalUnread={totalUnread}
+                openInboxCount={openInboxCount}
               />
               <NavSection
                 label="Workspace"
@@ -244,6 +248,7 @@ export function Sidebar({
                 items={filterWorkspace(workspaceItems)}
                 pathname={pathname}
                 totalUnread={totalUnread}
+                openInboxCount={openInboxCount}
               />
               <NavSection
                 label="Automation"
@@ -251,6 +256,7 @@ export function Sidebar({
                 items={automationItems}
                 pathname={pathname}
                 totalUnread={totalUnread}
+                openInboxCount={openInboxCount}
               />
             </>
           ) : (
@@ -435,12 +441,14 @@ function NavSection({
   pathname,
   collapsed,
   totalUnread,
+  openInboxCount,
 }: {
   label: string;
   items: NavItem[];
   pathname: string;
   collapsed: boolean;
   totalUnread: number;
+  openInboxCount: number;
 }) {
   if (items.length === 0) return null;
   return (
@@ -458,8 +466,8 @@ function NavSection({
           const isActive =
             pathname === item.href ||
             (item.href !== "/dashboard" && pathname.startsWith(item.href));
-          const showUnreadDot =
-            item.href === "/inbox" && totalUnread > 0 && !isActive;
+          const isInbox = item.href === "/inbox";
+          const showUnreadDot = isInbox && totalUnread > 0 && !isActive;
           return (
             <NavRow
               key={item.href}
@@ -470,6 +478,7 @@ function NavSection({
               collapsed={collapsed}
               beta={item.beta}
               unread={showUnreadDot ? totalUnread : 0}
+              badge={isInbox ? openInboxCount : 0}
             />
           );
         })}
@@ -486,6 +495,7 @@ function NavRow({
   collapsed,
   beta,
   unread = 0,
+  badge = 0,
 }: {
   href: string;
   label: string;
@@ -494,12 +504,25 @@ function NavRow({
   collapsed: boolean;
   beta?: boolean;
   unread?: number;
+  badge?: number;
 }) {
+  const badgeLabel =
+    badge > 0
+      ? `${badge} open conversation${badge === 1 ? "" : "s"}`
+      : undefined;
+  const badgeText = badge > 99 ? "99+" : String(badge);
+
   return (
     <li>
       <Link
         href={href}
-        title={collapsed ? label : undefined}
+        title={
+          collapsed
+            ? badgeLabel
+              ? `${label} · ${badgeLabel}`
+              : label
+            : undefined
+        }
         className={cn(
           "relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-colors duration-150",
           collapsed && "lg:justify-center lg:px-0",
@@ -524,6 +547,18 @@ function NavRow({
             )}
           >
             Beta
+          </span>
+        ) : null}
+        {badge > 0 ? (
+          <span
+            aria-label={badgeLabel}
+            className={cn(
+              "inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground tabular-nums",
+              collapsed &&
+                "lg:absolute lg:top-1 lg:right-0.5 lg:h-3.5 lg:min-w-3.5 lg:px-0.5 lg:text-[8px]",
+            )}
+          >
+            {badgeText}
           </span>
         ) : null}
         {unread > 0 ? (

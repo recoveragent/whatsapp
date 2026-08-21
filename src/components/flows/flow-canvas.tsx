@@ -14,8 +14,8 @@
  *     "true" / "false", list row title) so a branching flow reads
  *     as a real decision tree.
  *   - Click a node → side-sheet (centered dialog for Send template)
- *     opens with the same per-node form the list view uses, plus "Set as entry" / "Duplicate" /
- *     "Delete". Ctrl/Cmd+D duplicates the selected node.
+ *     opens with the same per-node form the list view uses, plus Duplicate /
+ *     Delete. Drag from the trigger handle to set the first node.
  *   - Drag from a source handle on one node to a target handle on
  *     another → wires that slot's `next_node_key`. Per-slot handles
  *     for multi-outgoing types (condition, send_buttons, send_list)
@@ -102,10 +102,14 @@ import {
   TRIGGER_NODE_ID,
   TriggerPanel,
   summarizeTrigger,
+  triggerOutgoingSlots,
 } from "./trigger-panel";
-import { FLOW_TRIGGER_LABELS } from "@/lib/flows/trigger-types";
+import {
+  FLOW_TRIGGER_LABELS,
+  shipmentRoutesFromConfig,
+  shipmentStatusFromHandle,
+} from "@/lib/flows/trigger-types";
 import { parseExitConfig, summarizeExitConfig } from "@/lib/flows/exit-conditions";
-import { NEXT_STEP_LABEL } from "@/lib/flows/reply-timeout";
 
 // React-Flow node `data` payload — the bits our custom renderer needs.
 interface NodeData extends Record<string, unknown> {
@@ -117,11 +121,56 @@ interface NodeData extends Record<string, unknown> {
 }
 
 const NODE_WIDTH = 260;
-const TRIGGER_NODE_HEIGHT = 76;
-// Best-effort default; actual height varies by summary length but
-// dagre needs SOMETHING to compute rank spacing. Underestimating is
-// safer than over (tighter layout that still doesn't overlap).
+const TRIGGER_NODE_BASE_HEIGHT = 76;
+const TRIGGER_SLOT_HEIGHT = 22;
 const NODE_HEIGHT = 90;
+
+function triggerHeight(slotCount: number): number {
+  return TRIGGER_NODE_BASE_HEIGHT + Math.max(0, slotCount - 1) * TRIGGER_SLOT_HEIGHT;
+}
+
+function patchTriggerConnection(
+  s: import("./flow-editor-state").BuilderState,
+  handle: string,
+  target: string,
+): import("./flow-editor-state").BuilderState {
+  if (handle === "next") {
+    return { ...s, entry_node_id: target || null };
+  }
+  const status = shipmentStatusFromHandle(handle);
+  if (!status) return s;
+  const routes = { ...shipmentRoutesFromConfig(s.trigger_config) };
+  if (target) routes[status] = target;
+  else delete routes[status];
+  return {
+    ...s,
+    entry_node_id: target ? (s.entry_node_id ?? target) : s.entry_node_id,
+    trigger_config: { ...s.trigger_config, shipment_routes: routes },
+  };
+}
+function triggerConnections(
+  triggerType: import("@/lib/flows/trigger-types").FlowTriggerType,
+  config: Record<string, unknown>,
+  entryNodeId: string | null,
+): Array<{ handle: string; label: string; target: string | null }> {
+  const slots = triggerOutgoingSlots(triggerType, config);
+  const routes = shipmentRoutesFromConfig(config);
+  const selected = slots.filter((s) => s.id !== "next");
+  return slots.map((slot) => {
+    if (slot.id === "next") {
+      return { handle: slot.id, label: slot.label, target: entryNodeId };
+    }
+    const status = shipmentStatusFromHandle(slot.id);
+    const routed = status ? routes[status] : null;
+    const fallback =
+      selected.length === 1 ? entryNodeId : null;
+    return {
+      handle: slot.id,
+      label: slot.label,
+      target: routed || fallback,
+    };
+  });
+}
 
 // ============================================================
 // Custom node — one card per flow node, styled to match the list
@@ -129,7 +178,7 @@ const NODE_HEIGHT = 90;
 // ============================================================
 
 function FlowNodeCard({ data, selected }: NodeProps) {
-  const { node, isEntry, isFlashed } = data as NodeData;
+  const { node, isFlashed } = data as NodeData;
   const meta = NODE_META[node.node_type];
   const summary = summarizeNode(node);
   const Icon = meta.icon;
@@ -165,11 +214,6 @@ function FlowNodeCard({ data, selected }: NodeProps) {
         <span className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           {meta.label}
         </span>
-        {isEntry && (
-          <span className="ml-auto rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-300">
-            Entry
-          </span>
-        )}
       </div>
       <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
         {node.node_key}
@@ -212,10 +256,12 @@ interface TriggerNodeData extends Record<string, unknown> {
   label: string;
   summary: string;
   isFlashed: boolean;
+  handles: Array<{ id: string; label: string }>;
 }
 
 function TriggerNodeCard({ data, selected }: NodeProps) {
-  const { label, summary, isFlashed } = data as TriggerNodeData;
+  const { label, summary, isFlashed, handles } = data as TriggerNodeData;
+  const slots = handles.length > 0 ? handles : [{ id: "next", label: "Next step" }];
   return (
     <div
       className={cn(
@@ -234,14 +280,23 @@ function TriggerNodeCard({ data, selected }: NodeProps) {
       </div>
       <div className="mt-1 truncate text-sm font-medium text-foreground">{label}</div>
       <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{summary}</div>
-      <div className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2 text-[11px] text-muted-foreground">
-        <span>{NEXT_STEP_LABEL}</span>
-        <Handle
-          type="source"
-          id="next"
-          position={Position.Right}
-          className="!relative !right-auto !top-auto !h-2.5 !w-2.5 !translate-x-[12px] !transform-none !border-border !bg-muted"
-        />
+      <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2">
+        {slots.map((slot) => (
+          <div
+            key={slot.id}
+            className="relative flex items-center justify-between gap-2 rounded px-1 py-0.5 text-[11px] text-muted-foreground"
+          >
+            <span className="truncate" title={slot.label}>
+              {slot.label}
+            </span>
+            <Handle
+              type="source"
+              id={slot.id}
+              position={Position.Right}
+              className="!relative !right-auto !top-auto !h-2.5 !w-2.5 !translate-x-[12px] !transform-none !border-border !bg-muted"
+            />
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -283,6 +338,20 @@ function FlowCanvasInner() {
   const reactFlow = useReactFlow();
   const builderNodes = state.nodes;
   const entryNodeId = state.entry_node_id;
+  const triggerSlots = useMemo(
+    () => triggerOutgoingSlots(state.trigger_type, state.trigger_config),
+    [state.trigger_type, state.trigger_config],
+  );
+  const triggerLinks = useMemo(
+    () =>
+      triggerConnections(
+        state.trigger_type,
+        state.trigger_config,
+        entryNodeId,
+      ),
+    [state.trigger_type, state.trigger_config, entryNodeId],
+  );
+  const triggerNodeHeight = triggerHeight(triggerSlots.length);
   const triggerIssues = useMemo(
     () => issues.filter((i) => i.scope === "trigger"),
     [issues],
@@ -313,16 +382,23 @@ function FlowCanvasInner() {
       target: e.target,
     }));
 
-    if (entryNodeId && builderNodes.some((n) => n.node_key === entryNodeId)) {
+    if (triggerLinks.length > 0) {
       layoutNodes.unshift({
         id: TRIGGER_NODE_ID,
         width: NODE_WIDTH,
-        height: TRIGGER_NODE_HEIGHT,
+        height: triggerNodeHeight,
       });
-      layoutEdges.unshift({
-        source: TRIGGER_NODE_ID,
-        target: entryNodeId,
-      });
+      for (const link of triggerLinks) {
+        if (
+          link.target &&
+          builderNodes.some((n) => n.node_key === link.target)
+        ) {
+          layoutEdges.unshift({
+            source: TRIGGER_NODE_ID,
+            target: link.target,
+          });
+        }
+      }
     }
 
     return shouldAutoLayout(builderNodes)
@@ -332,22 +408,26 @@ function FlowCanvasInner() {
           { direction: "TB", rankSep: 100, nodeSep: 72 },
         )
       : null;
-  }, [builderNodes, entryNodeId]);
+  }, [builderNodes, triggerLinks, triggerNodeHeight]);
 
   const triggerPosition = useMemo(() => {
     const fromLayout = autoLayoutPositions?.get(TRIGGER_NODE_ID);
     if (fromLayout) return fromLayout;
 
-    const entry = builderNodes.find((n) => n.node_key === entryNodeId);
-    if (entry) {
+    const firstTarget = triggerLinks.find(
+      (link) =>
+        link.target && builderNodes.some((n) => n.node_key === link.target),
+    )?.target;
+    const first = builderNodes.find((n) => n.node_key === firstTarget);
+    if (first) {
       return {
-        x: entry.position_x ?? 0,
-        y: (entry.position_y ?? 0) - (TRIGGER_NODE_HEIGHT + 48),
+        x: first.position_x ?? 0,
+        y: (first.position_y ?? 0) - (triggerNodeHeight + 48),
       };
     }
 
     return { x: 40, y: 40 };
-  }, [autoLayoutPositions, builderNodes, entryNodeId]);
+  }, [autoLayoutPositions, builderNodes, triggerLinks, triggerNodeHeight]);
 
   // If dagre had to place an all-zero flow, persist the generated
   // positions into editor state once. Otherwise the next drag would
@@ -386,7 +466,7 @@ function FlowCanvasInner() {
         },
         data: {
           node: n,
-          isEntry: n.node_key === entryNodeId,
+          isEntry: false,
           isFlashed: n.node_key === flashKey,
         },
       };
@@ -402,16 +482,17 @@ function FlowCanvasInner() {
         label: triggerLabel,
         summary: triggerSummary,
         isFlashed: flashKey === TRIGGER_NODE_ID,
+        handles: triggerSlots,
       },
     };
 
     return [triggerNode, ...flowNodes];
   }, [
     builderNodes,
-    entryNodeId,
     flashKey,
     autoLayoutPositions,
     triggerPosition,
+    triggerSlots,
     state.trigger_type,
     state.trigger_config,
     state.exit_config,
@@ -444,32 +525,31 @@ function FlowCanvasInner() {
       style: { stroke: "var(--border)", strokeWidth: 1.5 },
     }));
 
-    if (
-      entryNodeId &&
-      builderNodes.some((n) => n.node_key === entryNodeId)
-    ) {
+    for (const link of triggerLinks) {
+      if (
+        !link.target ||
+        !builderNodes.some((n) => n.node_key === link.target)
+      ) {
+        continue;
+      }
       edges.unshift({
-        id: `${TRIGGER_NODE_ID}--next--${entryNodeId}`,
+        id: `${TRIGGER_NODE_ID}--${link.handle}--${link.target}`,
         source: TRIGGER_NODE_ID,
-        target: entryNodeId,
-        sourceHandle: "next",
-        label: "starts",
+        target: link.target,
+        sourceHandle: link.handle,
+        label: link.label,
         labelStyle: { fill: "var(--primary)", fontSize: 11, fontWeight: 500 },
         labelBgStyle: { fill: "var(--card)" },
         labelBgPadding: [4, 2] as [number, number],
         labelBgBorderRadius: 4,
         style: { stroke: "var(--primary)", strokeWidth: 2 },
         animated: true,
-        // Entry is owned by "Set as entry" / the trigger sheet — not
-        // by clearing a next_node_key slot. Block keyboard delete so
-        // the edge doesn't vanish from local state then stick gone
-        // until the next unrelated re-derive.
-        deletable: false,
+        deletable: true,
       });
     }
 
     return edges;
-  }, [builderNodes, entryNodeId]);
+  }, [builderNodes, triggerLinks]);
 
   const [rfEdges, setRfEdges] = useState<RfEdge[]>(derivedRfEdges);
 
@@ -511,7 +591,7 @@ function FlowCanvasInner() {
       setSelectedNodeKey(TRIGGER_NODE_ID);
       reactFlow.setCenter(
         triggerPosition.x + NODE_WIDTH / 2,
-        triggerPosition.y + TRIGGER_NODE_HEIGHT / 2,
+        triggerPosition.y + triggerNodeHeight / 2,
         { zoom: reactFlow.getZoom(), duration: 400 },
       );
       return;
@@ -524,7 +604,7 @@ function FlowCanvasInner() {
       zoom: reactFlow.getZoom(),
       duration: 400,
     });
-  }, [flashKey, builderNodes, reactFlow, triggerPosition]);
+  }, [flashKey, builderNodes, reactFlow, triggerPosition, triggerNodeHeight]);
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: RfNode) => {
@@ -544,14 +624,22 @@ function FlowCanvasInner() {
       if (!connection.source || !connection.target || !connection.sourceHandle) {
         return;
       }
+      if (connection.source === connection.target) return;
+      if (connection.source === TRIGGER_NODE_ID) {
+        if (!builderNodes.some((n) => n.node_key === connection.target)) return;
+        setState((s) =>
+          patchTriggerConnection(
+            s,
+            connection.sourceHandle as string,
+            connection.target as string,
+          ),
+        );
+        return;
+      }
       const sourceNode = builderNodes.find(
         (n) => n.node_key === connection.source,
       );
       if (!sourceNode) return;
-      // Self-loops are a footgun (a button whose target is its own
-      // node = infinite reprompt). Reject silently — the user can
-      // still wire one via the per-node dropdown if they really want.
-      if (connection.source === connection.target) return;
       const patch = applyEdgeConnection(
         sourceNode,
         connection.sourceHandle,
@@ -559,7 +647,7 @@ function FlowCanvasInner() {
       );
       if (patch) updateNodeConfig(connection.source, patch);
     },
-    [builderNodes, updateNodeConfig],
+    [builderNodes, updateNodeConfig, setState],
   );
 
   // Keyboard delete (Backspace / Delete) + drag-to-trash. React-Flow
@@ -586,13 +674,17 @@ function FlowCanvasInner() {
     (deleted: RfEdge[]) => {
       for (const e of deleted) {
         if (!e.sourceHandle) continue;
+        if (e.source === TRIGGER_NODE_ID) {
+          setState((s) => patchTriggerConnection(s, e.sourceHandle as string, ""));
+          continue;
+        }
         const sourceNode = builderNodes.find((n) => n.node_key === e.source);
         if (!sourceNode) continue;
         const patch = applyEdgeConnection(sourceNode, e.sourceHandle, "");
         if (patch) updateNodeConfig(e.source, patch);
       }
     },
-    [builderNodes, updateNodeConfig],
+    [builderNodes, updateNodeConfig, setState],
   );
 
   // Wrapped mutators that target the currently-selected node — pass to
@@ -616,11 +708,6 @@ function FlowCanvasInner() {
     const newKey = duplicateNode(selectedNodeKey);
     if (newKey) setSelectedNodeKey(newKey);
   }, [selectedNodeKey, duplicateNode]);
-
-  const handleSetEntry = useCallback(() => {
-    if (!selectedNodeKey || selectedNodeKey === TRIGGER_NODE_ID) return;
-    setState((s) => ({ ...s, entry_node_id: selectedNodeKey }));
-  }, [selectedNodeKey, setState]);
 
   // Ctrl/Cmd+D duplicates the selected canvas node. Skip when focus is
   // in a form field so we don't fight typing / browser bookmark dialogs
@@ -705,7 +792,6 @@ function FlowCanvasInner() {
 
       <NodeEditSheet
         node={selectedNode}
-        isEntry={selectedNode?.node_key === entryNodeId}
         allNodes={builderNodes}
         triggerType={state.trigger_type}
         triggerConfig={state.trigger_config}
@@ -713,7 +799,6 @@ function FlowCanvasInner() {
         onUpdateConfig={onSelectedUpdateConfig}
         onDuplicate={handleDuplicateSelected}
         onDelete={handleDeleteSelected}
-        onSetEntry={handleSetEntry}
       />
     </div>
   );
@@ -777,24 +862,20 @@ function TriggerEditSheet({
 
 function NodeEditPanelBody({
   node,
-  isEntry,
   allNodes,
   triggerType,
   triggerConfig,
   onUpdateConfig,
   onDuplicate,
   onDelete,
-  onSetEntry,
 }: {
   node: BuilderNode;
-  isEntry: boolean;
   allNodes: BuilderNode[];
   triggerType: import("./flow-editor-state").BuilderState["trigger_type"];
   triggerConfig: import("./flow-editor-state").BuilderState["trigger_config"];
   onUpdateConfig: (patch: Record<string, unknown>) => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  onSetEntry: () => void;
 }) {
   const meta = NODE_META[node.node_type];
   const Icon = meta.icon;
@@ -805,11 +886,6 @@ function NodeEditPanelBody({
         <div className="flex items-center gap-2 text-popover-foreground">
           <Icon className={cn("h-4 w-4 shrink-0", meta.color)} />
           <span className="font-heading text-base font-medium">{meta.label}</span>
-          {isEntry && (
-            <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
-              Entry
-            </span>
-          )}
         </div>
         <p className="mt-1 font-mono text-[11px] text-muted-foreground">
           {node.node_key}
@@ -827,14 +903,7 @@ function NodeEditPanelBody({
         />
       </div>
 
-      <div className="flex flex-col gap-2 border-t border-border px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
-        {!isEntry ? (
-          <Button variant="ghost" size="sm" onClick={onSetEntry}>
-            Set as entry
-          </Button>
-        ) : (
-          <span />
-        )}
+      <div className="flex flex-col gap-2 border-t border-border px-5 py-3 sm:flex-row sm:items-center sm:justify-end">
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="sm" onClick={onDuplicate}>
             <Copy className="h-3.5 w-3.5" />
@@ -857,7 +926,6 @@ function NodeEditPanelBody({
 
 function NodeEditSheet({
   node,
-  isEntry,
   allNodes,
   triggerType,
   triggerConfig,
@@ -865,10 +933,8 @@ function NodeEditSheet({
   onUpdateConfig,
   onDuplicate,
   onDelete,
-  onSetEntry,
 }: {
   node: BuilderNode | null;
-  isEntry: boolean;
   allNodes: BuilderNode[];
   triggerType: import("./flow-editor-state").BuilderState["trigger_type"];
   triggerConfig: import("./flow-editor-state").BuilderState["trigger_config"];
@@ -876,7 +942,6 @@ function NodeEditSheet({
   onUpdateConfig: (patch: Record<string, unknown>) => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  onSetEntry: () => void;
 }) {
   const open = node !== null;
   const isTemplateDialog = node?.node_type === "send_template";
@@ -897,14 +962,12 @@ function NodeEditSheet({
           </DialogHeader>
           <NodeEditPanelBody
             node={node}
-            isEntry={isEntry}
             allNodes={allNodes}
             triggerType={triggerType}
             triggerConfig={triggerConfig}
             onUpdateConfig={onUpdateConfig}
             onDuplicate={onDuplicate}
             onDelete={onDelete}
-            onSetEntry={onSetEntry}
           />
         </DialogContent>
       </Dialog>
@@ -931,11 +994,6 @@ function NodeEditSheet({
           <SheetTitle className="flex items-center gap-2 text-popover-foreground">
             <Icon className={cn("h-4 w-4 shrink-0", meta.color)} />
             <span>{meta.label}</span>
-            {isEntry && (
-              <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
-                Entry
-              </span>
-            )}
           </SheetTitle>
           <SheetDescription className="font-mono text-[11px] text-muted-foreground">
             {node.node_key}
@@ -953,14 +1011,7 @@ function NodeEditSheet({
           />
         </div>
 
-        <SheetFooter className="border-t border-border px-5 py-3 sm:flex-row sm:justify-between">
-          {!isEntry ? (
-            <Button variant="ghost" size="sm" onClick={onSetEntry}>
-              Set as entry
-            </Button>
-          ) : (
-            <span />
-          )}
+        <SheetFooter className="border-t border-border px-5 py-3 sm:flex-row sm:justify-end">
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="sm" onClick={onDuplicate}>
               <Copy className="h-3.5 w-3.5" />

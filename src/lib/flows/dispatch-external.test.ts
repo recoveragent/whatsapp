@@ -184,4 +184,35 @@ describe('runFlowsForTrigger — Shopify shipment filter', () => {
 
     expect(outcome.started).toHaveLength(1)
   })
+
+  it('starts fulfilled flow when actual status is in a multi-status list', async () => {
+    mockFlowsChain([
+      baseFlow({
+        name: 'Fulfillment branches',
+        trigger_type: 'shopify_order_fulfilled',
+        trigger_config: {
+          payment_status: 'any',
+          shipment_statuses: ['confirmed', 'in_transit', 'delivered'],
+          shipment_routes: {
+            confirmed: 'n1',
+            in_transit: 'n2',
+            delivered: 'n3',
+          },
+        },
+      }),
+    ])
+
+    const outcome = await runFlowsForTrigger({
+      accountId: 'acc-1',
+      triggerType: 'shopify_order_fulfilled',
+      contactId: 'contact-1',
+      conversationId: 'conv-1',
+      context: { vars: { shipment_status: 'delivered' } },
+    })
+
+    expect(outcome.started).toHaveLength(1)
+    expect(startFlowForExternalEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ startNodeKey: 'n3' }),
+    )
+  })
 })

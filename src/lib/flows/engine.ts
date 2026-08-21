@@ -69,6 +69,7 @@ import {
 } from "./extended-nodes";
 import { applyFlowExitEventWithClient } from "./apply-exit";
 import { parseExitConfig, exitConfigMatchesEvent } from "./exit-conditions";
+import { resolveFlowStartNodeKey } from "./trigger-types";
 import {
   cancelAllReplyTimeouts,
   isSuspendingNodeType,
@@ -1554,10 +1555,20 @@ export async function startFlowForExternalEvent(input: {
   conversationId: string;
   initialVars?: Record<string, unknown>;
   messageText?: string;
+  /** When set, start here instead of `flow.entry_node_id` (shipment branches). */
+  startNodeKey?: string | null;
 }): Promise<{ ok: boolean; flow_run_id?: string }> {
   const db = supabaseAdmin();
   const nodes = await loadAllNodes(db, input.flow.id);
-  if (!input.flow.entry_node_id || !nodes.has(input.flow.entry_node_id)) {
+  const startKey =
+    input.startNodeKey?.trim() ||
+    resolveFlowStartNodeKey({
+      entry_node_id: input.flow.entry_node_id,
+      trigger_type: input.flow.trigger_type,
+      trigger_config: input.flow.trigger_config as Record<string, unknown>,
+      vars: input.initialVars,
+    });
+  if (!startKey || !nodes.has(startKey)) {
     return { ok: false };
   }
 
@@ -1577,7 +1588,7 @@ export async function startFlowForExternalEvent(input: {
       contact_id: input.contactId,
       conversation_id: input.conversationId,
       status: "active",
-      current_node_key: input.flow.entry_node_id,
+      current_node_key: startKey,
       vars: input.initialVars ?? {},
     })
     .select("*")
@@ -1590,7 +1601,7 @@ export async function startFlowForExternalEvent(input: {
   }
 
   const run = inserted as FlowRunRow;
-  await logEvent(db, run.id, "started", input.flow.entry_node_id, {
+  await logEvent(db, run.id, "started", startKey, {
     flow_id: input.flow.id,
     trigger_type: input.flow.trigger_type,
     source: "external",
@@ -1598,7 +1609,7 @@ export async function startFlowForExternalEvent(input: {
 
   await db.rpc("increment_flow_execution_count", { p_flow_id: input.flow.id });
 
-  await advanceFromNodeKey(db, run, input.flow.entry_node_id!, nodes);
+  await advanceFromNodeKey(db, run, startKey, nodes);
   return { ok: true, flow_run_id: run.id };
 }
 

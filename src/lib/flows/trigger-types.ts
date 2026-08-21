@@ -154,11 +154,98 @@ export function normalizeShopifyShipmentStatus(raw: unknown): string | null {
 }
 
 export function shipmentStatusMatchesFilter(
-  want: string | undefined,
+  want: string | string[] | undefined,
   actual: unknown,
 ): boolean {
-  if (!want || want === 'any') return true
-  return normalizeShopifyShipmentStatus(actual) === want
+  const list = (Array.isArray(want) ? want : want ? [want] : [])
+    .map((s) => normalizeShopifyShipmentStatus(s))
+    .filter((s): s is string => !!s && s !== 'any')
+  if (list.length === 0) return true
+  const got = normalizeShopifyShipmentStatus(actual)
+  return got != null && list.includes(got)
+}
+
+/** Statuses that can branch off a fulfilled trigger (excludes "any"). */
+export const SHOPIFY_SHIPMENT_BRANCH_STATUSES = SHOPIFY_SHIPMENT_STATUSES.filter(
+  (s): s is Exclude<ShopifyShipmentStatus, 'any'> => s !== 'any',
+)
+
+export function selectedShipmentStatuses(
+  config: Record<string, unknown> | null | undefined,
+): string[] {
+  if (!config) return []
+  if (Array.isArray(config.shipment_statuses)) {
+    const out: string[] = []
+    for (const raw of config.shipment_statuses) {
+      const normalized = normalizeShopifyShipmentStatus(raw)
+      if (normalized && normalized !== 'any' && !out.includes(normalized)) {
+        out.push(normalized)
+      }
+    }
+    return out
+  }
+  const single = normalizeShopifyShipmentStatus(config.shipment_status)
+  if (single && single !== 'any') return [single]
+  return []
+}
+
+export function shipmentRoutesFromConfig(
+  config: Record<string, unknown> | null | undefined,
+): Record<string, string> {
+  const raw = config?.shipment_routes
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const status = normalizeShopifyShipmentStatus(key)
+    if (!status || typeof value !== 'string' || !value.trim()) continue
+    out[status] = value.trim()
+  }
+  return out
+}
+
+export function flowMatchesShipmentConfig(
+  config: Record<string, unknown>,
+  actual: unknown,
+): boolean {
+  return shipmentStatusMatchesFilter(selectedShipmentStatuses(config), actual)
+}
+
+export function resolveFlowStartNodeKey(args: {
+  entry_node_id: string | null
+  trigger_type: string
+  trigger_config?: Record<string, unknown> | null
+  vars?: Record<string, unknown> | null
+}): string | null {
+  const cfg = args.trigger_config ?? {}
+  if (isShopifyFulfillmentFlowTrigger(args.trigger_type)) {
+    const actual = normalizeShopifyShipmentStatus(args.vars?.shipment_status)
+    const routes = shipmentRoutesFromConfig(cfg)
+    if (actual && routes[actual]) return routes[actual]!
+  }
+  const entry = args.entry_node_id?.trim()
+  return entry || null
+}
+
+export function collectFlowStartNodeKeys(args: {
+  entry_node_id: string | null
+  trigger_config?: Record<string, unknown> | null
+}): string[] {
+  const keys: string[] = []
+  const entry = args.entry_node_id?.trim()
+  if (entry) keys.push(entry)
+  for (const next of Object.values(shipmentRoutesFromConfig(args.trigger_config))) {
+    if (!keys.includes(next)) keys.push(next)
+  }
+  return keys
+}
+
+export function shipmentHandleId(status: string): string {
+  return `shipment:${status}`
+}
+
+export function shipmentStatusFromHandle(handle: string): string | null {
+  if (!handle.startsWith('shipment:')) return null
+  return normalizeShopifyShipmentStatus(handle.slice('shipment:'.length))
 }
 
 export function defaultShopifyTriggerConfig(
@@ -167,6 +254,8 @@ export function defaultShopifyTriggerConfig(
   const config: Record<string, unknown> = { payment_status: 'any' }
   if (isShopifyFulfillmentFlowTrigger(triggerType)) {
     config.shipment_status = 'any'
+    config.shipment_statuses = []
+    config.shipment_routes = {}
   }
   return config
 }

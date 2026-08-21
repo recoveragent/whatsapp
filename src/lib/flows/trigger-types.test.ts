@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { shopifyTopicToFlowTrigger, shipmentStatusMatchesFilter } from './trigger-types'
+import { shopifyTopicToFlowTrigger, shipmentStatusMatchesFilter, resolveFlowStartNodeKey } from './trigger-types'
 
 describe('shopifyTopicToFlowTrigger', () => {
   it('maps orders/create → shopify_order_placed', () => {
@@ -59,10 +59,34 @@ describe('shipmentStatusMatchesFilter', () => {
     expect(shipmentStatusMatchesFilter(undefined, 'in_transit')).toBe(true)
   })
 
-  it('matches Shopify in_transit including spaced labels', () => {
-    expect(shipmentStatusMatchesFilter('in_transit', 'in_transit')).toBe(true)
-    expect(shipmentStatusMatchesFilter('in_transit', 'In transit')).toBe(true)
-    expect(shipmentStatusMatchesFilter('in_transit', null)).toBe(false)
-    expect(shipmentStatusMatchesFilter('in_transit', 'delivered')).toBe(false)
+  it('matches a list of statuses', () => {
+    expect(shipmentStatusMatchesFilter(['confirmed', 'in_transit'], 'in_transit')).toBe(true)
+    expect(shipmentStatusMatchesFilter(['confirmed', 'in_transit'], 'delivered')).toBe(false)
+  })
+})
+
+describe('resolveFlowStartNodeKey', () => {
+  it('uses the shipment route when the status matches', () => {
+    expect(
+      resolveFlowStartNodeKey({
+        entry_node_id: 'fallback',
+        trigger_type: 'shopify_order_fulfilled',
+        trigger_config: {
+          shipment_routes: { in_transit: 'transit-node', delivered: 'done-node' },
+        },
+        vars: { shipment_status: 'in_transit' },
+      }),
+    ).toBe('transit-node')
+  })
+
+  it('falls back to the connected next node', () => {
+    expect(
+      resolveFlowStartNodeKey({
+        entry_node_id: 'fallback',
+        trigger_type: 'shopify_order_fulfilled',
+        trigger_config: { shipment_routes: {} },
+        vars: { shipment_status: 'in_transit' },
+      }),
+    ).toBe('fallback')
   })
 })

@@ -2,22 +2,38 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { isOpenInboxConversation } from "@/lib/inbox/conversation-list";
 import type { Conversation } from "@/types";
 
+type ConvSnapshot = {
+  unread: number;
+  status: Conversation["status"];
+  last_message_at: string | null;
+};
+
+function totalsFrom(map: Map<string, ConvSnapshot>) {
+  let unread = 0;
+  let open = 0;
+  for (const row of map.values()) {
+    if (row.unread > 0) unread += 1;
+    if (isOpenInboxConversation(row)) open += 1;
+  }
+  return { unread, open };
+}
+
 /**
- * Count of conversations with at least one unread inbound message for
- * the current user. Used by the sidebar to surface a green dot on the
- * Inbox nav entry when the user is elsewhere in the app.
+ * Live inbox counts for the sidebar: unread conversations (at least one
+ * unread inbound) and open conversations (status = open, has a message).
  *
  * Lives on its own realtime channel (distinct from the inbox page's
  * "inbox-realtime") so both can coexist without sharing state.
  */
-export function useTotalUnread(): number {
-  const [total, setTotal] = useState(0);
+export function useInboxNavCounts(): { unread: number; open: number } {
+  const [counts, setCounts] = useState({ unread: 0, open: 0 });
 
-  // Keep a live local mirror of {id: unread_count} so INSERT/UPDATE/DELETE
-  // events can adjust the total in O(1) without refetching.
-  const countsRef = useRef<Map<string, number>>(new Map());
+  // Keep a live local mirror so INSERT/UPDATE/DELETE events can adjust
+  // both totals in O(n) without refetching.
+  const rowsRef = useRef<Map<string, ConvSnapshot>>(new Map());
 
   useEffect(() => {
     const supabase = createClient();
@@ -28,38 +44,45 @@ export function useTotalUnread(): number {
     (async () => {
       const { data, error } = await supabase
         .from("conversations")
-        .select("id, unread_count");
+        .select("id, unread_count, status, last_message_at");
       if (cancelled || error || !data) return;
 
-      const map = new Map<string, number>();
-      let sum = 0;
-      for (const row of data as { id: string; unread_count: number }[]) {
-        const n = row.unread_count ?? 0;
-        map.set(row.id, n);
-        if (n > 0) sum += 1;
+      const map = new Map<string, ConvSnapshot>();
+      for (const row of data as {
+        id: string;
+        unread_count: number;
+        status: Conversation["status"];
+        last_message_at: string | null;
+      }[]) {
+        map.set(row.id, {
+          unread: row.unread_count ?? 0,
+          status: row.status,
+          last_message_at: row.last_message_at ?? null,
+        });
       }
-      countsRef.current = map;
-      setTotal(sum);
+      rowsRef.current = map;
+      setCounts(totalsFrom(map));
     })();
 
     const channel = supabase
-      .channel("total-unread-realtime")
+      .channel("inbox-nav-counts-realtime")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "conversations" },
         (payload) => {
-          const map = countsRef.current;
+          const map = rowsRef.current;
           if (payload.eventType === "DELETE") {
             const oldRow = payload.old as Partial<Conversation>;
             if (oldRow.id) map.delete(oldRow.id);
           } else {
             const row = payload.new as Conversation;
-            map.set(row.id, row.unread_count ?? 0);
+            map.set(row.id, {
+              unread: row.unread_count ?? 0,
+              status: row.status,
+              last_message_at: row.last_message_at ?? null,
+            });
           }
-          // Recompute — cheap, conversations per user stay small.
-          let sum = 0;
-          for (const n of map.values()) if (n > 0) sum += 1;
-          setTotal(sum);
+          setCounts(totalsFrom(map));
         },
       )
       .subscribe();
@@ -70,5 +93,5 @@ export function useTotalUnread(): number {
     };
   }, []);
 
-  return total;
+  return counts;
 }

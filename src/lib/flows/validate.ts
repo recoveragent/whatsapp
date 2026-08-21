@@ -25,6 +25,13 @@
 
 import { INTERACTIVE_LIMITS } from "@/lib/whatsapp/meta-api";
 import {
+  collectFlowStartNodeKeys,
+  selectedShipmentStatuses,
+  shipmentRoutesFromConfig,
+  SHOPIFY_SHIPMENT_STATUS_LABELS,
+  SHOPIFY_SHIPMENT_STATUSES,
+} from "./trigger-types";
+import {
   parseExitConfig,
   type FlowExitConfig,
 } from "./exit-conditions";
@@ -34,7 +41,6 @@ import {
   isReplyTimeoutEnabled,
   hasReplyTimeoutTiming,
 } from "./reply-timeout";
-import { SHOPIFY_SHIPMENT_STATUSES } from "./trigger-types";
 
 export interface ValidationIssue {
   severity: "error" | "warning";
@@ -136,12 +142,17 @@ export function validateFlowForActivation(
   issues.push(...validateExitConfig(parseExitConfig(flow.exit_config)));
 
   // ---- graph integrity ----
-  if (!flow.entry_node_id) {
+  const startKeys = collectFlowStartNodeKeys({
+    entry_node_id: flow.entry_node_id,
+    trigger_config: flow.trigger_config,
+  }).filter((key) => nodes.some((n) => n.node_key === key));
+
+  if (nodes.length > 0 && startKeys.length === 0) {
     issues.push({
       severity: "error",
       scope: "flow",
       field: "entry_node_id",
-      message: "Pick an entry node before activating.",
+      message: "Connect a node after the trigger before activating.",
     });
   }
 
@@ -150,16 +161,20 @@ export function validateFlowForActivation(
     issues.push({
       severity: "error",
       scope: "flow",
-      message: "A flow needs at least one node before activation.",
+      message: "A flow needs at least one node before activating.",
     });
   }
 
-  if (flow.entry_node_id && !keys.has(flow.entry_node_id)) {
+  if (
+    flow.entry_node_id &&
+    !keys.has(flow.entry_node_id) &&
+    startKeys.length === 0
+  ) {
     issues.push({
       severity: "error",
       scope: "flow",
       field: "entry_node_id",
-      message: `Entry node "${flow.entry_node_id}" doesn't exist.`,
+      message: `The node connected to the trigger ("${flow.entry_node_id}") doesn't exist.`,
     });
   }
 
@@ -178,23 +193,58 @@ export function validateFlowForActivation(
     seen.add(n.node_key);
   }
 
+  const selectedShipments = selectedShipmentStatuses(flow.trigger_config);
+  if (selectedShipments.length > 0) {
+    const routes = shipmentRoutesFromConfig(flow.trigger_config);
+    for (const status of selectedShipments) {
+      const next = routes[status];
+      const label =
+        status in SHOPIFY_SHIPMENT_STATUS_LABELS
+          ? SHOPIFY_SHIPMENT_STATUS_LABELS[
+              status as keyof typeof SHOPIFY_SHIPMENT_STATUS_LABELS
+            ]
+          : status;
+      if (!next) {
+        if (
+          selectedShipments.length === 1 &&
+          flow.entry_node_id &&
+          keys.has(flow.entry_node_id)
+        ) {
+          continue;
+        }
+        issues.push({
+          severity: "error",
+          scope: "trigger",
+          field: `trigger_config.shipment_routes.${status}`,
+          message: `Connect a node for ${label}.`,
+        });
+      } else if (!keys.has(next)) {
+        issues.push({
+          severity: "error",
+          scope: "trigger",
+          field: `trigger_config.shipment_routes.${status}`,
+          message: `${label} is connected to a missing node "${next}".`,
+        });
+      }
+    }
+  }
+
   // Per-node rules (Meta limits + dead-end + edge resolution).
   for (const n of nodes) {
     issues.push(...validateNode(n, keys));
   }
 
-  // Reachability — every non-orphan node must be reachable from the
-  // entry. Done after per-node validation so we don't double-report
-  // when a node has bad config AND is unreachable.
-  if (flow.entry_node_id && keys.has(flow.entry_node_id)) {
-    const reached = reachableFromEntry(flow.entry_node_id, nodes);
+  // Reachability — every non-orphan node must be reachable from a
+  // trigger start (the connected next step, or a shipment branch).
+  if (startKeys.length > 0) {
+    const reached = reachableFromStarts(startKeys, nodes);
     for (const n of nodes) {
       if (!reached.has(n.node_key)) {
         issues.push({
           severity: "warning",
           scope: "node",
           node_key: n.node_key,
-          message: `Node "${n.node_key}" is unreachable from the entry node.`,
+          message: `Node "${n.node_key}" is unreachable from the trigger.`,
         });
       }
     }
@@ -311,15 +361,16 @@ function validateTrigger(
       trigger_type === "shopify_order_fulfilled" ||
       trigger_type === "shopify_order_partially_fulfilled"
     ) {
-      const ss = trigger_config.shipment_status as string | undefined;
-      if (ss && !(SHOPIFY_SHIPMENT_STATUSES as readonly string[]).includes(ss)) {
-        issues.push({
-          severity: "error",
-          scope: "trigger",
-          field: "trigger_config.shipment_status",
-          message:
-            "Shipment status must be any, in_transit, out_for_delivery, delivered, or another Shopify shipment status.",
-        });
+      const selected = selectedShipmentStatuses(trigger_config);
+      for (const status of selected) {
+        if (!(SHOPIFY_SHIPMENT_STATUSES as readonly string[]).includes(status)) {
+          issues.push({
+            severity: "error",
+            scope: "trigger",
+            field: "trigger_config.shipment_statuses",
+            message: `Unknown shipment status "${status}".`,
+          });
+        }
       }
     }
   }
@@ -1331,11 +1382,18 @@ export function reachableFromEntry(
   entryKey: string,
   nodes: NodeInput[],
 ): Set<string> {
+  return reachableFromStarts([entryKey], nodes);
+}
+
+export function reachableFromStarts(
+  startKeys: string[],
+  nodes: NodeInput[],
+): Set<string> {
   const byKey = new Map<string, NodeInput>();
   for (const n of nodes) byKey.set(n.node_key, n);
 
   const visited = new Set<string>();
-  const queue: string[] = [entryKey];
+  const queue: string[] = [...startKeys];
   while (queue.length > 0) {
     const key = queue.shift() as string;
     if (visited.has(key)) continue;

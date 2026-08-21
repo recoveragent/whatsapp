@@ -71,6 +71,45 @@ describe("validateFlowForActivation — flow-level", () => {
     ).toBe(true);
   });
 
+  it("accepts shipment branches instead of a single entry node", () => {
+    const issues = validateFlowForActivation(
+      {
+        ...validFlow,
+        trigger_type: "shopify_order_fulfilled",
+        trigger_config: {
+          payment_status: "any",
+          shipment_statuses: ["confirmed", "in_transit"],
+          shipment_routes: { confirmed: "a", in_transit: "b" },
+        },
+        entry_node_id: null,
+      },
+      [
+        { node_key: "a", node_type: "end", config: {} },
+        { node_key: "b", node_type: "end", config: {} },
+      ],
+    );
+    expect(issues.filter((i) => i.severity === "error")).toHaveLength(0);
+  });
+
+  it("flags a shipment status with no connected node", () => {
+    const issues = validateFlowForActivation(
+      {
+        ...validFlow,
+        trigger_type: "shopify_order_fulfilled",
+        trigger_config: {
+          payment_status: "any",
+          shipment_statuses: ["confirmed", "in_transit"],
+          shipment_routes: { confirmed: "a" },
+        },
+        entry_node_id: "a",
+      },
+      [{ node_key: "a", node_type: "end", config: {} }],
+    );
+    expect(
+      issues.some((i) => i.message.includes("Connect a node for In transit")),
+    ).toBe(true);
+  });
+
   it("flags empty node list", () => {
     const issues = validateFlowForActivation(
       { ...validFlow, entry_node_id: null },
