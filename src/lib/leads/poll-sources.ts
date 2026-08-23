@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { leadGenAccountIds } from '@/lib/auth/brand-accounts'
 import { ensureShopifyContact } from '@/lib/shopify/ensure-contact'
 import {
   columnLetter,
@@ -252,7 +253,10 @@ async function processSource(
   }
 }
 
-export async function pollLeadSources(db: SupabaseClient): Promise<LeadPollResult> {
+export async function pollLeadSources(
+  db: SupabaseClient,
+  opts?: { accountId?: string; maxEnrolls?: number },
+): Promise<LeadPollResult> {
   const result: LeadPollResult = {
     sources_checked: 0,
     rows_processed: 0,
@@ -261,10 +265,10 @@ export async function pollLeadSources(db: SupabaseClient): Promise<LeadPollResul
     errors: [],
   }
 
-  const { data: sources, error } = await db
-    .from('lead_sources')
-    .select('*')
-    .eq('active', true)
+  let query = db.from('lead_sources').select('*').eq('active', true)
+  if (opts?.accountId) query = query.eq('account_id', opts.accountId)
+
+  const { data: sources, error } = await query
 
   if (error) {
     result.errors.push(error.message)
@@ -274,7 +278,16 @@ export async function pollLeadSources(db: SupabaseClient): Promise<LeadPollResul
   const list = (sources as LeadSource[] | null) ?? []
   if (list.length === 0) return result
 
-  const accountIds = [...new Set(list.map((s) => s.account_id))]
+  const allowed = opts?.accountId
+    ? new Set([opts.accountId])
+    : await leadGenAccountIds(
+        db,
+        list.map((s) => s.account_id),
+      )
+  const leadGenList = list.filter((s) => allowed.has(s.account_id))
+  if (leadGenList.length === 0) return result
+
+  const accountIds = [...new Set(leadGenList.map((s) => s.account_id))]
   const { data: configs } = await db
     .from('google_sheets_config')
     .select('*')
@@ -287,9 +300,9 @@ export async function pollLeadSources(db: SupabaseClient): Promise<LeadPollResul
   }
 
   const tokenByAccount = new Map<string, string>()
-  const budget: Budget = { remaining: MAX_ENROLLS_PER_POLL }
+  const budget: Budget = { remaining: opts?.maxEnrolls ?? MAX_ENROLLS_PER_POLL }
 
-  for (const source of list) {
+  for (const source of leadGenList) {
     if (budget.remaining <= 0) break
     result.sources_checked += 1
     const config = configByAccount.get(source.account_id)

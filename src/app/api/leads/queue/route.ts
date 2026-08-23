@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account'
+import { requireLeadGenAccount, toErrorResponse } from '@/lib/auth/account'
 import { leadsMigrationMessage } from '@/lib/leads/db-errors'
 import { loadLeadQueue } from '@/lib/leads/queue'
 
@@ -9,7 +9,7 @@ import { loadLeadQueue } from '@/lib/leads/queue'
  */
 export async function GET() {
   try {
-    const ctx = await getCurrentAccount()
+    const ctx = await requireLeadGenAccount()
     const queue = await loadLeadQueue(ctx.supabase, ctx.accountId)
     return NextResponse.json(queue)
   } catch (err) {

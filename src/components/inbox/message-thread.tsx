@@ -50,6 +50,11 @@ import { TemplatePicker } from "./template-picker";
 import { ScheduleFollowupDialog } from "./schedule-followup-dialog";
 import { PrivateNoteBubble } from "./private-note-bubble";
 import { buildReplyPreview } from "./reply-quote";
+import {
+  buildTemplateMessageSnapshot,
+  resolveTemplateMessageDisplay,
+  templateDisplayPayload,
+} from "@/lib/inbox/template-message-display";
 import { toast } from "sonner";
 
 interface ReplyDraft {
@@ -232,6 +237,9 @@ export function MessageThread({
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [privateNotes, setPrivateNotes] = useState<ConversationPrivateNote[]>([]);
   const [selfAssigning, setSelfAssigning] = useState(false);
+  const [templatesByName, setTemplatesByName] = useState<
+    Map<string, MessageTemplate>
+  >(new Map());
 
   const fetchPrivateNotes = useCallback(async (convId: string) => {
     try {
@@ -278,6 +286,37 @@ export function MessageThread({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!accountId) {
+      setTemplatesByName(new Map());
+      return;
+    }
+
+    let cancelled = false;
+    const supabase = createClient();
+    supabase
+      .from("message_templates")
+      .select("*")
+      .eq("account_id", accountId)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to fetch templates:", error);
+          setTemplatesByName(new Map());
+          return;
+        }
+        const map = new Map<string, MessageTemplate>();
+        for (const row of (data as MessageTemplate[]) ?? []) {
+          if (!map.has(row.name)) map.set(row.name, row);
+        }
+        setTemplatesByName(map);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
 
   // 24-hour session timer
   const sessionInfo = useMemo(() => {
@@ -702,14 +741,19 @@ export function MessageThread({
 
       const renderedBody = renderTemplateBody(template.body_text, values.body);
       const tempId = `temp-${Date.now()}`;
+      const templateSnapshot = buildTemplateMessageSnapshot(template, {
+        headerText: values.headerText,
+      });
 
       const optimisticMsg: Message = {
         id: tempId,
         conversation_id: conversation.id,
         sender_type: "agent",
+        sender_id: user?.id,
         content_type: "template",
         content_text: renderedBody,
         template_name: template.name,
+        content_payload: templateDisplayPayload(templateSnapshot),
         status: "sending",
         created_at: new Date().toISOString(),
       };
@@ -756,7 +800,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: "failed", error_message: reason });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage],
+    [conversation, onNewMessage, onUpdateMessage, user?.id],
   );
 
   // Build a quick id → Message map so reply quotes can be rendered without
@@ -789,6 +833,23 @@ export function MessageThread({
       return isAgentMsg ? "You" : contactDisplayName;
     },
     [contactDisplayName],
+  );
+
+  const senderLabelFor = useCallback(
+    (m: Message): string => {
+      if (m.sender_type === "customer") return contactDisplayName;
+      if (m.sender_type === "bot") return "Automation";
+      if (m.sender_id) {
+        const profile = profiles.find((p) => p.id === m.sender_id);
+        if (profile?.full_name?.trim()) return profile.full_name.trim();
+      }
+      if (m.sender_type === "agent" && user?.id) {
+        const self = profiles.find((p) => p.id === user.id);
+        if (self?.full_name?.trim()) return self.full_name.trim();
+      }
+      return "Agent";
+    },
+    [contactDisplayName, profiles, user?.id],
   );
 
   const handleStartReply = useCallback(
@@ -1240,6 +1301,17 @@ export function MessageThread({
                           reactions={msgReactions}
                           currentUserId={user?.id}
                           onToggleReaction={handlePillToggle}
+                          senderLabel={senderLabelFor(msg)}
+                          templateDisplay={
+                            msg.content_type === "template"
+                              ? resolveTemplateMessageDisplay(
+                                  msg,
+                                  msg.template_name
+                                    ? templatesByName.get(msg.template_name)
+                                    : null,
+                                )
+                              : null
+                          }
                         />
                       </MessageActions>
                     );

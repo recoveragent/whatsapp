@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account'
+import { requireLeadGenAccount, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { parseSpreadsheetId } from '@/lib/google-sheets/parse-sheet-url'
 import {
@@ -15,7 +15,7 @@ import {
  */
 export async function POST(request: Request) {
   try {
-    const ctx = await getCurrentAccount()
+    const ctx = await requireLeadGenAccount()
     const body = (await request.json().catch(() => null)) as {
       spreadsheet_url?: string
       spreadsheet_id?: string

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { accountIsLeadGen } from '@/lib/auth/brand-accounts'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { ensureFlowWebhookConfig } from '@/lib/flows/webhook-config'
 import { ensureGoogleSheetRowConfig, preserveGoogleSheetWatermarks } from '@/lib/google-sheets/trigger-config'
@@ -113,9 +114,25 @@ export async function PUT(
 
   const { data: existing } = await admin
     .from('flows')
-    .select('trigger_type, trigger_config')
+    .select('account_id, trigger_type, trigger_config')
     .eq('id', id)
     .maybeSingle()
+
+  if (
+    body.trigger_type === 'google_sheet_row' &&
+    existing?.trigger_type !== 'google_sheet_row'
+  ) {
+    const accountId = existing?.account_id as string | undefined
+    if (!accountId || !(await accountIsLeadGen(guard.supabase, accountId))) {
+      return NextResponse.json(
+        {
+          error:
+            'Google Sheet triggers are only available for lead generation brands',
+        },
+        { status: 403 },
+      )
+    }
+  }
 
   // Update the flow row first — the body may not include `nodes` (a
   // header-only save for editing the trigger config without touching

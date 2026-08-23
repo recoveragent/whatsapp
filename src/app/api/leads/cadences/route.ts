@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { getCurrentAccount, requireRole, toErrorResponse } from '@/lib/auth/account'
+import { requireLeadGenAccount, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { leadsMigrationMessage } from '@/lib/leads/db-errors'
 import { ensureDefaultCadences, loadCadencesWithSteps } from '@/lib/leads/ensure-defaults'
@@ -18,7 +18,7 @@ function cadenceError(err: unknown): NextResponse {
  */
 export async function GET() {
   try {
-    const ctx = await getCurrentAccount()
+    const ctx = await requireLeadGenAccount()
     await ensureDefaultCadences({
       db: supabaseAdmin(),
       accountId: ctx.accountId,
@@ -36,7 +36,7 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
-    const ctx = await requireRole('admin')
+    const ctx = await requireLeadGenAccount('admin')
     const body = (await request.json().catch(() => null)) as {
       name?: string
     } | null

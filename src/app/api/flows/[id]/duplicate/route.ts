@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { accountIsLeadGen } from '@/lib/auth/brand-accounts'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { ensureFlowWebhookConfig } from '@/lib/flows/webhook-config'
 import { generateWebhookToken } from '@/lib/automations/webhook-token'
@@ -95,6 +96,18 @@ export async function POST(
   if (!original) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const triggerType = original.trigger_type as FlowTriggerType
+  if (
+    triggerType === 'google_sheet_row' &&
+    !(await accountIsLeadGen(guard.supabase, original.account_id as string))
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          'Google Sheet triggers are only available for lead generation brands',
+      },
+      { status: 403 },
+    )
+  }
   const triggerConfig = cloneTriggerConfig(
     triggerType,
     original.trigger_config as Record<string, unknown> | null,

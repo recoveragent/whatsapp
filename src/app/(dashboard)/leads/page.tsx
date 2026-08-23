@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Loader2,
   MessageSquare,
@@ -47,12 +48,14 @@ function formatWhen(iso: string | null): string {
 }
 
 export default function LeadsPage() {
-  const { user } = useAuth();
+  const router = useRouter();
+  const { user, isLeadGenBrand, profileLoading } = useAuth();
   const canAct = useCan('send-messages');
   const [queue, setQueue] = useState<LeadQueue | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -69,10 +72,17 @@ export default function LeadsPage() {
   }, []);
 
   useEffect(() => {
+    if (!profileLoading && !isLeadGenBrand) {
+      router.replace('/dashboard');
+    }
+  }, [profileLoading, isLeadGenBrand, router]);
+
+  useEffect(() => {
+    if (profileLoading || !isLeadGenBrand) return;
     void load();
     const id = window.setInterval(() => void load(), 30_000);
     return () => window.clearInterval(id);
-  }, [load]);
+  }, [load, isLeadGenBrand, profileLoading]);
 
   async function claim(taskId: string) {
     setBusyId(taskId);
@@ -107,7 +117,47 @@ export default function LeadsPage() {
     }
   }
 
+  async function syncNow() {
+    setSyncing(true);
+    try {
+      const res = await fetch('/api/leads/sync', { method: 'POST' });
+      const data = (await res.json()) as {
+        error?: string;
+        sheets?: { enrolled?: number; skipped?: number; errors?: string[] };
+        cadences?: { sent?: number; tasks?: number; errors?: string[] };
+      };
+      if (!res.ok) throw new Error(data.error ?? 'Sync failed');
+      const enrolled = data.sheets?.enrolled ?? 0;
+      const sent = data.cadences?.sent ?? 0;
+      const tasks = data.cadences?.tasks ?? 0;
+      const errors = [
+        ...(data.sheets?.errors ?? []),
+        ...(data.cadences?.errors ?? []),
+      ];
+      if (errors.length > 0) {
+        toast.error(errors[0] ?? 'Sync finished with errors');
+      } else if (enrolled === 0 && sent === 0 && tasks === 0) {
+        toast.message(
+          'No new rows. If the sheet already has leads, edit the campaign and turn on “Import existing rows”.',
+        );
+      } else {
+        toast.success(
+          `Synced: ${enrolled} enrolled, ${sent} WhatsApp sent, ${tasks} call tasks`,
+        );
+      }
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   const mine = user?.id;
+
+  if (profileLoading || !isLeadGenBrand) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">
@@ -116,10 +166,26 @@ export default function LeadsPage() {
         title="Leads"
         subtitle="Call who the cadence queued. Replies jump here — cadences pause themselves."
         actions={
-          <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
-            <RefreshCw className="size-3.5" />
-            <span className="ml-1.5">Refresh</span>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {canAct ? (
+              <Button
+                type="button"
+                size="sm"
+                disabled={syncing}
+                onClick={() => void syncNow()}
+              >
+                {syncing ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-3.5" />
+                )}
+                <span className="ml-1.5">Sync now</span>
+              </Button>
+            ) : null}
+            <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
+              Refresh
+            </Button>
+          </div>
         }
       />
 
@@ -143,8 +209,9 @@ export default function LeadsPage() {
             <h2 className="font-cabinet text-lg font-semibold">Calls</h2>
             {queue.calls.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No call tasks. New Instant Form rows pick up on the next cron
-                (same schedule as automations).
+                No call tasks yet. Click <strong>Sync now</strong> to pull
+                campaign-sheet rows. Call steps appear after the first WhatsApp
+                (about 2 hours, only during 10:00–19:00 IST).
               </p>
             ) : (
               <div className="space-y-3">

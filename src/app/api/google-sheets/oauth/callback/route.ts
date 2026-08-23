@@ -10,6 +10,7 @@ import {
   exchangeGoogleOAuthCode,
   fetchGoogleUserEmail,
 } from '@/lib/google-sheets/oauth'
+import { accountIsLeadGen } from '@/lib/auth/brand-accounts'
 import {
   consumeGoogleOAuthState,
   persistGoogleSheetsConfig,
@@ -62,6 +63,13 @@ export async function GET(request: Request) {
     if (!oauthState) {
       return settingsRedirect(settingsOrigin, {
         google_sheets_error: 'OAuth session expired — try connecting again',
+      })
+    }
+
+    if (!(await accountIsLeadGen(supabaseAdmin(), oauthState.account_id))) {
+      return settingsRedirect(settingsOrigin, {
+        google_sheets_error:
+          'Google Sheets is only available for lead generation brands',
       })
     }
 

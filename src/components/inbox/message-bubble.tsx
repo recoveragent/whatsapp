@@ -9,7 +9,15 @@ import {
   LayoutTemplate,
   ImageOff,
   CornerDownLeft,
+  Phone,
+  ExternalLink,
+  Copy,
 } from "lucide-react";
+import type { TemplateButton } from "@/types";
+import {
+  isMediaHeaderType,
+  type TemplateMessageSnapshot,
+} from "@/lib/inbox/template-message-display";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -26,6 +34,10 @@ interface MessageBubbleProps {
   reactions?: MessageReaction[];
   currentUserId?: string;
   onToggleReaction?: (emoji: string) => void;
+  /** Shown above the bubble (contact name, agent name, Automation, etc.). */
+  senderLabel?: string;
+  /** Resolved template header/footer/buttons for template messages. */
+  templateDisplay?: TemplateMessageSnapshot | null;
 }
 
 function MessageStatusLabel({
@@ -80,14 +92,27 @@ function MediaUnavailable({ label }: { label: string }) {
   );
 }
 
-function MediaImage({ url, alt }: { url: string; alt: string }) {
+function MediaImage({
+  url,
+  alt,
+  className,
+}: {
+  url: string;
+  alt: string;
+  className?: string;
+}) {
   const { src, loading, error } = useProxiedMediaUrl(url);
   const [open, setOpen] = useState(false);
   const [imgError, setImgError] = useState(false);
 
   if (error || imgError) {
     return (
-      <div className="flex h-40 w-60 items-center justify-center rounded-lg bg-muted">
+      <div
+        className={cn(
+          "flex h-40 items-center justify-center bg-muted",
+          className ?? "w-60 rounded-lg",
+        )}
+      >
         <ImageOff className="h-8 w-8 text-muted-foreground" />
       </div>
     );
@@ -95,7 +120,12 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
 
   if (loading) {
     return (
-      <div className="flex h-40 w-60 items-center justify-center rounded-lg bg-muted">
+      <div
+        className={cn(
+          "flex h-40 items-center justify-center bg-muted",
+          className ?? "w-60 rounded-lg",
+        )}
+      >
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
@@ -106,13 +136,19 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="block cursor-zoom-in rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className={cn(
+          "block cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+          className ? "w-full" : "rounded-lg",
+        )}
         aria-label="Open image"
       >
         <img
           src={src ?? ""}
           alt={alt}
-          className="max-h-64 max-w-60 rounded-lg object-cover"
+          className={cn(
+            "object-cover",
+            className ?? "max-h-64 max-w-60 rounded-lg",
+          )}
           onError={() => setImgError(true)}
         />
       </button>
@@ -195,7 +231,144 @@ function ProxiedDocumentLink({
   );
 }
 
-function MessageContent({ message }: { message: Message }) {
+function TemplateButtonRow({
+  button,
+  onPrimary,
+}: {
+  button: TemplateButton;
+  onPrimary: boolean;
+}) {
+  const muted = onPrimary
+    ? "text-primary-foreground/80"
+    : "text-muted-foreground";
+  const iconClass = cn("h-3.5 w-3.5 shrink-0", muted);
+
+  let icon = null;
+  if (button.type === "PHONE_NUMBER") icon = <Phone className={iconClass} />;
+  else if (button.type === "URL") icon = <ExternalLink className={iconClass} />;
+  else if (button.type === "COPY_CODE") icon = <Copy className={iconClass} />;
+
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-center gap-1.5 px-3 py-2.5 text-center text-sm font-medium",
+        onPrimary ? "text-primary-foreground" : "text-foreground",
+      )}
+    >
+      {icon}
+      <span>{button.text}</span>
+    </div>
+  );
+}
+
+function TemplateMessageContent({
+  message,
+  display,
+  onPrimary,
+}: {
+  message: Message;
+  display: TemplateMessageSnapshot | null;
+  onPrimary: boolean;
+}) {
+  const buttons = display?.buttons ?? [];
+  const headerMediaUrl =
+    display?.header_media_url?.trim() || message.media_url?.trim() || null;
+
+  return (
+    <>
+      {display?.header_type === "text" && display.header_content && (
+        <p
+          className={cn(
+            "mb-1 text-sm font-semibold",
+            onPrimary ? "text-primary-foreground" : "text-foreground",
+          )}
+        >
+          {display.header_content}
+        </p>
+      )}
+      {isMediaHeaderType(display?.header_type) && headerMediaUrl && (
+        <div className="-mx-3 -mt-2 mb-2">
+          {display.header_type === "image" ? (
+            <MediaImage
+              url={headerMediaUrl}
+              alt="Template header"
+              className="max-h-48 w-full"
+            />
+          ) : display.header_type === "video" ? (
+            <ProxiedVideo url={headerMediaUrl} />
+          ) : (
+            <ProxiedDocumentLink url={headerMediaUrl} label="Document" />
+          )}
+        </div>
+      )}
+      {isMediaHeaderType(display?.header_type) && !headerMediaUrl && (
+        <div className="mb-2">
+          <MediaUnavailable
+            label={
+              display?.header_type === "image"
+                ? "Image"
+                : display?.header_type === "video"
+                  ? "Video"
+                  : "Document"
+            }
+          />
+        </div>
+      )}
+      <span className="mb-1 inline-flex items-center gap-1 rounded bg-black/15 px-1.5 py-0.5 text-[10px] font-medium opacity-90">
+        <LayoutTemplate className="h-3 w-3" />
+        Template
+        {message.template_name ? ` · ${message.template_name}` : ""}
+      </span>
+      {message.content_text && (
+        <p className="mt-1 whitespace-pre-wrap break-words text-sm">
+          {message.content_text}
+        </p>
+      )}
+      {display?.footer_text && (
+        <p
+          className={cn(
+            "mt-2 text-xs italic",
+            onPrimary
+              ? "text-primary-foreground/75"
+              : "text-muted-foreground",
+          )}
+        >
+          {display.footer_text}
+        </p>
+      )}
+      {buttons.length > 0 && (
+        <div
+          className={cn(
+            "-mx-3 mt-2 border-t",
+            onPrimary ? "border-primary-foreground/20" : "border-border",
+          )}
+        >
+          {buttons.map((button, index) => (
+            <div
+              key={`${button.type}-${button.text}-${index}`}
+              className={cn(
+                index > 0 && "border-t",
+                onPrimary ? "border-primary-foreground/20" : "border-border",
+              )}
+            >
+              <TemplateButtonRow button={button} onPrimary={onPrimary} />
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function MessageContent({
+  message,
+  templateDisplay,
+  onPrimary,
+}: {
+  message: Message;
+  templateDisplay?: TemplateMessageSnapshot | null;
+  onPrimary: boolean;
+}) {
   switch (message.content_type) {
     case "text":
       return (
@@ -275,18 +448,11 @@ function MessageContent({ message }: { message: Message }) {
 
     case "template":
       return (
-        <div>
-          <span className="mb-1 inline-flex items-center gap-1 rounded bg-black/15 px-1.5 py-0.5 text-[10px] font-medium opacity-90">
-            <LayoutTemplate className="h-3 w-3" />
-            Template
-            {message.template_name ? ` · ${message.template_name}` : ""}
-          </span>
-          {message.content_text && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-sm">
-              {message.content_text}
-            </p>
-          )}
-        </div>
+        <TemplateMessageContent
+          message={message}
+          display={templateDisplay ?? null}
+          onPrimary={onPrimary}
+        />
       );
 
     case "location":
@@ -353,6 +519,8 @@ export function MessageBubble({
   reactions,
   currentUserId,
   onToggleReaction,
+  senderLabel,
+  templateDisplay,
 }: MessageBubbleProps) {
   const time = format(new Date(message.created_at), "h:mm a");
 
@@ -378,9 +546,19 @@ export function MessageBubble({
         isAgent ? "items-end" : "items-start",
       )}
     >
+      {senderLabel && (
+        <span
+          className={cn(
+            "mb-1 px-1 text-[11px] font-medium text-muted-foreground",
+            isAgent ? "text-right" : "text-left",
+          )}
+        >
+          {senderLabel}
+        </span>
+      )}
       <div
         className={cn(
-          "relative rounded-2xl px-3 py-2",
+          "relative overflow-hidden rounded-2xl px-3 py-2",
           isAgent
             ? "rounded-br-md bg-primary text-primary-foreground"
             : "rounded-bl-md bg-muted text-foreground",
@@ -394,7 +572,11 @@ export function MessageBubble({
             onPrimary={isAgent}
           />
         )}
-        <MessageContent message={message} />
+        <MessageContent
+          message={message}
+          templateDisplay={templateDisplay}
+          onPrimary={isAgent}
+        />
         <div
           className={cn(
             "mt-1 flex items-center gap-1",

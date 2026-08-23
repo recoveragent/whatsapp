@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { leadGenAccountIds } from '@/lib/auth/brand-accounts'
 import { ensureConversation, ensureShopifyContact } from '@/lib/shopify/ensure-contact'
 import { runFlowsForTrigger } from '@/lib/flows/dispatch-external'
 import type { FlowRow } from '@/lib/flows/types'
@@ -428,7 +429,14 @@ export async function pollGoogleSheetFlows(db: SupabaseClient): Promise<PollResu
   const list = (flows as FlowRow[] | null) ?? []
   if (list.length === 0) return result
 
-  const accountIds = [...new Set(list.map((f) => f.account_id))]
+  const allowed = await leadGenAccountIds(
+    db,
+    list.map((f) => f.account_id),
+  )
+  const leadGenList = list.filter((f) => allowed.has(f.account_id))
+  if (leadGenList.length === 0) return result
+
+  const accountIds = [...new Set(leadGenList.map((f) => f.account_id))]
   const { data: configs } = await db
     .from('google_sheets_config')
     .select('*')
@@ -442,7 +450,7 @@ export async function pollGoogleSheetFlows(db: SupabaseClient): Promise<PollResu
 
   const budget: PollBudget = { remainingStarts: MAX_FLOW_STARTS_PER_POLL }
 
-  for (const flow of list) {
+  for (const flow of leadGenList) {
     if (budget.remainingStarts <= 0) break
     result.flows_checked += 1
     const config = configByAccount.get(flow.account_id)

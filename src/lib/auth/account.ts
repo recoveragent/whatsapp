@@ -29,6 +29,8 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
+import { fetchAccountWithCategory } from "./brand-accounts";
+import { isLeadGenBrand } from "./brand-category";
 import {
   fetchOrganizationMembership,
   SUPER_ADMIN_ACTING_ROLE,
@@ -217,6 +219,23 @@ export async function requireRole(min: AccountRole): Promise<AccountContext> {
   if (!hasMinRole(ctx.role, min)) {
     throw new ForbiddenError(
       `This action requires the '${min}' role or higher`,
+    );
+  }
+  return ctx;
+}
+
+/**
+ * Leads, Google Sheets, and cadences are lead-gen only. Ecommerce
+ * brands must not see or mutate that surface.
+ */
+export async function requireLeadGenAccount(
+  min?: AccountRole,
+): Promise<AccountContext> {
+  const ctx = min ? await requireRole(min) : await getCurrentAccount();
+  const account = await fetchAccountWithCategory(ctx.supabase, ctx.accountId);
+  if (!isLeadGenBrand(account?.brand_category)) {
+    throw new ForbiddenError(
+      "Leads and Google Sheets are only available for lead generation brands",
     );
   }
   return ctx;

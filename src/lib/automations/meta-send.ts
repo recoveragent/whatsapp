@@ -13,6 +13,10 @@ import {
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils'
 import type { MessageTemplate } from '@/types'
+import {
+  buildTemplateMessageSnapshot,
+  templateDisplayPayload,
+} from '@/lib/inbox/template-message-display'
 import { supabaseAdmin } from './admin-client'
 
 // ------------------------------------------------------------
@@ -181,6 +185,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   // inbox shows the same preview agents see for manual template sends
   // (not just "Template · name" with an empty bubble).
   let content_text: string | null = null
+  let content_payload: Record<string, unknown> | null = null
   if (input.kind === 'text') {
     content_text = input.text
   } else if (input.kind === 'template') {
@@ -193,14 +198,24 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         return bodyParams[idx] ?? `{{${raw}}}`
       })
     }
+    if (templateRow) {
+      content_payload = templateDisplayPayload(
+        buildTemplateMessageSnapshot(templateRow, {
+          headerMediaUrl: input.messageParams?.headerMediaUrl,
+          headerText: input.messageParams?.headerText,
+        }),
+      )
+    }
   }
 
   const { error: msgErr } = await db.from('messages').insert({
     conversation_id: input.conversationId,
     sender_type: 'bot',
+    sender_id: input.userId,
     content_type,
     content_text,
     template_name,
+    content_payload,
     message_id: waMessageId,
     status: 'sent',
   })

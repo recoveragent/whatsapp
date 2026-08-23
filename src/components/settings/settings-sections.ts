@@ -109,7 +109,9 @@ export function isSettingsSectionVisible(
   section: SettingsSection,
   category: BrandCategory,
 ): boolean {
-  if (section === 'deals') return isLeadGenBrand(category);
+  if (section === 'deals' || section === 'google_sheets' || section === 'cadences') {
+    return isLeadGenBrand(category);
+  }
   if (section === 'shopify') return isEcommerceBrand(category);
   return true;
 }

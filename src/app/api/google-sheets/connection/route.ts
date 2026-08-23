@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { getCurrentAccount, requireRole, toErrorResponse } from '@/lib/auth/account'
+import { requireLeadGenAccount, toErrorResponse } from '@/lib/auth/account'
 import {
   getGoogleRedirectUri,
   isGoogleOAuthConfigured,
@@ -11,7 +11,7 @@ import {
  */
 export async function GET(request: Request) {
   try {
-    const ctx = await getCurrentAccount()
+    const ctx = await requireLeadGenAccount()
     const redirectUri = getGoogleRedirectUri(request)
     const oauthAvailable = isGoogleOAuthConfigured()
 
@@ -74,7 +74,7 @@ export async function GET(request: Request) {
  */
 export async function DELETE() {
   try {
-    const ctx = await requireRole('admin')
+    const ctx = await requireLeadGenAccount('admin')
 
     const { error } = await ctx.supabase
       .from('google_sheets_config')

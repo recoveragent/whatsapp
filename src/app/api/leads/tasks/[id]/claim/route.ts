@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import { requireLeadGenAccount, toErrorResponse } from '@/lib/auth/account'
 import { leadsMigrationMessage } from '@/lib/leads/db-errors'
 import { claimCrmTask } from '@/lib/leads/tasks'
 
@@ -12,7 +12,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const ctx = await requireRole('agent')
+    const ctx = await requireLeadGenAccount('agent')
     const { id } = await params
     const result = await claimCrmTask({
       db: ctx.supabase,

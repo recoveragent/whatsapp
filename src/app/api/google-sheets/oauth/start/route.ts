@@ -4,7 +4,7 @@ import {
   BrandContextRequiredError,
   ForbiddenError,
   UnauthorizedError,
-  requireRole,
+  requireLeadGenAccount,
   toErrorResponse,
 } from '@/lib/auth/account'
 import {
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const ctx = await requireRole('admin')
+    const ctx = await requireLeadGenAccount('admin')
     const state = await createGoogleOAuthState({
       db: supabaseAdmin(),
       accountId: ctx.accountId,

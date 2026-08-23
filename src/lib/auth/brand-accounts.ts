@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   DEFAULT_BRAND_CATEGORY,
   isBrandCategory,
+  isLeadGenBrand,
   type BrandCategory,
 } from './brand-category';
 
@@ -134,4 +135,41 @@ export async function fetchAccountWithCategory(
     ...fallback.data,
     brand_category: DEFAULT_BRAND_CATEGORY,
   };
+}
+
+export async function accountIsLeadGen(
+  supabase: SupabaseClient,
+  accountId: string,
+): Promise<boolean> {
+  const account = await fetchAccountWithCategory(supabase, accountId);
+  return isLeadGenBrand(account?.brand_category);
+}
+
+/** Account ids in `accountIds` whose brand category is lead gen. */
+export async function leadGenAccountIds(
+  supabase: SupabaseClient,
+  accountIds: string[],
+): Promise<Set<string>> {
+  const unique = [...new Set(accountIds.filter(Boolean))];
+  if (unique.length === 0) return new Set();
+
+  const withCategory = await supabase
+    .from('accounts')
+    .select('id, brand_category')
+    .in('id', unique);
+
+  if (!withCategory.error) {
+    return new Set(
+      (withCategory.data ?? [])
+        .filter((row) => isLeadGenBrand(row.brand_category))
+        .map((row) => row.id as string),
+    );
+  }
+
+  if (isMissingColumnError(withCategory.error, 'brand_category')) {
+    return new Set(unique);
+  }
+
+  console.error('[leadGenAccountIds]', withCategory.error);
+  return new Set();
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import { requireLeadGenAccount, toErrorResponse } from '@/lib/auth/account'
 import { leadsMigrationMessage } from '@/lib/leads/db-errors'
 import { CADENCE_CHANNELS, type CadenceChannel } from '@/lib/leads/types'
 
@@ -60,7 +60,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const ctx = await requireRole('admin')
+    const ctx = await requireLeadGenAccount('admin')
     const { id } = await params
     const body = (await request.json().catch(() => null)) as Record<
       string,

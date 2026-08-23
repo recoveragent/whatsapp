@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { leadGenAccountIds } from '@/lib/auth/brand-accounts'
 import { isUniqueViolation } from '@/lib/contacts/dedupe'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { ensureConversation } from '@/lib/shopify/ensure-contact'
@@ -419,7 +420,10 @@ async function processOne(
   return { sent: false, task: true, expired: false }
 }
 
-export async function processDueCadences(db: SupabaseClient): Promise<EngineResult> {
+export async function processDueCadences(
+  db: SupabaseClient,
+  opts?: { accountId?: string },
+): Promise<EngineResult> {
   const result: EngineResult = {
     processed: 0,
     sent: 0,
@@ -430,28 +434,42 @@ export async function processDueCadences(db: SupabaseClient): Promise<EngineResu
   const now = new Date()
   const nowIso = now.toISOString()
 
-  await db
+  let unclaim = db
     .from('crm_tasks')
     .update({ status: 'pending', claimed_by: null, claimed_until: null })
     .eq('status', 'claimed')
     .lt('claimed_until', nowIso)
+  if (opts?.accountId) unclaim = unclaim.eq('account_id', opts.accountId)
+  await unclaim
 
-  const { data: due, error } = await db
+  let dueQuery = db
     .from('cadence_enrollments')
     .select('*')
     .eq('status', 'active')
     .lte('next_run_at', nowIso)
     .order('next_run_at', { ascending: true })
     .limit(MAX_ENROLLMENTS_PER_TICK)
+  if (opts?.accountId) dueQuery = dueQuery.eq('account_id', opts.accountId)
+
+  const { data: due, error } = await dueQuery
 
   if (error) {
     result.errors.push(error.message)
     return result
   }
 
+  let dueList = (due as CadenceEnrollment[] | null) ?? []
+  if (!opts?.accountId && dueList.length > 0) {
+    const allowed = await leadGenAccountIds(
+      db,
+      dueList.map((row) => row.account_id),
+    )
+    dueList = dueList.filter((row) => allowed.has(row.account_id))
+  }
+
   const claimUntil = new Date(now.getTime() + CLAIM_MS).toISOString()
 
-  for (const row of (due as CadenceEnrollment[] | null) ?? []) {
+  for (const row of dueList) {
     if (row.claimed_until && new Date(row.claimed_until).getTime() > now.getTime()) {
       continue
     }
@@ -480,11 +498,14 @@ export async function processDueCadences(db: SupabaseClient): Promise<EngineResu
   }
 
   // Expire completed sequences that have sat past the window.
-  const { data: cooling } = await db
+  let coolingQuery = db
     .from('cadence_enrollments')
     .select('id, account_id, contact_id, cadence_id, started_at')
     .eq('status', 'completed')
     .limit(50)
+  if (opts?.accountId) coolingQuery = coolingQuery.eq('account_id', opts.accountId)
+
+  const { data: cooling } = await coolingQuery
 
   for (const row of cooling ?? []) {
     const { data: cadence } = await db

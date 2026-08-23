@@ -31,6 +31,10 @@ import {
   debitWalletForTemplateSend,
   InsufficientWalletBalanceError,
 } from '@/lib/wallet/billing'
+import {
+  buildTemplateMessageSnapshot,
+  templateDisplayPayload,
+} from '@/lib/inbox/template-message-display'
 
 export async function POST(request: Request) {
   try {
@@ -377,15 +381,27 @@ export async function POST(request: Request) {
     // (see supabase/migrations/001_initial_schema.sql):
     //   conversation_id, sender_type, content_type, content_text,
     //   media_url, template_name, message_id, status, created_at
+    const templateContentPayload =
+      message_type === 'template' && templateRow
+        ? templateDisplayPayload(
+            buildTemplateMessageSnapshot(templateRow, {
+              headerMediaUrl: template_message_params?.headerMediaUrl,
+              headerText: template_message_params?.headerText,
+            }),
+          )
+        : null
+
     const { data: messageRecord, error: msgError } = await supabase
       .from('messages')
       .insert({
         conversation_id,
         sender_type: 'agent',
+        sender_id: ctx.userId,
         content_type: message_type,
         content_text: content_text || null,
         media_url: media_url || null,
         template_name: template_name || null,
+        content_payload: templateContentPayload,
         message_id: waMessageId,
         status: 'sent',
         reply_to_message_id: reply_to_message_id || null,

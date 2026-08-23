@@ -45,7 +45,7 @@ export function SettingsOverview({
 }: {
   onSelect: (section: SettingsSection) => void;
 }) {
-  const { user, profile, accountId, accountRole, defaultCurrency, canManageMembers, brandCategory } =
+  const { user, profile, accountId, accountRole, defaultCurrency, canManageMembers, brandCategory, isLeadGenBrand } =
     useAuth();
   const { mode, theme } = useTheme();
 
@@ -154,6 +154,11 @@ export function SettingsOverview({
     })();
 
     (async () => {
+      if (!isLeadGenBrand) {
+        setGoogleSheets({ configured: false, connected: false });
+        setGoogleSheetsLoading(false);
+        return;
+      }
       setGoogleSheetsLoading(true);
       const health = await fetch('/api/google-sheets/connection', {
         cache: 'no-store',
@@ -169,7 +174,7 @@ export function SettingsOverview({
     return () => {
       cancelled = true;
     };
-  }, [user, accountId, canManageMembers]);
+  }, [user, accountId, canManageMembers, isLeadGenBrand]);
 
   const displayName = profile?.full_name || profile?.email || 'Your account';
   const initial = (profile?.full_name || profile?.email || 'U').charAt(0).toUpperCase();
