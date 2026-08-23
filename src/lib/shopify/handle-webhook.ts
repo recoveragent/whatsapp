@@ -12,6 +12,7 @@ import {
   enrichOrderContextImage,
 } from './enrich-product-image';
 import { loadCampaign, sendShopifyCampaign } from './send-campaign';
+import { logShopifyFulfillmentEvent } from './log-fulfillment-event';
 import { syncShopifyOrder } from './sync-order';
 import {
   dispatchShopifyFlows,
@@ -191,6 +192,16 @@ async function handleFulfillment(
     } catch (err) {
       console.warn('[shopify] fetch order for fulfillment failed:', err);
     }
+  }
+
+  if (topic === 'fulfillments/create' || topic === 'fulfillments/update') {
+    await logShopifyFulfillmentEvent({
+      db,
+      accountId: config.account_id,
+      topic,
+      fulfillment,
+      order,
+    });
   }
 
   let context = contextFromFulfillment(fulfillment, order, shopName);

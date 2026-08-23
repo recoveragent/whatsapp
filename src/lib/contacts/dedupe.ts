@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { normalizePhone, phonesMatch } from "@/lib/whatsapp/phone-utils";
+import {
+  canonicalContactPhone,
+  contactLookupSuffixes,
+  normalizePhone,
+  phonesMatch,
+} from "@/lib/whatsapp/phone-utils";
 
 /**
  * Contact de-duplication helpers, shared by the WhatsApp webhook, the
@@ -40,19 +45,49 @@ export async function findExistingContact(
   const normalized = normalizePhone(phone);
   if (!normalized) return null;
 
-  const suffix = normalized.length >= 8 ? normalized.slice(-8) : normalized;
+  const suffixes = contactLookupSuffixes(normalized);
+  const orFilter = suffixes.map((suffix) => `phone.like.%${suffix}`).join(",");
 
   const { data, error } = await db
     .from("contacts")
     .select("*")
     .eq("account_id", accountId)
-    .like("phone", `%${suffix}`);
+    .or(orFilter);
 
-  if (error || !data) return null;
+  if (error || !data?.length) return null;
 
-  return (
-    (data as ExistingContact[]).find((c) => phonesMatch(c.phone, phone)) ?? null
+  const matches = (data as ExistingContact[]).filter((c) =>
+    phonesMatch(c.phone, phone),
   );
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0]!;
+
+  const targetCanonical = canonicalContactPhone(normalized);
+
+  // When Meta variant storage split a number across two contacts, prefer
+  // the oldest row — it usually holds the Shopify outbound that landed
+  // before the customer's first inbound reply opened a duplicate shell.
+  matches.sort((a, b) => {
+    const aExact =
+      normalizePhone(a.phone) === normalized ||
+      canonicalContactPhone(a.phone) === targetCanonical
+        ? 0
+        : 1;
+    const bExact =
+      normalizePhone(b.phone) === normalized ||
+      canonicalContactPhone(b.phone) === targetCanonical
+        ? 0
+        : 1;
+    if (aExact !== bExact) return aExact - bExact;
+
+    const aCreated =
+      typeof a.created_at === "string" ? a.created_at : "";
+    const bCreated =
+      typeof b.created_at === "string" ? b.created_at : "";
+    return aCreated.localeCompare(bCreated);
+  });
+
+  return matches[0]!;
 }
 
 /**

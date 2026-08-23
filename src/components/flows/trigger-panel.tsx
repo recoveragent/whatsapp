@@ -38,6 +38,7 @@ import { FlowWebhookTriggerPanel } from "./webhook-trigger-panel";
 import { FlowGoogleSheetTriggerPanel } from "./google-sheet-trigger-panel";
 import { IssueLine } from "./validation-panel";
 import { ExitConditionsPanel } from "./exit-panel";
+import { FulfillmentStatusInsights } from "./fulfillment-status-insights";
 import type { BuilderState } from "./flow-editor-state";
 import type { GoogleSheetRowTriggerConfig } from "@/lib/google-sheets/trigger-config";
 import { parseExitConfig } from "@/lib/flows/exit-conditions";
@@ -413,8 +414,15 @@ export function TriggerPanel({
             <p className="mt-1 text-[10px] text-muted-foreground">
               Leave all unchecked to run on any fulfillment update. Check more
               than one to get a handle per status on the trigger — drag each
-              to its node.
+              to its node. These are Shopify carrier tracking stages, not
+              &ldquo;order fulfilled&rdquo; itself.
             </p>
+            <FulfillmentStatusInsights
+              triggerConfig={state.trigger_config}
+              onTriggerConfigChange={(trigger_config) =>
+                setState((s) => ({ ...s, trigger_config }))
+              }
+            />
           </div>
         )}
       </div>

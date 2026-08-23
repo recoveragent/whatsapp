@@ -11,6 +11,7 @@ import {
   isValidE164,
   phoneVariants,
   isRecipientNotAllowedError,
+  contactPhoneAfterSuccessfulSend,
 } from '@/lib/whatsapp/phone-utils'
 import type { MessageTemplate } from '@/types'
 import {
@@ -173,7 +174,8 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   if (lastError) throw lastError
 
   if (workingPhone !== sanitized) {
-    await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
+    const storedPhone = contactPhoneAfterSuccessfulSend(sanitized, workingPhone)
+    await db.from('contacts').update({ phone: storedPhone }).eq('id', contact.id)
   }
 
   // Persist the sent message so it appears in the inbox with a real

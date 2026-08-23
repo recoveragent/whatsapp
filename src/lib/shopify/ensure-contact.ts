@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
-import { normalizePhone } from '@/lib/whatsapp/phone-utils';
+import { canonicalContactPhone, normalizePhone } from '@/lib/whatsapp/phone-utils';
 
 export interface EnsuredContact {
   id: string;
@@ -19,7 +19,7 @@ export async function ensureShopifyContact(
   phone: string,
   name: string,
 ): Promise<EnsuredContact | null> {
-  const normalized = normalizePhone(phone);
+  const normalized = canonicalContactPhone(normalizePhone(phone));
   if (!normalized || normalized.length < 8) return null;
 
   const existing = await findExistingContact(db, accountId, normalized);

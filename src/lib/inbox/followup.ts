@@ -7,6 +7,7 @@ import {
   isValidE164,
   phoneVariants,
   isRecipientNotAllowedError,
+  contactPhoneAfterSuccessfulSend,
 } from '@/lib/whatsapp/phone-utils'
 import type { InboxFollowupSettings } from '@/types'
 
@@ -153,7 +154,9 @@ export async function sendScheduledFollowup(
   if (workingPhone !== sanitizedPhone) {
     await admin
       .from('contacts')
-      .update({ phone: workingPhone })
+      .update({
+        phone: contactPhoneAfterSuccessfulSend(sanitizedPhone, workingPhone),
+      })
       .eq('id', contact.id)
   }
 

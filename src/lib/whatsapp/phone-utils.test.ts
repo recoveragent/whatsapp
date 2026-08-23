@@ -6,6 +6,9 @@ import {
   phoneVariants,
   phonesMatch,
   sanitizePhoneForMeta,
+  canonicalContactPhone,
+  contactPhoneAfterSuccessfulSend,
+  contactLookupSuffixes,
 } from "./phone-utils";
 
 describe("sanitizePhoneForMeta", () => {
@@ -60,6 +63,35 @@ describe("phonesMatch", () => {
   it("ignores formatting noise on both sides", () => {
     expect(phonesMatch("+370 6 394 9836", "37063949836")).toBe(true);
     expect(phonesMatch("(415) 555-1212", "+1 415-555-1212")).toBe(true);
+  });
+
+  it("matches Meta trunk-0 variant to WhatsApp wa_id (Indian numbers)", () => {
+    // Meta ccLen-2 retry inserts 0 after `91` → `9109036103346`; wa_id is `919036103346`.
+    expect(phonesMatch("919036103346", "9109036103346")).toBe(true);
+    expect(phonesMatch("9109036103346", "919036103346")).toBe(true);
+  });
+});
+
+describe("canonicalContactPhone", () => {
+  it("removes trunk 0 inserted after country code 91", () => {
+    expect(canonicalContactPhone("9109036103346")).toBe("919036103346");
+    expect(canonicalContactPhone("919036103346")).toBe("919036103346");
+  });
+});
+
+describe("contactPhoneAfterSuccessfulSend", () => {
+  it("stores canonical phone after a variant retry", () => {
+    expect(
+      contactPhoneAfterSuccessfulSend("919036103346", "9109036103346"),
+    ).toBe("919036103346");
+  });
+});
+
+describe("contactLookupSuffixes", () => {
+  it("includes suffixes for Meta variant forms", () => {
+    const suffixes = contactLookupSuffixes("919036103346");
+    expect(suffixes).toContain("36103346");
+    expect(suffixes.length).toBeGreaterThan(0);
   });
 });
 

@@ -18,6 +18,50 @@ export function normalizePhone(phone: string): string {
 }
 
 /**
+ * Strip a domestic trunk `0` inserted immediately after the country code.
+ * Meta's phone-variant retry sometimes lands on this shape (e.g. Indian
+ * `9190361033460`) while WhatsApp `wa_id` values omit it (`919036103346`).
+ * Persisting / matching on the canonical form keeps outbound Shopify sends
+ * and inbound webhooks on the same contact + conversation.
+ */
+export function canonicalContactPhone(phone: string): string {
+  const n = normalizePhone(phone)
+  if (!n) return n
+
+  // Already canonical — do not shorten via mistaken country-code splits.
+  if (/^91[6-9]\d{9}$/.test(n)) return n
+
+  const candidates = phoneVariants(n)
+  const minLen = Math.min(n.length, ...candidates.map((v) => v.length))
+  const shortest = candidates.filter((v) => v.length === minLen)
+  if (shortest.length === 1) return shortest[0]!
+
+  const inMobile = shortest.find((v) => /^91[6-9]\d{9}$/.test(v))
+  if (inMobile) return inMobile
+
+  return shortest[0]!
+}
+
+/** Last-8 suffixes used to pre-filter contacts in SQL lookups. */
+export function contactLookupSuffixes(phone: string): string[] {
+  const seen = new Set<string>()
+  const add = (raw: string) => {
+    const n = normalizePhone(raw)
+    if (!n) return
+    seen.add(n.length >= 8 ? n.slice(-8) : n)
+  }
+
+  add(phone)
+  add(canonicalContactPhone(phone))
+  for (const variant of phoneVariants(normalizePhone(phone))) {
+    add(variant)
+    add(canonicalContactPhone(variant))
+  }
+
+  return [...seen]
+}
+
+/**
  * Compare two phone numbers accounting for trunk prefix differences.
  * e.g. "370063949836" (with trunk 0) matches "37063949836" (without trunk 0)
  * by comparing the last 8 digits.
@@ -26,10 +70,27 @@ export function phonesMatch(phone1: string, phone2: string): boolean {
   const n1 = normalizePhone(phone1)
   const n2 = normalizePhone(phone2)
   if (n1 === n2) return true
+
+  const c1 = canonicalContactPhone(n1)
+  const c2 = canonicalContactPhone(n2)
+  if (c1 === c2) return true
+
   if (n1.length >= 8 && n2.length >= 8) {
     return n1.slice(-8) === n2.slice(-8)
   }
   return false
+}
+
+/**
+ * After a Meta send succeeds via a phone-variant retry, store the canonical
+ * contact phone (not the raw variant Meta accepted) so later inbound
+ * webhooks resolve the same contact row.
+ */
+export function contactPhoneAfterSuccessfulSend(
+  originalSanitized: string,
+  workingPhone: string,
+): string {
+  return canonicalContactPhone(workingPhone || originalSanitized)
 }
 
 /**

@@ -18,6 +18,7 @@ import {
   isValidE164,
   phoneVariants,
   isRecipientNotAllowedError,
+  contactPhoneAfterSuccessfulSend,
 } from '@/lib/whatsapp/phone-utils'
 import {
   checkRateLimit,
@@ -368,12 +369,16 @@ export async function POST(request: Request) {
     // sends go straight through. sanitizePhoneForMeta on workingPhone
     // will yield workingPhone itself, so re-storing preserves it.
     if (workingPhone !== sanitizedPhone) {
+      const storedPhone = contactPhoneAfterSuccessfulSend(
+        sanitizedPhone,
+        workingPhone,
+      )
       console.log(
-        `[whatsapp/send] Auto-corrected contact phone: ${sanitizedPhone} → ${workingPhone}`
+        `[whatsapp/send] Auto-corrected contact phone: ${sanitizedPhone} → ${storedPhone}`
       )
       await supabase
         .from('contacts')
-        .update({ phone: workingPhone })
+        .update({ phone: storedPhone })
         .eq('id', contact.id)
     }
 

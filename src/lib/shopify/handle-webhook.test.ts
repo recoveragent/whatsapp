@@ -40,6 +40,9 @@ vi.mock('./admin-api', () => ({
   fetchFirstOrderProductImageUrl,
   fetchProductImageUrl,
 }))
+vi.mock('./log-fulfillment-event', () => ({
+  logShopifyFulfillmentEvent: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('@/lib/whatsapp/encryption', () => ({ decrypt: vi.fn(() => 'test-token') }))
 
 import { handleShopifyWebhook } from './handle-webhook'
