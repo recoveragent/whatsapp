@@ -148,6 +148,40 @@ describe('buildSendComponents — header', () => {
       buildSendComponents(row({ header_type: 'image' })),
     ).toThrow(/requires a media link or id/);
   });
+
+  it('does not fall back to the template sample when headerMediaRequired is set', () => {
+    expect(() =>
+      buildSendComponents(
+        row({
+          header_type: 'image',
+          header_media_url: 'https://example.com/sample.jpg',
+        }),
+        { headerMediaRequired: true },
+      ),
+    ).toThrow(/header media variable resolved empty/);
+  });
+
+  it('prefers an explicit headerMediaUrl over the template sample', () => {
+    const components = buildSendComponents(
+      row({
+        header_type: 'image',
+        header_media_url: 'https://example.com/sample.jpg',
+      }),
+      {
+        headerMediaUrl: 'https://cdn.shopify.com/product.jpg',
+        headerMediaRequired: true,
+      },
+    );
+    expect(components[0]).toEqual({
+      type: 'header',
+      parameters: [
+        {
+          type: 'image',
+          image: { link: 'https://cdn.shopify.com/product.jpg' },
+        },
+      ],
+    });
+  });
 });
 
 describe('buildSendComponents — buttons', () => {

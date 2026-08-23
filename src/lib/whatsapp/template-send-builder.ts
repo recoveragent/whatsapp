@@ -40,6 +40,11 @@ export interface SendTimeParams {
   headerText?: string;
   /** Override the template's static media URL for this send. */
   headerMediaUrl?: string;
+  /**
+   * When true, do not fall back to the template's sample header URL if
+   * `headerMediaUrl` is missing — the caller mapped a dynamic variable.
+   */
+  headerMediaRequired?: boolean;
   /** Alternative: send the media by Meta media id (from prior upload). */
   headerMediaId?: string;
   /**
@@ -109,9 +114,19 @@ function buildHeaderComponent(
   // sample (`example.header_handle`); it is NOT a reusable send-time
   // media id, and passing it as `{ id }` makes Meta reject the send. Only
   // an explicit `headerMediaId` (a real /media upload id) is honored.
-  const link = params.headerMediaUrl ?? template.header_media_url;
+  const explicitLink = params.headerMediaUrl?.trim() || undefined;
+  const link =
+    explicitLink ??
+    (params.headerMediaRequired
+      ? undefined
+      : template.header_media_url?.trim() || undefined);
   const id = params.headerMediaId;
   if (!link && !id) {
+    if (params.headerMediaRequired) {
+      throw new Error(
+        `${headerType} header media variable resolved empty — ensure product_image (or your mapped URL) is available on the flow run.`,
+      );
+    }
     throw new Error(
       `${headerType} header requires a media link or id at send time — set header_media_url on the template or pass headerMediaUrl/headerMediaId.`,
     );

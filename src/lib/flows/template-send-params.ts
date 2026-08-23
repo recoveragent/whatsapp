@@ -10,6 +10,12 @@
 
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
 
+/** True when the flow maps header media via {{ vars.* }} instead of a static URL. */
+export function isDynamicHeaderMediaMapping(value: string | undefined): boolean {
+  const trimmed = value?.trim()
+  return !!trimmed && trimmed.includes('{{')
+}
+
 export function buildSendTimeParamsFromVariables(
   variables: Record<string, string> | undefined,
   interpolate: (raw: string) => string,
@@ -40,6 +46,7 @@ export function buildSendTimeParamsFromVariables(
     body: body.length > 0 ? body : undefined,
     headerText,
     headerMediaUrl,
+    headerMediaRequired: isDynamicHeaderMediaMapping(headerMediaRaw),
     buttonParams:
       Object.keys(buttonParams).length > 0 ? buttonParams : undefined,
   }

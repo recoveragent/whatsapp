@@ -58,5 +58,6 @@ describe('header_media send params', () => {
     )
     expect(params.body).toEqual(['Ada'])
     expect(params.headerMediaUrl).toBe('https://cdn.shopify.com/mug.jpg')
+    expect(params.headerMediaRequired).toBe(true)
   })
 })

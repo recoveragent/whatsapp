@@ -5,6 +5,12 @@ import type { ShopifyEventContext } from '@/lib/shopify/types'
 import { runFlowsForTrigger, type FlowDispatchOutcome } from './dispatch-external'
 import { shopifyTopicToFlowTrigger, type FlowTriggerType } from './trigger-types'
 
+function shopifyOrderIdFromContext(ctx: ShopifyEventContext): string | undefined {
+  if (!ctx.resourceKey.startsWith('order:')) return undefined
+  const id = ctx.resourceKey.slice('order:'.length).trim()
+  return id || undefined
+}
+
 function contextToVars(ctx: ShopifyEventContext): Record<string, unknown> {
   return {
     customer_name: ctx.customerName,
@@ -13,6 +19,7 @@ function contextToVars(ctx: ShopifyEventContext): Record<string, unknown> {
     order_number: ctx.orderNumber,
     order_total: ctx.orderTotal,
     order_items: ctx.orderItems,
+    shopify_order_id: shopifyOrderIdFromContext(ctx),
     product_image: ctx.productImage,
     shipping_address: ctx.shippingAddress,
     shipping_address_fields: ctx.shippingAddressFields,

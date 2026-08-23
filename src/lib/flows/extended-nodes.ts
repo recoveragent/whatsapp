@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FlowNodeRow, FlowRunRow } from './types'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { buildSendTimeParamsFromVariables } from '@/lib/flows/template-send-params'
+import { resolveFlowProductImageUrl } from '@/lib/flows/resolve-product-image'
 import { interpolateTemplateString } from '@/lib/flows/template-interpolate'
 import { templateConfigHasQuickReplies } from './template-buttons'
 
@@ -197,17 +198,20 @@ export async function executeExtendedNode(
         if (!c.template_name) throw new Error('template_name required')
         const interpolate = (raw: string) =>
           interpolateFlowVars(raw, vars, messageText)
+        const productImageUrl = await resolveFlowProductImageUrl(
+          db,
+          run.account_id,
+          vars,
+        )
+        if (productImageUrl) {
+          vars.product_image = productImageUrl
+        }
         const messageParams = buildSendTimeParamsFromVariables(
           c.variables,
           interpolate,
         )
-        // Shopify triggers populate vars.product_image; use it for IMAGE
-        // headers when the node config has no explicit header_media mapping.
-        if (!messageParams.headerMediaUrl) {
-          const productImage = vars.product_image
-          if (typeof productImage === 'string' && productImage.trim()) {
-            messageParams.headerMediaUrl = productImage.trim()
-          }
+        if (!messageParams.headerMediaUrl && productImageUrl) {
+          messageParams.headerMediaUrl = productImageUrl
         }
         if (!messageParams.defaultUrlButtonSuffix) {
           const statusSuffix = vars.order_status_url_suffix

@@ -6,6 +6,7 @@ import { dispatchShopifyFlows } from '@/lib/flows/shopify-dispatch';
 import type { FlowTriggerType } from '@/lib/flows/trigger-types';
 import { fetchOrder } from '@/lib/shopify/admin-api';
 import { contextFromOrder } from '@/lib/shopify/extract-context';
+import { enrichOrderContextImage } from '@/lib/shopify/enrich-product-image';
 import { syncShopifyOrder } from '@/lib/shopify/sync-order';
 import type { ShopifyOrderPayload } from '@/lib/shopify/types';
 import { decrypt } from '@/lib/whatsapp/encryption';
@@ -78,7 +79,13 @@ export async function POST(req: Request) {
     const shopName = shopDomain.replace('.myshopify.com', '');
     await syncShopifyOrder(db, ctx.accountId, order, shopName);
 
-    const eventContext = contextFromOrder(order, shopName);
+    let eventContext = contextFromOrder(order, shopName);
+    eventContext = await enrichOrderContextImage({
+      context: eventContext,
+      order,
+      shopDomain,
+      encryptedAccessToken: config.access_token as string,
+    });
     const outcome = await dispatchShopifyFlows({
       db,
       accountId: ctx.accountId,
