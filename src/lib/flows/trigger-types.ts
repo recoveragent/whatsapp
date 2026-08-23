@@ -166,9 +166,17 @@ export function shipmentStatusMatchesFilter(
 }
 
 /** Statuses that can branch off a fulfilled trigger (excludes "any"). */
+export type ShopifyShipmentBranchStatus = Exclude<ShopifyShipmentStatus, 'any'>
+
 export const SHOPIFY_SHIPMENT_BRANCH_STATUSES = SHOPIFY_SHIPMENT_STATUSES.filter(
-  (s): s is Exclude<ShopifyShipmentStatus, 'any'> => s !== 'any',
+  (s): s is ShopifyShipmentBranchStatus => s !== 'any',
 )
+
+export function isShopifyShipmentBranchStatus(
+  status: string,
+): status is ShopifyShipmentBranchStatus {
+  return (SHOPIFY_SHIPMENT_BRANCH_STATUSES as readonly string[]).includes(status)
+}
 
 export function selectedShipmentStatuses(
   config: Record<string, unknown> | null | undefined,

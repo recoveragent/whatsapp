@@ -4,11 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  SHOPIFY_SHIPMENT_BRANCH_STATUSES,
   SHOPIFY_SHIPMENT_STATUS_LABELS,
+  isShopifyShipmentBranchStatus,
   selectedShipmentStatuses,
   shipmentRoutesFromConfig,
-  type ShopifyShipmentStatus,
 } from "@/lib/flows/trigger-types";
 import {
   FULFILLMENT_STATUS_NONE_KEY,
@@ -128,9 +127,7 @@ export function FulfillmentStatusInsights({
             {stats.statuses.map((row) => {
               const selectable =
                 row.status !== FULFILLMENT_STATUS_NONE_KEY &&
-                SHOPIFY_SHIPMENT_BRANCH_STATUSES.includes(
-                  row.status as (typeof SHOPIFY_SHIPMENT_BRANCH_STATUSES)[number],
-                );
+                isShopifyShipmentBranchStatus(row.status);
               const isOn = selectable && selected.includes(row.status);
               const widthPct = Math.max(4, (row.count / maxCount) * 100);
 
@@ -210,9 +207,7 @@ export function FulfillmentStatusInsights({
               .filter(
                 (row) =>
                   row.status !== FULFILLMENT_STATUS_NONE_KEY &&
-                  SHOPIFY_SHIPMENT_BRANCH_STATUSES.includes(
-                    row.status as ShopifyShipmentStatus,
-                  ),
+                  isShopifyShipmentBranchStatus(row.status),
               )
               .slice(0, 5)
               .map((row) => (
@@ -227,9 +222,9 @@ export function FulfillmentStatusInsights({
                   className="text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                 >
                   +{" "}
-                  {SHOPIFY_SHIPMENT_STATUS_LABELS[
-                    row.status as ShopifyShipmentStatus
-                  ] ?? row.label}
+                  {isShopifyShipmentBranchStatus(row.status)
+                    ? SHOPIFY_SHIPMENT_STATUS_LABELS[row.status]
+                    : row.label}
                 </button>
               ))}
           </div>
