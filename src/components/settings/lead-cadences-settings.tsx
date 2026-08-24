@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { SettingsPanelHead } from './settings-panel-head';
+import { MetaConversionsPanel } from './meta-conversions-panel';
 
 interface EditableStep {
   delay_hours: string;
@@ -131,7 +132,9 @@ export function LeadCadencesSettings() {
   }
 
   return (
-    <div>
+    <div className="space-y-8">
+      <MetaConversionsPanel />
+      <div>
       <SettingsPanelHead
         title="Lead cadences"
         description="Timed follow-up for Instant Form leads who never message first. Auto-send WhatsApp templates; call steps land in the Leads queue. Pick approved templates or those steps wait."
@@ -334,6 +337,7 @@ export function LeadCadencesSettings() {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

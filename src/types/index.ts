@@ -126,7 +126,7 @@ export interface Contact {
   referral?: WhatsAppReferral | null;
 }
 
-/** Click-to-WhatsApp ad metadata stored on contacts. */
+/** Meta ad attribution: CTWA webhook + Instant Form sheet fields. */
 export interface WhatsAppReferral {
   source_type?: string;
   source_id?: string;
@@ -138,6 +138,14 @@ export interface WhatsAppReferral {
   video_url?: string;
   thumbnail_url?: string;
   ctwa_clid?: string;
+  /** Meta Instant Form lead id (15–17 digits). */
+  meta_lead_id?: string;
+  form_id?: string;
+  ad_id?: string;
+  ad_name?: string;
+  campaign_name?: string;
+  created_time?: string;
+  attribution_source?: 'ctwa' | 'instant_form';
 }
 
 export interface Tag {

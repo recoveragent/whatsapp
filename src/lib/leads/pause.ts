@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { emitLeadQualityEvent } from '@/lib/meta/lead-quality-events'
+
 import { patchContactLead } from './enroll'
 import type { ExitReason, LeadStatus } from './types'
 
@@ -91,6 +93,22 @@ export async function exitEnrollment(args: {
       })
     }
   }
+
+  if (args.reason === 'meeting_booked') {
+    void emitLeadQualityEvent({
+      db: args.db,
+      accountId: args.accountId,
+      contactId: args.contactId,
+      signal: 'meeting_booked',
+    }).catch((err) => console.error('[meta-capi] meeting_booked:', err))
+  } else if (args.reason === 'not_interested' || args.reason === 'wrong_number') {
+    void emitLeadQualityEvent({
+      db: args.db,
+      accountId: args.accountId,
+      contactId: args.contactId,
+      signal: args.reason,
+    }).catch((err) => console.error('[meta-capi] negative outcome:', err))
+  }
 }
 
 /** Customer inbound WhatsApp — stop the cadence, put them in Replied. */
@@ -146,5 +164,12 @@ export async function pauseCadenceOnReply(args: {
         next_action_type: 'respond',
       },
     })
+
+    void emitLeadQualityEvent({
+      db: args.db,
+      accountId: args.accountId,
+      contactId: args.contactId,
+      signal: 'replied',
+    }).catch((err) => console.error('[meta-capi] replied:', err))
   }
 }

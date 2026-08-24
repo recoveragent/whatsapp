@@ -1,7 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { leadGenAccountIds } from '@/lib/auth/brand-accounts'
-import { ensureShopifyContact } from '@/lib/shopify/ensure-contact'
 import {
   columnLetter,
   fetchSheetValues,
@@ -11,6 +10,10 @@ import {
   type GoogleSheetsConfigRow,
 } from '@/lib/google-sheets/sheets-client'
 import { quoteSheetName } from '@/lib/google-sheets/parse-sheet-url'
+import { mergeMetaAttribution } from '@/lib/meta/attribution'
+import { emitLeadQualityEvent } from '@/lib/meta/lead-quality-events'
+import { extractSheetMetaAttribution } from '@/lib/meta/sheet-attribution'
+import { ensureShopifyContact } from '@/lib/shopify/ensure-contact'
 
 import { enrollContact, patchContactLead } from './enroll'
 import { inferLeadLanguage } from './language'
@@ -211,14 +214,21 @@ async function processSource(
 
     const { data: existing } = await db
       .from('contacts')
-      .select('lead_status, email, lead_language, lead_source_id')
+      .select('lead_status, email, lead_language, lead_source_id, referral')
       .eq('id', contact.id)
       .maybeSingle()
 
+    const sheetAttribution = extractSheetMetaAttribution(rowObj)
     const patch: Record<string, unknown> = {}
     if (email && !existing?.email) patch.email = email
     if (!existing?.lead_language) patch.lead_language = language
     if (!existing?.lead_source_id) patch.lead_source_id = source.id
+    if (sheetAttribution) {
+      patch.referral = mergeMetaAttribution(
+        (existing?.referral as Record<string, unknown> | null) ?? null,
+        sheetAttribution,
+      )
+    }
     if (Object.keys(patch).length > 0) {
       await patchContactLead(db, {
         contactId: contact.id,
@@ -237,6 +247,17 @@ async function processSource(
       steps,
       currentLeadStatus: (existing?.lead_status as string | null) ?? null,
     })
+
+    if (outcome.enrollment && sheetAttribution) {
+      void emitLeadQualityEvent({
+        db,
+        accountId: source.account_id,
+        contactId: contact.id,
+        signal: 'instant_form_enrolled',
+      }).catch((err) =>
+        console.error('[meta-capi] instant_form_enrolled:', err),
+      )
+    }
 
     budget.remaining -= 1
     if (outcome.enrollment) enrolled += 1
