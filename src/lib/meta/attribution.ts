@@ -48,13 +48,36 @@ export function mergeMetaAttribution(
   incoming: ContactMetaAttribution,
 ): ContactMetaAttribution {
   const merged: ContactMetaAttribution = { ...(existing ?? {}) }
-  for (const [key, value] of Object.entries(incoming) as [
-    keyof ContactMetaAttribution,
-    string | undefined,
-  ][]) {
+
+  const stringKeys = [
+    'ctwa_clid',
+    'source_type',
+    'source_id',
+    'source_url',
+    'headline',
+    'body',
+    'media_type',
+    'image_url',
+    'video_url',
+    'thumbnail_url',
+    'meta_lead_id',
+    'form_id',
+    'ad_id',
+    'ad_name',
+    'campaign_name',
+    'created_time',
+  ] as const satisfies readonly (keyof ContactMetaAttribution)[]
+
+  for (const key of stringKeys) {
+    const value = incoming[key]
     if (typeof value === 'string' && value.trim() && !merged[key]) {
       merged[key] = value.trim()
     }
   }
+
+  if (incoming.attribution_source && !merged.attribution_source) {
+    merged.attribution_source = incoming.attribution_source
+  }
+
   return merged
 }
