@@ -466,6 +466,34 @@ function MessageContent({
       );
 
     case "interactive": {
+      const payload = message.content_payload as
+        | { type?: string; flow_cta?: string }
+        | null
+        | undefined;
+
+      const isFlowRequest =
+        payload?.type === "whatsapp_flow_request";
+      if (isFlowRequest) {
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              <ClipboardList className="h-3 w-3" />
+              WhatsApp Flow
+            </span>
+            {message.content_text ? (
+              <p className="whitespace-pre-wrap break-words text-sm">
+                {message.content_text}
+              </p>
+            ) : null}
+            {payload?.flow_cta ? (
+              <span className="mt-1 inline-flex w-fit rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                {payload.flow_cta}
+              </span>
+            ) : null}
+          </div>
+        );
+      }
+
       // Address Message submission — structured values live in
       // content_payload; content_text is the formatted multi-line summary.
       const isAddress =

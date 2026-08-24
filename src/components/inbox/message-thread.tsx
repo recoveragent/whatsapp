@@ -14,6 +14,7 @@ import type {
   Contact,
   ConversationStatus,
   MessageTemplate,
+  WhatsAppFlow,
   Profile,
   ConversationPrivateNote,
 } from "@/types";
@@ -47,6 +48,7 @@ import {
 } from "./message-composer";
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
+import { FlowPicker } from "./flow-picker";
 import { ScheduleFollowupDialog } from "./schedule-followup-dialog";
 import { PrivateNoteBubble } from "./private-note-bubble";
 import { buildReplyPreview } from "./reply-quote";
@@ -205,6 +207,7 @@ export function MessageThread({
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [flowModalOpen, setFlowModalOpen] = useState(false);
   const [followupDialogOpen, setFollowupDialogOpen] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
@@ -727,6 +730,71 @@ export function MessageThread({
   const handleOpenTemplates = useCallback(() => {
     setTemplateModalOpen(true);
   }, []);
+
+  const handleOpenFlows = useCallback(() => {
+    setFlowModalOpen(true);
+  }, []);
+
+  const handleSendFlow = useCallback(
+    async (flow: WhatsAppFlow) => {
+      if (!conversation) return;
+
+      const tempId = `temp-${Date.now()}`;
+      const optimisticMsg: Message = {
+        id: tempId,
+        conversation_id: conversation.id,
+        sender_type: "agent",
+        sender_id: user?.id,
+        content_type: "interactive",
+        content_text: flow.body_text,
+        content_payload: {
+          type: "whatsapp_flow_request",
+          flow_id: flow.flow_id,
+          flow_cta: flow.flow_cta,
+          ...(flow.flow_screen ? { flow_screen: flow.flow_screen } : {}),
+        },
+        status: "sending",
+        created_at: new Date().toISOString(),
+      };
+      onNewMessage(optimisticMsg);
+
+      try {
+        const res = await fetch("/api/whatsapp/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversation_id: conversation.id,
+            message_type: "flow",
+            content_text: flow.body_text,
+            flow_id: flow.flow_id,
+            flow_cta: flow.flow_cta,
+            header_text: flow.header_text || undefined,
+            footer_text: flow.footer_text || undefined,
+            flow_screen: flow.flow_screen || undefined,
+            flow_message_version: flow.flow_message_version || "3",
+          }),
+        });
+
+        const payload = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          const reason = payload?.error || `HTTP ${res.status}`;
+          console.error("Failed to send flow:", reason);
+          toast.error(`Failed to send flow: ${reason}`);
+          onUpdateMessage(tempId, { status: "failed", error_message: reason });
+          return;
+        }
+
+        onUpdateMessage(tempId, { status: "sent" });
+      } catch (err) {
+        console.error("Failed to send flow:", err);
+        const reason = err instanceof Error ? err.message : "network error";
+        toast.error(`Failed to send flow: ${reason}`);
+        onUpdateMessage(tempId, { status: "failed", error_message: reason });
+      }
+    },
+    [conversation, onNewMessage, onUpdateMessage, user?.id],
+  );
 
   const handleSendTemplate = useCallback(
     async (
@@ -1330,6 +1398,7 @@ export function MessageThread({
         onSend={handleSend}
         onSendMedia={handleSendMedia}
         onOpenTemplates={handleOpenTemplates}
+        onOpenFlows={handleOpenFlows}
         onPrivateNoteSaved={handlePrivateNoteSaved}
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
@@ -1345,6 +1414,12 @@ export function MessageThread({
         open={templateModalOpen}
         onOpenChange={setTemplateModalOpen}
         onSelect={handleSendTemplate}
+      />
+
+      <FlowPicker
+        open={flowModalOpen}
+        onOpenChange={setFlowModalOpen}
+        onSelect={handleSendFlow}
       />
 
       {conversation ? (

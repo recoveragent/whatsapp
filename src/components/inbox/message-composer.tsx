@@ -10,6 +10,7 @@ import {
 import {
   Send,
   LayoutTemplate,
+  ClipboardList,
   Paperclip,
   Image as ImageIcon,
   Video,
@@ -131,6 +132,7 @@ interface MessageComposerProps {
   onSend: (text: string, replyToId?: string) => void;
   onSendMedia: (payload: SendMediaPayload) => void;
   onOpenTemplates: () => void;
+  onOpenFlows: () => void;
   onPrivateNoteSaved?: (note: ConversationPrivateNote) => void;
   replyTo?: ReplyDraft | null;
   onClearReply?: () => void;
@@ -165,6 +167,7 @@ export function MessageComposer({
   onSend,
   onSendMedia,
   onOpenTemplates,
+  onOpenFlows,
   onPrivateNoteSaved,
   replyTo,
   onClearReply,
@@ -801,6 +804,18 @@ export function MessageComposer({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <GatedButton
+            variant="ghost"
+            size="sm"
+            canAct={!readOnly}
+            gateReason="send messages"
+            title={readOnly ? undefined : "Send WhatsApp Flow"}
+            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+            onClick={onOpenFlows}
+          >
+            <ClipboardList className="h-4 w-4" />
+          </GatedButton>
 
           <GatedButton
             variant="ghost"
