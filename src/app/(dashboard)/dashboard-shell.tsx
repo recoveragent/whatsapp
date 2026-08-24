@@ -36,6 +36,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restore persisted sidebar width after mount (SSR-safe)
       setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
     } catch {
       // localStorage can throw in private-browsing / sandboxed contexts.

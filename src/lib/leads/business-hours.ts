@@ -126,7 +126,7 @@ export function nextCallSlot(
   }
 
   let cursor: Pick<IstParts, 'year' | 'month' | 'day' | 'weekday'> = parts
-  let openToday = isWorkingDay(parts.weekday, days) && parts.minutes < start
+  const openToday = isWorkingDay(parts.weekday, days) && parts.minutes < start
   if (!openToday) {
     for (let i = 1; i <= 8; i++) {
       cursor = addIstDays(parts, i)

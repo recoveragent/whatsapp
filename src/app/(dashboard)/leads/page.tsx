@@ -317,7 +317,7 @@ function CallCard({
   onClaim: () => void;
   onComplete: (o: CrmTaskOutcome) => void;
 }) {
-  const now = Date.now();
+  const [now] = useState(() => Date.now());
   const held =
     task.status === 'claimed' &&
     task.claimed_by &&

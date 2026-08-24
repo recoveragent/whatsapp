@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
@@ -53,14 +53,6 @@ export function TemplateVariablePicker({
   );
 
   const searching = query.trim().length > 0;
-
-  useEffect(() => {
-    if (!searching) return;
-    setExpanded((prev) => ({
-      ...prev,
-      ...Object.fromEntries(filteredGroups.map((g) => [g.id, true])),
-    }));
-  }, [searching, filteredGroups]);
 
   if (groups.length === 0) return null;
 
