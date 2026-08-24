@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Check } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
@@ -20,17 +19,11 @@ import {
   defaultShopifyTriggerConfig,
   SHOPIFY_PAYMENT_STATUSES,
   SHOPIFY_PAYMENT_STATUS_LABELS,
-  SHOPIFY_SHIPMENT_BRANCH_STATUSES,
-  SHOPIFY_SHIPMENT_NONE_KEY,
-  SHOPIFY_SHIPMENT_NONE_LABEL,
-  SHOPIFY_SHIPMENT_STATUS_LABELS,
   selectedShipmentStatuses,
   shipmentHandleId,
-  shipmentRoutesFromConfig,
   shipmentStatusFilterLabel,
   type FlowTriggerType,
   type ShopifyPaymentStatus,
-  type ShopifyShipmentStatus,
 } from "@/lib/flows/trigger-types";
 import {
   defaultFlowWebhookConfig,
@@ -118,15 +111,7 @@ export function summarizeTrigger(
         if (ps && ps !== "any") bits.push(SHOPIFY_PAYMENT_STATUS_LABELS[ps]);
         const shipments = selectedShipmentStatuses(triggerConfig);
         if (shipments.length > 0) {
-          bits.push(
-            shipments
-              .map(
-                (s) =>
-                  SHOPIFY_SHIPMENT_STATUS_LABELS[s as ShopifyShipmentStatus] ??
-                  s,
-              )
-              .join(", "),
-          );
+          bits.push(shipments.map((s) => shipmentStatusFilterLabel(s)).join(", "));
         }
         return bits.join(" · ");
       }
@@ -358,117 +343,6 @@ export function TriggerPanel({
             <label className="mb-1 block text-xs text-muted-foreground">
               Shipment status
             </label>
-            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-              {(() => {
-                const selected = selectedShipmentStatuses(state.trigger_config);
-                const on = selected.includes(SHOPIFY_SHIPMENT_NONE_KEY);
-                return (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setState((s) => {
-                        const current = selectedShipmentStatuses(s.trigger_config);
-                        const next = on
-                          ? current.filter((x) => x !== SHOPIFY_SHIPMENT_NONE_KEY)
-                          : [...current, SHOPIFY_SHIPMENT_NONE_KEY];
-                        const routes = shipmentRoutesFromConfig(s.trigger_config);
-                        const pruned = Object.fromEntries(
-                          Object.entries(routes).filter(([key]) =>
-                            next.includes(key),
-                          ),
-                        );
-                        return {
-                          ...s,
-                          trigger_config: {
-                            ...s.trigger_config,
-                            shipment_status:
-                              next.length === 1 ? next[0] : "any",
-                            shipment_statuses: next,
-                            shipment_routes: pruned,
-                          },
-                        };
-                      })
-                    }
-                    className={cn(
-                      "flex items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors sm:col-span-2",
-                      on
-                        ? "border-primary/40 bg-primary/10 text-foreground"
-                        : "border-border bg-muted/40 text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "flex size-4 shrink-0 items-center justify-center rounded-sm border",
-                        on
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border",
-                      )}
-                    >
-                      {on ? <Check className="size-3" /> : null}
-                    </span>
-                    {SHOPIFY_SHIPMENT_NONE_LABEL}
-                  </button>
-                );
-              })()}
-              {SHOPIFY_SHIPMENT_BRANCH_STATUSES.map((status) => {
-                const selected = selectedShipmentStatuses(state.trigger_config);
-                const on = selected.includes(status);
-                return (
-                  <button
-                    key={status}
-                    type="button"
-                    onClick={() =>
-                      setState((s) => {
-                        const current = selectedShipmentStatuses(s.trigger_config);
-                        const next = on
-                          ? current.filter((x) => x !== status)
-                          : [...current, status];
-                        const routes = shipmentRoutesFromConfig(s.trigger_config);
-                        const pruned = Object.fromEntries(
-                          Object.entries(routes).filter(([key]) =>
-                            next.includes(key),
-                          ),
-                        );
-                        return {
-                          ...s,
-                          trigger_config: {
-                            ...s.trigger_config,
-                            shipment_status:
-                              next.length === 1 ? next[0] : "any",
-                            shipment_statuses: next,
-                            shipment_routes: pruned,
-                          },
-                        };
-                      })
-                    }
-                    className={cn(
-                      "flex items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors",
-                      on
-                        ? "border-primary/40 bg-primary/10 text-foreground"
-                        : "border-border bg-muted/40 text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "flex size-4 shrink-0 items-center justify-center rounded-sm border",
-                        on
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border",
-                      )}
-                    >
-                      {on ? <Check className="size-3" /> : null}
-                    </span>
-                    {SHOPIFY_SHIPMENT_STATUS_LABELS[status]}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="mt-1 text-[10px] text-muted-foreground">
-              Leave all unchecked to run on any fulfillment update. Check more
-              than one to get a handle per status on the trigger — drag each
-              to its node. These are Shopify carrier tracking stages, not
-              &ldquo;order fulfilled&rdquo; itself.
-            </p>
             <FulfillmentStatusInsights
               triggerConfig={state.trigger_config}
               onTriggerConfigChange={(trigger_config) =>

@@ -1,18 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  SHOPIFY_SHIPMENT_NONE_KEY,
-  isSelectableShipmentStatusFilter,
   selectedShipmentStatuses,
   shipmentRoutesFromConfig,
   shipmentStatusFilterLabel,
 } from "@/lib/flows/trigger-types";
 import {
-  FULFILLMENT_STATUS_NONE_KEY,
-  buildRecommendedFulfillmentTriggerConfig,
+  type FulfillmentStatusStatRow,
   type FulfillmentStatusStats,
 } from "@/lib/shopify/fulfillment-status-stats";
 
@@ -39,6 +36,24 @@ function toggleShipmentStatus(
   };
 }
 
+function rowsForPicker(
+  stats: FulfillmentStatusStats | null,
+  selected: string[],
+): FulfillmentStatusStatRow[] {
+  const rows = [...(stats?.statuses ?? [])];
+  for (const status of selected) {
+    if (rows.some((row) => row.status === status)) continue;
+    rows.push({
+      status,
+      label: shipmentStatusFilterLabel(status),
+      count: 0,
+      last_seen: "",
+      known: true,
+    });
+  }
+  return rows;
+}
+
 export function FulfillmentStatusInsights({
   triggerConfig,
   onTriggerConfigChange,
@@ -49,7 +64,6 @@ export function FulfillmentStatusInsights({
   const [stats, setStats] = useState<FulfillmentStatusStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showSetupGuide, setShowSetupGuide] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,196 +88,127 @@ export function FulfillmentStatusInsights({
   }, [load]);
 
   const selected = selectedShipmentStatuses(triggerConfig);
-  const maxCount = Math.max(...(stats?.statuses.map((s) => s.count) ?? [1]), 1);
-  const outForDeliveryDominant =
-    stats?.statuses.find((s) => s.status === "out_for_delivery") != null &&
-    stats != null &&
-    stats.total_events > 0 &&
-    (stats.statuses.find((s) => s.status === "out_for_delivery")?.count ?? 0) /
-      stats.total_events >=
-      0.5;
-
-  function applyRecommended() {
-    if (!stats) return;
-    onTriggerConfigChange(
-      buildRecommendedFulfillmentTriggerConfig(stats, triggerConfig),
-    );
-    setShowSetupGuide(true);
-  }
+  const rows = useMemo(() => rowsForPicker(stats, selected), [stats, selected]);
+  const maxCount = Math.max(...rows.map((s) => s.count), 1);
 
   return (
-    <div className="mt-3 rounded-md border border-border bg-muted/30 p-3">
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <div>
-          <p className="text-xs font-medium text-foreground">
-            Statuses received (last 7 days)
-          </p>
-          <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">
-            From Shopify{" "}
-            <code className="rounded bg-muted px-1">fulfillments/create</code> and{" "}
-            <code className="rounded bg-muted px-1">fulfillments/update</code>{" "}
-            webhooks — carrier tracking field{" "}
-            <code className="rounded bg-muted px-1">shipment_status</code>, not
-            whether the order is fulfilled.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="shrink-0 text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-        >
-          Refresh
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin" />
-          Loading recent fulfillment events…
-        </div>
-      ) : error ? (
-        <p className="text-xs text-destructive">{error}</p>
-      ) : stats && stats.total_events === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          No fulfillment webhooks recorded yet. Events appear here after the next
-          fulfillments.
-        </p>
-      ) : stats ? (
-        <>
-          <p className="mb-2 text-[10px] text-muted-foreground">
-            {stats.total_events} webhook event{stats.total_events === 1 ? "" : "s"}{" "}
-            in the last {stats.days} days. Click a row to add or remove it from the
-            trigger filter above.
-          </p>
-          <ul className="flex flex-col gap-1.5">
-            {stats.statuses.map((row) => {
-              const selectable = isSelectableShipmentStatusFilter(row.status);
-              const isOn = selectable && selected.includes(row.status);
-              const widthPct = Math.max(4, (row.count / maxCount) * 100);
-
-              return (
-                <li key={row.status}>
-                  <button
-                    type="button"
-                    disabled={!selectable}
-                    onClick={() => {
-                      if (!selectable) return;
-                      onTriggerConfigChange(
-                        toggleShipmentStatus(triggerConfig, row.status, !isOn),
-                      );
-                    }}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors",
-                      !selectable
-                        ? "cursor-default border-border/60 bg-muted/20 text-muted-foreground"
-                        : isOn
-                          ? "border-primary/40 bg-primary/10 text-foreground"
-                          : "border-border bg-background/60 hover:bg-background",
-                    )}
-                  >
-                    <span className="min-w-[8rem] shrink-0 font-medium">
-                      {row.label}
-                    </span>
-                    <span className="flex min-w-0 flex-1 items-center gap-2">
-                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                        <span
-                          className={cn(
-                            "block h-full rounded-full",
-                            selectable ? "bg-primary/70" : "bg-muted-foreground/40",
-                          )}
-                          style={{ width: `${widthPct}%` }}
-                        />
-                      </span>
-                      <span className="shrink-0 tabular-nums text-muted-foreground">
-                        {row.count}
-                      </span>
-                    </span>
-                    {isOn ? (
-                      <span className="shrink-0 text-[10px] text-primary">On</span>
-                    ) : null}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-
-          {outForDeliveryDominant ? (
-            <p className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10px] leading-snug text-amber-950 dark:text-amber-100">
-              Most webhooks are <strong>Out for delivery</strong>, not initial
-              fulfill. Use separate templates per status — do not send
-              &ldquo;preparing for shipment&rdquo; on out-for-delivery events.
+    <div className="mt-1">
+      <p className="mb-1 text-[10px] leading-snug text-muted-foreground">
+        Leave all unchecked to run on any fulfillment update. Only statuses
+        received in the last 7 days are listed — check more than one to get a
+        handle per status on the trigger.
+      </p>
+      <div className="rounded-md border border-border bg-muted/30 p-3">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div>
+            <p className="text-xs font-medium text-foreground">
+              Statuses received (last 7 days)
             </p>
-          ) : null}
-
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={applyRecommended}
-              className="rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] font-medium text-foreground hover:bg-primary/15"
-            >
-              Apply recommended branching
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                onTriggerConfigChange({
-                  ...triggerConfig,
-                  shipment_status: "any",
-                  shipment_statuses: [],
-                  shipment_routes: {},
-                })
-              }
-              className="text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-            >
-              Clear all filters
-            </button>
+            <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">
+              Shopify{" "}
+              <code className="rounded bg-muted px-1">shipment_status</code> from
+              fulfillment webhooks. Unchecked means this flow does not filter by
+              carrier stage.
+            </p>
           </div>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="shrink-0 text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            Refresh
+          </button>
+        </div>
 
-          {showSetupGuide && selected.length > 0 ? (
-            <div className="mt-2 rounded-md border border-border bg-background/80 px-2 py-2 text-[10px] leading-snug text-muted-foreground">
-              <p className="font-medium text-foreground">Wire each trigger handle:</p>
-              <ul className="mt-1 list-inside list-disc space-y-0.5">
-                {selected.includes(SHOPIFY_SHIPMENT_NONE_KEY) ? (
-                  <li>
-                    <strong>No status</strong> → Send template{" "}
-                    <code className="rounded bg-muted px-1">order_fulfilled</code>{" "}
-                    (&ldquo;preparing for shipment&rdquo;)
+        {loading ? (
+          <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" />
+            Loading recent fulfillment events…
+          </div>
+        ) : error ? (
+          <p className="text-xs text-destructive">{error}</p>
+        ) : rows.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            No fulfillment webhooks in the last 7 days. Leave this empty to run
+            on any fulfill until statuses start arriving.
+          </p>
+        ) : (
+          <>
+            <p className="mb-2 text-[10px] text-muted-foreground">
+              {stats?.total_events ?? 0} webhook event
+              {(stats?.total_events ?? 0) === 1 ? "" : "s"} in the last{" "}
+              {stats?.days ?? 7} days.
+            </p>
+            <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {rows.map((row) => {
+                const isOn = selected.includes(row.status);
+                const widthPct = Math.max(4, (row.count / maxCount) * 100);
+                return (
+                  <li key={row.status}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onTriggerConfigChange(
+                          toggleShipmentStatus(triggerConfig, row.status, !isOn),
+                        )
+                      }
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors",
+                        isOn
+                          ? "border-primary/40 bg-primary/10 text-foreground"
+                          : "border-border bg-background/60 text-muted-foreground hover:text-foreground hover:bg-background",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex size-4 shrink-0 items-center justify-center rounded-sm border",
+                          isOn
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border",
+                        )}
+                      >
+                        {isOn ? <Check className="size-3" /> : null}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium text-foreground">
+                          {row.label}
+                        </span>
+                        <span className="mt-1 flex items-center gap-2">
+                          <span className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+                            <span
+                              className="block h-full rounded-full bg-primary/70"
+                              style={{ width: `${widthPct}%` }}
+                            />
+                          </span>
+                          <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground">
+                            {row.count}
+                          </span>
+                        </span>
+                      </span>
+                    </button>
                   </li>
-                ) : null}
-                {selected.includes("out_for_delivery") ? (
-                  <li>
-                    <strong>Out for delivery</strong> → new template (e.g.{" "}
-                    <code className="rounded bg-muted px-1">order_out_for_delivery</code>)
-                  </li>
-                ) : null}
-                {selected.includes("delivered") ? (
-                  <li>
-                    <strong>Delivered</strong> → new template (e.g.{" "}
-                    <code className="rounded bg-muted px-1">order_delivered</code>)
-                  </li>
-                ) : null}
-                {selected
-                  .filter(
-                    (status) =>
-                      status !== SHOPIFY_SHIPMENT_NONE_KEY &&
-                      status !== "out_for_delivery" &&
-                      status !== "delivered",
-                  )
-                  .map((status) => (
-                    <li key={status}>
-                      <strong>{shipmentStatusFilterLabel(status)}</strong> → Send
-                      template node on canvas
-                    </li>
-                  ))}
-              </ul>
-              <p className="mt-1">
-                On the canvas, drag from each shipment handle on the trigger to its
-                Send template node. One message is sent per order + status (deduped).
-              </p>
-            </div>
-          ) : null}
-        </>
-      ) : null}
+                );
+              })}
+            </ul>
+            {selected.length > 0 ? (
+              <button
+                type="button"
+                onClick={() =>
+                  onTriggerConfigChange({
+                    ...triggerConfig,
+                    shipment_status: "any",
+                    shipment_statuses: [],
+                    shipment_routes: {},
+                  })
+                }
+                className="mt-2 text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              >
+                Clear selection (any fulfill)
+              </button>
+            ) : null}
+          </>
+        )}
+      </div>
     </div>
   );
 }
