@@ -14,7 +14,6 @@ import type {
   Contact,
   ConversationStatus,
   MessageTemplate,
-  WhatsAppFlow,
   Profile,
   ConversationPrivateNote,
 } from "@/types";
@@ -48,7 +47,7 @@ import {
 } from "./message-composer";
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
-import { FlowPicker } from "./flow-picker";
+import { FlowPicker, type ManualFlowOption } from "./flow-picker";
 import { ScheduleFollowupDialog } from "./schedule-followup-dialog";
 import { PrivateNoteBubble } from "./private-note-bubble";
 import { buildReplyPreview } from "./reply-quote";
@@ -735,65 +734,35 @@ export function MessageThread({
     setFlowModalOpen(true);
   }, []);
 
-  const handleSendFlow = useCallback(
-    async (flow: WhatsAppFlow) => {
+  const handleStartFlow = useCallback(
+    async (flow: ManualFlowOption) => {
       if (!conversation) return;
 
-      const tempId = `temp-${Date.now()}`;
-      const optimisticMsg: Message = {
-        id: tempId,
-        conversation_id: conversation.id,
-        sender_type: "agent",
-        sender_id: user?.id,
-        content_type: "interactive",
-        content_text: flow.body_text,
-        content_payload: {
-          type: "whatsapp_flow_request",
-          flow_id: flow.flow_id,
-          flow_cta: flow.flow_cta,
-          ...(flow.flow_screen ? { flow_screen: flow.flow_screen } : {}),
-        },
-        status: "sending",
-        created_at: new Date().toISOString(),
-      };
-      onNewMessage(optimisticMsg);
-
       try {
-        const res = await fetch("/api/whatsapp/send", {
+        const res = await fetch(`/api/flows/${flow.id}/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            conversation_id: conversation.id,
-            message_type: "flow",
-            content_text: flow.body_text,
-            flow_id: flow.flow_id,
-            flow_cta: flow.flow_cta,
-            header_text: flow.header_text || undefined,
-            footer_text: flow.footer_text || undefined,
-            flow_screen: flow.flow_screen || undefined,
-            flow_message_version: flow.flow_message_version || "3",
-          }),
+          body: JSON.stringify({ conversation_id: conversation.id }),
         });
 
         const payload = await res.json().catch(() => ({}));
 
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
-          console.error("Failed to send flow:", reason);
-          toast.error(`Failed to send flow: ${reason}`);
-          onUpdateMessage(tempId, { status: "failed", error_message: reason });
+          console.error("Failed to start flow:", reason);
+          toast.error(`Failed to start flow: ${reason}`);
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        toast.success(`Started "${flow.name}"`);
+        onRefresh?.();
       } catch (err) {
-        console.error("Failed to send flow:", err);
+        console.error("Failed to start flow:", err);
         const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send flow: ${reason}`);
-        onUpdateMessage(tempId, { status: "failed", error_message: reason });
+        toast.error(`Failed to start flow: ${reason}`);
       }
     },
-    [conversation, onNewMessage, onUpdateMessage, user?.id],
+    [conversation, onRefresh],
   );
 
   const handleSendTemplate = useCallback(
@@ -1419,7 +1388,7 @@ export function MessageThread({
       <FlowPicker
         open={flowModalOpen}
         onOpenChange={setFlowModalOpen}
-        onSelect={handleSendFlow}
+        onSelect={handleStartFlow}
       />
 
       {conversation ? (

@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/hooks/use-auth";
-import type { WhatsAppFlow } from "@/types";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -15,15 +13,41 @@ import {
 } from "@/components/ui/dialog";
 import {
   ChevronRight,
-  ClipboardList,
+  Workflow,
   Loader2,
 } from "lucide-react";
 import Link from "next/link";
 
+export interface ManualFlowOption {
+  id: string;
+  name: string;
+  description: string | null;
+  status: "draft" | "active" | "archived";
+  trigger_type: string;
+  trigger_config: Record<string, unknown>;
+}
+
 interface FlowPickerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelect: (flow: WhatsAppFlow) => void;
+  onSelect: (flow: ManualFlowOption) => void;
+}
+
+function describeTrigger(flow: ManualFlowOption): string {
+  if (flow.trigger_type === "keyword") {
+    const keywords = Array.isArray(flow.trigger_config.keywords)
+      ? (flow.trigger_config.keywords as string[])
+      : [];
+    if (keywords.length === 0) return "Keyword trigger";
+    return `Keyword: ${keywords.slice(0, 3).join(", ")}${keywords.length > 3 ? "…" : ""}`;
+  }
+  if (flow.trigger_type === "first_inbound_message") {
+    return "First inbound message";
+  }
+  if (flow.trigger_type === "manual") {
+    return "Manual trigger";
+  }
+  return flow.trigger_type.replace(/_/g, " ");
 }
 
 export function FlowPicker({
@@ -31,8 +55,7 @@ export function FlowPicker({
   onOpenChange,
   onSelect,
 }: FlowPickerProps) {
-  const { accountId } = useAuth();
-  const [flows, setFlows] = useState<WhatsAppFlow[]>([]);
+  const [flows, setFlows] = useState<ManualFlowOption[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,56 +64,45 @@ export function FlowPicker({
     let cancelled = false;
     (async () => {
       setLoading(true);
-      if (!accountId) {
-        if (!cancelled) {
+      try {
+        const res = await fetch("/api/flows");
+        const json = (await res.json()) as { flows?: ManualFlowOption[] };
+        if (cancelled) return;
+        if (!res.ok) {
           setFlows([]);
-          setLoading(false);
+        } else {
+          setFlows(
+            (json.flows ?? []).filter((f) => f.status === "active"),
+          );
         }
-        return;
+      } catch {
+        if (!cancelled) setFlows([]);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("whatsapp_flows")
-        .select("*")
-        .eq("account_id", accountId)
-        .order("created_at", { ascending: false });
-
-      if (cancelled) return;
-      if (error) {
-        console.error("Failed to fetch WhatsApp Flows:", error);
-        setFlows([]);
-      } else {
-        setFlows((data as WhatsAppFlow[]) ?? []);
-      }
-      setLoading(false);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [open, accountId]);
+  }, [open]);
 
-  function handleOpenChange(next: boolean) {
-    onOpenChange(next);
-  }
-
-  function pickFlow(flow: WhatsAppFlow) {
+  function pickFlow(flow: ManualFlowOption) {
     onSelect(flow);
-    handleOpenChange(false);
+    onOpenChange(false);
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="border-border bg-popover sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-popover-foreground">
-            <ClipboardList className="h-4 w-4 text-primary" />
-            Send WhatsApp Flow
+            <Workflow className="h-4 w-4 text-primary" />
+            Start Flow
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Pick a saved Flow form to send. The customer taps the CTA button
-            to open it in WhatsApp.
+            Run one of your active flows for this contact now — the normal
+            trigger (keyword, webhook, etc.) is skipped.
           </DialogDescription>
         </DialogHeader>
 
@@ -101,15 +113,15 @@ export function FlowPicker({
             </div>
           ) : flows.length === 0 ? (
             <div className="rounded-md border border-border bg-background/50 p-6 text-center">
-              <p className="text-sm text-popover-foreground">No saved Flows</p>
+              <p className="text-sm text-popover-foreground">No active flows</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Add a published Meta Flow in{" "}
+                Create and activate a flow in{" "}
                 <Link
-                  href="/settings?tab=templates"
+                  href="/flows"
                   className="text-primary underline-offset-2 hover:underline"
-                  onClick={() => handleOpenChange(false)}
+                  onClick={() => onOpenChange(false)}
                 >
-                  Settings → Templates
+                  Flows
                 </Link>
                 .
               </p>
@@ -124,18 +136,22 @@ export function FlowPicker({
               >
                 <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-popover-foreground">
-                      {f.name}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-medium text-popover-foreground">
+                        {f.name}
+                      </p>
+                      <Badge className="border border-primary/30 bg-primary/20 text-[10px] text-primary">
+                        Active
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      {describeTrigger(f)}
                     </p>
-                    <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
-                      {f.flow_id}
-                    </p>
-                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                      {f.body_text}
-                    </p>
-                    <p className="mt-1 text-[10px] text-primary">
-                      CTA: {f.flow_cta}
-                    </p>
+                    {(f.description?.trim() || describeTrigger(f)) && (
+                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                        {f.description?.trim() || describeTrigger(f)}
+                      </p>
+                    )}
                   </div>
                   <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                 </div>
@@ -147,7 +163,7 @@ export function FlowPicker({
         <DialogFooter className="gap-2">
           <Button
             variant="outline"
-            onClick={() => handleOpenChange(false)}
+            onClick={() => onOpenChange(false)}
             className="border-border text-popover-foreground hover:bg-muted"
           >
             Cancel

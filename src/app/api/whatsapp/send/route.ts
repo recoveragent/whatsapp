@@ -9,7 +9,6 @@ import {
   sendTextMessage,
   sendTemplateMessage,
   sendMediaMessage,
-  sendFlowMessage,
   type MediaKind,
 } from '@/lib/whatsapp/meta-api'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
@@ -67,12 +66,6 @@ export async function POST(request: Request) {
       template_params,
       template_message_params,
       reply_to_message_id,
-      flow_id,
-      flow_cta,
-      flow_screen,
-      flow_message_version,
-      header_text,
-      footer_text,
     } = body
 
     if (!conversation_id || !message_type) {
@@ -89,7 +82,7 @@ export async function POST(request: Request) {
 
     // Reject anything outside the known set up front rather than letting
     // an unknown type fall through to the text path with empty content.
-    const VALID_MESSAGE_TYPES = ['text', 'template', 'flow', ...MEDIA_KINDS] as const
+    const VALID_MESSAGE_TYPES = ['text', 'template', ...MEDIA_KINDS] as const
     if (!(VALID_MESSAGE_TYPES as readonly string[]).includes(message_type)) {
       return NextResponse.json(
         { error: `Unsupported message_type "${message_type}"` },
@@ -109,27 +102,6 @@ export async function POST(request: Request) {
         { error: 'template_name is required for template messages' },
         { status: 400 }
       )
-    }
-
-    if (message_type === 'flow') {
-      if (!flow_id?.trim()) {
-        return NextResponse.json(
-          { error: 'flow_id is required for flow messages' },
-          { status: 400 },
-        )
-      }
-      if (!flow_cta?.trim()) {
-        return NextResponse.json(
-          { error: 'flow_cta is required for flow messages' },
-          { status: 400 },
-        )
-      }
-      if (!content_text?.trim()) {
-        return NextResponse.json(
-          { error: 'content_text (body) is required for flow messages' },
-          { status: 400 },
-        )
-      }
     }
 
     if (isMediaKind && !media_url) {
@@ -334,24 +306,6 @@ export async function POST(request: Request) {
         })
         return result.messageId
       }
-      if (message_type === 'flow') {
-        const flowToken = `manual:${conversation_id}:${Date.now()}`
-        const result = await sendFlowMessage({
-          phoneNumberId: config.phone_number_id,
-          accessToken,
-          to: phone,
-          bodyText: content_text,
-          flowId: flow_id,
-          flowCta: flow_cta,
-          flowToken,
-          flowMessageVersion: flow_message_version || '3',
-          headerText: header_text || undefined,
-          footerText: footer_text || undefined,
-          flowScreen: flow_screen || undefined,
-          contextMessageId,
-        })
-        return result.messageId
-      }
       if (isMediaKind) {
         // content_text doubles as the caption (ignored for audio inside
         // sendMediaMessage). filename surfaces in the recipient's chat
@@ -442,27 +396,17 @@ export async function POST(request: Request) {
           )
         : null
 
-    const flowContentPayload =
-      message_type === 'flow'
-        ? {
-            type: 'whatsapp_flow_request',
-            flow_id,
-            flow_cta,
-            ...(flow_screen ? { flow_screen } : {}),
-          }
-        : null
-
     const { data: messageRecord, error: msgError } = await supabase
       .from('messages')
       .insert({
         conversation_id,
         sender_type: 'agent',
         sender_id: ctx.userId,
-        content_type: message_type === 'flow' ? 'interactive' : message_type,
+        content_type: message_type,
         content_text: content_text || null,
         media_url: media_url || null,
         template_name: template_name || null,
-        content_payload: templateContentPayload ?? flowContentPayload,
+        content_payload: templateContentPayload,
         message_id: waMessageId,
         status: 'sent',
         reply_to_message_id: reply_to_message_id || null,
@@ -491,9 +435,7 @@ export async function POST(request: Request) {
     await supabase
       .from('conversations')
       .update({
-        last_message_text:
-          content_text ||
-          (message_type === 'flow' ? `[Form: ${flow_cta}]` : `[${message_type}]`),
+        last_message_text: content_text || `[${message_type}]`,
         last_message_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

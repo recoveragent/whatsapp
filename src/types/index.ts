@@ -410,23 +410,6 @@ export interface MessageTemplate {
   created_at: string;
 }
 
-/** Saved Meta WhatsApp Flow form for manual inbox sends. */
-export interface WhatsAppFlow {
-  id: string;
-  account_id: string;
-  user_id: string;
-  name: string;
-  flow_id: string;
-  flow_cta: string;
-  body_text: string;
-  header_text?: string | null;
-  footer_text?: string | null;
-  flow_screen?: string | null;
-  flow_message_version: string;
-  created_at: string;
-  updated_at: string;
-}
-
 export interface Pipeline {
   id: string;
   user_id: string;

@@ -10,7 +10,7 @@ import {
 import {
   Send,
   LayoutTemplate,
-  ClipboardList,
+  Workflow,
   Paperclip,
   Image as ImageIcon,
   Video,
@@ -810,11 +810,11 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
-            title={readOnly ? undefined : "Send WhatsApp Flow"}
+            title={readOnly ? undefined : "Start flow"}
             className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
             onClick={onOpenFlows}
           >
-            <ClipboardList className="h-4 w-4" />
+            <Workflow className="h-4 w-4" />
           </GatedButton>
 
           <GatedButton
