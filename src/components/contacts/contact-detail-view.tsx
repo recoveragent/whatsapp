@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
+import { useOpenContactChat } from '@/hooks/use-open-contact-chat';
 import { formatCurrency } from '@/lib/currency';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag, ContactNote, CustomField, ContactCustomValue, Deal } from '@/types';
@@ -33,6 +34,7 @@ import {
   Save,
   X,
   DollarSign,
+  MessageSquare,
 } from 'lucide-react';
 
 interface ContactDetailViewProps {
@@ -50,6 +52,7 @@ export function ContactDetailView({
 }: ContactDetailViewProps) {
   const supabase = createClient();
   const { accountId, defaultCurrency, isLeadGenBrand } = useAuth();
+  const { openChat, opening: openingChat } = useOpenContactChat();
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(false);
@@ -402,6 +405,19 @@ export function ContactDetailView({
                       </span>
                     )}
                   </div>
+                  <Button
+                    size="sm"
+                    className="mt-3 h-8 gap-1.5"
+                    onClick={() => void openChat(contact)}
+                    disabled={openingChat}
+                  >
+                    {openingChat ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <MessageSquare className="size-3.5" />
+                    )}
+                    Open chat
+                  </Button>
                 </div>
               </div>
             </SheetHeader>

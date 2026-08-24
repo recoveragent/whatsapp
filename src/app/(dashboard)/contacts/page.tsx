@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useOpenContactChat } from '@/hooks/use-open-contact-chat';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag } from '@/types';
@@ -40,6 +41,7 @@ import {
   Plus,
   Upload,
   MoreHorizontal,
+  MessageSquare,
   Pencil,
   Trash2,
   Loader2,
@@ -68,6 +70,7 @@ export default function ContactsPage() {
   const supabase = createClient();
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
+  const { openChat, opening: openingChat } = useOpenContactChat();
 
   const [contacts, setContacts] = useState<ContactWithTags[]>([]);
   const [loading, setLoading] = useState(true);
@@ -661,6 +664,17 @@ export default function ContactsPage() {
                         align="end"
                         className="bg-popover border-border"
                       >
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void openChat(contact);
+                          }}
+                          disabled={!canEdit || openingChat}
+                          className="text-popover-foreground focus:bg-muted focus:text-foreground"
+                        >
+                          <MessageSquare className="size-4" />
+                          Message
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={(e) => {
                             e.stopPropagation();
