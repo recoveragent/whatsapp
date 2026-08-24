@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useCan } from '@/hooks/use-can';
+import { useAuth } from '@/hooks/use-auth';
 import { SettingsPanelHead } from './settings-panel-head';
 
 interface ConversionsPayload {
@@ -32,6 +33,7 @@ interface ConversionsPayload {
 
 export function MetaConversionsPanel() {
   const canEdit = useCan('edit-settings');
+  const { isLeadGenBrand } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -70,6 +72,8 @@ export function MetaConversionsPanel() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  if (!isLeadGenBrand) return null;
 
   const save = async () => {
     setSaving(true);

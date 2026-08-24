@@ -225,8 +225,8 @@ export async function requireRole(min: AccountRole): Promise<AccountContext> {
 }
 
 /**
- * Leads, Google Sheets, and cadences are lead-gen only. Ecommerce
- * brands must not see or mutate that surface.
+ * Leads, Google Sheets, Meta CAPI, and cadences are lead-gen only.
+ * Ecommerce brands must not see or mutate that surface.
  */
 export async function requireLeadGenAccount(
   min?: AccountRole,
@@ -235,7 +235,7 @@ export async function requireLeadGenAccount(
   const account = await fetchAccountWithCategory(ctx.supabase, ctx.accountId);
   if (!isLeadGenBrand(account?.brand_category)) {
     throw new ForbiddenError(
-      "Leads and Google Sheets are only available for lead generation brands",
+      "Lead management features are only available for lead generation brands",
     );
   }
   return ctx;

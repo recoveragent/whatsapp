@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import {
-  getCurrentAccount,
-  requireRole,
+  requireLeadGenAccount,
   toErrorResponse,
 } from '@/lib/auth/account'
 import { fetchWabaDatasetId } from '@/lib/meta/conversions-api'
@@ -13,7 +12,7 @@ const CONFIG_SELECT =
 
 export async function GET() {
   try {
-    const ctx = await getCurrentAccount()
+    const ctx = await requireLeadGenAccount()
 
     const { data: config, error } = await ctx.supabase
       .from('meta_conversions_config')
@@ -86,7 +85,7 @@ interface PatchBody {
 
 export async function PATCH(request: Request) {
   try {
-    const ctx = await requireRole('admin')
+    const ctx = await requireLeadGenAccount('admin')
     const body = (await request.json()) as PatchBody
 
     const { data: existing } = await ctx.supabase

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { accountIsLeadGen } from '@/lib/auth/brand-accounts'
 import type { ExitReason } from '@/lib/leads/types'
 import { decrypt } from '@/lib/whatsapp/encryption'
 
@@ -403,6 +404,8 @@ export async function emitLeadQualityEvent(args: {
   contactId: string
   signal: LeadQualitySignal
 }): Promise<void> {
+  if (!(await accountIsLeadGen(args.db, args.accountId))) return
+
   const key = triggerKey(args.contactId, args.signal)
   const ctwaKey = `${key}:ctwa`
   const crmKey = `${key}:crm`

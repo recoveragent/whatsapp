@@ -42,7 +42,7 @@ function stepsFromCadence(cadence: Cadence): EditableStep[] {
 
 export function LeadCadencesSettings() {
   const canEdit = useCan('edit-settings');
-  const { accountId } = useAuth();
+  const { accountId, isLeadGenBrand } = useAuth();
   const [loading, setLoading] = useState(true);
   const [cadences, setCadences] = useState<Cadence[]>([]);
   const [templates, setTemplates] = useState<string[]>([]);
@@ -133,7 +133,7 @@ export function LeadCadencesSettings() {
 
   return (
     <div className="space-y-8">
-      <MetaConversionsPanel />
+      {isLeadGenBrand && <MetaConversionsPanel />}
       <div>
       <SettingsPanelHead
         title="Lead cadences"
