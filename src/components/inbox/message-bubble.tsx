@@ -9,6 +9,7 @@ import {
   LayoutTemplate,
   ImageOff,
   CornerDownLeft,
+  ClipboardList,
   Phone,
   ExternalLink,
   Copy,
@@ -23,6 +24,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ReplyQuote } from "./reply-quote";
 import { MessageReactions } from "./message-reactions";
+import { FormSubmissionFields } from "./form-submission-fields";
 import { openMediaUrl, useProxiedMediaUrl } from "./use-proxied-media";
 
 interface MessageBubbleProps {
@@ -481,6 +483,31 @@ function MessageContent({
             <p className="whitespace-pre-wrap break-words text-sm">
               {message.content_text || "[Address submitted]"}
             </p>
+          </div>
+        );
+      }
+
+      const isFlowForm =
+        message.interactive_reply_id === "flow" ||
+        (message.content_payload &&
+          (message.content_payload as { type?: string }).type ===
+            "whatsapp_flow");
+      if (isFlowForm) {
+        const values =
+          ((message.content_payload as { values?: Record<string, string> })
+            ?.values as Record<string, string> | undefined) ?? {};
+        return (
+          <div className="flex flex-col gap-0.5">
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              <ClipboardList className="h-3 w-3" />
+              Form submission
+            </span>
+            {message.content_text ? (
+              <p className="whitespace-pre-wrap break-words text-sm">
+                {message.content_text}
+              </p>
+            ) : null}
+            <FormSubmissionFields values={values} compact />
           </div>
         );
       }

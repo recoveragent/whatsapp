@@ -202,6 +202,7 @@ export function isSuspendingNodeType(nodeType: string): boolean {
     nodeType === "send_list" ||
     nodeType === "collect_input" ||
     nodeType === "send_address" ||
+    nodeType === "send_flow" ||
     nodeType === "send_template"
   );
 }

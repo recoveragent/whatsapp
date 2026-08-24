@@ -18,6 +18,8 @@ import {
   Loader2,
   ExternalLink,
   Bell,
+  Megaphone,
+  ClipboardList,
 } from "lucide-react";
 import { isFulfilledStatus } from "@/lib/shopify/order-links";
 import { Button } from "@/components/ui/button";
@@ -25,6 +27,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { ReminderSnoozeControls } from "@/components/inbox/reminder-snooze-controls";
+import { FormSubmissionFields } from "@/components/inbox/form-submission-fields";
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -51,6 +54,44 @@ export function ContactSidebar({
   const [remindersLoading, setRemindersLoading] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [snoozeId, setSnoozeId] = useState<string | null>(null);
+  const [formSubmissions, setFormSubmissions] = useState<
+    Array<{ id: string; created_at: string; values: Record<string, string> }>
+  >([]);
+
+  const fetchFormSubmissions = useCallback(async () => {
+    if (!conversationId) {
+      setFormSubmissions([]);
+      return;
+    }
+
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("messages")
+      .select("id, created_at, content_payload")
+      .eq("conversation_id", conversationId)
+      .eq("sender_type", "customer")
+      .eq("content_type", "interactive")
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    const submissions =
+      data
+        ?.filter(
+          (row) =>
+            row.content_payload &&
+            typeof row.content_payload === "object" &&
+            (row.content_payload as { type?: string }).type === "whatsapp_flow",
+        )
+        .map((row) => ({
+          id: row.id as string,
+          created_at: row.created_at as string,
+          values:
+            ((row.content_payload as { values?: Record<string, string> })
+              .values as Record<string, string> | undefined) ?? {},
+        })) ?? [];
+
+    setFormSubmissions(submissions);
+  }, [conversationId]);
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
@@ -150,6 +191,11 @@ export function ContactSidebar({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchReminders();
   }, [fetchReminders]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchFormSubmissions();
+  }, [fetchFormSubmissions]);
 
   const handleCompleteReminder = useCallback(
     async (id: string) => {
@@ -277,6 +323,66 @@ export function ContactSidebar({
               </div>
             )}
           </div>
+
+          {contact.referral && (
+            <div className="mt-4">
+              <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <Megaphone className="h-3 w-3" />
+                Ad source
+              </div>
+              <div className="mt-2 space-y-1 rounded-lg border border-border px-3 py-2 text-xs">
+                {contact.referral.headline && (
+                  <p className="text-sm font-medium text-foreground">
+                    {contact.referral.headline}
+                  </p>
+                )}
+                {contact.referral.body && (
+                  <p className="text-muted-foreground">{contact.referral.body}</p>
+                )}
+                {contact.referral.source_type && (
+                  <p className="text-muted-foreground">
+                    Source: {contact.referral.source_type}
+                    {contact.referral.source_id
+                      ? ` · ${contact.referral.source_id}`
+                      : ""}
+                  </p>
+                )}
+                {contact.referral.source_url && (
+                  <a
+                    href={contact.referral.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    View ad
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+
+          {formSubmissions.length > 0 && (
+            <div className="mt-4">
+              <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <ClipboardList className="h-3 w-3" />
+                Form responses
+              </div>
+              <div className="mt-2 space-y-3">
+                {formSubmissions.map((submission) => (
+                  <div
+                    key={submission.id}
+                    className="rounded-lg border border-border px-3 py-2"
+                  >
+                    <p className="text-[11px] text-muted-foreground">
+                      {format(new Date(submission.created_at), "PPp")}
+                    </p>
+                    <FormSubmissionFields values={submission.values} compact />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Divider */}
           <div className="my-4 border-t border-border" />

@@ -221,6 +221,16 @@ function renderNodeConfigBody({
         />
       );
 
+    case "send_flow":
+      return (
+        <SendFlowForm
+          cfg={cfg as SendFlowCfg}
+          allNodes={allNodes}
+          currentKey={node.node_key}
+          onUpdateConfig={onUpdateConfig}
+        />
+      );
+
     case "condition":
       return (
         <ConditionForm
@@ -1090,6 +1100,112 @@ function SendAddressForm({
 }
 
 // ============================================================
+// send_flow
+// ============================================================
+
+interface SendFlowCfg extends ReplyTimeoutCfg {
+  body_text?: string;
+  header_text?: string;
+  footer_text?: string;
+  flow_id?: string;
+  flow_cta?: string;
+  flow_message_version?: string;
+  flow_screen?: string;
+  var_key?: string;
+  next_node_key?: string;
+}
+
+function SendFlowForm({
+  cfg,
+  allNodes,
+  currentKey,
+  onUpdateConfig,
+}: {
+  cfg: SendFlowCfg;
+  allNodes: BuilderNode[];
+  currentKey: string;
+  onUpdateConfig: (patch: Record<string, unknown>) => void;
+}) {
+  return (
+    <>
+      <p className="text-[11px] text-muted-foreground">
+        Sends a Meta-published WhatsApp Flow form. Submissions arrive as
+        structured fields you can use in later steps via{" "}
+        <code className="rounded bg-muted px-1">{"{{vars.<key>}}"}</code>.
+      </p>
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">
+          Flow ID
+        </label>
+        <Input
+          value={cfg.flow_id ?? ""}
+          onChange={(e) => onUpdateConfig({ flow_id: e.target.value.trim() })}
+          placeholder="Meta Flow ID from WhatsApp Manager"
+          className="bg-muted font-mono text-xs"
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">
+          CTA button label
+        </label>
+        <Input
+          value={cfg.flow_cta ?? "Open form"}
+          onChange={(e) => onUpdateConfig({ flow_cta: e.target.value })}
+          placeholder="Open form"
+          className="bg-muted text-xs"
+        />
+      </div>
+      <TextRow
+        label="Body text"
+        value={cfg.body_text ?? ""}
+        onChange={(v) => onUpdateConfig({ body_text: v })}
+        rows={2}
+      />
+      <TextRow
+        label="Header (optional)"
+        value={cfg.header_text ?? ""}
+        onChange={(v) => onUpdateConfig({ header_text: v })}
+        rows={1}
+      />
+      <TextRow
+        label="Footer (optional)"
+        value={cfg.footer_text ?? ""}
+        onChange={(v) => onUpdateConfig({ footer_text: v })}
+        rows={1}
+      />
+      <TextRow
+        label="First screen ID (optional)"
+        value={cfg.flow_screen ?? ""}
+        onChange={(v) => onUpdateConfig({ flow_screen: v })}
+        rows={1}
+      />
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">
+          Variable key (stored in flow_runs.vars)
+        </label>
+        <Input
+          value={cfg.var_key ?? ""}
+          onChange={(e) =>
+            onUpdateConfig({
+              var_key: e.target.value.replace(/[^a-zA-Z0-9_]/g, ""),
+            })
+          }
+          placeholder="e.g. form, lead_details"
+          className="bg-muted font-mono text-xs"
+        />
+      </div>
+      <NextNodeRow
+        value={cfg.next_node_key ?? ""}
+        allNodes={allNodes}
+        currentKey={currentKey}
+        onChange={(v) => onUpdateConfig({ next_node_key: v })}
+        label="After form is submitted, advance to"
+      />
+    </>
+  );
+}
+
+// ============================================================
 // condition
 // ============================================================
 
@@ -1120,7 +1236,7 @@ interface SwitchCfg {
 function collectFlowVarKeys(nodes: BuilderNode[]): string[] {
   const keys = new Set<string>();
   for (const n of nodes) {
-    if (n.node_type !== "collect_input" && n.node_type !== "send_address") {
+    if (n.node_type !== "collect_input" && n.node_type !== "send_address" && n.node_type !== "send_flow") {
       continue;
     }
     const key = (n.config as { var_key?: string }).var_key?.trim();

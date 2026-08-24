@@ -1172,6 +1172,122 @@ export async function sendAddressMessage(
 }
 
 // ============================================================
+// WhatsApp Flows (interactive flow forms)
+// ============================================================
+
+export interface SendFlowMessageArgs {
+  phoneNumberId: string
+  accessToken: string
+  to: string
+  bodyText: string
+  /** Meta-published Flow ID. */
+  flowId: string
+  /** CTA button label. */
+  flowCta: string
+  /** Unique token for this send — echoed in the submission webhook. */
+  flowToken: string
+  flowMessageVersion?: string
+  headerText?: string
+  footerText?: string
+  /** First screen when using navigate action. */
+  flowScreen?: string
+  /** Initial screen data. */
+  flowData?: Record<string, string>
+  contextMessageId?: string
+}
+
+/**
+ * Send a WhatsApp Flow form (interactive type `flow`).
+ *
+ * Requires a published Flow in Meta Business Manager. Submissions
+ * arrive as `interactive.nfm_reply` with `name: "flow"`.
+ */
+export async function sendFlowMessage(
+  args: SendFlowMessageArgs,
+): Promise<MetaSendResult> {
+  const {
+    phoneNumberId,
+    accessToken,
+    to,
+    bodyText,
+    flowId,
+    flowCta,
+    flowToken,
+    flowMessageVersion = '3',
+    headerText,
+    footerText,
+    flowScreen,
+    flowData,
+    contextMessageId,
+  } = args
+
+  validateInteractiveBody(bodyText)
+  validateInteractiveHeaderFooter(headerText, footerText)
+
+  if (!flowId.trim()) {
+    throw new Error('Flow message requires a flow_id.')
+  }
+  if (!flowCta.trim()) {
+    throw new Error('Flow message requires a flow_cta button label.')
+  }
+  if (!flowToken.trim()) {
+    throw new Error('Flow message requires a flow_token.')
+  }
+
+  const parameters: Record<string, unknown> = {
+    flow_message_version: flowMessageVersion,
+    flow_token: flowToken,
+    flow_id: flowId,
+    flow_cta: flowCta,
+    flow_action: 'navigate',
+  }
+
+  if (flowScreen?.trim()) {
+    parameters.flow_action_payload = {
+      screen: flowScreen.trim(),
+      ...(flowData && Object.keys(flowData).length > 0 ? { data: flowData } : {}),
+    }
+  } else if (flowData && Object.keys(flowData).length > 0) {
+    parameters.flow_action_payload = { data: flowData }
+  }
+
+  const interactive: Record<string, unknown> = {
+    type: 'flow',
+    body: { text: bodyText },
+    action: {
+      name: 'flow',
+      parameters,
+    },
+  }
+  if (headerText) interactive.header = { type: 'text', text: headerText }
+  if (footerText) interactive.footer = { text: footerText }
+
+  const body: Record<string, unknown> = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive,
+  }
+  if (contextMessageId) body.context = { message_id: contextMessageId }
+
+  const url = `${META_API_BASE}/${phoneNumberId}/messages`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+  const data = await response.json()
+  return { messageId: data.messages[0].id }
+}
+
+// ============================================================
 // Media
 // ============================================================
 

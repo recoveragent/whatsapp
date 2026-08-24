@@ -384,6 +384,7 @@ function AddNodeButton({ onAdd }: { onAdd: (type: NodeType) => void }) {
     "send_media",
     "collect_input",
     "send_address",
+    "send_flow",
     "condition",
     "switch",
     "set_tag",

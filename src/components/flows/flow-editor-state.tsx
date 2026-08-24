@@ -215,6 +215,18 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
         prefill_from_shopify: true,
         next_node_key: "",
       };
+    case "send_flow":
+      return {
+        body_text: "Please fill out this quick form.",
+        flow_id: "",
+        flow_cta: "Open form",
+        flow_message_version: "3",
+        flow_screen: "",
+        var_key: "form",
+        header_text: "",
+        footer_text: "",
+        next_node_key: "",
+      };
     case "condition":
       return {
         subject: "var",

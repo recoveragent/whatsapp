@@ -39,6 +39,7 @@ import {
   engineSendMedia,
   engineSendText,
   engineSendAddressMessage,
+  engineSendFlowMessage,
 } from "./meta-send";
 import { decideFallback, resolveFallbackPolicy } from "./fallback";
 import {
@@ -51,6 +52,7 @@ import {
   type FlowRunRow,
   type ParsedInbound,
   type SendAddressNodeConfig,
+  type SendFlowNodeConfig,
   type SendButtonsNodeConfig,
   type SendListNodeConfig,
   type SendMediaNodeConfig,
@@ -61,6 +63,7 @@ import {
   type KeywordTriggerConfig,
 } from "./types";
 import { addressReplyToFlowVar } from "@/lib/whatsapp/address-message";
+import { flowFormReplyToFlowVar } from "@/lib/whatsapp/flow-form-message";
 import { resolveShopifyAddressPrefill } from "./shopify-address-prefill";
 import {
   executeExtendedNode,
@@ -175,7 +178,8 @@ export function isSuspending(node_type: string): boolean {
     node_type === "send_buttons" ||
     node_type === "send_list" ||
     node_type === "collect_input" ||
-    node_type === "send_address"
+    node_type === "send_address" ||
+    node_type === "send_flow"
   );
 }
 
@@ -834,6 +838,77 @@ async function advanceFromNodeKey(
       }
       return { outcome: "advanced" };
     }
+    if (node.node_type === "send_flow") {
+      const cfg = node.config as unknown as SendFlowNodeConfig;
+      try {
+        const flowToken = `${run.id}:${node.node_key}:${Date.now()}`;
+        const { whatsapp_message_id } = await engineSendFlowMessage({
+          accountId: run.account_id,
+          userId: run.user_id,
+          conversationId: run.conversation_id!,
+          contactId: run.contact_id!,
+          bodyText: interpolateVars(cfg.body_text, run.vars),
+          flowId: interpolateVars(cfg.flow_id, run.vars),
+          flowCta: interpolateVars(cfg.flow_cta, run.vars),
+          flowToken,
+          flowMessageVersion: cfg.flow_message_version ?? "3",
+          headerText: cfg.header_text
+            ? interpolateVars(cfg.header_text, run.vars)
+            : undefined,
+          footerText: cfg.footer_text
+            ? interpolateVars(cfg.footer_text, run.vars)
+            : undefined,
+          flowScreen: cfg.flow_screen
+            ? interpolateVars(cfg.flow_screen, run.vars)
+            : undefined,
+          flowData: cfg.flow_data
+            ? Object.fromEntries(
+                Object.entries(cfg.flow_data).map(([k, v]) => [
+                  k,
+                  interpolateVars(v, run.vars),
+                ]),
+              )
+            : undefined,
+        });
+        await logEvent(db, run.id, "message_sent", node.node_key, {
+          node_type: "send_flow",
+          whatsapp_message_id,
+          flow_id: cfg.flow_id,
+        });
+        const { data: msg } = await db
+          .from("messages")
+          .select("id")
+          .eq("message_id", whatsapp_message_id)
+          .maybeSingle();
+        await db
+          .from("flow_runs")
+          .update({
+            last_prompt_message_id: (msg as { id: string } | null)?.id ?? null,
+          })
+          .eq("id", run.id);
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "send_flow_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+        await endRun(db, run.id, "failed", "send_flow_failed");
+        return { outcome: "completed" };
+      }
+      const advanced = await advanceCurrentNodeKey(
+        db,
+        run.id,
+        run.current_node_key,
+        node.node_key,
+      );
+      if (!advanced) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "lost_race_during_advance",
+        });
+      } else {
+        await maybeScheduleReplyTimeoutForNode(db, run, node, true);
+      }
+      return { outcome: "advanced" };
+    }
     if (node.node_type === "condition") {
       const cfg = node.config as unknown as ConditionNodeConfig;
       let branch: "true" | "false";
@@ -1340,6 +1415,36 @@ async function handleReplyForActiveRun(
         matched = cfg.next_node_key;
       }
     }
+  } else if (
+    message.kind === "form_reply" &&
+    currentNode.node_type === "send_flow"
+  ) {
+    const cfg = currentNode.config as unknown as SendFlowNodeConfig;
+    if (cfg.var_key && message.formatted.trim()) {
+      const captured = flowFormReplyToFlowVar({
+        formatted: message.formatted,
+        values: message.values,
+        flow_id: message.flow_id,
+      });
+      const newVars = { ...run.vars, [cfg.var_key]: captured };
+      const { error: capErr } = await db
+        .from("flow_runs")
+        .update({
+          vars: newVars,
+          reprompt_count: 0,
+        })
+        .eq("id", run.id);
+      if (!capErr) {
+        run.vars = newVars;
+        run.reprompt_count = 0;
+        await logEvent(db, run.id, "node_entered", currentNode.node_key, {
+          captured_key: cfg.var_key,
+          captured_length: message.formatted.length,
+          form_fields: Object.keys(message.values).length,
+        });
+        matched = cfg.next_node_key;
+      }
+    }
   }
 
   if (matched) {
@@ -1440,6 +1545,45 @@ async function handleReplyForActiveRun(
             : undefined,
           values: prefill.values,
           savedAddresses: prefill.savedAddresses,
+        });
+      } catch (err) {
+        await logEvent(db, run.id, "error", currentNode.node_key, {
+          reason: "reprompt_send_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+      }
+      await maybeScheduleReplyTimeoutForNode(db, run, currentNode, true);
+    } else if (currentNode.node_type === "send_flow") {
+      const cfg = currentNode.config as unknown as SendFlowNodeConfig;
+      try {
+        const flowToken = `${run.id}:${currentNode.node_key}:${Date.now()}`;
+        await engineSendFlowMessage({
+          accountId: run.account_id,
+          userId: run.user_id,
+          conversationId: run.conversation_id!,
+          contactId: run.contact_id!,
+          bodyText: interpolateVars(cfg.body_text, run.vars),
+          flowId: interpolateVars(cfg.flow_id, run.vars),
+          flowCta: interpolateVars(cfg.flow_cta, run.vars),
+          flowToken,
+          flowMessageVersion: cfg.flow_message_version ?? "3",
+          headerText: cfg.header_text
+            ? interpolateVars(cfg.header_text, run.vars)
+            : undefined,
+          footerText: cfg.footer_text
+            ? interpolateVars(cfg.footer_text, run.vars)
+            : undefined,
+          flowScreen: cfg.flow_screen
+            ? interpolateVars(cfg.flow_screen, run.vars)
+            : undefined,
+          flowData: cfg.flow_data
+            ? Object.fromEntries(
+                Object.entries(cfg.flow_data).map(([k, v]) => [
+                  k,
+                  interpolateVars(v, run.vars),
+                ]),
+              )
+            : undefined,
         });
       } catch (err) {
         await logEvent(db, run.id, "error", currentNode.node_key, {

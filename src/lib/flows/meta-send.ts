@@ -4,6 +4,7 @@ import {
   sendMediaMessage,
   sendTextMessage,
   sendAddressMessage,
+  sendFlowMessage,
   type InteractiveButton,
   type InteractiveListSection,
   type MediaKind,
@@ -533,6 +534,128 @@ export async function engineSendAddressMessage(
     content_payload: {
       type: 'address_message_request',
       country: args.country,
+    },
+  })
+  if (msgErr) {
+    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
+  }
+
+  await db
+    .from('conversations')
+    .update({
+      last_message_text: args.bodyText,
+      last_message_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', args.conversationId)
+
+  return { whatsapp_message_id: waMessageId }
+}
+
+interface SendFlowEngineArgs {
+  accountId: string
+  userId: string
+  conversationId: string
+  contactId: string
+  bodyText: string
+  flowId: string
+  flowCta: string
+  flowToken: string
+  flowMessageVersion?: string
+  headerText?: string
+  footerText?: string
+  flowScreen?: string
+  flowData?: Record<string, string>
+}
+
+/**
+ * Send a WhatsApp Flow form from the Flows engine and persist the
+ * outbound prompt as an interactive bot message.
+ */
+export async function engineSendFlowMessage(
+  args: SendFlowEngineArgs,
+): Promise<{ whatsapp_message_id: string }> {
+  const db = supabaseAdmin()
+
+  const { data: contact, error: contactErr } = await db
+    .from('contacts')
+    .select('id, phone')
+    .eq('id', args.contactId)
+    .eq('account_id', args.accountId)
+    .maybeSingle()
+  if (contactErr || !contact?.phone) {
+    throw new Error('contact not found for this account')
+  }
+
+  const sanitized = sanitizePhoneForMeta(contact.phone)
+  if (!isValidE164(sanitized)) {
+    throw new Error(`contact phone invalid: ${contact.phone}`)
+  }
+
+  const { data: config, error: configErr } = await db
+    .from('whatsapp_config')
+    .select('*')
+    .eq('account_id', args.accountId)
+    .single()
+  if (configErr || !config) {
+    throw new Error('WhatsApp not configured for this account')
+  }
+
+  const accessToken = decrypt(config.access_token)
+
+  const attempt = async (phone: string): Promise<string> => {
+    const r = await sendFlowMessage({
+      phoneNumberId: config.phone_number_id,
+      accessToken,
+      to: phone,
+      bodyText: args.bodyText,
+      flowId: args.flowId,
+      flowCta: args.flowCta,
+      flowToken: args.flowToken,
+      flowMessageVersion: args.flowMessageVersion,
+      headerText: args.headerText,
+      footerText: args.footerText,
+      flowScreen: args.flowScreen,
+      flowData: args.flowData,
+    })
+    return r.messageId
+  }
+
+  const variants = phoneVariants(sanitized)
+  let workingPhone = sanitized
+  let waMessageId = ''
+  let lastError: unknown = null
+  for (const v of variants) {
+    try {
+      waMessageId = await attempt(v)
+      workingPhone = v
+      lastError = null
+      break
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (!isRecipientNotAllowedError(msg)) throw err
+      lastError = err
+    }
+  }
+  if (lastError) throw lastError
+
+  if (workingPhone !== sanitized) {
+    await db.from('contacts').update({ phone: contactPhoneAfterSuccessfulSend(sanitized, workingPhone) }).eq('id', contact.id)
+  }
+
+  const { error: msgErr } = await db.from('messages').insert({
+    conversation_id: args.conversationId,
+    sender_type: 'bot',
+    content_type: 'interactive',
+    content_text: args.bodyText,
+    message_id: waMessageId,
+    status: 'sent',
+    content_payload: {
+      type: 'whatsapp_flow_request',
+      flow_id: args.flowId,
+      flow_cta: args.flowCta,
+      flow_token: args.flowToken,
+      ...(args.flowScreen ? { flow_screen: args.flowScreen } : {}),
     },
   })
   if (msgErr) {

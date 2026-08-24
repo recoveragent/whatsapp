@@ -36,6 +36,7 @@ import {
   PencilLine,
   Briefcase,
   CircleSlash,
+  ClipboardList,
 } from "lucide-react";
 import { SHOPIFY_PAYMENT_STATUS_LABELS } from "@/lib/flows/trigger-types";
 
@@ -56,6 +57,7 @@ export type NodeType =
   | "send_template"
   | "collect_input"
   | "send_address"
+  | "send_flow"
   | "condition"
   | "switch"
   | "set_tag"
@@ -118,6 +120,11 @@ export const NODE_META: Record<
     label: "Collect address",
     icon: MapPin,
     color: "text-rose-400",
+  },
+  send_flow: {
+    label: "Send WhatsApp form",
+    icon: ClipboardList,
+    color: "text-violet-400",
   },
   condition: {
     label: "Condition",
@@ -285,6 +292,17 @@ export function summarizeNode(node: BuilderNode): string | null {
       const varKey = typeof cfg.var_key === "string" ? cfg.var_key : "";
       const bits = [
         country ? country : null,
+        body ? truncate(body, 40) : null,
+        varKey ? `→ vars.${varKey}` : null,
+      ].filter(Boolean);
+      return bits.length > 0 ? bits.join(" · ") : null;
+    }
+    case "send_flow": {
+      const body = typeof cfg.body_text === "string" ? cfg.body_text : "";
+      const flowId = typeof cfg.flow_id === "string" ? cfg.flow_id : "";
+      const varKey = typeof cfg.var_key === "string" ? cfg.var_key : "";
+      const bits = [
+        flowId ? `Flow ${truncate(flowId, 16)}` : null,
         body ? truncate(body, 40) : null,
         varKey ? `→ vars.${varKey}` : null,
       ].filter(Boolean);

@@ -122,6 +122,22 @@ export interface Contact {
   next_action_type?: string | null;
   created_at: string;
   updated_at: string;
+  /** CTWA ad attribution from first inbound message (migration 055). */
+  referral?: WhatsAppReferral | null;
+}
+
+/** Click-to-WhatsApp ad metadata stored on contacts. */
+export interface WhatsAppReferral {
+  source_type?: string;
+  source_id?: string;
+  source_url?: string;
+  headline?: string;
+  body?: string;
+  media_type?: string;
+  image_url?: string;
+  video_url?: string;
+  thumbnail_url?: string;
+  ctwa_clid?: string;
 }
 
 export interface Tag {

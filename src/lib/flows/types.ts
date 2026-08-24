@@ -162,6 +162,31 @@ export interface SendAddressNodeConfig {
   next_node_key: string;
 }
 
+/**
+ * Sends a Meta-published WhatsApp Flow form and suspends until the
+ * customer submits. Captured answers are stored under
+ * `flow_runs.vars[var_key]` as an object with `formatted` plus fields.
+ */
+export interface SendFlowNodeConfig {
+  /** Body text above the form CTA button. */
+  body_text: string;
+  header_text?: string;
+  footer_text?: string;
+  /** Meta Flow ID from WhatsApp Manager. */
+  flow_id: string;
+  /** Label on the CTA button that opens the form. */
+  flow_cta: string;
+  /** Flow message version — Meta currently expects "3". */
+  flow_message_version?: string;
+  /** First screen id when flow_action is navigate. */
+  flow_screen?: string;
+  /** Optional initial data passed to the first screen. */
+  flow_data?: Record<string, string>;
+  /** Key under which to store the submission in flow_runs.vars. */
+  var_key: string;
+  next_node_key: string;
+}
+
 export type ConditionOperator =
   | "equals"
   | "not_equals"
@@ -313,6 +338,7 @@ export type FlowNodeConfig =
   | { node_type: "send_media"; config: SendMediaNodeConfig }
   | { node_type: "collect_input"; config: CollectInputNodeConfig }
   | { node_type: "send_address"; config: SendAddressNodeConfig }
+  | { node_type: "send_flow"; config: SendFlowNodeConfig }
   | { node_type: "condition"; config: ConditionNodeConfig }
   | { node_type: "switch"; config: SwitchNodeConfig }
   | { node_type: "set_tag"; config: SetTagNodeConfig }
@@ -468,6 +494,15 @@ export type ParsedInbound =
       /** Structured field values from the address form. */
       values: Record<string, string>;
       saved_address_id?: string;
+      meta_message_id: string;
+    }
+  | {
+      kind: "form_reply";
+      /** Human-readable summary from Meta or formatted field list. */
+      formatted: string;
+      /** Flat field map from the WhatsApp Flow submission. */
+      values: Record<string, string>;
+      flow_id?: string;
       meta_message_id: string;
     };
 

@@ -967,6 +967,81 @@ function validateNode(
       break;
     }
 
+    case "send_flow": {
+      const cfg = node.config as {
+        body_text?: string;
+        flow_id?: string;
+        flow_cta?: string;
+        var_key?: string;
+        next_node_key?: string;
+        header_text?: string;
+        footer_text?: string;
+        flow_screen?: string;
+      };
+      if (!cfg.body_text?.trim()) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "body_text",
+          message: "WhatsApp Flow message needs body text for the customer.",
+        });
+      }
+      if (!cfg.flow_id?.trim()) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "flow_id",
+          message: "WhatsApp Flow message needs a Flow ID from Meta.",
+        });
+      }
+      if (!cfg.flow_cta?.trim()) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "flow_cta",
+          message: "WhatsApp Flow message needs a CTA button label.",
+        });
+      }
+      if (!cfg.var_key?.trim()) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "var_key",
+          message: "WhatsApp Flow message needs a var_key to store the submission under.",
+        });
+      } else if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(cfg.var_key)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "var_key",
+          message: `var_key "${cfg.var_key}" must be alphanumeric+underscore and start with a letter or underscore.`,
+        });
+      }
+      if (!cfg.next_node_key) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "next_node_key",
+          message: "WhatsApp Flow message must point to a next node.",
+        });
+      } else if (!knownKeys.has(cfg.next_node_key)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "next_node_key",
+          message: `WhatsApp Flow message points to non-existent node "${cfg.next_node_key}".`,
+        });
+      }
+      break;
+    }
+
     case "condition": {
       const cfg = node.config as {
         subject?: "var" | "tag" | "contact_field" | "shopify_payment";
@@ -1429,6 +1504,7 @@ function outgoingEdges(node: NodeInput): string[] {
     case "close_conversation":
     case "collect_input":
     case "send_address":
+    case "send_flow":
     case "set_tag": {
       const cfg = node.config as { next_node_key?: string };
       return cfg.next_node_key ? [cfg.next_node_key] : [];

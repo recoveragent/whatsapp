@@ -1048,6 +1048,7 @@ const ADD_NODE_TYPES: NodeType[] = [
   "send_template",
   "collect_input",
   "send_address",
+  "send_flow",
   "condition",
   "switch",
   "set_tag",

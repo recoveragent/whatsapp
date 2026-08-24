@@ -7,11 +7,18 @@ import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
+import type { ParsedInbound } from '@/lib/flows/types'
 import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
 import { parseAddressNfmReply } from '@/lib/whatsapp/address-message'
+import {
+  contactUpdatesFromFormValues,
+  normalizeReferral,
+  parseFlowNfmReply,
+  type WhatsAppReferral,
+} from '@/lib/whatsapp/flow-form-message'
 
 // Lazy-initialized to avoid build-time crash when env vars are missing
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,6 +68,11 @@ interface WhatsAppMessage {
   button?: { text: string; payload: string }
   /** Present when the customer swipe-replies to one of our messages. */
   context?: { id: string }
+  /**
+   * CTWA ad attribution — present on the first message when the
+   * customer opened WhatsApp from a Click-to-WhatsApp ad.
+   */
+  referral?: Record<string, unknown>
 }
 
 interface WhatsAppWebhookEntry {
@@ -595,6 +607,11 @@ async function processMessage(
   )
   if (!conversation) return
 
+  // Persist CTWA ad attribution once per contact (first message only).
+  if (message.referral) {
+    await persistContactReferral(contactRecord.id, message.referral)
+  }
+
   // Reactions short-circuit here — they aren't messages. We never insert
   // into `messages`, never bump unread_count, never update last_message_text.
   // Done before parseMessageContent so the media-URL fetch is skipped.
@@ -681,6 +698,19 @@ async function processMessage(
     return
   }
 
+  // Enrich contact profile from lead-form fields when columns are empty.
+  if (
+    contentPayload &&
+    typeof contentPayload === 'object' &&
+    (contentPayload as { type?: string }).type === 'whatsapp_flow'
+  ) {
+    await applyFormFieldsToContact(
+      contactRecord.id,
+      ((contentPayload as { values?: Record<string, string> }).values ??
+        {}) as Record<string, string>,
+    )
+  }
+
   try {
     const { pauseCadenceOnReply } = await import('@/lib/leads/pause')
     await pauseCadenceOnReply({
@@ -759,40 +789,12 @@ async function processMessage(
     userId: configOwnerUserId,
     contactId: contactRecord.id,
     conversationId: conversation.id,
-    message:
-      contentPayload &&
-      typeof contentPayload === 'object' &&
-      (contentPayload as { type?: string }).type === 'address_message'
-        ? {
-            kind: 'address_reply',
-            formatted:
-              typeof (contentPayload as { formatted?: string }).formatted ===
-              'string'
-                ? (contentPayload as { formatted: string }).formatted
-                : contentText ?? '',
-            values:
-              ((contentPayload as { values?: Record<string, string> })
-                .values as Record<string, string>) ?? {},
-            saved_address_id:
-              typeof (contentPayload as { saved_address_id?: string })
-                .saved_address_id === 'string'
-                ? (contentPayload as { saved_address_id: string })
-                    .saved_address_id
-                : undefined,
-            meta_message_id: message.id,
-          }
-        : interactiveReplyId
-          ? {
-              kind: 'interactive_reply',
-              reply_id: interactiveReplyId,
-              reply_title: contentText ?? '',
-              meta_message_id: message.id,
-            }
-          : {
-              kind: 'text',
-              text: contentText ?? message.text?.body ?? '',
-              meta_message_id: message.id,
-            },
+    message: buildParsedInbound(
+      message.id,
+      contentText,
+      interactiveReplyId,
+      contentPayload,
+    ),
     isFirstInboundMessage,
   })
   const flowConsumed = flowResult.consumed
@@ -984,6 +986,30 @@ async function parseMessageContent(
         }
       }
 
+      // WhatsApp Flow form submission (CTWA ad lead forms, send_flow nodes).
+      const flowForm = parseFlowNfmReply(
+        message.interactive?.type === 'nfm_reply'
+          ? {
+              type: 'nfm_reply',
+              nfm_reply: message.interactive.nfm_reply,
+            }
+          : null,
+      )
+      if (flowForm) {
+        return {
+          ...empty,
+          contentText: flowForm.formatted,
+          interactiveReplyId: flowForm.form_name ?? 'flow',
+          contentPayload: {
+            type: 'whatsapp_flow',
+            formatted: flowForm.formatted,
+            values: flowForm.values,
+            ...(flowForm.flow_id ? { flow_id: flowForm.flow_id } : {}),
+            ...(flowForm.form_name ? { form_name: flowForm.form_name } : {}),
+          },
+        }
+      }
+
       // The customer tapped a reply button or a list row on a message
       // we previously sent. Meta delivers `interactive.button_reply` for
       // 3-button messages and `interactive.list_reply` for list messages.
@@ -1020,6 +1046,134 @@ async function parseMessageContent(
         ...empty,
         contentText: `[Unsupported message type: ${message.type}]`,
       }
+  }
+}
+
+function buildParsedInbound(
+  metaMessageId: string,
+  contentText: string | null,
+  interactiveReplyId: string | null,
+  contentPayload: Record<string, unknown> | null,
+): ParsedInbound {
+  if (
+    contentPayload &&
+    typeof contentPayload === 'object' &&
+    (contentPayload as { type?: string }).type === 'address_message'
+  ) {
+    return {
+      kind: 'address_reply',
+      formatted:
+        typeof (contentPayload as { formatted?: string }).formatted === 'string'
+          ? (contentPayload as { formatted: string }).formatted
+          : contentText ?? '',
+      values:
+        ((contentPayload as { values?: Record<string, string> }).values as
+          | Record<string, string>
+          | undefined) ?? {},
+      saved_address_id:
+        typeof (contentPayload as { saved_address_id?: string })
+          .saved_address_id === 'string'
+          ? (contentPayload as { saved_address_id: string }).saved_address_id
+          : undefined,
+      meta_message_id: metaMessageId,
+    }
+  }
+
+  if (
+    contentPayload &&
+    typeof contentPayload === 'object' &&
+    (contentPayload as { type?: string }).type === 'whatsapp_flow'
+  ) {
+    return {
+      kind: 'form_reply',
+      formatted:
+        typeof (contentPayload as { formatted?: string }).formatted === 'string'
+          ? (contentPayload as { formatted: string }).formatted
+          : contentText ?? '',
+      values:
+        ((contentPayload as { values?: Record<string, string> }).values as
+          | Record<string, string>
+          | undefined) ?? {},
+      flow_id:
+        typeof (contentPayload as { flow_id?: string }).flow_id === 'string'
+          ? (contentPayload as { flow_id: string }).flow_id
+          : undefined,
+      meta_message_id: metaMessageId,
+    }
+  }
+
+  if (interactiveReplyId) {
+    return {
+      kind: 'interactive_reply',
+      reply_id: interactiveReplyId,
+      reply_title: contentText ?? '',
+      meta_message_id: metaMessageId,
+    }
+  }
+
+  return {
+    kind: 'text',
+    text: contentText ?? '',
+    meta_message_id: metaMessageId,
+  }
+}
+
+async function persistContactReferral(
+  contactId: string,
+  rawReferral: Record<string, unknown>,
+): Promise<void> {
+  const referral = normalizeReferral(rawReferral)
+  if (!referral) return
+
+  const { data: existing } = await supabaseAdmin()
+    .from('contacts')
+    .select('referral')
+    .eq('id', contactId)
+    .maybeSingle()
+
+  if (existing?.referral) return
+
+  const { error } = await supabaseAdmin()
+    .from('contacts')
+    .update({
+      referral: referral as WhatsAppReferral,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', contactId)
+
+  if (error) {
+    console.warn('[webhook] failed to persist contact referral:', error.message)
+  }
+}
+
+async function applyFormFieldsToContact(
+  contactId: string,
+  values: Record<string, string>,
+): Promise<void> {
+  const updates = contactUpdatesFromFormValues(values)
+  if (!updates.name && !updates.email) return
+
+  const { data: contact } = await supabaseAdmin()
+    .from('contacts')
+    .select('name, email')
+    .eq('id', contactId)
+    .maybeSingle()
+
+  if (!contact) return
+
+  const patch: Record<string, string> = {}
+  if (updates.name && !contact.name?.trim()) patch.name = updates.name
+  if (updates.email && !contact.email?.trim()) patch.email = updates.email
+  if (Object.keys(patch).length === 0) return
+
+  patch.updated_at = new Date().toISOString()
+  const { error } = await supabaseAdmin()
+    .from('contacts')
+    .update(patch)
+    .eq('id', contactId)
+
+  if (error) {
+    console.warn('[webhook] failed to apply form fields to contact:', error.message)
   }
 }
 
