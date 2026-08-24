@@ -24,9 +24,17 @@ import {
   isShopifyFulfillmentFlowTrigger,
   isShopifyOrderFlowTrigger,
   resolveFlowStartNodeKey,
+  resolveShipmentStatusKey,
   selectedShipmentStatuses,
+  shipmentStatusFilterLabel,
   type FlowTriggerType,
 } from './trigger-types'
+import {
+  attachFlowRunToFulfillmentDispatch,
+  claimShopifyFulfillmentFlowDispatch,
+  fulfillmentOrderKeyFromVars,
+  releaseShopifyFulfillmentFlowDispatch,
+} from '@/lib/shopify/fulfillment-flow-dedup'
 
 export interface FlowDispatchContext {
   message_text?: string
@@ -62,6 +70,7 @@ export interface FlowDispatchSkipped {
     | 'no_conversation'
     | 'start_failed'
     | 'active_run_exists'
+    | 'duplicate_fulfillment_status'
 }
 
 export interface FlowDispatchOutcome {
@@ -132,9 +141,11 @@ function shopifyShipmentMismatchReason(
   if (!isShopifyFulfillmentFlowTrigger(input.triggerType)) return null
   const cfg = flow.trigger_config as Record<string, unknown>
   if (!flowMatchesShipmentConfig(cfg, input.context?.vars?.shipment_status)) {
-    const want = selectedShipmentStatuses(cfg).join(', ') || 'any'
-    const actual = input.context?.vars?.shipment_status
-    return `expected "${want}", got "${typeof actual === 'string' ? actual : 'null'}"`
+    const want = selectedShipmentStatuses(cfg)
+      .map((s) => shipmentStatusFilterLabel(s))
+      .join(', ') || 'any'
+    const actual = resolveShipmentStatusKey(input.context?.vars?.shipment_status)
+    return `expected "${want}", got "${shipmentStatusFilterLabel(actual)}"`
   }
   return null
 }
@@ -213,6 +224,30 @@ export async function runFlowsForTrigger(
 
       if (!flowMatchesTrigger(flow, input)) continue
 
+      if (isShopifyFulfillmentFlowTrigger(input.triggerType)) {
+        const orderKey = fulfillmentOrderKeyFromVars(input.context?.vars)
+        const shipmentStatusKey = resolveShipmentStatusKey(
+          input.context?.vars?.shipment_status,
+        )
+        if (orderKey) {
+          const claimed = await claimShopifyFulfillmentFlowDispatch({
+            db,
+            accountId: input.accountId,
+            flowId: flow.id,
+            orderKey,
+            shipmentStatusKey,
+          })
+          if (!claimed) {
+            outcome.skipped.push({
+              flow_id: flow.id,
+              flow_name: flow.name,
+              reason: 'duplicate_fulfillment_status',
+            })
+            continue
+          }
+        }
+      }
+
       const startNodeKey = resolveFlowStartNodeKey({
         entry_node_id: flow.entry_node_id,
         trigger_type: flow.trigger_type,
@@ -220,6 +255,20 @@ export async function runFlowsForTrigger(
         vars: input.context?.vars,
       })
       if (!startNodeKey) {
+        if (isShopifyFulfillmentFlowTrigger(input.triggerType)) {
+          const orderKey = fulfillmentOrderKeyFromVars(input.context?.vars)
+          if (orderKey) {
+            await releaseShopifyFulfillmentFlowDispatch({
+              db,
+              accountId: input.accountId,
+              flowId: flow.id,
+              orderKey,
+              shipmentStatusKey: resolveShipmentStatusKey(
+                input.context?.vars?.shipment_status,
+              ),
+            })
+          }
+        }
         outcome.skipped.push({
           flow_id: flow.id,
           flow_name: flow.name,
@@ -239,6 +288,20 @@ export async function runFlowsForTrigger(
         conversationId = conv?.id
       }
       if (!conversationId || !input.contactId) {
+        if (isShopifyFulfillmentFlowTrigger(input.triggerType)) {
+          const orderKey = fulfillmentOrderKeyFromVars(input.context?.vars)
+          if (orderKey) {
+            await releaseShopifyFulfillmentFlowDispatch({
+              db,
+              accountId: input.accountId,
+              flowId: flow.id,
+              orderKey,
+              shipmentStatusKey: resolveShipmentStatusKey(
+                input.context?.vars?.shipment_status,
+              ),
+            })
+          }
+        }
         outcome.skipped.push({
           flow_id: flow.id,
           flow_name: flow.name,
@@ -262,18 +325,61 @@ export async function runFlowsForTrigger(
       })
 
       if (result.ok && result.flow_run_id) {
+        if (isShopifyFulfillmentFlowTrigger(input.triggerType)) {
+          const orderKey = fulfillmentOrderKeyFromVars(input.context?.vars)
+          if (orderKey) {
+            await attachFlowRunToFulfillmentDispatch({
+              db,
+              accountId: input.accountId,
+              flowId: flow.id,
+              orderKey,
+              shipmentStatusKey: resolveShipmentStatusKey(
+                input.context?.vars?.shipment_status,
+              ),
+              flowRunId: result.flow_run_id,
+            })
+          }
+        }
         outcome.started.push({
           flow_id: flow.id,
           flow_name: flow.name,
           flow_run_id: result.flow_run_id,
         })
       } else if (result.ok) {
+        if (isShopifyFulfillmentFlowTrigger(input.triggerType)) {
+          const orderKey = fulfillmentOrderKeyFromVars(input.context?.vars)
+          if (orderKey) {
+            await releaseShopifyFulfillmentFlowDispatch({
+              db,
+              accountId: input.accountId,
+              flowId: flow.id,
+              orderKey,
+              shipmentStatusKey: resolveShipmentStatusKey(
+                input.context?.vars?.shipment_status,
+              ),
+            })
+          }
+        }
         outcome.skipped.push({
           flow_id: flow.id,
           flow_name: flow.name,
           reason: 'active_run_exists',
         })
       } else {
+        if (isShopifyFulfillmentFlowTrigger(input.triggerType)) {
+          const orderKey = fulfillmentOrderKeyFromVars(input.context?.vars)
+          if (orderKey) {
+            await releaseShopifyFulfillmentFlowDispatch({
+              db,
+              accountId: input.accountId,
+              flowId: flow.id,
+              orderKey,
+              shipmentStatusKey: resolveShipmentStatusKey(
+                input.context?.vars?.shipment_status,
+              ),
+            })
+          }
+        }
         outcome.skipped.push({
           flow_id: flow.id,
           flow_name: flow.name,

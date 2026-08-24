@@ -147,10 +147,31 @@ export const SHOPIFY_SHIPMENT_STATUS_LABELS: Record<ShopifyShipmentStatus, strin
   failure: 'Failure',
 }
 
+/** Filter key when Shopify omits shipment_status on fulfillments/create. */
+export const SHOPIFY_SHIPMENT_NONE_KEY = '__none__'
+
+export const SHOPIFY_SHIPMENT_NONE_LABEL = 'No status (initial fulfill)'
+
+export function isShopifyShipmentNoneKey(status: string): boolean {
+  return status === SHOPIFY_SHIPMENT_NONE_KEY
+}
+
 export function normalizeShopifyShipmentStatus(raw: unknown): string | null {
   if (typeof raw !== 'string') return null
   const value = raw.trim().toLowerCase().replace(/[\s-]+/g, '_')
   return value || null
+}
+
+/** Normalize trigger filter values, including the synthetic none key. */
+export function normalizeShipmentStatusFilter(raw: unknown): string | null {
+  if (raw === SHOPIFY_SHIPMENT_NONE_KEY) return SHOPIFY_SHIPMENT_NONE_KEY
+  return normalizeShopifyShipmentStatus(raw)
+}
+
+/** Map webhook vars to a stable routing / dedupe key. */
+export function resolveShipmentStatusKey(actual: unknown): string {
+  const normalized = normalizeShopifyShipmentStatus(actual)
+  return normalized ?? SHOPIFY_SHIPMENT_NONE_KEY
 }
 
 export function shipmentStatusMatchesFilter(
@@ -158,11 +179,11 @@ export function shipmentStatusMatchesFilter(
   actual: unknown,
 ): boolean {
   const list = (Array.isArray(want) ? want : want ? [want] : [])
-    .map((s) => normalizeShopifyShipmentStatus(s))
+    .map((s) => normalizeShipmentStatusFilter(s))
     .filter((s): s is string => !!s && s !== 'any')
   if (list.length === 0) return true
-  const got = normalizeShopifyShipmentStatus(actual)
-  return got != null && list.includes(got)
+  const got = resolveShipmentStatusKey(actual)
+  return list.includes(got)
 }
 
 /** Statuses that can branch off a fulfilled trigger (excludes "any"). */
@@ -178,6 +199,19 @@ export function isShopifyShipmentBranchStatus(
   return (SHOPIFY_SHIPMENT_BRANCH_STATUSES as readonly string[]).includes(status)
 }
 
+export function isSelectableShipmentStatusFilter(status: string): boolean {
+  return (
+    isShopifyShipmentNoneKey(status) || isShopifyShipmentBranchStatus(status)
+  )
+}
+
+export function shipmentStatusFilterLabel(status: string): string {
+  if (isShopifyShipmentNoneKey(status)) return SHOPIFY_SHIPMENT_NONE_LABEL
+  const label =
+    SHOPIFY_SHIPMENT_STATUS_LABELS[status as ShopifyShipmentStatus]
+  return label ?? status.replace(/_/g, ' ')
+}
+
 export function selectedShipmentStatuses(
   config: Record<string, unknown> | null | undefined,
 ): string[] {
@@ -185,14 +219,14 @@ export function selectedShipmentStatuses(
   if (Array.isArray(config.shipment_statuses)) {
     const out: string[] = []
     for (const raw of config.shipment_statuses) {
-      const normalized = normalizeShopifyShipmentStatus(raw)
+      const normalized = normalizeShipmentStatusFilter(raw)
       if (normalized && normalized !== 'any' && !out.includes(normalized)) {
         out.push(normalized)
       }
     }
     return out
   }
-  const single = normalizeShopifyShipmentStatus(config.shipment_status)
+  const single = normalizeShipmentStatusFilter(config.shipment_status)
   if (single && single !== 'any') return [single]
   return []
 }
@@ -204,7 +238,7 @@ export function shipmentRoutesFromConfig(
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
   const out: Record<string, string> = {}
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    const status = normalizeShopifyShipmentStatus(key)
+    const status = normalizeShipmentStatusFilter(key)
     if (!status || typeof value !== 'string' || !value.trim()) continue
     out[status] = value.trim()
   }
@@ -226,9 +260,9 @@ export function resolveFlowStartNodeKey(args: {
 }): string | null {
   const cfg = args.trigger_config ?? {}
   if (isShopifyFulfillmentFlowTrigger(args.trigger_type)) {
-    const actual = normalizeShopifyShipmentStatus(args.vars?.shipment_status)
+    const actual = resolveShipmentStatusKey(args.vars?.shipment_status)
     const routes = shipmentRoutesFromConfig(cfg)
-    if (actual && routes[actual]) return routes[actual]!
+    if (routes[actual]) return routes[actual]!
   }
   const entry = args.entry_node_id?.trim()
   return entry || null
@@ -253,7 +287,7 @@ export function shipmentHandleId(status: string): string {
 
 export function shipmentStatusFromHandle(handle: string): string | null {
   if (!handle.startsWith('shipment:')) return null
-  return normalizeShopifyShipmentStatus(handle.slice('shipment:'.length))
+  return normalizeShipmentStatusFilter(handle.slice('shipment:'.length))
 }
 
 export function defaultShopifyTriggerConfig(

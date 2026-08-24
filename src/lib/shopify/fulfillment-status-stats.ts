@@ -1,11 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import {
+  SHOPIFY_SHIPMENT_NONE_KEY,
   SHOPIFY_SHIPMENT_STATUS_LABELS,
+  isSelectableShipmentStatusFilter,
   type ShopifyShipmentStatus,
 } from '@/lib/flows/trigger-types';
 
-export const FULFILLMENT_STATUS_NONE_KEY = '__none__';
+export const FULFILLMENT_STATUS_NONE_KEY = SHOPIFY_SHIPMENT_NONE_KEY;
 
 export interface FulfillmentStatusStatRow {
   /** Normalized status key, or FULFILLMENT_STATUS_NONE_KEY when Shopify sent no status. */
@@ -45,8 +47,41 @@ export function labelForFulfillmentStatusKey(status: string): {
 }
 
 export function fulfillmentStatusKeyToTriggerSelection(status: string): string | null {
-  if (status === FULFILLMENT_STATUS_NONE_KEY) return null;
+  if (status === FULFILLMENT_STATUS_NONE_KEY) return FULFILLMENT_STATUS_NONE_KEY;
   return status;
+}
+
+/** Branch keys commonly used for multi-stage fulfillment messaging. */
+export const SHOPIFY_FULFILLMENT_RECOMMENDED_BRANCH_KEYS = [
+  FULFILLMENT_STATUS_NONE_KEY,
+  'out_for_delivery',
+  'delivered',
+] as const;
+
+export function buildRecommendedFulfillmentTriggerConfig(
+  stats: FulfillmentStatusStats,
+  current: Record<string, unknown>,
+): Record<string, unknown> {
+  const seen = new Set(
+    stats.statuses.filter((row) => row.count > 0).map((row) => row.status),
+  );
+  const preferred = SHOPIFY_FULFILLMENT_RECOMMENDED_BRANCH_KEYS.filter((key) =>
+    seen.has(key),
+  );
+  const fallback = stats.statuses
+    .map((row) => row.status)
+    .filter((status) => isSelectableShipmentStatusFilter(status))
+    .slice(0, 3);
+  const shipment_statuses =
+    preferred.length > 0 ? [...preferred] : fallback.length > 0 ? fallback : [];
+
+  return {
+    ...current,
+    payment_status: 'any',
+    shipment_status: shipment_statuses.length === 1 ? shipment_statuses[0] : 'any',
+    shipment_statuses,
+    shipment_routes: {},
+  };
 }
 
 export async function fetchFulfillmentStatusStats(args: {

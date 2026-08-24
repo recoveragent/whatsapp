@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { shopifyTopicToFlowTrigger, shipmentStatusMatchesFilter, resolveFlowStartNodeKey } from './trigger-types'
+import { shopifyTopicToFlowTrigger, shipmentStatusMatchesFilter, resolveFlowStartNodeKey, SHOPIFY_SHIPMENT_NONE_KEY } from './trigger-types'
 
 describe('shopifyTopicToFlowTrigger', () => {
   it('maps orders/create → shopify_order_placed', () => {
@@ -63,6 +63,11 @@ describe('shipmentStatusMatchesFilter', () => {
     expect(shipmentStatusMatchesFilter(['confirmed', 'in_transit'], 'in_transit')).toBe(true)
     expect(shipmentStatusMatchesFilter(['confirmed', 'in_transit'], 'delivered')).toBe(false)
   })
+
+  it('matches the synthetic none key when Shopify omits shipment_status', () => {
+    expect(shipmentStatusMatchesFilter([SHOPIFY_SHIPMENT_NONE_KEY], null)).toBe(true)
+    expect(shipmentStatusMatchesFilter(['out_for_delivery'], null)).toBe(false)
+  })
 })
 
 describe('resolveFlowStartNodeKey', () => {
@@ -88,5 +93,18 @@ describe('resolveFlowStartNodeKey', () => {
         vars: { shipment_status: 'in_transit' },
       }),
     ).toBe('fallback')
+  })
+
+  it('routes the synthetic none key to its branch node', () => {
+    expect(
+      resolveFlowStartNodeKey({
+        entry_node_id: 'fallback',
+        trigger_type: 'shopify_order_fulfilled',
+        trigger_config: {
+          shipment_routes: { [SHOPIFY_SHIPMENT_NONE_KEY]: 'initial-node' },
+        },
+        vars: { shipment_status: null },
+      }),
+    ).toBe('initial-node')
   })
 })

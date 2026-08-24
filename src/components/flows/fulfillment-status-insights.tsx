@@ -4,13 +4,15 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  SHOPIFY_SHIPMENT_STATUS_LABELS,
-  isShopifyShipmentBranchStatus,
+  SHOPIFY_SHIPMENT_NONE_KEY,
+  isSelectableShipmentStatusFilter,
   selectedShipmentStatuses,
   shipmentRoutesFromConfig,
+  shipmentStatusFilterLabel,
 } from "@/lib/flows/trigger-types";
 import {
   FULFILLMENT_STATUS_NONE_KEY,
+  buildRecommendedFulfillmentTriggerConfig,
   type FulfillmentStatusStats,
 } from "@/lib/shopify/fulfillment-status-stats";
 
@@ -47,6 +49,7 @@ export function FulfillmentStatusInsights({
   const [stats, setStats] = useState<FulfillmentStatusStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showSetupGuide, setShowSetupGuide] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -72,12 +75,21 @@ export function FulfillmentStatusInsights({
 
   const selected = selectedShipmentStatuses(triggerConfig);
   const maxCount = Math.max(...(stats?.statuses.map((s) => s.count) ?? [1]), 1);
-  const noneRow = stats?.statuses.find((s) => s.status === FULFILLMENT_STATUS_NONE_KEY);
-  const noneDominant =
-    noneRow != null &&
+  const outForDeliveryDominant =
+    stats?.statuses.find((s) => s.status === "out_for_delivery") != null &&
     stats != null &&
     stats.total_events > 0 &&
-    noneRow.count / stats.total_events >= 0.5;
+    (stats.statuses.find((s) => s.status === "out_for_delivery")?.count ?? 0) /
+      stats.total_events >=
+      0.5;
+
+  function applyRecommended() {
+    if (!stats) return;
+    onTriggerConfigChange(
+      buildRecommendedFulfillmentTriggerConfig(stats, triggerConfig),
+    );
+    setShowSetupGuide(true);
+  }
 
   return (
     <div className="mt-3 rounded-md border border-border bg-muted/30 p-3">
@@ -114,7 +126,7 @@ export function FulfillmentStatusInsights({
       ) : stats && stats.total_events === 0 ? (
         <p className="text-xs text-muted-foreground">
           No fulfillment webhooks recorded yet. Events appear here after the next
-          fulfillments — leave all statuses unchecked below to send on any fulfill.
+          fulfillments.
         </p>
       ) : stats ? (
         <>
@@ -125,9 +137,7 @@ export function FulfillmentStatusInsights({
           </p>
           <ul className="flex flex-col gap-1.5">
             {stats.statuses.map((row) => {
-              const selectable =
-                row.status !== FULFILLMENT_STATUS_NONE_KEY &&
-                isShopifyShipmentBranchStatus(row.status);
+              const selectable = isSelectableShipmentStatusFilter(row.status);
               const isOn = selectable && selected.includes(row.status);
               const widthPct = Math.max(4, (row.count / maxCount) * 100);
 
@@ -168,11 +178,7 @@ export function FulfillmentStatusInsights({
                         {row.count}
                       </span>
                     </span>
-                    {!selectable ? (
-                      <span className="shrink-0 text-[10px] text-muted-foreground">
-                        leave filters empty
-                      </span>
-                    ) : isOn ? (
+                    {isOn ? (
                       <span className="shrink-0 text-[10px] text-primary">On</span>
                     ) : null}
                   </button>
@@ -180,15 +186,23 @@ export function FulfillmentStatusInsights({
               );
             })}
           </ul>
-          {noneDominant ? (
+
+          {outForDeliveryDominant ? (
             <p className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10px] leading-snug text-amber-950 dark:text-amber-100">
-              Most fulfillments arrive with{" "}
-              <strong>no carrier status</strong>. To message when an order is first
-              fulfilled, leave all shipment statuses unchecked — do not select
-              &ldquo;Confirmed&rdquo; alone.
+              Most webhooks are <strong>Out for delivery</strong>, not initial
+              fulfill. Use separate templates per status — do not send
+              &ldquo;preparing for shipment&rdquo; on out-for-delivery events.
             </p>
           ) : null}
+
           <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={applyRecommended}
+              className="rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] font-medium text-foreground hover:bg-primary/15"
+            >
+              Apply recommended branching
+            </button>
             <button
               type="button"
               onClick={() =>
@@ -201,33 +215,53 @@ export function FulfillmentStatusInsights({
               }
               className="text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
             >
-              Clear all filters (any fulfill)
+              Clear all filters
             </button>
-            {stats.statuses
-              .filter(
-                (row) =>
-                  row.status !== FULFILLMENT_STATUS_NONE_KEY &&
-                  isShopifyShipmentBranchStatus(row.status),
-              )
-              .slice(0, 5)
-              .map((row) => (
-                <button
-                  key={`pick-${row.status}`}
-                  type="button"
-                  onClick={() =>
-                    onTriggerConfigChange(
-                      toggleShipmentStatus(triggerConfig, row.status, true),
-                    )
-                  }
-                  className="text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                >
-                  +{" "}
-                  {isShopifyShipmentBranchStatus(row.status)
-                    ? SHOPIFY_SHIPMENT_STATUS_LABELS[row.status]
-                    : row.label}
-                </button>
-              ))}
           </div>
+
+          {showSetupGuide && selected.length > 0 ? (
+            <div className="mt-2 rounded-md border border-border bg-background/80 px-2 py-2 text-[10px] leading-snug text-muted-foreground">
+              <p className="font-medium text-foreground">Wire each trigger handle:</p>
+              <ul className="mt-1 list-inside list-disc space-y-0.5">
+                {selected.includes(SHOPIFY_SHIPMENT_NONE_KEY) ? (
+                  <li>
+                    <strong>No status</strong> → Send template{" "}
+                    <code className="rounded bg-muted px-1">order_fulfilled</code>{" "}
+                    (&ldquo;preparing for shipment&rdquo;)
+                  </li>
+                ) : null}
+                {selected.includes("out_for_delivery") ? (
+                  <li>
+                    <strong>Out for delivery</strong> → new template (e.g.{" "}
+                    <code className="rounded bg-muted px-1">order_out_for_delivery</code>)
+                  </li>
+                ) : null}
+                {selected.includes("delivered") ? (
+                  <li>
+                    <strong>Delivered</strong> → new template (e.g.{" "}
+                    <code className="rounded bg-muted px-1">order_delivered</code>)
+                  </li>
+                ) : null}
+                {selected
+                  .filter(
+                    (status) =>
+                      status !== SHOPIFY_SHIPMENT_NONE_KEY &&
+                      status !== "out_for_delivery" &&
+                      status !== "delivered",
+                  )
+                  .map((status) => (
+                    <li key={status}>
+                      <strong>{shipmentStatusFilterLabel(status)}</strong> → Send
+                      template node on canvas
+                    </li>
+                  ))}
+              </ul>
+              <p className="mt-1">
+                On the canvas, drag from each shipment handle on the trigger to its
+                Send template node. One message is sent per order + status (deduped).
+              </p>
+            </div>
+          ) : null}
         </>
       ) : null}
     </div>

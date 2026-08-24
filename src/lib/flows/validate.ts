@@ -28,6 +28,7 @@ import {
   collectFlowStartNodeKeys,
   selectedShipmentStatuses,
   shipmentRoutesFromConfig,
+  SHOPIFY_SHIPMENT_NONE_KEY,
   SHOPIFY_SHIPMENT_STATUS_LABELS,
   SHOPIFY_SHIPMENT_STATUSES,
 } from "./trigger-types";
@@ -363,7 +364,10 @@ function validateTrigger(
     ) {
       const selected = selectedShipmentStatuses(trigger_config);
       for (const status of selected) {
-        if (!(SHOPIFY_SHIPMENT_STATUSES as readonly string[]).includes(status)) {
+        if (
+          !(SHOPIFY_SHIPMENT_STATUSES as readonly string[]).includes(status) &&
+          status !== SHOPIFY_SHIPMENT_NONE_KEY
+        ) {
           issues.push({
             severity: "error",
             scope: "trigger",
