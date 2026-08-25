@@ -5,7 +5,6 @@ import { format } from 'date-fns'
 import { Bell, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import type { Conversation, Message } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -31,23 +30,21 @@ function defaultDueLocal(): string {
   return toDatetimeLocalValue(d)
 }
 
-interface ScheduleFollowupDialogProps {
+interface ScheduleReminderDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   conversationId: string
   contactLabel?: string
-  onScheduled: (
-    updated: Conversation & { system_message?: Message | null },
-  ) => void
+  onScheduled?: () => void
 }
 
-export function ScheduleFollowupDialog({
+export function ScheduleReminderDialog({
   open,
   onOpenChange,
   conversationId,
   contactLabel,
   onScheduled,
-}: ScheduleFollowupDialogProps) {
+}: ScheduleReminderDialogProps) {
   const [dueLocal, setDueLocal] = useState(defaultDueLocal)
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -87,27 +84,7 @@ export function ScheduleFollowupDialog({
 
     setSubmitting(true)
     try {
-      const statusRes = await fetch(
-        `/api/inbox/conversations/${conversationId}/status`,
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'followup' }),
-        },
-      )
-      if (!statusRes.ok) {
-        const body = (await statusRes.json().catch(() => null)) as {
-          error?: string
-        } | null
-        toast.error(body?.error ?? 'Failed to set follow-up status')
-        return
-      }
-
-      const updated = (await statusRes.json()) as Conversation & {
-        system_message?: Message | null
-      }
-
-      const reminderRes = await fetch('/api/inbox/reminders', {
+      const res = await fetch('/api/inbox/reminders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -116,15 +93,15 @@ export function ScheduleFollowupDialog({
           note: trimmed,
         }),
       })
-      if (!reminderRes.ok) {
-        const body = (await reminderRes.json().catch(() => null)) as {
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
           error?: string
         } | null
         toast.error(body?.error ?? 'Failed to schedule reminder')
         return
       }
 
-      onScheduled(updated)
+      onScheduled?.()
       onOpenChange(false)
       reset()
       toast.success(
@@ -159,7 +136,7 @@ export function ScheduleFollowupDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Bell className="size-4" />
-            Schedule follow-up
+            Schedule reminder
           </DialogTitle>
           <DialogDescription>
             {contactLabel
@@ -170,9 +147,9 @@ export function ScheduleFollowupDialog({
 
         <div className="grid gap-4 py-1">
           <div className="grid gap-2">
-            <Label htmlFor="followup-due">Date and time</Label>
+            <Label htmlFor="reminder-due">Date and time</Label>
             <Input
-              id="followup-due"
+              id="reminder-due"
               type="datetime-local"
               value={dueLocal}
               onChange={(e) => setDueLocal(e.target.value)}
@@ -183,9 +160,9 @@ export function ScheduleFollowupDialog({
             ) : null}
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="followup-note">Note</Label>
+            <Label htmlFor="reminder-note">Note</Label>
             <Textarea
-              id="followup-note"
+              id="reminder-note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="What should we follow up on?"
