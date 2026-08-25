@@ -71,17 +71,26 @@ export default function InboxPage() {
     }
   }, []);
 
+  const persistContactPanelOpen = useCallback((open: boolean) => {
+    try {
+      localStorage.setItem(CONTACT_PANEL_STORAGE_KEY, String(open));
+    } catch {
+      // Persistence is best-effort; ignore storage failures.
+    }
+  }, []);
+
   const handleToggleContactPanel = useCallback(() => {
     setContactPanelOpen((prev) => {
       const next = !prev;
-      try {
-        localStorage.setItem(CONTACT_PANEL_STORAGE_KEY, String(next));
-      } catch {
-        // Persistence is best-effort; ignore storage failures.
-      }
+      persistContactPanelOpen(next);
       return next;
     });
-  }, []);
+  }, [persistContactPanelOpen]);
+
+  const handleOpenContactPanel = useCallback(() => {
+    setContactPanelOpen(true);
+    persistContactPanelOpen(true);
+  }, [persistContactPanelOpen]);
 
   // Fire the deep-link auto-select exactly once per URL — subsequent
   // list refreshes (realtime, manual refetch) must not snap the user
@@ -749,6 +758,7 @@ export default function InboxPage() {
             onRefresh={handleManualRefresh}
             contactPanelOpen={contactPanelOpen}
             onToggleContactPanel={handleToggleContactPanel}
+            onOpenContactPanel={handleOpenContactPanel}
             onComposerPendingChange={setComposerPending}
           />
         </div>

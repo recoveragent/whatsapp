@@ -27,7 +27,15 @@ import {
   RefreshCw,
   PanelRightOpen,
   PanelRightClose,
+  User,
 } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { ContactSidebar } from "@/components/inbox/contact-sidebar";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -114,6 +122,8 @@ interface MessageThreadProps {
    */
   contactPanelOpen?: boolean;
   onToggleContactPanel?: () => void;
+  /** Opens the desktop contact panel without toggling closed. */
+  onOpenContactPanel?: () => void;
   /** Parent uses this to block leaving the thread while a send is in flight. */
   onComposerPendingChange?: (pending: boolean) => void;
 }
@@ -198,6 +208,7 @@ export function MessageThread({
   onRefresh,
   contactPanelOpen,
   onToggleContactPanel,
+  onOpenContactPanel,
   onComposerPendingChange,
 }: MessageThreadProps) {
   const { user, accountId } = useAuth();
@@ -213,6 +224,7 @@ export function MessageThread({
   // parent's resyncToken); the 700ms spin is just feedback so the click
   // doesn't feel like a no-op. Cleared via the timer ref on unmount.
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [contactSheetOpen, setContactSheetOpen] = useState(false);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     return () => {
@@ -1077,13 +1089,57 @@ export function MessageThread({
               <ArrowLeft className="h-5 w-5" />
             </button>
           )}
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-            {displayName.charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
-            <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="flex min-w-0 items-center gap-2 rounded-md text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-3 -ml-1 pl-1 pr-2 py-0.5"
+              aria-label={`Contact options for ${displayName}`}
+            >
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <h2 className="truncate text-sm font-semibold text-foreground">
+                  {displayName}
+                </h2>
+                <p className="truncate text-xs text-muted-foreground">
+                  {contact.phone}
+                </p>
+              </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-48">
+              {onToggleContactPanel && (
+                <DropdownMenuItem
+                  className="hidden lg:flex"
+                  onClick={() => {
+                    if (contactPanelOpen) {
+                      onToggleContactPanel();
+                    } else {
+                      (onOpenContactPanel ?? onToggleContactPanel)();
+                    }
+                  }}
+                >
+                  {contactPanelOpen ? (
+                    <>
+                      <PanelRightClose className="mr-2 h-4 w-4" />
+                      Hide contact panel
+                    </>
+                  ) : (
+                    <>
+                      <PanelRightOpen className="mr-2 h-4 w-4" />
+                      Show contact panel
+                    </>
+                  )}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem
+                className="lg:hidden"
+                onClick={() => setContactSheetOpen(true)}
+              >
+                <User className="mr-2 h-4 w-4" />
+                View contact details
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. */}
           <Badge
@@ -1377,6 +1433,19 @@ export function MessageThread({
         onOpenChange={setFlowModalOpen}
         onSelect={handleStartFlow}
       />
+
+      {/* Mobile contact details — desktop uses the permanent sidebar. */}
+      <Sheet open={contactSheetOpen} onOpenChange={setContactSheetOpen}>
+        <SheetContent side="right" className="w-full max-w-sm p-0">
+          <SheetHeader className="sr-only">
+            <SheetTitle>{displayName}</SheetTitle>
+          </SheetHeader>
+          <ContactSidebar
+            contact={contact}
+            conversationId={conversation.id}
+          />
+        </SheetContent>
+      </Sheet>
 
     </div>
   );

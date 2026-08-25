@@ -13,6 +13,7 @@ import type {
   InboxReminder,
   Pipeline,
   PipelineStage,
+  CustomField,
 } from "@/types";
 import {
   Select,
@@ -36,6 +37,7 @@ import {
   Bell,
   Megaphone,
   ClipboardList,
+  List,
 } from "lucide-react";
 import { isFulfilledStatus } from "@/lib/shopify/order-links";
 import { Button } from "@/components/ui/button";
@@ -82,6 +84,8 @@ export function ContactSidebar({
   const [formSubmissions, setFormSubmissions] = useState<
     Array<{ id: string; created_at: string; values: Record<string, string> }>
   >([]);
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
+  const [customValues, setCustomValues] = useState<Record<string, string>>({});
 
   const fetchFormSubmissions = useCallback(async () => {
     if (!conversationId) {
@@ -155,6 +159,8 @@ export function ContactSidebar({
       orders,
       pipelinesRes,
       stagesRes,
+      customFieldsRes,
+      customValuesRes,
     ] = await Promise.all([
       supabase
         .from("deals")
@@ -181,6 +187,11 @@ export function ContactSidebar({
             .select("*")
             .order("position")
         : Promise.resolve({ data: null }),
+      supabase.from("custom_fields").select("*").order("field_name"),
+      supabase
+        .from("contact_custom_values")
+        .select("*")
+        .eq("contact_id", contactId),
     ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
@@ -205,6 +216,21 @@ export function ContactSidebar({
       setTags(mapped);
     } else {
       setTags([]);
+    }
+
+    if (customFieldsRes.data) {
+      setCustomFields(customFieldsRes.data);
+    } else {
+      setCustomFields([]);
+    }
+    if (customValuesRes.data) {
+      const map: Record<string, string> = {};
+      for (const row of customValuesRes.data) {
+        map[row.custom_field_id as string] = (row.value as string | null) ?? "";
+      }
+      setCustomValues(map);
+    } else {
+      setCustomValues({});
     }
 
     if (isEcommerceBrand) {
@@ -554,6 +580,27 @@ export function ContactSidebar({
               </div>
             )}
           </div>
+
+          {customFields.length > 0 && (
+            <div className="mt-4">
+              <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <List className="h-3 w-3" />
+                Details
+              </div>
+              <div className="mt-2 space-y-1.5 rounded-lg border border-border px-3 py-2 text-xs">
+                {customFields.map((field) => (
+                  <div key={field.id} className="flex justify-between gap-3">
+                    <span className="shrink-0 capitalize text-muted-foreground">
+                      {field.field_name}
+                    </span>
+                    <span className="text-right text-foreground">
+                      {customValues[field.id]?.trim() || "—"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {contact.referral && (
             <div className="mt-4">
