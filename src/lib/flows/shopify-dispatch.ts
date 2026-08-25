@@ -94,9 +94,18 @@ export async function dispatchShopifyFlows(args: {
     context: { vars: contextToVars(args.context) },
   })
 
-  // If nothing landed in the thread (no matching flow / send failed),
-  // remove the empty shell so it doesn't appear in Open or Closed.
-  await deleteConversationIfEmpty(args.db, conversation.id)
+  // Duplicate Shopify webhooks can overlap: webhook B may finish while
+  // webhook A's flow is still sending. Never delete the shell when a
+  // sibling handler hit active_run_exists or a flow is still open.
+  const blockedByActiveRun = dispatch.skipped.some(
+    (s) => s.reason === 'active_run_exists',
+  )
+  if (!blockedByActiveRun) {
+    await deleteConversationIfEmpty(args.db, conversation.id, {
+      accountId: args.accountId,
+      contactId: contact.id,
+    })
+  }
 
   return {
     ok: dispatch.started.length > 0,

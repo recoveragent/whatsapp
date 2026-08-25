@@ -104,6 +104,34 @@ export async function ensureConversation(
   return created;
 }
 
+const OPEN_FLOW_RUN_STATUSES = ['active', 'waiting'] as const;
+
+/**
+ * True when a flow is still running for this contact (e.g. mid-template
+ * send). Callers must not delete the conversation shell in that window —
+ * duplicate Shopify webhooks otherwise race and drop the FK on messages.
+ */
+export async function hasActiveFlowRunForContact(
+  db: SupabaseClient,
+  accountId: string,
+  contactId: string,
+): Promise<boolean> {
+  const { count, error } = await db
+    .from('flow_runs')
+    .select('id', { count: 'exact', head: true })
+    .eq('account_id', accountId)
+    .eq('contact_id', contactId)
+    .in('status', [...OPEN_FLOW_RUN_STATUSES]);
+
+  if (error) {
+    console.error('[shopify] hasActiveFlowRunForContact failed:', error);
+    // Conservative: assume busy so we never delete a thread mid-send.
+    return true;
+  }
+
+  return (count ?? 0) > 0;
+}
+
 /**
  * Delete a conversation that never received any WhatsApp message (and
  * has no private notes). Used after Shopify outbound attempts that
@@ -113,7 +141,14 @@ export async function ensureConversation(
 export async function deleteConversationIfEmpty(
   db: SupabaseClient,
   conversationId: string,
+  opts?: { accountId?: string; contactId?: string },
 ): Promise<void> {
+  if (opts?.accountId && opts?.contactId) {
+    if (await hasActiveFlowRunForContact(db, opts.accountId, opts.contactId)) {
+      return;
+    }
+  }
+
   const { count: msgCount, error: msgErr } = await db
     .from('messages')
     .select('id', { count: 'exact', head: true })

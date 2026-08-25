@@ -151,7 +151,10 @@ export async function sendShopifyCampaign(args: {
     });
     const sentToMeta = message.includes('sent to Meta but DB insert failed');
     if (!sentToMeta) {
-      await deleteConversationIfEmpty(db, conversation.id);
+      await deleteConversationIfEmpty(db, conversation.id, {
+        accountId,
+        contactId: contact.id,
+      });
     }
     return { ok: false, error: message };
   }
