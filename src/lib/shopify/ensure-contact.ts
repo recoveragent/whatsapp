@@ -133,6 +133,55 @@ export async function hasActiveFlowRunForContact(
 }
 
 /**
+ * True when a flow run logged a Meta send that never landed in
+ * `messages` (typically "sent to Meta but DB insert failed"). Keep the
+ * conversation shell so the customer's reply reopens the same thread
+ * and a retry/backfill can attach the outbound bubble later.
+ */
+export async function conversationHasOrphanedMetaSend(
+  db: SupabaseClient,
+  conversationId: string,
+): Promise<boolean> {
+  const { data: runs, error: runsErr } = await db
+    .from('flow_runs')
+    .select('id')
+    .eq('conversation_id', conversationId);
+
+  if (runsErr) {
+    console.error('[shopify] conversationHasOrphanedMetaSend runs failed:', runsErr);
+    return true;
+  }
+
+  const runIds = (runs ?? []).map((r) => (r as { id: string }).id);
+  if (runIds.length === 0) return false;
+
+  const { data: events, error: eventsErr } = await db
+    .from('flow_run_events')
+    .select('payload')
+    .in('flow_run_id', runIds)
+    .eq('event_type', 'error');
+
+  if (eventsErr) {
+    console.error('[shopify] conversationHasOrphanedMetaSend events failed:', eventsErr);
+    return true;
+  }
+
+  for (const row of events ?? []) {
+    const payload = (row as { payload?: Record<string, unknown> }).payload ?? {};
+    const reason = String(payload.reason ?? '');
+    const detail = String(payload.detail ?? '');
+    if (
+      reason.includes('sent to Meta but DB insert failed') ||
+      detail.includes('sent to Meta but DB insert failed')
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Delete a conversation that never received any WhatsApp message (and
  * has no private notes). Used after Shopify outbound attempts that
  * created a thread without landing a send — empty shells must not
@@ -162,6 +211,10 @@ export async function deleteConversationIfEmpty(
     .eq('conversation_id', conversationId);
 
   if (noteErr || (noteCount ?? 0) > 0) return;
+
+  if (await conversationHasOrphanedMetaSend(db, conversationId)) {
+    return;
+  }
 
   const { error: deleteErr } = await db
     .from('conversations')

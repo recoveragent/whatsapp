@@ -1,6 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { engineSendTemplate } from '@/lib/automations/meta-send';
+import { ensureShopifyEventProductImage } from '@/lib/flows/resolve-product-image';
+import { isMediaHeaderType } from '@/lib/inbox/template-message-display';
+import { isMetaSentDbInsertFailed } from '@/lib/whatsapp/persist-outbound-message';
+import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard';
+import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder';
 import { getCampaignDefinition } from './campaign-defaults';
 import { buildTemplateParams } from './extract-context';
 import { ensureConversation, ensureShopifyContact, deleteConversationIfEmpty } from './ensure-contact';
@@ -106,13 +111,39 @@ export async function sendShopifyCampaign(args: {
     return { ok: false, error: 'could not create conversation' };
   }
 
-  const params = buildTemplateParams(campaign.variable_mapping ?? {}, context);
-  const suffix = context.orderStatusUrlSuffix?.trim() || undefined;
-  const messageParams = {
+  const enrichedContext = await ensureShopifyEventProductImage(
+    db,
+    accountId,
+    context,
+  );
+
+  const { data: templateRowRaw } = await db
+    .from('message_templates')
+    .select('*')
+    .eq('account_id', accountId)
+    .eq('name', campaign.template_name)
+    .eq('language', campaign.template_language)
+    .maybeSingle();
+  const templateRow =
+    templateRowRaw && isMessageTemplate(templateRowRaw) ? templateRowRaw : null;
+  const mediaHeader = isMediaHeaderType(templateRow?.header_type);
+
+  const params = buildTemplateParams(campaign.variable_mapping ?? {}, enrichedContext);
+  const suffix = enrichedContext.orderStatusUrlSuffix?.trim() || undefined;
+  const productImage = enrichedContext.productImage?.trim() || undefined;
+
+  const messageParams: SendTimeParams = {
     body: params,
-    headerMediaUrl: context.productImage?.trim() || undefined,
     defaultUrlButtonSuffix: suffix,
   };
+  if (mediaHeader) {
+    messageParams.headerMediaUrl = productImage;
+    // Never silently reuse the template approval sample for Shopify sends.
+    messageParams.headerMediaRequired = true;
+  }
+
+  const needsMessageParams =
+    params.length > 0 || !!suffix || mediaHeader || !!productImage;
 
   try {
     const result = await engineSendTemplate({
@@ -123,10 +154,7 @@ export async function sendShopifyCampaign(args: {
       templateName: campaign.template_name,
       language: campaign.template_language,
       params,
-      messageParams:
-        messageParams.headerMediaUrl || messageParams.defaultUrlButtonSuffix
-          ? messageParams
-          : undefined,
+      messageParams: needsMessageParams ? messageParams : undefined,
     });
 
     await db.from('shopify_message_log').insert({
@@ -149,7 +177,7 @@ export async function sendShopifyCampaign(args: {
       status: 'failed',
       error_message: message,
     });
-    const sentToMeta = message.includes('sent to Meta but DB insert failed');
+    const sentToMeta = isMetaSentDbInsertFailed(message);
     if (!sentToMeta) {
       await deleteConversationIfEmpty(db, conversation.id, {
         accountId,

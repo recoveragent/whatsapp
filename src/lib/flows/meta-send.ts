@@ -13,6 +13,7 @@ import {
   type AddressSavedAddress,
 } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
+import { insertOutboundMessage } from '@/lib/whatsapp/persist-outbound-message'
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -126,7 +127,7 @@ export async function engineSendText(
     await db.from('contacts').update({ phone: contactPhoneAfterSuccessfulSend(sanitized, workingPhone) }).eq('id', contact.id)
   }
 
-  const { error: msgErr } = await db.from('messages').insert({
+  await insertOutboundMessage(db, {
     conversation_id: args.conversationId,
     sender_type: 'bot',
     content_type: 'text',
@@ -134,9 +135,6 @@ export async function engineSendText(
     message_id: waMessageId,
     status: 'sent',
   })
-  if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
-  }
 
   await db
     .from('conversations')
@@ -243,7 +241,7 @@ export async function engineSendMedia(
   // content_text carries the caption (or empty) so the conversation
   // list preview shows something meaningful when the user glances at it.
   const preview = args.caption?.trim() || `[${args.kind}]`
-  const { error: msgErr } = await db.from('messages').insert({
+  await insertOutboundMessage(db, {
     conversation_id: args.conversationId,
     sender_type: 'bot',
     content_type: args.kind,
@@ -251,9 +249,6 @@ export async function engineSendMedia(
     message_id: waMessageId,
     status: 'sent',
   })
-  if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
-  }
 
   await db
     .from('conversations')
@@ -415,7 +410,7 @@ async function sendInteractiveViaMeta(
   // We do NOT set interactive_reply_id here — that column is reserved
   // for the customer's tap on this message, populated by the webhook
   // when their reply arrives.
-  const { error: msgErr } = await db.from('messages').insert({
+  await insertOutboundMessage(db, {
     conversation_id: input.conversationId,
     sender_type: 'bot',
     content_type: 'interactive',
@@ -423,9 +418,6 @@ async function sendInteractiveViaMeta(
     message_id: waMessageId,
     status: 'sent',
   })
-  if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
-  }
 
   await db
     .from('conversations')
@@ -524,7 +516,7 @@ export async function engineSendAddressMessage(
     await db.from('contacts').update({ phone: contactPhoneAfterSuccessfulSend(sanitized, workingPhone) }).eq('id', contact.id)
   }
 
-  const { error: msgErr } = await db.from('messages').insert({
+  await insertOutboundMessage(db, {
     conversation_id: args.conversationId,
     sender_type: 'bot',
     content_type: 'interactive',
@@ -536,9 +528,6 @@ export async function engineSendAddressMessage(
       country: args.country,
     },
   })
-  if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
-  }
 
   await db
     .from('conversations')
@@ -643,7 +632,7 @@ export async function engineSendFlowMessage(
     await db.from('contacts').update({ phone: contactPhoneAfterSuccessfulSend(sanitized, workingPhone) }).eq('id', contact.id)
   }
 
-  const { error: msgErr } = await db.from('messages').insert({
+  await insertOutboundMessage(db, {
     conversation_id: args.conversationId,
     sender_type: 'bot',
     content_type: 'interactive',
@@ -658,9 +647,6 @@ export async function engineSendFlowMessage(
       ...(args.flowScreen ? { flow_screen: args.flowScreen } : {}),
     },
   })
-  if (msgErr) {
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
-  }
 
   await db
     .from('conversations')

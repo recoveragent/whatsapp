@@ -1,10 +1,12 @@
 import { decrypt } from '@/lib/whatsapp/encryption';
 import {
   fetchFirstOrderProductImageUrl,
+  fetchOrder,
   fetchProductImageUrl,
 } from './admin-api';
 import {
   firstProductIdFromLineItems,
+  imageUrlFromLineItems,
 } from './extract-context';
 import type {
   ShopifyCheckoutPayload,
@@ -61,6 +63,33 @@ export async function enrichContextProductImage(args: {
       } catch (err) {
         console.warn('[shopify] product image lookup failed:', err);
       }
+    }
+  }
+
+  // REST Admin order payloads often include line-item images and product_ids
+  // even when GraphQL and webhook line items do not.
+  if (!url && args.orderId != null && String(args.orderId).trim()) {
+    try {
+      const order = (await fetchOrder(
+        args.shopDomain,
+        accessToken,
+        args.orderId,
+      )) as ShopifyOrderPayload | null;
+      if (order) {
+        url = imageUrlFromLineItems(order.line_items);
+        if (!url) {
+          const productId = firstProductIdFromLineItems(order.line_items);
+          if (productId) {
+            url = await fetchProductImageUrl(
+              args.shopDomain,
+              accessToken,
+              productId,
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[shopify] REST order product image lookup failed:', err);
     }
   }
 

@@ -10,6 +10,8 @@ function mockDb(handlers: {
   flowRunError?: boolean
   msgCount?: number
   noteCount?: number
+  orphanedMetaSend?: boolean
+  orphanedMetaSendError?: boolean
 }) {
   const deleteConv = vi.fn().mockReturnThis()
   const eqConv = vi.fn().mockResolvedValue({ error: null })
@@ -19,12 +21,49 @@ function mockDb(handlers: {
       if (table === 'flow_runs') {
         return {
           select: vi.fn().mockReturnThis(),
-          eq: vi.fn().mockReturnThis(),
-          in: vi.fn().mockResolvedValue(
-            handlers.flowRunError
-              ? { count: null, error: { message: 'db error' } }
-              : { count: handlers.flowRunCount ?? 0, error: null },
-          ),
+          eq: vi.fn((col: string) => {
+            if (col === 'account_id') {
+              return {
+                eq: vi.fn((col2: string) => {
+                  if (col2 !== 'contact_id') {
+                    throw new Error(`unexpected eq ${col2}`)
+                  }
+                  return {
+                    in: vi.fn().mockResolvedValue(
+                      handlers.flowRunError
+                        ? { count: null, error: { message: 'db error' } }
+                        : { count: handlers.flowRunCount ?? 0, error: null },
+                    ),
+                  }
+                }),
+              }
+            }
+            if (col === 'conversation_id') {
+              return Promise.resolve({
+                data: handlers.orphanedMetaSend
+                  ? [{ id: 'run-1' }]
+                  : [],
+                error: handlers.orphanedMetaSendError
+                  ? { message: 'events error' }
+                  : null,
+              })
+            }
+            throw new Error(`unexpected eq ${col}`)
+          }),
+        }
+      }
+      if (table === 'flow_run_events') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockResolvedValue({
+            data: handlers.orphanedMetaSend
+              ? [{ payload: { detail: 'sent to Meta but DB insert failed: fk' } }]
+              : [],
+            error: handlers.orphanedMetaSendError
+              ? { message: 'events error' }
+              : null,
+          }),
         }
       }
       if (table === 'messages') {
@@ -94,5 +133,14 @@ describe('deleteConversationIfEmpty', () => {
       contactId: 'contact-1',
     })
     expect(db.deleteConv).toHaveBeenCalled()
+  })
+
+  it('skips delete when a flow logged Meta send without DB message', async () => {
+    const db = mockDb({ flowRunCount: 0, msgCount: 0, orphanedMetaSend: true })
+    await deleteConversationIfEmpty(db as never, 'conv-1', {
+      accountId: 'acc-1',
+      contactId: 'contact-1',
+    })
+    expect(db.deleteConv).not.toHaveBeenCalled()
   })
 })

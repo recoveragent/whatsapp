@@ -6,9 +6,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type { FlowNodeRow, FlowRunRow } from './types'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
-import { buildSendTimeParamsFromVariables } from '@/lib/flows/template-send-params'
+import { buildSendTimeParamsFromVariables, isDynamicHeaderMediaMapping } from '@/lib/flows/template-send-params'
 import { resolveFlowProductImageUrl } from '@/lib/flows/resolve-product-image'
 import { interpolateTemplateString } from '@/lib/flows/template-interpolate'
+import { isMediaHeaderType } from '@/lib/inbox/template-message-display'
+import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
 import { templateConfigHasQuickReplies } from './template-buttons'
 
 type AdminClient = SupabaseClient
@@ -212,6 +214,33 @@ export async function executeExtendedNode(
         )
         if (!messageParams.headerMediaUrl && productImageUrl) {
           messageParams.headerMediaUrl = productImageUrl
+        }
+
+        const lang = c.language ?? 'en_US'
+        const { data: templateRowRaw } = await db
+          .from('message_templates')
+          .select('*')
+          .eq('account_id', run.account_id)
+          .eq('name', c.template_name)
+          .eq('language', lang)
+          .maybeSingle()
+        const templateRow =
+          templateRowRaw && isMessageTemplate(templateRowRaw)
+            ? templateRowRaw
+            : null
+        const shopifyOrderContext =
+          typeof vars.order_number === 'string' && vars.order_number.trim() !== ''
+        if (isMediaHeaderType(templateRow?.header_type) && shopifyOrderContext) {
+          const headerMediaConfig = c.variables?.header_media
+          const expectsProductImage =
+            !headerMediaConfig?.trim() ||
+            isDynamicHeaderMediaMapping(headerMediaConfig)
+          if (expectsProductImage) {
+            messageParams.headerMediaRequired = true
+            if (!messageParams.headerMediaUrl && productImageUrl) {
+              messageParams.headerMediaUrl = productImageUrl
+            }
+          }
         }
         if (!messageParams.defaultUrlButtonSuffix) {
           const statusSuffix = vars.order_status_url_suffix

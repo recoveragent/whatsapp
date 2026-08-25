@@ -6,6 +6,7 @@ import {
   assertWalletCanSend,
   debitWalletForTemplateSend,
 } from '@/lib/wallet/billing'
+import { insertOutboundMessage } from '@/lib/whatsapp/persist-outbound-message'
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -210,7 +211,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     }
   }
 
-  const { error: msgErr } = await db.from('messages').insert({
+  await insertOutboundMessage(db, {
     conversation_id: input.conversationId,
     sender_type: 'bot',
     sender_id: input.userId,
@@ -221,11 +222,6 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     message_id: waMessageId,
     status: 'sent',
   })
-  if (msgErr) {
-    // Meta already has the message; record the DB error but don't pretend
-    // the send failed. The engine wraps this in a log line.
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
-  }
 
   if (input.kind === 'template') {
     await debitWalletForTemplateSend({
