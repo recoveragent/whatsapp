@@ -857,6 +857,14 @@ export function ContactSidebar({
                       </span>
                     </div>
                     <div className="mt-1.5 space-y-0.5 text-[11px] text-muted-foreground">
+                      {order.ordered_at && (
+                        <p>
+                          Received:{" "}
+                          <span className="text-foreground">
+                            {format(new Date(order.ordered_at), "MMM d, yyyy")}
+                          </span>
+                        </p>
+                      )}
                       <p>
                         Payment:{" "}
                         <span className="text-foreground">
