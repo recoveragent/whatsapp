@@ -4,7 +4,23 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
-import type { Contact, Deal, ContactNote, Tag, ShopifyOrder, InboxReminder } from "@/types";
+import type {
+  Contact,
+  Deal,
+  ContactNote,
+  Tag,
+  ShopifyOrder,
+  InboxReminder,
+  Pipeline,
+  PipelineStage,
+} from "@/types";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Phone,
   Mail,
@@ -42,9 +58,14 @@ export function ContactSidebar({
   contact,
   conversationId,
 }: ContactSidebarProps) {
-  const { accountId, isLeadGenBrand, isEcommerceBrand } = useAuth();
+  const { accountId, defaultCurrency, isLeadGenBrand, isEcommerceBrand } =
+    useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
+  const [stagesLoaded, setStagesLoaded] = useState(false);
+  const [savingStage, setSavingStage] = useState(false);
   const [notes, setNotes] = useState<ContactNote[]>([]);
   const [shopifyOrders, setShopifyOrders] = useState<ShopifyOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -101,6 +122,9 @@ export function ContactSidebar({
     if (!contact) return;
 
     const contactId = contact.id;
+    if (isLeadGenBrand) {
+      setStagesLoaded(false);
+    }
     const cachedOrders = shopifyOrdersCache.get(contactId);
     if (cachedOrders) {
       setShopifyOrders(cachedOrders);
@@ -123,7 +147,15 @@ export function ContactSidebar({
       : Promise.resolve([] as ShopifyOrder[]);
 
     // Deals/notes/tags and Shopify orders in parallel (orders used to wait)
-    const [dealsRes, notesRes, tagsRes, allTagsRes, orders] = await Promise.all([
+    const [
+      dealsRes,
+      notesRes,
+      tagsRes,
+      allTagsRes,
+      orders,
+      pipelinesRes,
+      stagesRes,
+    ] = await Promise.all([
       supabase
         .from("deals")
         .select("*, stage:pipeline_stages(*)")
@@ -140,9 +172,27 @@ export function ContactSidebar({
         .eq("contact_id", contactId),
       supabase.from("tags").select("*").order("name"),
       ordersPromise,
+      isLeadGenBrand
+        ? supabase.from("pipelines").select("*").order("name")
+        : Promise.resolve({ data: null }),
+      isLeadGenBrand
+        ? supabase
+            .from("pipeline_stages")
+            .select("*")
+            .order("position")
+        : Promise.resolve({ data: null }),
     ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
+    if (isLeadGenBrand) {
+      setPipelines((pipelinesRes.data as Pipeline[] | null) ?? []);
+      setPipelineStages((stagesRes.data as PipelineStage[] | null) ?? []);
+      setStagesLoaded(true);
+    } else {
+      setPipelines([]);
+      setPipelineStages([]);
+      setStagesLoaded(false);
+    }
     if (notesRes.data) setNotes(notesRes.data);
     if (allTagsRes.data) setAllTags(allTagsRes.data);
     if (tagsRes.data) {
@@ -162,7 +212,7 @@ export function ContactSidebar({
       setShopifyOrders(orders);
       setOrdersLoading(false);
     }
-  }, [contact, isEcommerceBrand]);
+  }, [contact, isEcommerceBrand, isLeadGenBrand]);
 
   const fetchReminders = useCallback(async () => {
     if (!conversationId) {
@@ -307,6 +357,107 @@ export function ContactSidebar({
     [contact, tags, accountId, allTags],
   );
 
+  const handleStageChange = useCallback(
+    async (newStageId: string) => {
+      if (!contact || !accountId || !newStageId) return;
+
+      const stage = pipelineStages.find((s) => s.id === newStageId);
+      if (!stage) return;
+
+      const primaryDeal =
+        deals.find((d) => d.status === "open" || !d.status) ?? deals[0] ?? null;
+
+      if (primaryDeal?.stage_id === newStageId) return;
+
+      setSavingStage(true);
+      const supabase = createClient();
+
+      if (primaryDeal) {
+        setDeals((prev) =>
+          prev.map((d) =>
+            d.id === primaryDeal.id
+              ? { ...d, stage_id: newStageId, stage }
+              : d,
+          ),
+        );
+
+        const { error } = await supabase
+          .from("deals")
+          .update({ stage_id: newStageId })
+          .eq("id", primaryDeal.id);
+
+        if (error) {
+          toast.error("Failed to update lead stage");
+          void fetchContactData();
+        } else {
+          void fetch("/api/crm/triggers", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              trigger_type: "deal_stage_changed",
+              contact_id: contact.id,
+              stage_id: newStageId,
+            }),
+          });
+        }
+      } else {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const user = session?.user;
+        if (!user) {
+          toast.error("Not signed in");
+          setSavingStage(false);
+          return;
+        }
+
+        const title = contact.name?.trim() || contact.phone;
+        const { data, error } = await supabase
+          .from("deals")
+          .insert({
+            user_id: user.id,
+            account_id: accountId,
+            pipeline_id: stage.pipeline_id,
+            stage_id: newStageId,
+            contact_id: contact.id,
+            conversation_id: conversationId ?? undefined,
+            title,
+            value: 0,
+            currency: defaultCurrency,
+            status: "open",
+          })
+          .select("*, stage:pipeline_stages(*)")
+          .single();
+
+        if (error) {
+          toast.error("Failed to create deal");
+        } else if (data) {
+          setDeals((prev) => [data as Deal, ...prev]);
+          void fetch("/api/crm/triggers", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              trigger_type: "deal_stage_changed",
+              contact_id: contact.id,
+              stage_id: newStageId,
+            }),
+          });
+        }
+      }
+
+      setSavingStage(false);
+    },
+    [
+      contact,
+      accountId,
+      pipelineStages,
+      deals,
+      conversationId,
+      defaultCurrency,
+      fetchContactData,
+    ],
+  );
+
   const handleAddNote = useCallback(async () => {
     if (!contact || !newNote.trim()) return;
     if (!accountId) return;
@@ -346,6 +497,13 @@ export function ContactSidebar({
 
   const displayName = contact.name || contact.phone;
   const initials = displayName.charAt(0).toUpperCase();
+  const primaryDeal =
+    deals.find((d) => d.status === "open" || !d.status) ?? deals[0] ?? null;
+  const activePipelineId =
+    primaryDeal?.pipeline_id ?? pipelines[0]?.id ?? null;
+  const stagesForPipeline = activePipelineId
+    ? pipelineStages.filter((s) => s.pipeline_id === activePipelineId)
+    : [];
 
   return (
     <div className="flex h-full min-h-0 w-70 flex-col overflow-hidden border-l border-border bg-card">
@@ -724,36 +882,94 @@ export function ContactSidebar({
               Active Deals
             </div>
             <div className="mt-2 space-y-2">
-              {deals.length === 0 ? (
-                <p className="px-1 text-xs text-muted-foreground">No deals</p>
+              {!stagesLoaded ? (
+                <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Loading stages…
+                </div>
+              ) : stagesForPipeline.length === 0 ? (
+                <p className="px-1 text-xs text-muted-foreground">
+                  No pipeline stages yet. Create one under Pipelines.
+                </p>
               ) : (
-                deals.map((deal) => (
-                  <div
-                    key={deal.id}
-                    className="rounded-lg bg-muted px-3 py-2"
+                <div className="px-1">
+                  <label className="mb-1 block text-[11px] text-muted-foreground">
+                    Lead stage
+                  </label>
+                  <Select
+                    value={primaryDeal?.stage_id || undefined}
+                    onValueChange={(value) => {
+                      if (value) void handleStageChange(value);
+                    }}
+                    disabled={savingStage}
                   >
-                    <p className="text-sm font-medium text-foreground">
-                      {deal.title}
-                    </p>
-                    <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>
-                        {deal.currency ?? "$"}
-                        {deal.value.toLocaleString()}
-                      </span>
-                      {deal.stage && (
-                        <span
-                          className="rounded-full px-1.5 py-0.5 text-[10px]"
-                          style={{
-                            backgroundColor: `${deal.stage.color}20`,
-                            color: deal.stage.color,
-                          }}
-                        >
-                          {deal.stage.name}
+                    <SelectTrigger
+                      size="sm"
+                      className="h-8 w-full bg-muted text-xs"
+                    >
+                      {savingStage ? (
+                        <span className="flex items-center gap-1.5 text-muted-foreground">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Saving…
                         </span>
+                      ) : (
+                        <SelectValue placeholder="Select lead stage…" />
                       )}
+                    </SelectTrigger>
+                    <SelectContent>
+                      {stagesForPipeline.map((stage) => (
+                        <SelectItem key={stage.id} value={stage.id}>
+                          <span
+                            className="inline-block h-2 w-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: stage.color }}
+                          />
+                          {stage.name}
+                        </SelectItem>
+                      ))}
+                      {primaryDeal?.stage_id &&
+                        !stagesForPipeline.some(
+                          (s) => s.id === primaryDeal.stage_id,
+                        ) &&
+                        primaryDeal.stage && (
+                          <SelectItem value={primaryDeal.stage_id}>
+                            {primaryDeal.stage.name}
+                          </SelectItem>
+                        )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {deals.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  {deals.map((deal) => (
+                    <div
+                      key={deal.id}
+                      className="rounded-lg bg-muted px-3 py-2"
+                    >
+                      <p className="text-sm font-medium text-foreground">
+                        {deal.title}
+                      </p>
+                      <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                        <span>
+                          {deal.currency ?? "$"}
+                          {deal.value.toLocaleString()}
+                        </span>
+                        {deal.stage && (
+                          <span
+                            className="rounded-full px-1.5 py-0.5 text-[10px]"
+                            style={{
+                              backgroundColor: `${deal.stage.color}20`,
+                              color: deal.stage.color,
+                            }}
+                          >
+                            {deal.stage.name}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+                </div>
               )}
             </div>
           </div>
