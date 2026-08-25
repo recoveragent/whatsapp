@@ -27,6 +27,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { ReminderSnoozeControls } from "@/components/inbox/reminder-snooze-controls";
+import { ScheduleReminderDialog } from "@/components/inbox/schedule-reminder-dialog";
 import { FormSubmissionFields } from "@/components/inbox/form-submission-fields";
 
 interface ContactSidebarProps {
@@ -56,6 +57,7 @@ export function ContactSidebar({
   const [remindersLoading, setRemindersLoading] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [snoozeId, setSnoozeId] = useState<string | null>(null);
+  const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
   const [formSubmissions, setFormSubmissions] = useState<
     Array<{ id: string; created_at: string; values: Record<string, string> }>
   >([]);
@@ -275,11 +277,11 @@ export function ContactSidebar({
         const { data, error } = await supabase
           .from("contact_tags")
           .insert({ contact_id: contact.id, tag_id: tagId })
-          .select("id, tag_id, tags(*)")
+          .select("id")
           .single();
 
-        if (!error && data?.tags) {
-          const tag = data.tags as Tag;
+        const tag = allTags.find((t) => t.id === tagId);
+        if (!error && data && tag) {
           setTags((prev) => [
             ...prev,
             { ...tag, contact_tag_id: data.id as string },
@@ -302,7 +304,7 @@ export function ContactSidebar({
 
       setSavingTags(false);
     },
-    [contact, tags, accountId],
+    [contact, tags, accountId, allTags],
   );
 
   const handleAddNote = useCallback(async () => {
@@ -461,9 +463,20 @@ export function ContactSidebar({
           {/* Follow-up reminders */}
           {conversationId ? (
             <div className="mb-4">
-              <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                <Bell className="h-3 w-3" />
-                Reminders
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  <Bell className="h-3 w-3" />
+                  Reminders
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReminderDialogOpen(true)}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  aria-label="Schedule reminder"
+                  title="Schedule reminder"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
               </div>
               <div className="mt-2 space-y-2">
                 {remindersLoading ? (
@@ -547,6 +560,15 @@ export function ContactSidebar({
                 )}
               </div>
               <div className="my-4 border-t border-border" />
+              <ScheduleReminderDialog
+                open={reminderDialogOpen}
+                onOpenChange={setReminderDialogOpen}
+                conversationId={conversationId}
+                contactLabel={
+                  contact?.name?.trim() || contact?.phone || undefined
+                }
+                onScheduled={() => void fetchReminders()}
+              />
             </div>
           ) : null}
 
