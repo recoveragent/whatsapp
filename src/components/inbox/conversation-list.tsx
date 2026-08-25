@@ -118,6 +118,16 @@ export function ConversationList({
     // up on any events sent while the WS was disconnected or throttled.
   }, [resyncToken]);
 
+  const matchesSearch = useCallback(
+    (c: Conversation, q: string) => {
+      const name = c.contact?.name?.toLowerCase() ?? "";
+      const phone = c.contact?.phone?.toLowerCase() ?? "";
+      const lastMsg = c.last_message_text?.toLowerCase() ?? "";
+      return name.includes(q) || phone.includes(q) || lastMsg.includes(q);
+    },
+    []
+  );
+
   const filtered = useMemo(() => {
     let result = conversations.filter(shouldShowInInboxList);
 
@@ -129,16 +139,20 @@ export function ConversationList({
 
     if (search.trim()) {
       const q = search.toLowerCase();
-      result = result.filter((c) => {
-        const name = c.contact?.name?.toLowerCase() ?? "";
-        const phone = c.contact?.phone?.toLowerCase() ?? "";
-        const lastMsg = c.last_message_text?.toLowerCase() ?? "";
-        return name.includes(q) || phone.includes(q) || lastMsg.includes(q);
-      });
+      result = result.filter((c) => matchesSearch(c, q));
     }
 
     return result;
-  }, [conversations, filter, search]);
+  }, [conversations, filter, search, matchesSearch]);
+
+  const hasSearchMatchesInAll = useMemo(() => {
+    if (!search.trim() || filter === "all") return false;
+
+    const q = search.toLowerCase();
+    return conversations
+      .filter(shouldShowInInboxList)
+      .some((c) => matchesSearch(c, q));
+  }, [conversations, filter, search, matchesSearch]);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -153,6 +167,10 @@ export function ConversationList({
     },
     [onSelect]
   );
+
+  const handleSeeAllChats = useCallback(() => {
+    setFilter("all");
+  }, []);
 
   const activeFilter = FILTER_OPTIONS.find((o) => o.value === filter);
 
@@ -222,6 +240,16 @@ export function ConversationList({
         ) : filtered.length === 0 ? (
           <div className="px-4 py-12 text-center">
             <p className="text-sm text-muted-foreground">No conversations found</p>
+            {hasSearchMatchesInAll && (
+              <Button
+                variant="link"
+                size="sm"
+                onClick={handleSeeAllChats}
+                className="mt-2 text-primary"
+              >
+                See all chats
+              </Button>
+            )}
           </div>
         ) : (
           <div className="flex flex-col">
