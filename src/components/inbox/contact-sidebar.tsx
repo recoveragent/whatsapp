@@ -48,6 +48,8 @@ export function ContactSidebar({
   const [shopifyOrders, setShopifyOrders] = useState<ShopifyOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [savingTags, setSavingTags] = useState(false);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
   const [reminders, setReminders] = useState<InboxReminder[]>([]);
@@ -119,7 +121,7 @@ export function ContactSidebar({
       : Promise.resolve([] as ShopifyOrder[]);
 
     // Deals/notes/tags and Shopify orders in parallel (orders used to wait)
-    const [dealsRes, notesRes, tagsRes, orders] = await Promise.all([
+    const [dealsRes, notesRes, tagsRes, allTagsRes, orders] = await Promise.all([
       supabase
         .from("deals")
         .select("*, stage:pipeline_stages(*)")
@@ -134,11 +136,13 @@ export function ContactSidebar({
         .from("contact_tags")
         .select("id, tag_id, tags(*)")
         .eq("contact_id", contactId),
+      supabase.from("tags").select("*").order("name"),
       ordersPromise,
     ]);
 
     if (dealsRes.data) setDeals(dealsRes.data);
     if (notesRes.data) setNotes(notesRes.data);
+    if (allTagsRes.data) setAllTags(allTagsRes.data);
     if (tagsRes.data) {
       const mapped = tagsRes.data
         .filter((ct: Record<string, unknown>) => ct.tags)
@@ -147,6 +151,8 @@ export function ContactSidebar({
           contact_tag_id: ct.id as string,
         }));
       setTags(mapped);
+    } else {
+      setTags([]);
     }
 
     if (isEcommerceBrand) {
@@ -233,6 +239,71 @@ export function ContactSidebar({
     // React Compiler's inference agrees with the manual dep list —
     // fixes the `preserve-manual-memoization` lint error.
   }, [contact]);
+
+  const handleToggleTag = useCallback(
+    async (tagId: string) => {
+      if (!contact) return;
+      setSavingTags(true);
+
+      const supabase = createClient();
+      const applied = tags.some((t) => t.id === tagId);
+
+      if (applied) {
+        const { error } = await supabase
+          .from("contact_tags")
+          .delete()
+          .eq("contact_id", contact.id)
+          .eq("tag_id", tagId);
+
+        if (!error) {
+          setTags((prev) => prev.filter((t) => t.id !== tagId));
+          if (accountId) {
+            void fetch("/api/crm/triggers", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                trigger_type: "tag_removed",
+                contact_id: contact.id,
+                tag_id: tagId,
+              }),
+            });
+          }
+        } else {
+          toast.error("Failed to remove tag");
+        }
+      } else {
+        const { data, error } = await supabase
+          .from("contact_tags")
+          .insert({ contact_id: contact.id, tag_id: tagId })
+          .select("id, tag_id, tags(*)")
+          .single();
+
+        if (!error && data?.tags) {
+          const tag = data.tags as Tag;
+          setTags((prev) => [
+            ...prev,
+            { ...tag, contact_tag_id: data.id as string },
+          ]);
+          if (accountId) {
+            void fetch("/api/crm/triggers", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                trigger_type: "tag_added",
+                contact_id: contact.id,
+                tag_id: tagId,
+              }),
+            });
+          }
+        } else {
+          toast.error("Failed to add tag");
+        }
+      }
+
+      setSavingTags(false);
+    },
+    [contact, tags, accountId],
+  );
 
   const handleAddNote = useCallback(async () => {
     if (!contact || !newNote.trim()) return;
@@ -486,21 +557,35 @@ export function ContactSidebar({
               Tags
             </div>
             <div className="mt-2 flex flex-wrap gap-1">
-              {tags.length === 0 ? (
-                <p className="px-1 text-xs text-muted-foreground">No tags</p>
+              {allTags.length === 0 ? (
+                <p className="px-1 text-xs text-muted-foreground">
+                  No tags yet. Create tags in Settings → Fields &amp; tags.
+                </p>
               ) : (
-                tags.map((tag) => (
-                  <span
-                    key={tag.contact_tag_id}
-                    className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                    style={{
-                      backgroundColor: `${tag.color}20`,
-                      color: tag.color,
-                    }}
-                  >
-                    {tag.name}
-                  </span>
-                ))
+                allTags.map((tag) => {
+                  const selected = tags.some((t) => t.id === tag.id);
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => handleToggleTag(tag.id)}
+                      disabled={savingTags}
+                      className={cn(
+                        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium transition-all",
+                        selected
+                          ? "ring-1 ring-primary ring-offset-1 ring-offset-background"
+                          : "opacity-50 hover:opacity-80",
+                      )}
+                      style={{
+                        backgroundColor: `${tag.color}20`,
+                        color: tag.color,
+                      }}
+                    >
+                      {selected && <Check className="mr-0.5 h-2.5 w-2.5" />}
+                      {tag.name}
+                    </button>
+                  );
+                })
               )}
             </div>
           </div>
