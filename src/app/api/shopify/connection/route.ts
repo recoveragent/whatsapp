@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getCurrentAccount, requireRole, toErrorResponse } from '@/lib/auth/account';
+import { assertEcommercePlatform } from '@/lib/ecommerce/assert-platform';
 import { fetchShopInfo } from '@/lib/shopify/admin-api';
 import { getShopifyRedirectUri, isShopifyOAuthConfigured } from '@/lib/shopify/config';
 import { decrypt } from '@/lib/whatsapp/encryption';
@@ -12,6 +13,11 @@ export async function GET(request: Request) {
   try {
     const ctx = await getCurrentAccount();
     const redirectUri = getShopifyRedirectUri(request);
+
+    const platform = await assertEcommercePlatform(ctx.supabase, ctx.accountId, 'shopify');
+    if (!platform.ok) {
+      return NextResponse.json({ error: platform.error }, { status: platform.status });
+    }
 
     const { data: config, error } = await ctx.supabase
       .from('shopify_config')
@@ -87,6 +93,11 @@ export async function GET(request: Request) {
 export async function DELETE() {
   try {
     const ctx = await requireRole('admin');
+
+    const platform = await assertEcommercePlatform(ctx.supabase, ctx.accountId, 'shopify');
+    if (!platform.ok) {
+      return NextResponse.json({ error: platform.error }, { status: platform.status });
+    }
 
     const { error } = await ctx.supabase
       .from('shopify_config')

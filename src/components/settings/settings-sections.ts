@@ -10,6 +10,7 @@ import {
   PlugZap,
   ShoppingBag,
   Shield,
+  Store,
   Tags,
   User,
   UsersRound,
@@ -17,6 +18,10 @@ import {
 } from 'lucide-react';
 import type { BrandCategory } from '@/lib/auth/brand-category';
 import { isEcommerceBrand, isLeadGenBrand } from '@/lib/auth/brand-category';
+import {
+  DEFAULT_ECOMMERCE_PLATFORM,
+  type EcommercePlatform,
+} from '@/lib/ecommerce/platform';
 
 /**
  * Settings information architecture for the redesigned page.
@@ -33,6 +38,7 @@ export const SETTINGS_SECTIONS = [
   'appearance',
   'whatsapp',
   'shopify',
+  'woocommerce',
   'google_sheets',
   'cadences',
   'templates',
@@ -62,6 +68,7 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   appearance: { id: 'appearance', label: 'Appearance', icon: Palette, group: 'account' },
   whatsapp: { id: 'whatsapp', label: 'WhatsApp number', icon: PlugZap, group: 'workspace' },
   shopify: { id: 'shopify', label: 'Shopify', icon: ShoppingBag, group: 'workspace' },
+  woocommerce: { id: 'woocommerce', label: 'WooCommerce', icon: Store, group: 'workspace' },
   google_sheets: {
     id: 'google_sheets',
     label: 'Google Sheets',
@@ -108,17 +115,24 @@ export function resolveSection(raw: string | null): SettingsSection {
 export function isSettingsSectionVisible(
   section: SettingsSection,
   category: BrandCategory,
+  ecommercePlatform: EcommercePlatform | null = DEFAULT_ECOMMERCE_PLATFORM,
 ): boolean {
   if (section === 'deals' || section === 'google_sheets' || section === 'cadences') {
     return isLeadGenBrand(category);
   }
-  if (section === 'shopify') return isEcommerceBrand(category);
+  if (section === 'shopify') {
+    return isEcommerceBrand(category) && (ecommercePlatform ?? DEFAULT_ECOMMERCE_PLATFORM) === 'shopify';
+  }
+  if (section === 'woocommerce') {
+    return isEcommerceBrand(category) && ecommercePlatform === 'woocommerce';
+  }
   return true;
 }
 
 export function filterSettingsSections(
   sections: readonly SettingsSection[],
   category: BrandCategory,
+  ecommercePlatform: EcommercePlatform | null = DEFAULT_ECOMMERCE_PLATFORM,
 ): SettingsSection[] {
-  return sections.filter((s) => isSettingsSectionVisible(s, category));
+  return sections.filter((s) => isSettingsSectionVisible(s, category, ecommercePlatform));
 }

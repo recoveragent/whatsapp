@@ -25,6 +25,10 @@ import {
   isLeadGenBrand,
   type BrandCategory,
 } from "@/lib/auth/brand-category";
+import {
+  resolveEcommercePlatform,
+  type EcommercePlatform,
+} from "@/lib/ecommerce/platform";
 import { fetchAccountWithCategory } from "@/lib/auth/brand-accounts";
 import { SUPER_ADMIN_ACTING_ROLE } from "@/lib/auth/organization";
 
@@ -51,6 +55,7 @@ interface AccountSummary {
    *  DB (migration 021); narrowed to DEFAULT_CURRENCY when absent. */
   default_currency: string;
   brand_category: BrandCategory;
+  ecommerce_platform: EcommercePlatform | null;
 }
 
 interface AuthContextValue {
@@ -98,10 +103,16 @@ interface AuthContextValue {
   defaultCurrency: string;
   /** Brand vertical — set by super admin at brand creation. */
   brandCategory: BrandCategory;
+  /** Ecommerce platform for ecommerce brands (Shopify or WooCommerce). */
+  ecommercePlatform: EcommercePlatform | null;
   /** True when pipelines / deals features apply. */
   isLeadGenBrand: boolean;
-  /** True when Shopify / order features apply. */
+  /** True when store / order features apply. */
   isEcommerceBrand: boolean;
+  /** True when this brand uses Shopify. */
+  isShopifyBrand: boolean;
+  /** True when this brand uses WooCommerce. */
+  isWooCommerceBrand: boolean;
   /** True if `accountRole === 'owner'`. */
   isOwner: boolean;
   /** True if `accountRole === 'admin'` (does NOT include owner — use canManageMembers for "admin or above"). */
@@ -228,6 +239,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 name: acting.name,
                 default_currency: acting.default_currency ?? DEFAULT_CURRENCY,
                 brand_category: acting.brand_category,
+                ecommerce_platform: acting.ecommerce_platform,
               };
               role = SUPER_ADMIN_ACTING_ROLE;
               resolvedAccountId = acting.id;
@@ -248,6 +260,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               name: account.name,
               default_currency: account.default_currency ?? DEFAULT_CURRENCY,
               brand_category: account.brand_category,
+              ecommerce_platform: account.ecommerce_platform,
             };
           }
         } else {
@@ -389,12 +402,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const derived = useMemo(() => {
     const role = effectiveRole;
     const brandCategory = account?.brand_category ?? DEFAULT_BRAND_CATEGORY;
+    const ecommercePlatform = resolveEcommercePlatform(
+      brandCategory,
+      account?.ecommerce_platform,
+    );
     return {
       accountRole: role,
       accountId: effectiveAccountId,
       brandCategory,
+      ecommercePlatform,
       isLeadGenBrand: isLeadGenBrand(brandCategory),
       isEcommerceBrand: isEcommerceBrand(brandCategory),
+      isShopifyBrand: ecommercePlatform === 'shopify',
+      isWooCommerceBrand: ecommercePlatform === 'woocommerce',
       isOwner: role === "owner",
       isAdmin: role === "admin",
       isAgent: role === "agent",
@@ -403,7 +423,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canEditSettings: role ? canEditSettingsFor(role) : false,
       canSendMessages: role ? canSendMessagesFor(role) : false,
     };
-  }, [effectiveRole, effectiveAccountId, account?.brand_category]);
+  }, [effectiveRole, effectiveAccountId, account?.brand_category, account?.ecommerce_platform]);
 
   return (
     <AuthContext.Provider
@@ -452,8 +472,11 @@ export function useAuth(): AuthContextValue {
       account: null,
       defaultCurrency: DEFAULT_CURRENCY,
       brandCategory: DEFAULT_BRAND_CATEGORY,
+      ecommercePlatform: null,
       isLeadGenBrand: true,
       isEcommerceBrand: false,
+      isShopifyBrand: false,
+      isWooCommerceBrand: false,
       accountId: null,
       accountRole: null,
       isOwner: false,

@@ -220,6 +220,29 @@ export interface ShopifyOrder {
   updated_at: string;
 }
 
+export interface WooCommerceOrder {
+  id: string;
+  account_id: string;
+  contact_id?: string | null;
+  customer_phone?: string | null;
+  woocommerce_order_id: string;
+  order_number: string;
+  total_price?: string | null;
+  currency?: string | null;
+  payment_status?: string | null;
+  payment_gateway?: string | null;
+  fulfillment_status?: string | null;
+  order_status_url?: string | null;
+  admin_url?: string | null;
+  tags: string[];
+  ordered_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Shared inbox order shape for Shopify and WooCommerce sidebars. */
+export type StoreOrder = ShopifyOrder | WooCommerceOrder;
+
 export type ConversationStatus = 'open' | 'pending' | 'closed' | 'followup';
 
 export interface Conversation {

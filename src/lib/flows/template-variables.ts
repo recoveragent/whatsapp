@@ -5,6 +5,7 @@ import {
 } from '@/lib/automations/webhook-payload'
 import {
   isShopifyOrderFlowTrigger,
+  isWooCommerceOrderFlowTrigger,
   type FlowTriggerType,
 } from './trigger-types'
 
@@ -29,6 +30,17 @@ const CONTACT_OPTIONS: TemplateVariableOption[] = [
   { label: 'Phone number', token: '{{ vars.phone }}', type: 'text' },
   { label: 'Email', token: '{{ vars.email }}', type: 'text' },
   { label: 'Company', token: '{{ vars.company }}', type: 'text' },
+]
+
+const WOOCOMMERCE_OPTIONS: TemplateVariableOption[] = [
+  { label: 'Customer name', token: '{{ vars.customer_name }}', type: 'text' },
+  { label: 'Order number', token: '{{ vars.order_number }}', type: 'text' },
+  { label: 'Order total', token: '{{ vars.order_total }}', type: 'text' },
+  { label: 'Order items', token: '{{ vars.order_items }}', type: 'text' },
+  { label: 'Order status', token: '{{ vars.payment_status }}', type: 'text' },
+  { label: 'Fulfillment status', token: '{{ vars.fulfillment_status }}', type: 'text' },
+  { label: 'Order status URL', token: '{{ vars.order_status_url }}', type: 'text' },
+  { label: 'Store name', token: '{{ vars.store_name }}', type: 'text' },
 ]
 
 const SHOPIFY_OPTIONS: TemplateVariableOption[] = [
@@ -161,6 +173,9 @@ export function templateVariableGroupsForFlow(
   if (triggerType && isShopifyOrderFlowTrigger(triggerType)) {
     triggerOptions.push(...SHOPIFY_OPTIONS)
   }
+  if (triggerType && isWooCommerceOrderFlowTrigger(triggerType)) {
+    triggerOptions.push(...WOOCOMMERCE_OPTIONS)
+  }
   if (
     triggerType === 'new_message_received' ||
     triggerType === 'keyword' ||
@@ -203,6 +218,9 @@ export function templateVariableGroupsForAutomation(
   const triggerOptions: TemplateVariableOption[] = []
   if (triggerType?.startsWith('shopify_')) {
     triggerOptions.push(...SHOPIFY_OPTIONS)
+  }
+  if (triggerType?.startsWith('woocommerce_')) {
+    triggerOptions.push(...WOOCOMMERCE_OPTIONS)
   }
   if (triggerType === 'webhook_received') {
     triggerOptions.push(...webhookTemplateVariableOptions(triggerConfig))

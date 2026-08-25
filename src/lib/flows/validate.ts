@@ -378,6 +378,35 @@ function validateTrigger(
       }
     }
   }
+  if (
+    trigger_type === "woocommerce_order_placed" ||
+    trigger_type === "woocommerce_order_updated" ||
+    trigger_type === "woocommerce_order_completed" ||
+    trigger_type === "woocommerce_order_cancelled"
+  ) {
+    const ps = trigger_config.payment_status as string | undefined;
+    if (
+      ps &&
+      ps !== "any" &&
+      ![
+        "pending",
+        "processing",
+        "on-hold",
+        "completed",
+        "cancelled",
+        "refunded",
+        "failed",
+      ].includes(ps)
+    ) {
+      issues.push({
+        severity: "error",
+        scope: "trigger",
+        field: "trigger_config.payment_status",
+        message:
+          "Order status must be any, pending, processing, on-hold, completed, cancelled, refunded, or failed.",
+      });
+    }
+  }
   if (trigger_type === "google_sheet_row") {
     const sources = Array.isArray(trigger_config.sources)
       ? (trigger_config.sources as unknown[])

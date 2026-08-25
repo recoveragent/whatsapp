@@ -35,6 +35,11 @@ interface ShopifyStatus {
   connected: boolean;
 }
 
+interface WooCommerceStatus {
+  configured: boolean;
+  connected: boolean;
+}
+
 interface GoogleSheetsStatus {
   configured: boolean;
   connected: boolean;
@@ -45,7 +50,7 @@ export function SettingsOverview({
 }: {
   onSelect: (section: SettingsSection) => void;
 }) {
-  const { user, profile, accountId, accountRole, defaultCurrency, canManageMembers, brandCategory, isLeadGenBrand } =
+  const { user, profile, accountId, accountRole, defaultCurrency, canManageMembers, brandCategory, ecommercePlatform, isLeadGenBrand, isShopifyBrand, isWooCommerceBrand } =
     useAuth();
   const { mode, theme } = useTheme();
 
@@ -59,6 +64,8 @@ export function SettingsOverview({
   const [whatsappLoading, setWhatsappLoading] = useState(true);
   const [shopify, setShopify] = useState<ShopifyStatus | null>(null);
   const [shopifyLoading, setShopifyLoading] = useState(true);
+  const [woocommerce, setWooCommerce] = useState<WooCommerceStatus | null>(null);
+  const [woocommerceLoading, setWooCommerceLoading] = useState(true);
   const [googleSheets, setGoogleSheets] = useState<GoogleSheetsStatus | null>(null);
   const [googleSheetsLoading, setGoogleSheetsLoading] = useState(true);
 
@@ -141,6 +148,11 @@ export function SettingsOverview({
     })();
 
     (async () => {
+      if (!isShopifyBrand) {
+        setShopify({ configured: false, connected: false });
+        setShopifyLoading(false);
+        return;
+      }
       setShopifyLoading(true);
       const health = await fetch('/api/shopify/connection', {
         cache: 'no-store',
@@ -151,6 +163,24 @@ export function SettingsOverview({
         connected: !!health?.connected,
       });
       setShopifyLoading(false);
+    })();
+
+    (async () => {
+      if (!isWooCommerceBrand) {
+        setWooCommerce({ configured: false, connected: false });
+        setWooCommerceLoading(false);
+        return;
+      }
+      setWooCommerceLoading(true);
+      const health = await fetch('/api/woocommerce/connection', {
+        cache: 'no-store',
+      }).then((r) => r.json());
+      if (cancelled) return;
+      setWooCommerce({
+        configured: !!health?.configured,
+        connected: !!health?.connected,
+      });
+      setWooCommerceLoading(false);
     })();
 
     (async () => {
@@ -174,7 +204,7 @@ export function SettingsOverview({
     return () => {
       cancelled = true;
     };
-  }, [user, accountId, canManageMembers, isLeadGenBrand]);
+  }, [user, accountId, canManageMembers, isLeadGenBrand, isShopifyBrand, isWooCommerceBrand]);
 
   const displayName = profile?.full_name || profile?.email || 'Your account';
   const initial = (profile?.full_name || profile?.email || 'U').charAt(0).toUpperCase();
@@ -214,6 +244,21 @@ export function SettingsOverview({
       subtitle: !shopify?.configured ? (
         'Not connected yet'
       ) : shopify.connected ? (
+        <>
+          <StatusDot tone="ok" /> Connected
+        </>
+      ) : (
+        <>
+          <StatusDot tone="muted" /> Reconnect store
+        </>
+      ),
+    },
+    {
+      section: 'woocommerce',
+      loading: woocommerceLoading,
+      subtitle: !woocommerce?.configured ? (
+        'Not connected yet'
+      ) : woocommerce.connected ? (
         <>
           <StatusDot tone="ok" /> Connected
         </>
@@ -291,7 +336,7 @@ export function SettingsOverview({
     },
   ];
   const tiles = allTiles.filter((tile) =>
-    isSettingsSectionVisible(tile.section, brandCategory),
+    isSettingsSectionVisible(tile.section, brandCategory, ecommercePlatform),
   );
 
   return (

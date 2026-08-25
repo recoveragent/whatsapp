@@ -47,9 +47,13 @@ export function SettingsRail({
   onSelect?: (section: SettingsSection) => void;
   hints?: Partial<Record<SettingsSection, ReactNode>>;
 }) {
-  const { brandCategory } = useAuth();
+  const { brandCategory, ecommercePlatform } = useAuth();
   const searchParams = useSearchParams();
-  const visibleSections = filterSettingsSections(SETTINGS_SECTIONS, brandCategory);
+  const visibleSections = filterSettingsSections(
+    SETTINGS_SECTIONS,
+    brandCategory,
+    ecommercePlatform,
+  );
   const activeRef = useRef<HTMLAnchorElement>(null);
 
   // When horizontal (mobile), keep the active chip in view. On desktop

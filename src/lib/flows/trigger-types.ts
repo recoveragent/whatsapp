@@ -1,4 +1,8 @@
-import { isLeadGenBrand, type BrandCategory } from '@/lib/auth/brand-category'
+import { isEcommerceBrand, isLeadGenBrand, type BrandCategory } from '@/lib/auth/brand-category'
+import {
+  resolveEcommercePlatform,
+  type EcommercePlatform,
+} from '@/lib/ecommerce/platform'
 
 /**
  * Flow trigger types — parity with automations where applicable.
@@ -15,6 +19,10 @@ export const FLOW_TRIGGER_TYPES = [
   'shopify_order_fulfilled',
   'shopify_order_cancelled',
   'shopify_order_partially_fulfilled',
+  'woocommerce_order_placed',
+  'woocommerce_order_updated',
+  'woocommerce_order_completed',
+  'woocommerce_order_cancelled',
   'tag_added',
   'conversation_assigned',
   'time_based',
@@ -31,6 +39,10 @@ export const EXTERNAL_FLOW_TRIGGERS: FlowTriggerType[] = [
   'shopify_order_fulfilled',
   'shopify_order_cancelled',
   'shopify_order_partially_fulfilled',
+  'woocommerce_order_placed',
+  'woocommerce_order_updated',
+  'woocommerce_order_completed',
+  'woocommerce_order_cancelled',
   'tag_added',
   'conversation_assigned',
   'time_based',
@@ -48,6 +60,10 @@ export const FLOW_TRIGGER_LABELS: Record<FlowTriggerType, string> = {
   shopify_order_fulfilled: 'Shopify: order fulfilled',
   shopify_order_cancelled: 'Shopify: order cancelled',
   shopify_order_partially_fulfilled: 'Shopify: order partially fulfilled',
+  woocommerce_order_placed: 'WooCommerce: order placed',
+  woocommerce_order_updated: 'WooCommerce: order updated',
+  woocommerce_order_completed: 'WooCommerce: order completed',
+  woocommerce_order_cancelled: 'WooCommerce: order cancelled',
   tag_added: 'Tag added to contact',
   conversation_assigned: 'Conversation assigned',
   time_based: 'Time-based schedule',
@@ -62,10 +78,23 @@ export function isExternalFlowTrigger(t: string): t is FlowTriggerType {
 export function flowTriggersForBrand(
   category: BrandCategory | null | undefined,
   current?: FlowTriggerType,
+  ecommercePlatform?: EcommercePlatform | null,
 ): FlowTriggerType[] {
+  const platform = resolveEcommercePlatform(category, ecommercePlatform)
   return FLOW_TRIGGER_TYPES.filter((t) => {
     if (t === 'google_sheet_row') {
       return isLeadGenBrand(category) || current === 'google_sheet_row'
+    }
+    if (t.startsWith('shopify_')) {
+      return (
+        (isEcommerceBrand(category) && platform === 'shopify') || current === t
+      )
+    }
+    if (t.startsWith('woocommerce_')) {
+      return (
+        (isEcommerceBrand(category) && platform === 'woocommerce') ||
+        current === t
+      )
     }
     return true
   })
@@ -319,6 +348,76 @@ export function shopifyTopicToFlowTrigger(
         return 'shopify_order_partially_fulfilled'
       }
       return 'shopify_order_fulfilled'
+    default:
+      return null
+  }
+}
+
+/** WooCommerce order webhook triggers that support order-status filtering. */
+export const WOOCOMMERCE_ORDER_FLOW_TRIGGERS = [
+  'woocommerce_order_placed',
+  'woocommerce_order_updated',
+  'woocommerce_order_completed',
+  'woocommerce_order_cancelled',
+] as const satisfies readonly FlowTriggerType[]
+
+export type WooCommerceOrderFlowTrigger =
+  (typeof WOOCOMMERCE_ORDER_FLOW_TRIGGERS)[number]
+
+export const WOOCOMMERCE_ORDER_STATUSES = [
+  'any',
+  'pending',
+  'processing',
+  'on-hold',
+  'completed',
+  'cancelled',
+  'refunded',
+  'failed',
+] as const
+
+export type WooCommerceOrderStatus = (typeof WOOCOMMERCE_ORDER_STATUSES)[number]
+
+export const WOOCOMMERCE_ORDER_STATUS_LABELS: Record<WooCommerceOrderStatus, string> = {
+  any: 'Any order status',
+  pending: 'Pending payment',
+  processing: 'Processing',
+  'on-hold': 'On hold',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+  refunded: 'Refunded',
+  failed: 'Failed',
+}
+
+export function isWooCommerceOrderFlowTrigger(
+  t: string,
+): t is WooCommerceOrderFlowTrigger {
+  return (WOOCOMMERCE_ORDER_FLOW_TRIGGERS as readonly string[]).includes(t)
+}
+
+export function isStoreOrderFlowTrigger(t: string): boolean {
+  return isShopifyOrderFlowTrigger(t) || isWooCommerceOrderFlowTrigger(t)
+}
+
+export function defaultWooCommerceTriggerConfig(
+  _triggerType: string,
+): Record<string, unknown> {
+  return { payment_status: 'any' }
+}
+
+/** Map WooCommerce webhook topics to flow trigger types. */
+export function woocommerceTopicToFlowTrigger(
+  topic: string,
+  order?: { status?: string | null },
+): FlowTriggerType | null {
+  const status = order?.status?.trim().toLowerCase() ?? null
+
+  switch (topic) {
+    case 'order.created':
+      return 'woocommerce_order_placed'
+    case 'order.updated':
+      if (status === 'cancelled') return 'woocommerce_order_cancelled'
+      if (status === 'completed') return 'woocommerce_order_completed'
+      return 'woocommerce_order_updated'
     default:
       return null
   }

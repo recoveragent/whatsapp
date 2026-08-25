@@ -23,6 +23,7 @@ import {
   flowMatchesShipmentConfig,
   isShopifyFulfillmentFlowTrigger,
   isShopifyOrderFlowTrigger,
+  isWooCommerceOrderFlowTrigger,
   resolveFlowStartNodeKey,
   resolveShipmentStatusKey,
   selectedShipmentStatuses,
@@ -104,7 +105,7 @@ function flowMatchesTrigger(
     }
   }
 
-  if (isShopifyOrderFlowTrigger(input.triggerType)) {
+  if (isShopifyOrderFlowTrigger(input.triggerType) || isWooCommerceOrderFlowTrigger(input.triggerType)) {
     const want = cfg.payment_status as string | undefined
     if (want && want !== 'any') {
       const actual = input.context?.vars?.payment_status
@@ -121,11 +122,16 @@ function flowMatchesTrigger(
   return true
 }
 
-function shopifyPaymentMismatchReason(
+function orderPaymentMismatchReason(
   flow: FlowRow,
   input: FlowDispatchInput,
 ): string | null {
-  if (!isShopifyOrderFlowTrigger(input.triggerType)) return null
+  if (
+    !isShopifyOrderFlowTrigger(input.triggerType) &&
+    !isWooCommerceOrderFlowTrigger(input.triggerType)
+  ) {
+    return null
+  }
   const cfg = flow.trigger_config as Record<string, unknown>
   const want = cfg.payment_status as string | undefined
   if (!want || want === 'any') return null
@@ -202,7 +208,7 @@ export async function runFlowsForTrigger(
     }
 
     for (const flow of flows) {
-      const paymentMismatch = shopifyPaymentMismatchReason(flow, input)
+      const paymentMismatch = orderPaymentMismatchReason(flow, input)
       if (paymentMismatch) {
         outcome.skipped.push({
           flow_id: flow.id,

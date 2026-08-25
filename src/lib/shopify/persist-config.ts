@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { ensureAccountEcommercePlatform } from '@/lib/ecommerce/assert-platform';
 import { encrypt } from '@/lib/whatsapp/encryption';
 import { fetchShopInfo, registerShopifyWebhooks } from './admin-api';
 import { isLocalWebhookUrl } from './format-api-error';
@@ -37,6 +38,29 @@ export async function persistShopifyConfig(
 
   if (!input.accessToken.trim()) {
     return { ok: false, status: 400, error: 'access_token is required' };
+  }
+
+  const platformCheck = await ensureAccountEcommercePlatform(
+    input.supabase,
+    input.accountId,
+    'shopify',
+  );
+  if (!platformCheck.ok) {
+    return { ok: false, status: platformCheck.status, error: platformCheck.error };
+  }
+
+  const { data: wooRow } = await input.supabase
+    .from('woocommerce_config')
+    .select('account_id')
+    .eq('account_id', input.accountId)
+    .maybeSingle();
+
+  if (wooRow) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'This brand is configured for WooCommerce. Disconnect WooCommerce before connecting Shopify.',
+    };
   }
 
   const { data: claimed } = await input.supabase

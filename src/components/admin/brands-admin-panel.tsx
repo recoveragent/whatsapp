@@ -13,6 +13,7 @@ import {
   Plus,
   Shield,
   ShoppingBag,
+  Store,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,10 @@ import {
   BRAND_CATEGORY_LABELS,
   type BrandCategory,
 } from '@/lib/auth/brand-category';
+import {
+  ECOMMERCE_PLATFORM_LABELS,
+  type EcommercePlatform,
+} from '@/lib/ecommerce/platform';
 
 interface BrandRow {
   id: string;
@@ -31,6 +36,7 @@ interface BrandRow {
   owner_user_id: string | null;
   created_at: string;
   brand_category: BrandCategory;
+  ecommerce_platform?: EcommercePlatform | null;
   admin_email: string | null;
   invite_pending: boolean;
   can_complete_invite?: boolean;
@@ -46,6 +52,7 @@ export function BrandsAdminPanel() {
   const [brandName, setBrandName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [brandCategory, setBrandCategory] = useState<BrandCategory>('lead_gen');
+  const [ecommercePlatform, setEcommercePlatform] = useState<EcommercePlatform>('shopify');
   const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [completingInviteId, setCompletingInviteId] = useState<string | null>(null);
@@ -116,7 +123,12 @@ export function BrandsAdminPanel() {
       const res = await fetch('/api/admin/brands', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: brandName, adminEmail, category: brandCategory }),
+        body: JSON.stringify({
+          name: brandName,
+          adminEmail,
+          category: brandCategory,
+          ecommercePlatform: brandCategory === 'ecommerce' ? ecommercePlatform : undefined,
+        }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? 'Failed to create brand');
@@ -134,6 +146,7 @@ export function BrandsAdminPanel() {
       setBrandName('');
       setAdminEmail('');
       setBrandCategory('lead_gen');
+      setEcommercePlatform('shopify');
       await loadBrands();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Create failed');
@@ -322,9 +335,23 @@ export function BrandsAdminPanel() {
                 className="flex h-9 w-full rounded-md border border-border bg-muted px-3 text-sm text-foreground outline-none focus:border-primary/50"
               >
                 <option value="lead_gen">Lead gen — pipelines & deals</option>
-                <option value="ecommerce">Ecommerce — Shopify & orders</option>
+                <option value="ecommerce">Ecommerce — store & orders</option>
               </select>
             </div>
+            {brandCategory === 'ecommerce' && (
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="ecommercePlatform">Store platform</Label>
+                <select
+                  id="ecommercePlatform"
+                  value={ecommercePlatform}
+                  onChange={(e) => setEcommercePlatform(e.target.value as EcommercePlatform)}
+                  className="flex h-9 w-full rounded-md border border-border bg-muted px-3 text-sm text-foreground outline-none focus:border-primary/50"
+                >
+                  <option value="shopify">{ECOMMERCE_PLATFORM_LABELS.shopify}</option>
+                  <option value="woocommerce">{ECOMMERCE_PLATFORM_LABELS.woocommerce}</option>
+                </select>
+              </div>
+            )}
             <div className="sm:col-span-2">
               <Button type="submit" disabled={creating}>
                 {creating ? (
@@ -436,13 +463,24 @@ export function BrandsAdminPanel() {
                       <IndianRupee className="size-4" />
                       Billing
                     </Link>
-                    {b.brand_category === 'ecommerce' ? (
+                    {b.brand_category === 'ecommerce' &&
+                    (b.ecommerce_platform ?? 'shopify') === 'shopify' ? (
                       <Link
                         href={`/admin/brands/${b.id}/shopify`}
                         className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-transparent px-3 text-sm font-medium text-foreground hover:bg-muted"
                       >
                         <ShoppingBag className="size-4" />
                         Shopify setup
+                      </Link>
+                    ) : null}
+                    {b.brand_category === 'ecommerce' &&
+                    b.ecommerce_platform === 'woocommerce' ? (
+                      <Link
+                        href={`/admin/brands/${b.id}/woocommerce`}
+                        className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-transparent px-3 text-sm font-medium text-foreground hover:bg-muted"
+                      >
+                        <Store className="size-4" />
+                        WooCommerce setup
                       </Link>
                     ) : null}
                     <Button

@@ -7,8 +7,14 @@ import {
   isLeadGenBrand,
   type BrandCategory,
 } from './brand-category';
+import {
+  DEFAULT_ECOMMERCE_PLATFORM,
+  isEcommercePlatform,
+  type EcommercePlatform,
+} from '@/lib/ecommerce/platform';
 
-export const BRAND_LIST_COLUMNS = 'id, name, owner_user_id, created_at, brand_category';
+export const BRAND_LIST_COLUMNS =
+  'id, name, owner_user_id, created_at, brand_category, ecommerce_platform';
 
 export interface BrandListRow {
   id: string;
@@ -16,6 +22,7 @@ export interface BrandListRow {
   owner_user_id: string | null;
   created_at: string;
   brand_category: BrandCategory;
+  ecommerce_platform: EcommercePlatform | null;
 }
 
 export function isMissingColumnError(
@@ -66,11 +73,19 @@ export async function listOrganizationBrands(
       brand_category: isBrandCategory(row.brand_category)
         ? row.brand_category
         : DEFAULT_BRAND_CATEGORY,
+      ecommerce_platform: isEcommercePlatform(row.ecommerce_platform)
+        ? row.ecommerce_platform
+        : row.brand_category === 'ecommerce'
+          ? DEFAULT_ECOMMERCE_PLATFORM
+          : null,
     }));
     return { brands, categoryColumnMissing: false };
   }
 
-  if (!isMissingColumnError(withCategory.error, 'brand_category')) {
+  if (
+    !isMissingColumnError(withCategory.error, 'brand_category') &&
+    !isMissingColumnError(withCategory.error, 'ecommerce_platform')
+  ) {
     throw withCategory.error;
   }
 
@@ -85,6 +100,7 @@ export async function listOrganizationBrands(
   const brands = (fallback.data ?? []).map((row) => ({
     ...row,
     brand_category: DEFAULT_BRAND_CATEGORY,
+    ecommerce_platform: null,
   }));
 
   return { brands, categoryColumnMissing: true };
@@ -95,31 +111,41 @@ export interface AccountWithCategory {
   name: string;
   default_currency: string | null;
   brand_category: BrandCategory;
+  ecommerce_platform: EcommercePlatform | null;
 }
 
-/** Fetch one account; falls back when `brand_category` is not migrated yet. */
+/** Fetch one account; falls back when optional columns are not migrated yet. */
 export async function fetchAccountWithCategory(
   supabase: SupabaseClient,
   accountId: string,
 ): Promise<AccountWithCategory | null> {
   const withCategory = await supabase
     .from('accounts')
-    .select('id, name, default_currency, brand_category')
+    .select('id, name, default_currency, brand_category, ecommerce_platform')
     .eq('id', accountId)
     .maybeSingle();
 
   if (!withCategory.error && withCategory.data) {
+    const category = isBrandCategory(withCategory.data.brand_category)
+      ? withCategory.data.brand_category
+      : DEFAULT_BRAND_CATEGORY;
     return {
       id: withCategory.data.id,
       name: withCategory.data.name,
       default_currency: withCategory.data.default_currency,
-      brand_category: isBrandCategory(withCategory.data.brand_category)
-        ? withCategory.data.brand_category
-        : DEFAULT_BRAND_CATEGORY,
+      brand_category: category,
+      ecommerce_platform: isEcommercePlatform(withCategory.data.ecommerce_platform)
+        ? withCategory.data.ecommerce_platform
+        : category === 'ecommerce'
+          ? DEFAULT_ECOMMERCE_PLATFORM
+          : null,
     };
   }
 
-  if (!isMissingColumnError(withCategory.error, 'brand_category')) {
+  if (
+    !isMissingColumnError(withCategory.error, 'brand_category') &&
+    !isMissingColumnError(withCategory.error, 'ecommerce_platform')
+  ) {
     return null;
   }
 
@@ -134,6 +160,7 @@ export async function fetchAccountWithCategory(
   return {
     ...fallback.data,
     brand_category: DEFAULT_BRAND_CATEGORY,
+    ecommerce_platform: null,
   };
 }
 

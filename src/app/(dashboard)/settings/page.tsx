@@ -13,6 +13,7 @@ import { SecurityPanel } from '@/components/settings/security-panel';
 import { AppearancePanel } from '@/components/settings/appearance-panel';
 import { WhatsAppBrandConnection } from '@/components/settings/whatsapp-brand-connection';
 import { ShopifyBrandConnection } from '@/components/settings/shopify-brand-connection';
+import { WooCommerceBrandConnection } from '@/components/settings/woocommerce-brand-connection';
 import { GoogleSheetsBrandConnection } from '@/components/settings/google-sheets-brand-connection';
 import { LeadCadencesSettings } from '@/components/settings/lead-cadences-settings';
 import { TemplateManager } from '@/components/settings/template-manager';
@@ -30,16 +31,16 @@ import {
 export default function SettingsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { defaultCurrency, brandCategory } = useAuth();
+  const { defaultCurrency, brandCategory, ecommercePlatform } = useAuth();
   const { mode } = useTheme();
 
   const section = resolveSection(searchParams.get('tab'));
   const activeSection = useMemo(() => {
-    if (!isSettingsSectionVisible(section, brandCategory)) {
+    if (!isSettingsSectionVisible(section, brandCategory, ecommercePlatform)) {
       return 'overview' as SettingsSection;
     }
     return section;
-  }, [section, brandCategory]);
+  }, [section, brandCategory, ecommercePlatform]);
 
   const go = (next: SettingsSection) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -65,6 +66,7 @@ export default function SettingsPage() {
     appearance: <AppearancePanel />,
     whatsapp: <WhatsAppBrandConnection />,
     shopify: <ShopifyBrandConnection />,
+    woocommerce: <WooCommerceBrandConnection />,
     google_sheets: <GoogleSheetsBrandConnection />,
     cadences: <LeadCadencesSettings />,
     templates: <TemplateManager />,

@@ -17,13 +17,18 @@ import {
   isShopifyFulfillmentFlowTrigger,
   isShopifyOrderFlowTrigger,
   defaultShopifyTriggerConfig,
+  defaultWooCommerceTriggerConfig,
+  isWooCommerceOrderFlowTrigger,
   SHOPIFY_PAYMENT_STATUSES,
   SHOPIFY_PAYMENT_STATUS_LABELS,
+  WOOCOMMERCE_ORDER_STATUSES,
+  WOOCOMMERCE_ORDER_STATUS_LABELS,
   selectedShipmentStatuses,
   shipmentHandleId,
   shipmentStatusFilterLabel,
   type FlowTriggerType,
   type ShopifyPaymentStatus,
+  type WooCommerceOrderStatus,
 } from "@/lib/flows/trigger-types";
 import {
   defaultFlowWebhookConfig,
@@ -115,6 +120,13 @@ export function summarizeTrigger(
         }
         return bits.join(" · ");
       }
+      if (isWooCommerceOrderFlowTrigger(triggerType)) {
+        const ps = triggerConfig.payment_status as WooCommerceOrderStatus | undefined;
+        const base = FLOW_TRIGGER_LABELS[triggerType] ?? triggerType;
+        const bits = [base];
+        if (ps && ps !== "any") bits.push(WOOCOMMERCE_ORDER_STATUS_LABELS[ps]);
+        return bits.join(" · ");
+      }
       return FLOW_TRIGGER_LABELS[triggerType] ?? triggerType;
   }
 }
@@ -168,8 +180,12 @@ export function TriggerPanel({
   triggerIssues: ValidationIssue[];
   embedded?: boolean;
 }) {
-  const { brandCategory } = useAuth();
-  const triggerOptions = flowTriggersForBrand(brandCategory, state.trigger_type);
+  const { brandCategory, ecommercePlatform } = useAuth();
+  const triggerOptions = flowTriggersForBrand(
+    brandCategory,
+    state.trigger_type,
+    ecommercePlatform,
+  );
   const body = (
     <>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -197,7 +213,9 @@ export function TriggerPanel({
                           ? { schedule: "", tag_id: "" }
                           : v && isShopifyOrderFlowTrigger(v)
                             ? defaultShopifyTriggerConfig(v)
-                            : {},
+                            : v && isWooCommerceOrderFlowTrigger(v)
+                              ? defaultWooCommerceTriggerConfig(v)
+                              : {},
               }))
             }
           >
@@ -335,6 +353,41 @@ export function TriggerPanel({
             <p className="mt-1 text-[10px] text-muted-foreground">
               Only run this flow when the order matches this payment status. Use a
               Condition node to branch different actions per status.
+            </p>
+          </div>
+        )}
+        {isWooCommerceOrderFlowTrigger(state.trigger_type) && (
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              Order status
+            </label>
+            <Select
+              value={
+                (state.trigger_config.payment_status as WooCommerceOrderStatus) ?? "any"
+              }
+              onValueChange={(v) =>
+                setState((s) => ({
+                  ...s,
+                  trigger_config: {
+                    ...s.trigger_config,
+                    payment_status: v as WooCommerceOrderStatus,
+                  },
+                }))
+              }
+            >
+              <SelectTrigger className="bg-muted">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {WOOCOMMERCE_ORDER_STATUSES.map((ps) => (
+                  <SelectItem key={ps} value={ps}>
+                    {WOOCOMMERCE_ORDER_STATUS_LABELS[ps]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              Only run this flow when the order matches this WooCommerce status.
             </p>
           </div>
         )}

@@ -13,6 +13,7 @@ import {
   inviteUrl,
 } from "@/lib/auth/invitations";
 import { isBrandCategory } from "@/lib/auth/brand-category";
+import { isEcommercePlatform } from "@/lib/ecommerce/platform";
 import {
   BRAND_CATEGORY_MIGRATION_HINT,
   isMissingColumnError,
@@ -160,12 +161,16 @@ export async function POST(request: Request) {
       name?: unknown;
       adminEmail?: unknown;
       category?: unknown;
+      ecommercePlatform?: unknown;
     } | null;
 
     const name = typeof body?.name === "string" ? body.name.trim() : "";
     const adminEmail =
       typeof body?.adminEmail === "string" ? body.adminEmail.trim().toLowerCase() : "";
     const category = isBrandCategory(body?.category) ? body.category : "lead_gen";
+    const ecommercePlatform = isEcommercePlatform(body?.ecommercePlatform)
+      ? body.ecommercePlatform
+      : "shopify";
 
     if (!name) {
       return NextResponse.json({ error: "Brand name is required" }, { status: 400 });
@@ -187,6 +192,7 @@ export async function POST(request: Request) {
         p_token_hash: hash,
         p_expires_at: expiresAt.toISOString(),
         p_brand_category: category,
+        p_ecommerce_platform: category === "ecommerce" ? ecommercePlatform : null,
       },
     );
 
@@ -196,6 +202,7 @@ export async function POST(request: Request) {
         p_admin_email: adminEmail,
         p_token_hash: hash,
         p_expires_at: expiresAt.toISOString(),
+        p_brand_category: category,
       });
     }
 
@@ -233,7 +240,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        brand: { id: row.account_id, name, brand_category: category },
+        brand: {
+          id: row.account_id,
+          name,
+          brand_category: category,
+          ecommerce_platform: category === "ecommerce" ? ecommercePlatform : null,
+        },
         invitationId: row.invitation_id,
         inviteUrl: url,
         emailSent,
