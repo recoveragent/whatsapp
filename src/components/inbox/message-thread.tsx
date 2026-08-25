@@ -27,7 +27,6 @@ import {
   RefreshCw,
   PanelRightOpen,
   PanelRightClose,
-  User,
 } from "lucide-react";
 import {
   Sheet,
@@ -242,6 +241,16 @@ export function MessageThread({
       refreshTimerRef.current = null;
     }, 700);
   }, [isRefreshing, onRefresh]);
+  const handleOpenContact = useCallback(() => {
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(min-width: 1024px)").matches
+    ) {
+      (onOpenContactPanel ?? onToggleContactPanel)?.();
+    } else {
+      setContactSheetOpen(true);
+    }
+  }, [onOpenContactPanel, onToggleContactPanel]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(
     null,
@@ -1089,57 +1098,25 @@ export function MessageThread({
               <ArrowLeft className="h-5 w-5" />
             </button>
           )}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className="flex min-w-0 items-center gap-2 rounded-md text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-3 -ml-1 pl-1 pr-2 py-0.5"
-              aria-label={`Contact options for ${displayName}`}
-            >
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
-                {displayName.charAt(0).toUpperCase()}
-              </div>
-              <div className="min-w-0">
-                <h2 className="truncate text-sm font-semibold text-foreground">
-                  {displayName}
-                </h2>
-                <p className="truncate text-xs text-muted-foreground">
-                  {contact.phone}
-                </p>
-              </div>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="min-w-48">
-              {onToggleContactPanel && (
-                <DropdownMenuItem
-                  className="hidden lg:flex"
-                  onClick={() => {
-                    if (contactPanelOpen) {
-                      onToggleContactPanel();
-                    } else {
-                      (onOpenContactPanel ?? onToggleContactPanel)();
-                    }
-                  }}
-                >
-                  {contactPanelOpen ? (
-                    <>
-                      <PanelRightClose className="mr-2 h-4 w-4" />
-                      Hide contact panel
-                    </>
-                  ) : (
-                    <>
-                      <PanelRightOpen className="mr-2 h-4 w-4" />
-                      Show contact panel
-                    </>
-                  )}
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem
-                className="lg:hidden"
-                onClick={() => setContactSheetOpen(true)}
-              >
-                <User className="mr-2 h-4 w-4" />
-                View contact details
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <button
+            type="button"
+            onClick={handleOpenContact}
+            className="flex min-w-0 items-center gap-2 rounded-md text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-3 -ml-1 pl-1 pr-2 py-0.5"
+            aria-label={`Open contact details for ${displayName}`}
+            title="Open contact"
+          >
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+              {displayName.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-semibold text-foreground">
+                {displayName}
+              </h2>
+              <p className="truncate text-xs text-muted-foreground">
+                {contact.phone}
+              </p>
+            </div>
+          </button>
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. */}
           <Badge
