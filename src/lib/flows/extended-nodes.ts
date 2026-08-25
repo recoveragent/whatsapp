@@ -9,7 +9,11 @@ import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { buildSendTimeParamsFromVariables, isDynamicHeaderMediaMapping } from '@/lib/flows/template-send-params'
 import { resolveFlowProductImageUrl } from '@/lib/flows/resolve-product-image'
 import { interpolateTemplateString } from '@/lib/flows/template-interpolate'
-import { isMediaHeaderType } from '@/lib/inbox/template-message-display'
+import {
+  buildTemplateMessageSnapshot,
+  isMediaHeaderType,
+  templateDisplayPayload,
+} from '@/lib/inbox/template-message-display'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
 import { templateConfigHasQuickReplies } from './template-buttons'
 
@@ -256,6 +260,45 @@ export async function executeExtendedNode(
           templateName: c.template_name,
           language: c.language,
           messageParams,
+        })
+        const { data: persisted } = await db
+          .from('messages')
+          .select('content_text, content_payload, template_name')
+          .eq('message_id', whatsapp_message_id)
+          .maybeSingle()
+        let eventContentText: string | null =
+          (persisted as { content_text?: string | null } | null)?.content_text ?? null
+        if (!eventContentText && templateRow?.body_text?.trim()) {
+          const bodyParams = messageParams.body ?? []
+          eventContentText = templateRow.body_text.replace(
+            /\{\{(\d+)\}\}/g,
+            (_, raw: string) => {
+              const idx = Number(raw) - 1
+              return bodyParams[idx] ?? `{{${raw}}}`
+            },
+          )
+        }
+        await db.from('flow_run_events').insert({
+          flow_run_id: run.id,
+          event_type: 'message_sent',
+          node_key: node.node_key,
+          payload: {
+            node_type: 'send_template',
+            whatsapp_message_id,
+            template_name: c.template_name,
+            content_text: eventContentText,
+            content_payload:
+              (persisted as { content_payload?: Record<string, unknown> | null } | null)
+                ?.content_payload ??
+              (templateRow
+                ? templateDisplayPayload(
+                    buildTemplateMessageSnapshot(templateRow, {
+                      headerMediaUrl: messageParams.headerMediaUrl,
+                      headerText: messageParams.headerText,
+                    }),
+                  )
+                : null),
+          },
         })
         if (templateConfigHasQuickReplies(c)) {
           const { data: msg } = await db

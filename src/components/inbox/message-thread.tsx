@@ -405,7 +405,33 @@ export function MessageThread({
       if (error) {
         console.error("Failed to fetch messages:", error);
       } else {
-        onMessagesLoadedRef.current(data ?? []);
+        let rows = data ?? [];
+        const missingAutomationOnly =
+          rows.length > 0 &&
+          rows.every((m) => m.sender_type === "customer") &&
+          rows.some((m) => m.interactive_reply_id || m.content_type === "interactive");
+        if (missingAutomationOnly) {
+          try {
+            const res = await fetch(
+              `/api/inbox/conversations/${conversationId}/repair-flow-prompt`,
+              { method: "POST" },
+            );
+            if (res.ok) {
+              const body = (await res.json()) as { repaired?: boolean };
+              if (body.repaired) {
+                const { data: refetched } = await supabase
+                  .from("messages")
+                  .select("*")
+                  .eq("conversation_id", conversationId)
+                  .order("created_at", { ascending: true });
+                if (refetched?.length) rows = refetched;
+              }
+            }
+          } catch (repairErr) {
+            console.warn("[inbox] repair flow prompt failed:", repairErr);
+          }
+        }
+        onMessagesLoadedRef.current(rows);
       }
 
       if (!cancelled) setLoading(false);

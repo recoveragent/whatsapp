@@ -6,6 +6,7 @@ import { normalizePhone, canonicalContactPhone } from '@/lib/whatsapp/phone-util
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
+import { backfillMissingOutboundPrompt } from '@/lib/flows/backfill-outbound-prompt'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import type { ParsedInbound } from '@/lib/flows/types'
 import {
@@ -632,6 +633,16 @@ async function processMessage(
       message.context.id,
       conversation.id
     )
+    if (!replyToInternalId) {
+      replyToInternalId = await backfillMissingOutboundPrompt({
+        db: supabaseAdmin(),
+        accountId,
+        contactId: contactRecord.id,
+        conversationId: conversation.id,
+        metaMessageId: message.context.id,
+        createdAt: new Date(parseInt(message.timestamp) * 1000 - 1000).toISOString(),
+      })
+    }
     if (!replyToInternalId) {
       console.warn(
         '[webhook] reply context parent not found:',
