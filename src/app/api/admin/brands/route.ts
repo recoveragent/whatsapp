@@ -83,9 +83,18 @@ export async function GET() {
       .map((b) => b.owner_user_id)
       .filter((id): id is string => Boolean(id));
 
+    const pendingInviteEmails = (pending ?? [])
+      .map((inv) =>
+        typeof inv.invited_email === "string"
+          ? inv.invited_email.trim().toLowerCase()
+          : "",
+      )
+      .filter(Boolean);
+
     const emailByUserId = new Map<string, string>();
+    const signedUpInviteEmails = new Set<string>();
+    const admin = supabaseAdmin();
     if (ownerIds.length > 0) {
-      const admin = supabaseAdmin();
       const { data: profiles } = await admin
         .from("profiles")
         .select("user_id, email")
@@ -96,17 +105,39 @@ export async function GET() {
         }
       }
     }
+    if (pendingInviteEmails.length > 0) {
+      const { data: inviteeProfiles } = await admin
+        .from("profiles")
+        .select("email, account_id")
+        .is("account_id", null);
+      for (const row of inviteeProfiles ?? []) {
+        const email =
+          typeof row.email === "string" ? row.email.trim().toLowerCase() : "";
+        if (email && pendingInviteEmails.includes(email)) {
+          signedUpInviteEmails.add(email);
+        }
+      }
+    }
 
     const brandRows = brands.map((brand) => {
       const pendingInvite = pendingByAccount.get(brand.id);
+      const invitedEmail =
+        typeof pendingInvite?.invited_email === "string"
+          ? pendingInvite.invited_email.trim().toLowerCase()
+          : "";
       const adminEmail = brand.owner_user_id
         ? (emailByUserId.get(brand.owner_user_id) ?? null)
-        : (pendingInvite?.invited_email as string | undefined) ?? null;
+        : invitedEmail || null;
+      const invitePending = !brand.owner_user_id && Boolean(pendingInvite);
 
       return {
         ...brand,
         admin_email: adminEmail,
-        invite_pending: !brand.owner_user_id && Boolean(pendingInvite),
+        invite_pending: invitePending,
+        can_complete_invite:
+          invitePending &&
+          invitedEmail.length > 0 &&
+          signedUpInviteEmails.has(invitedEmail),
       };
     });
 

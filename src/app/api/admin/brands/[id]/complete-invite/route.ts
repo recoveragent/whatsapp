@@ -1,0 +1,72 @@
+// POST /api/admin/brands/[id]/complete-invite
+//
+// Super admin only. Finalizes a pending brand admin invite when
+// the invitee signed up but never clicked Accept on /join/<token>.
+
+import { NextResponse } from "next/server";
+import type { PostgrestError } from "@supabase/supabase-js";
+
+import {
+  ForbiddenError,
+  toErrorResponse,
+  UnauthorizedError,
+} from "@/lib/auth/account";
+import { createClient } from "@/lib/supabase/server";
+
+async function requireSuperAdmin() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new UnauthorizedError();
+
+  const { data: member } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!member?.organization_id) {
+    throw new ForbiddenError("Super admin access required");
+  }
+
+  return supabase;
+}
+
+function rpcErrorToResponse(err: PostgrestError): NextResponse {
+  if (err.code === "42501") {
+    return NextResponse.json({ error: err.message }, { status: 401 });
+  }
+  if (err.code === "22023") {
+    return NextResponse.json({ error: err.message }, { status: 400 });
+  }
+  if (err.code === "23505") {
+    return NextResponse.json({ error: err.message }, { status: 409 });
+  }
+  console.error("[complete-invite] unexpected RPC error:", err);
+  return NextResponse.json(
+    { error: "Failed to complete invitation" },
+    { status: 500 },
+  );
+}
+
+export async function POST(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const supabase = await requireSuperAdmin();
+    const { id } = await params;
+
+    const { data: accountId, error } = await supabase.rpc(
+      "complete_brand_admin_invite",
+      { p_account_id: id },
+    );
+
+    if (error) return rpcErrorToResponse(error);
+
+    return NextResponse.json({ ok: true, accountId });
+  } catch (err) {
+    return toErrorResponse(err);
+  }
+}

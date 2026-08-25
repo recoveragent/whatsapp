@@ -33,6 +33,7 @@ interface BrandRow {
   brand_category: BrandCategory;
   admin_email: string | null;
   invite_pending: boolean;
+  can_complete_invite?: boolean;
 }
 
 export function BrandsAdminPanel() {
@@ -47,6 +48,8 @@ export function BrandsAdminPanel() {
   const [brandCategory, setBrandCategory] = useState<BrandCategory>('lead_gen');
   const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
+  const [completingInviteId, setCompletingInviteId] = useState<string | null>(null);
+  const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
   const [updatingCategoryId, setUpdatingCategoryId] = useState<string | null>(null);
   const [categoryMigrationNeeded, setCategoryMigrationNeeded] = useState(false);
   const didClearContext = useRef(false);
@@ -153,6 +156,60 @@ export function BrandsAdminPanel() {
       toast.error(err instanceof Error ? err.message : 'Could not open brand');
     } finally {
       setSwitchingId(null);
+    }
+  };
+
+  const handleCompleteInvite = async (id: string, adminEmail: string | null) => {
+    setCompletingInviteId(id);
+    try {
+      const res = await fetch(`/api/admin/brands/${id}/complete-invite`, {
+        method: 'POST',
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'Could not complete invitation');
+      toast.success(
+        adminEmail
+          ? `Linked ${adminEmail} to this brand`
+          : 'Invitation completed',
+      );
+      await loadBrands();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not complete invitation');
+    } finally {
+      setCompletingInviteId(null);
+    }
+  };
+
+  const handleResendInvite = async (id: string, adminEmail: string | null) => {
+    setResendingInviteId(id);
+    try {
+      const res = await fetch(`/api/admin/brands/${id}/resend-invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          adminEmail ? { adminEmail } : {},
+        ),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'Could not resend invitation');
+      if (body.emailSent) {
+        toast.success(
+          adminEmail
+            ? `Fresh invite sent to ${adminEmail}`
+            : 'Fresh invite sent',
+        );
+      } else {
+        toast.success('Fresh invite link created — copy it below');
+        if (body.inviteUrl) setLastInviteUrl(body.inviteUrl);
+        if (body.emailError) {
+          toast.message(`Email not sent: ${body.emailError}`);
+        }
+      }
+      await loadBrands();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not resend invitation');
+    } finally {
+      setResendingInviteId(null);
     }
   };
 
@@ -331,12 +388,40 @@ export function BrandsAdminPanel() {
                     <p className="text-xs text-muted-foreground">
                       {b.owner_user_id
                         ? 'Admin assigned'
-                        : b.invite_pending
-                          ? 'Invite pending'
-                          : 'Awaiting admin invite'}
+                        : b.can_complete_invite
+                          ? 'Signed up — finish linking below'
+                          : b.invite_pending
+                            ? 'Invite pending'
+                            : 'Awaiting admin invite'}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    {b.can_complete_invite ? (
+                      <Button
+                        size="sm"
+                        disabled={completingInviteId === b.id}
+                        onClick={() => void handleCompleteInvite(b.id, b.admin_email)}
+                      >
+                        {completingInviteId === b.id ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          'Complete invite'
+                        )}
+                      </Button>
+                    ) : b.invite_pending ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={resendingInviteId === b.id}
+                        onClick={() => void handleResendInvite(b.id, b.admin_email)}
+                      >
+                        {resendingInviteId === b.id ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          'Resend invite'
+                        )}
+                      </Button>
+                    ) : null}
                     <Link
                       href={`/admin/brands/${b.id}/whatsapp`}
                       className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-transparent px-3 text-sm font-medium text-foreground hover:bg-muted"

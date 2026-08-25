@@ -16,13 +16,13 @@
 //   │ ok:true              │ signed in     │ "Accept" button → redeem │
 //   └──────────────────────┴───────────────┴─────────────────────────┘
 //
-// We deliberately do NOT redeem automatically on page load — the
-// invitee should confirm what account/role they're accepting.
-// Auto-redeem would also race with the signup flow returning to
-// this page after email verification.
+// Exception: when the visitor lands from a Supabase auth email
+// (#access_token in the URL hash), we auto-redeem — they already
+// confirmed by clicking the email link. Manual Accept remains for
+// visitors who sign in separately and open a forwarded invite link.
 // ============================================================
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { toast } from 'sonner';
@@ -108,6 +108,7 @@ export default function JoinPage() {
   // step. Surface a blocking modal that walks them through it.
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const autoRedeemStarted = useRef(false);
 
   // Extracted so the "Try again" button on the server_error card
   // can re-run the same logic without remounting the component.
@@ -142,58 +143,8 @@ export default function JoinPage() {
     }
   }, [token]);
 
-  // Fetch peek + auth state on mount. The peek endpoint is
-  // rate-limited per-IP (30/min) so double-mounting in React 19
-  // strict mode dev is harmless. We also use the `cancelled` flag
-  // to drop setState calls if the component unmounts mid-fetch.
-  useEffect(() => {
-    if (!token) return;
-    let cancelled = false;
-
-    const establishSessionFromHash = async () => {
-      const hash = window.location.hash.replace(/^#/, '');
-      if (!hash.includes('access_token=')) return;
-      const params = new URLSearchParams(hash);
-      const access_token = params.get('access_token');
-      const refresh_token = params.get('refresh_token');
-      if (!access_token || !refresh_token) return;
-      const supabase = createClient();
-      await supabase.auth.setSession({ access_token, refresh_token });
-      // Drop tokens from the address bar once cookies are set.
-      window.history.replaceState(
-        null,
-        '',
-        `${window.location.pathname}${window.location.search}`,
-      );
-    };
-
-    (async () => {
-      try {
-        await establishSessionFromHash();
-        const [peekRes, authRes] = await Promise.all([
-          fetch(`/api/invitations/${encodeURIComponent(token)}/peek`, {
-            cache: 'no-store',
-          }),
-          createClient().auth.getUser(),
-        ]);
-        const peekBody = (await peekRes.json()) as PeekResult;
-        if (cancelled) return;
-        setPeek(peekBody);
-        setAuthedUserId(authRes.data.user?.id ?? null);
-      } catch (err) {
-        console.error('[join] peek error:', err);
-        if (cancelled) return;
-        setPeek({ ok: false, reason: 'server_error' });
-        setAuthedUserId(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
-
   const handleAccept = useCallback(async () => {
-    if (!token) return;
+    if (!token) return false;
     setAccepting(true);
     try {
       const res = await fetch(
@@ -220,18 +171,89 @@ export default function JoinPage() {
           toast.error(payload.error || 'Failed to accept invitation');
         }
         setAccepting(false);
-        return;
+        return false;
       }
       toast.success('Welcome to the team');
       // Full reload (not router.push) so AuthProvider re-fetches
       // the profile with the new account_id and account_role.
       window.location.href = '/dashboard';
+      return true;
     } catch (err) {
       console.error('[join] redeem error:', err);
       toast.error('Could not reach the server');
       setAccepting(false);
+      return false;
     }
   }, [token]);
+
+  // Fetch peek + auth state on mount. The peek endpoint is
+  // rate-limited per-IP (30/min) so double-mounting in React 19
+  // strict mode dev is harmless. We also use the `cancelled` flag
+  // to drop setState calls if the component unmounts mid-fetch.
+  //
+  // When the visitor lands here from a Supabase auth email (invite
+  // or signup verification), the URL carries `#access_token=…`.
+  // They already committed by clicking that email — auto-redeem so
+  // we don't leave them stuck with "Invite pending" after account
+  // creation.
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+
+    const establishSessionFromHash = async () => {
+      const hash = window.location.hash.replace(/^#/, '');
+      if (!hash.includes('access_token=')) return false;
+      const params = new URLSearchParams(hash);
+      const access_token = params.get('access_token');
+      const refresh_token = params.get('refresh_token');
+      if (!access_token || !refresh_token) return false;
+      const supabase = createClient();
+      await supabase.auth.setSession({ access_token, refresh_token });
+      // Drop tokens from the address bar once cookies are set.
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${window.location.search}`,
+      );
+      return true;
+    };
+
+    (async () => {
+      try {
+        const cameFromAuthEmail = await establishSessionFromHash();
+        const [peekRes, authRes] = await Promise.all([
+          fetch(`/api/invitations/${encodeURIComponent(token)}/peek`, {
+            cache: 'no-store',
+          }),
+          createClient().auth.getUser(),
+        ]);
+        const peekBody = (await peekRes.json()) as PeekResult;
+        if (cancelled) return;
+        setPeek(peekBody);
+        const userId = authRes.data.user?.id ?? null;
+        setAuthedUserId(userId);
+
+        if (
+          cameFromAuthEmail &&
+          peekBody.ok &&
+          userId &&
+          !cancelled &&
+          !autoRedeemStarted.current
+        ) {
+          autoRedeemStarted.current = true;
+          await handleAccept();
+        }
+      } catch (err) {
+        console.error('[join] peek error:', err);
+        if (cancelled) return;
+        setPeek({ ok: false, reason: 'server_error' });
+        setAuthedUserId(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, handleAccept]);
 
   const handleSignOutAndRetry = useCallback(async () => {
     setSigningOut(true);
@@ -356,7 +378,7 @@ export default function JoinPage() {
           {inviteHeader}
           <CardContent className="flex flex-col gap-3">
             <Button
-              onClick={handleAccept}
+              onClick={() => void handleAccept()}
               disabled={accepting}
               className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
             >
