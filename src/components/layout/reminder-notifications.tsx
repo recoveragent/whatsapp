@@ -12,7 +12,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { ReminderSnoozeControls } from '@/components/inbox/reminder-snooze-controls'
 import type { InboxReminder } from '@/types'
 
@@ -134,7 +133,7 @@ export function ReminderNotifications() {
       <PopoverContent
         align="end"
         sideOffset={6}
-        className="w-[min(100vw-2rem,22.5rem)] gap-0 rounded-xl p-0 shadow-xl"
+        className="flex w-[min(100vw-2rem,22.5rem)] flex-col gap-0 overflow-hidden rounded-xl p-0 shadow-xl"
       >
         <div className="border-b border-border px-3 py-2">
           <p className="text-sm font-medium text-foreground">Follow-up reminders</p>
@@ -176,7 +175,7 @@ export function ReminderNotifications() {
             Loading…
           </div>
         ) : tab === 'due' ? (
-          <ScrollArea className="max-h-96">
+          <div className="max-h-[min(24rem,calc(100dvh-10rem))] overflow-y-auto overscroll-contain">
             {due.length === 0 ? (
               <p className="px-3 py-8 text-center text-sm text-muted-foreground">
                 No reminders due
@@ -239,9 +238,9 @@ export function ReminderNotifications() {
                 })}
               </ul>
             )}
-          </ScrollArea>
+          </div>
         ) : (
-          <ScrollArea className="max-h-96">
+          <div className="max-h-[min(24rem,calc(100dvh-10rem))] overflow-y-auto overscroll-contain">
             {history.length === 0 ? (
               <p className="px-3 py-8 text-center text-sm text-muted-foreground">
                 No completed reminders yet
@@ -268,7 +267,7 @@ export function ReminderNotifications() {
                 ))}
               </ul>
             )}
-          </ScrollArea>
+          </div>
         )}
       </PopoverContent>
     </Popover>
