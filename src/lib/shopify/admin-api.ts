@@ -147,13 +147,13 @@ export async function fetchOrder(
   shopDomain: string,
   accessToken: string,
   orderId: string | number,
-) {
-  const data = await shopifyFetch<{ order: unknown }>(
+): Promise<ShopifyOrderPayload | null> {
+  const data = await shopifyFetch<{ order?: ShopifyOrderPayload | null }>(
     shopDomain,
     accessToken,
     `/orders/${orderId}.json`,
   );
-  return data.order;
+  return data.order ?? null;
 }
 
 /**

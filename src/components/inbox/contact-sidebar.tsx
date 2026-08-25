@@ -9,7 +9,6 @@ import type {
   Deal,
   ContactNote,
   Tag,
-  ShopifyOrder,
   InboxReminder,
   Pipeline,
   PipelineStage,
@@ -54,13 +53,29 @@ interface ContactSidebarProps {
 }
 
 /** Session cache so revisiting a contact shows orders instantly. */
-const shopifyOrdersCache = new Map<string, ShopifyOrder[]>();
+type InboxStoreOrder = {
+  id: string;
+  order_number: string;
+  total_price?: string | null;
+  currency?: string | null;
+  payment_status?: string | null;
+  payment_gateway?: string | null;
+  fulfillment_status?: string | null;
+  tracking_url?: string | null;
+  tracking_number?: string | null;
+  order_status_url?: string | null;
+  admin_url?: string | null;
+  ordered_at?: string | null;
+  tags?: string[];
+};
+
+const storeOrdersCache = new Map<string, InboxStoreOrder[]>();
 
 export function ContactSidebar({
   contact,
   conversationId,
 }: ContactSidebarProps) {
-  const { accountId, defaultCurrency, isLeadGenBrand, isEcommerceBrand } =
+  const { accountId, defaultCurrency, isLeadGenBrand, isEcommerceBrand, isWooCommerceBrand } =
     useAuth();
   const [copied, setCopied] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -69,7 +84,7 @@ export function ContactSidebar({
   const [stagesLoaded, setStagesLoaded] = useState(false);
   const [savingStage, setSavingStage] = useState(false);
   const [notes, setNotes] = useState<ContactNote[]>([]);
-  const [shopifyOrders, setShopifyOrders] = useState<ShopifyOrder[]>([]);
+  const [storeOrders, setStoreOrders] = useState<InboxStoreOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
@@ -129,26 +144,30 @@ export function ContactSidebar({
     if (isLeadGenBrand) {
       setStagesLoaded(false);
     }
-    const cachedOrders = shopifyOrdersCache.get(contactId);
+    const cachedOrders = storeOrdersCache.get(contactId);
     if (cachedOrders) {
-      setShopifyOrders(cachedOrders);
+      setStoreOrders(cachedOrders);
       setOrdersLoading(false);
     } else {
-      setShopifyOrders([]);
+      setStoreOrders([]);
       setOrdersLoading(isEcommerceBrand);
     }
 
     const supabase = createClient();
 
+    const ordersApiPath = isWooCommerceBrand
+      ? `/api/woocommerce/orders?contact_id=${contactId}`
+      : `/api/shopify/orders?contact_id=${contactId}`;
+
     const ordersPromise = isEcommerceBrand
-      ? fetch(`/api/shopify/orders?contact_id=${contactId}`)
+      ? fetch(ordersApiPath)
           .then(async (res) => {
-            if (!res.ok) return [] as ShopifyOrder[];
-            const payload = (await res.json()) as { orders?: ShopifyOrder[] };
+            if (!res.ok) return [] as InboxStoreOrder[];
+            const payload = (await res.json()) as { orders?: InboxStoreOrder[] };
             return payload.orders ?? [];
           })
-          .catch(() => [] as ShopifyOrder[])
-      : Promise.resolve([] as ShopifyOrder[]);
+          .catch(() => [] as InboxStoreOrder[])
+      : Promise.resolve([] as InboxStoreOrder[]);
 
     // Deals/notes/tags and Shopify orders in parallel (orders used to wait)
     const [
@@ -234,11 +253,11 @@ export function ContactSidebar({
     }
 
     if (isEcommerceBrand) {
-      shopifyOrdersCache.set(contactId, orders);
-      setShopifyOrders(orders);
+      storeOrdersCache.set(contactId, orders);
+      setStoreOrders(orders);
       setOrdersLoading(false);
     }
-  }, [contact, isEcommerceBrand, isLeadGenBrand]);
+  }, [contact, isEcommerceBrand, isLeadGenBrand, isWooCommerceBrand]);
 
   const fetchReminders = useCallback(async () => {
     if (!conversationId) {
@@ -821,11 +840,11 @@ export function ContactSidebar({
           <>
           <div className="my-4 border-t border-border" />
 
-          {/* Shopify order history */}
+          {/* Store order history */}
           <div>
             <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
               <ShoppingBag className="h-3 w-3" />
-              Shopify Orders
+              {isWooCommerceBrand ? 'WooCommerce Orders' : 'Shopify Orders'}
             </div>
             <div className="mt-2 space-y-2">
               {ordersLoading ? (
@@ -833,10 +852,12 @@ export function ContactSidebar({
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Loading orders…
                 </div>
-              ) : shopifyOrders.length === 0 ? (
-                <p className="px-1 text-xs text-muted-foreground">No Shopify orders</p>
+              ) : storeOrders.length === 0 ? (
+                <p className="px-1 text-xs text-muted-foreground">
+                  {isWooCommerceBrand ? 'No WooCommerce orders' : 'No Shopify orders'}
+                </p>
               ) : (
-                shopifyOrders.map((order) => (
+                storeOrders.map((order) => (
                   <div key={order.id} className="rounded-lg bg-muted px-3 py-2 text-xs">
                     <div className="flex items-center justify-between gap-2">
                       {order.admin_url ? (
@@ -905,9 +926,9 @@ export function ContactSidebar({
                           {order.tracking_number ? ` (${order.tracking_number})` : ""}
                         </a>
                       ) : null}
-                      {order.tags.length > 0 && (
+                      {(order.tags?.length ?? 0) > 0 && (
                         <div className="mt-1 flex flex-wrap gap-1">
-                          {order.tags.map((tag) => (
+                          {(order.tags ?? []).map((tag) => (
                             <span
                               key={tag}
                               className="rounded-full bg-background px-1.5 py-0.5 text-[10px] text-foreground"
