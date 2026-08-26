@@ -1,4 +1,8 @@
-import type { WooCommerceOrderPayload, WooCommerceWebhookRow } from './types';
+import type {
+  WooCommerceCustomerPayload,
+  WooCommerceOrderPayload,
+  WooCommerceWebhookRow,
+} from './types';
 import { normalizeStoreUrl } from './normalize-store-url';
 import { WOOCOMMERCE_API_VERSION } from './config';
 
@@ -70,7 +74,12 @@ export async function verifyWooCommerceCredentials(args: {
   return { store_name: storeName, store_url: normalized };
 }
 
-const WEBHOOK_TOPICS = ['order.created', 'order.updated'] as const;
+const WEBHOOK_TOPICS = [
+  'order.created',
+  'order.updated',
+  'customer.created',
+  'customer.updated',
+] as const;
 
 export async function registerWooCommerceWebhooks(args: {
   storeUrl: string;
@@ -173,6 +182,68 @@ export async function fetchOrdersByEmail(
     consumerKey,
     consumerSecret,
     `/orders?search=${encodeURIComponent(normalized)}&per_page=20&orderby=date&order=desc`,
+  );
+}
+
+export async function fetchCustomersPage(
+  storeUrl: string,
+  consumerKey: string,
+  consumerSecret: string,
+  page: number,
+  perPage = 100,
+): Promise<WooCommerceCustomerPayload[]> {
+  return wooFetch<WooCommerceCustomerPayload[]>(
+    storeUrl,
+    consumerKey,
+    consumerSecret,
+    `/customers?per_page=${perPage}&page=${page}&orderby=registered&order=asc`,
+  );
+}
+
+export async function fetchCustomersTotal(
+  storeUrl: string,
+  consumerKey: string,
+  consumerSecret: string,
+): Promise<number> {
+  const url = `${apiBase(storeUrl)}/customers?per_page=1&page=1`;
+  const res = await fetch(url, {
+    headers: {
+      Authorization: buildAuthHeader(consumerKey, consumerSecret),
+      'Content-Type': 'application/json',
+    },
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(
+      body
+        ? `WooCommerce API error (${res.status}): ${body.slice(0, 200)}`
+        : `WooCommerce API error (${res.status})`,
+    );
+  }
+
+  const totalHeader = res.headers.get('x-wp-total');
+  if (totalHeader) {
+    const n = Number.parseInt(totalHeader, 10);
+    if (Number.isFinite(n)) return n;
+  }
+
+  const rows = (await res.json()) as WooCommerceCustomerPayload[];
+  return rows.length;
+}
+
+export async function fetchCustomer(
+  storeUrl: string,
+  consumerKey: string,
+  consumerSecret: string,
+  customerId: number | string,
+): Promise<WooCommerceCustomerPayload> {
+  return wooFetch<WooCommerceCustomerPayload>(
+    storeUrl,
+    consumerKey,
+    consumerSecret,
+    `/customers/${customerId}`,
   );
 }
 

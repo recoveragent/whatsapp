@@ -4,6 +4,10 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { Contact, MessageTemplate } from '@/types';
+import {
+  resolveWooCommerceSegmentContacts,
+} from '@/lib/woocommerce/resolve-segment-audience';
+import type { WooCommerceSegmentKey } from '@/lib/woocommerce/segments';
 
 export type CustomFieldOperator = 'is' | 'is_not' | 'contains';
 
@@ -14,12 +18,14 @@ export interface CustomFieldFilter {
 }
 
 export interface AudienceConfig {
-  type: 'all' | 'tags' | 'custom_field' | 'csv';
+  type: 'all' | 'tags' | 'custom_field' | 'csv' | 'woocommerce';
   tagIds?: string[];
   customField?: CustomFieldFilter;
   csvContacts?: { phone: string; name?: string }[];
   /** Contacts carrying any of these tags are subtracted from the result. */
   excludeTagIds?: string[];
+  /** WooCommerce purchase-behavior segment (woocommerce brands only). */
+  woocommerceSegment?: WooCommerceSegmentKey;
 }
 
 /**
@@ -189,6 +195,11 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       contacts = await resolveCustomFieldAudience(supabase, audience.customField);
     } else if (audience.type === 'csv' && audience.csvContacts) {
       contacts = await upsertCsvContacts(supabase, audience.csvContacts);
+    } else if (audience.type === 'woocommerce' && audience.woocommerceSegment) {
+      contacts = await resolveWooCommerceSegmentContacts(
+        supabase,
+        audience.woocommerceSegment,
+      );
     }
 
     // Apply exclude tags (works across all contact-derived audience
@@ -367,6 +378,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
             tagIds: payload.audience.tagIds,
             customField: payload.audience.customField,
             excludeTagIds: payload.audience.excludeTagIds,
+            woocommerceSegment: payload.audience.woocommerceSegment,
           },
           status: 'sending',
           total_recipients: contacts.length,

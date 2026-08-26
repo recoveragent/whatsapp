@@ -13,9 +13,12 @@ import {
   ArrowRight,
   ArrowLeft,
   X,
+  Store,
 } from 'lucide-react';
+import type { WooCommerceSegmentKey } from '@/lib/woocommerce/segments';
+import { resolveWooCommerceSegmentContactIds } from '@/lib/woocommerce/resolve-segment-audience';
 
-type AudienceType = 'all' | 'tags' | 'custom_field' | 'csv';
+type AudienceType = 'all' | 'tags' | 'custom_field' | 'csv' | 'woocommerce';
 type CustomFieldOperator = 'is' | 'is_not' | 'contains';
 
 interface CustomFieldFilter {
@@ -30,6 +33,14 @@ interface AudienceConfig {
   customField?: CustomFieldFilter;
   csvContacts?: { phone: string; name?: string }[];
   excludeTagIds?: string[];
+  woocommerceSegment?: WooCommerceSegmentKey;
+}
+
+interface WooSegmentOption {
+  key: WooCommerceSegmentKey;
+  label: string;
+  description: string;
+  count: number;
 }
 
 interface Step2Props {
@@ -89,6 +100,9 @@ export function Step2SelectAudience({
   const [loadingFields, setLoadingFields] = useState(false);
   const [estimatedCount, setEstimatedCount] = useState<number | null>(null);
   const [loadingCount, setLoadingCount] = useState(false);
+  const [wooSegments, setWooSegments] = useState<WooSegmentOption[]>([]);
+  const [wooAvailable, setWooAvailable] = useState(false);
+  const [loadingWooSegments, setLoadingWooSegments] = useState(false);
 
   // Tags are used both by the primary "Filter by Tags" audience type
   // AND by the exclude-list below — so always load once on mount.
@@ -104,6 +118,27 @@ export function Step2SelectAudience({
       }
     }
     fetchTags();
+  }, []);
+
+  useEffect(() => {
+    async function fetchWooSegments() {
+      setLoadingWooSegments(true);
+      try {
+        const res = await fetch('/api/woocommerce/customers/segments', { cache: 'no-store' });
+        if (!res.ok) {
+          setWooAvailable(false);
+          return;
+        }
+        const data = (await res.json()) as { segments?: WooSegmentOption[] };
+        setWooSegments(data.segments ?? []);
+        setWooAvailable((data.segments?.length ?? 0) > 0);
+      } catch {
+        setWooAvailable(false);
+      } finally {
+        setLoadingWooSegments(false);
+      }
+    }
+    void fetchWooSegments();
   }, []);
 
   // Lazy-load custom fields only when that audience type is active.
@@ -167,6 +202,12 @@ export function Step2SelectAudience({
       ) {
         setEstimatedCount(audience.csvContacts.length);
         return;
+      } else if (audience.type === 'woocommerce' && audience.woocommerceSegment) {
+        const ids = await resolveWooCommerceSegmentContactIds(
+          supabase,
+          audience.woocommerceSegment,
+        );
+        baseIds = new Set(ids);
       } else {
         // Partially-configured audience — wait for the user to finish.
         setEstimatedCount(null);
@@ -205,6 +246,7 @@ export function Step2SelectAudience({
     audience.customField,
     audience.csvContacts,
     audience.excludeTagIds,
+    audience.woocommerceSegment,
   ]);
 
   useEffect(() => {
@@ -244,7 +286,22 @@ export function Step2SelectAudience({
       audience.customField.value.length > 0) ||
     (audience.type === 'csv' &&
       audience.csvContacts &&
-      audience.csvContacts.length > 0);
+      audience.csvContacts.length > 0) ||
+    (audience.type === 'woocommerce' && !!audience.woocommerceSegment);
+
+  const audienceOptionsList = [
+    ...audienceOptions,
+    ...(wooAvailable
+      ? [
+          {
+            type: 'woocommerce' as const,
+            label: 'WooCommerce Segment',
+            description: 'Target customers by purchase behavior',
+            icon: Store,
+          },
+        ]
+      : []),
+  ];
 
   return (
     <div className="space-y-6">
@@ -256,7 +313,7 @@ export function Step2SelectAudience({
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {audienceOptions.map((option) => {
+        {audienceOptionsList.map((option) => {
           const isSelected = audience.type === option.type;
           const Icon = option.icon;
           return (
@@ -275,6 +332,10 @@ export function Step2SelectAudience({
                       : undefined,
                   csvContacts:
                     option.type === 'csv' ? audience.csvContacts : undefined,
+                  woocommerceSegment:
+                    option.type === 'woocommerce'
+                      ? audience.woocommerceSegment
+                      : undefined,
                 })
               }
               className={`flex items-start gap-3 rounded-xl border p-4 text-left transition-all ${
@@ -331,6 +392,49 @@ export function Step2SelectAudience({
                       style={{ backgroundColor: tag.color }}
                     />
                     {tag.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {audience.type === 'woocommerce' && (
+        <div className="rounded-xl border border-border bg-card/50 p-4">
+          <p className="mb-3 text-sm font-medium text-foreground">WooCommerce Segment</p>
+          {loadingWooSegments ? (
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          ) : wooSegments.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              No synced customers yet. Sync customers from Settings → WooCommerce first.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {wooSegments.map((segment) => {
+                const isSelected = audience.woocommerceSegment === segment.key;
+                return (
+                  <button
+                    key={segment.key}
+                    type="button"
+                    onClick={() =>
+                      onUpdate({ ...audience, woocommerceSegment: segment.key })
+                    }
+                    className={`flex w-full items-start justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
+                      isSelected
+                        ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                        : 'border-border bg-muted/30 hover:border-border'
+                    }`}
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{segment.label}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {segment.description}
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                      {segment.count}
+                    </span>
                   </button>
                 );
               })}

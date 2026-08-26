@@ -50,6 +50,14 @@ export function WooCommerceBrandConnection() {
   const [consumerSecret, setConsumerSecret] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [syncingCustomers, setSyncingCustomers] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<{
+    status: string;
+    processed: number;
+    total: number | null;
+    skippedNoPhone: number;
+    error: string | null;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,6 +108,66 @@ export function WooCommerceBrandConnection() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const loadSyncProgress = useCallback(async () => {
+    try {
+      const res = await fetch('/api/woocommerce/customers/sync', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        progress?: {
+          status: string;
+          processed: number;
+          total: number | null;
+          skippedNoPhone: number;
+          error: string | null;
+        } | null;
+      };
+      if (data.progress) setSyncProgress(data.progress);
+    } catch {
+      // Non-fatal — sync panel stays empty until first run.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (connection?.connected) void loadSyncProgress();
+  }, [connection?.connected, loadSyncProgress]);
+
+  const runCustomerSync = async () => {
+    setSyncingCustomers(true);
+    try {
+      let done = false;
+      while (!done) {
+        const res = await fetch('/api/woocommerce/customers/sync', { method: 'POST' });
+        const data = (await res.json()) as {
+          done?: boolean;
+          error?: string;
+          progress?: {
+            status: string;
+            processed: number;
+            total: number | null;
+            skippedNoPhone: number;
+            error: string | null;
+          };
+        };
+
+        if (data.progress) setSyncProgress(data.progress);
+        if (!res.ok) throw new Error(data.error ?? 'Customer sync failed');
+
+        done = Boolean(data.done);
+        if (!done) {
+          await new Promise((r) => setTimeout(r, 300));
+        }
+      }
+
+      toast.success('WooCommerce customers synced');
+      await loadSyncProgress();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Customer sync failed');
+      await loadSyncProgress();
+    } finally {
+      setSyncingCustomers(false);
+    }
+  };
 
   const handleConnect = async () => {
     if (!storeUrl.trim()) {
@@ -262,7 +330,7 @@ export function WooCommerceBrandConnection() {
                 <p className="font-medium text-foreground">REST API setup</p>
                 <ol className="list-decimal pl-4 space-y-1">
                   <li>In WordPress admin, go to WooCommerce → Settings → Advanced → REST API.</li>
-                  <li>Create keys with Read permissions for orders.</li>
+                  <li>Create keys with Read permissions for orders and customers.</li>
                   <li>
                     Webhooks are registered automatically to:
                     {webhookUrl ? (
@@ -320,6 +388,56 @@ export function WooCommerceBrandConnection() {
                   </>
                 )}
               </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {configured && connected && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Customer sync</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                Import WooCommerce customers into Contacts for audience segments and broadcasts.
+                New customers sync automatically via webhooks after the initial import.
+              </p>
+              {syncProgress && (
+                <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs space-y-1">
+                  <p className="text-foreground">
+                    Status:{' '}
+                    <span className="font-medium capitalize">{syncProgress.status}</span>
+                  </p>
+                  {syncProgress.total != null && (
+                    <p className="text-muted-foreground">
+                      Synced {syncProgress.processed} of {syncProgress.total} customers
+                      {syncProgress.skippedNoPhone > 0
+                        ? ` (${syncProgress.skippedNoPhone} skipped — no phone)`
+                        : ''}
+                    </p>
+                  )}
+                  {syncProgress.error && (
+                    <p className="text-destructive">{syncProgress.error}</p>
+                  )}
+                </div>
+              )}
+              {canEdit && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={syncingCustomers}
+                  onClick={() => void runCustomerSync()}
+                >
+                  {syncingCustomers ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : syncProgress?.status === 'completed' ? (
+                    'Re-sync customers'
+                  ) : (
+                    'Sync all customers'
+                  )}
+                </Button>
+              )}
             </CardContent>
           </Card>
         )}

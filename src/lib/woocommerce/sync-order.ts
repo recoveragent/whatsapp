@@ -1,8 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { findExistingContact } from '@/lib/contacts/dedupe';
+import { ensureShopifyContact } from '@/lib/shopify/ensure-contact';
 import { buildWooCommerceOrderStatusUrl } from './admin-api';
 import { extractOrderPhone } from './extract-context';
+import { refreshWooCustomerStatsForContact } from './sync-customer';
 import type { WooCommerceOrderPayload } from './types';
 
 function mapFulfillmentStatus(status: string | undefined): string {
@@ -19,6 +21,7 @@ export async function syncWooCommerceOrder(
   accountId: string,
   order: WooCommerceOrderPayload,
   storeUrl: string,
+  ownerUserId?: string,
 ): Promise<void> {
   if (!order.id) return;
 
@@ -28,6 +31,32 @@ export async function syncWooCommerceOrder(
   if (customerPhone) {
     const existing = await findExistingContact(db, accountId, customerPhone);
     contactId = existing?.id ?? null;
+
+    if (!contactId && ownerUserId) {
+      const billingName = [order.billing?.first_name, order.billing?.last_name]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      const ensured = await ensureShopifyContact(
+        db,
+        accountId,
+        ownerUserId,
+        customerPhone,
+        billingName || customerPhone,
+      );
+      contactId = ensured?.id ?? null;
+    }
+
+    if (contactId && order.customer_id && order.customer_id > 0) {
+      await db
+        .from('contacts')
+        .update({
+          woocommerce_customer_id: String(order.customer_id),
+          email: order.billing?.email?.trim().toLowerCase() ?? undefined,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', contactId);
+    }
   }
 
   const { error } = await db.from('woocommerce_orders').upsert(
@@ -52,5 +81,16 @@ export async function syncWooCommerceOrder(
 
   if (error) {
     console.error('[woocommerce] syncWooCommerceOrder failed:', error);
+    return;
+  }
+
+  if (contactId && ownerUserId) {
+    await refreshWooCustomerStatsForContact({
+      db,
+      accountId,
+      ownerUserId,
+      contactId,
+      woocommerceCustomerId: order.customer_id ? String(order.customer_id) : null,
+    });
   }
 }

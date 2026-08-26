@@ -1,13 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { syncWooCommerceOrder } from './sync-order';
+import { syncWooCommerceCustomer } from './sync-customer';
 import { contextFromOrder } from './extract-event-context';
 import {
   dispatchWooCommerceFlows,
   type WooCommerceFlowDispatchOutcome,
 } from '@/lib/flows/woocommerce-dispatch';
 import { woocommerceTopicToFlowTrigger } from '@/lib/flows/trigger-types';
-import type { WooCommerceOrderPayload } from './types';
+import type { WooCommerceCustomerPayload, WooCommerceOrderPayload } from './types';
 import { normalizeStoreUrl } from './normalize-store-url';
 
 interface WooCommerceConfigLookup {
@@ -67,7 +68,7 @@ export async function handleWooCommerceWebhook(args: {
     case 'order.updated': {
       const order = args.payload as WooCommerceOrderPayload;
       if (!order?.id) return;
-      await syncWooCommerceOrder(args.db, config.account_id, order, config.store_url);
+      await syncWooCommerceOrder(args.db, config.account_id, order, config.store_url, config.user_id);
 
       const trigger = woocommerceTopicToFlowTrigger(args.topic, {
         status: order.status,
@@ -89,6 +90,27 @@ export async function handleWooCommerceWebhook(args: {
           store: config.store_url,
         });
       }
+      break;
+    }
+    case 'customer.created':
+    case 'customer.updated': {
+      const customer = args.payload as WooCommerceCustomerPayload;
+      if (!customer?.id) return;
+
+      const result = await syncWooCommerceCustomer({
+        db: args.db,
+        accountId: config.account_id,
+        ownerUserId: config.user_id,
+        customer,
+      });
+
+      console.info('[woocommerce webhook] customer sync', {
+        topic: args.topic,
+        customer_id: customer.id,
+        ok: result.ok,
+        skipped: result.skipped,
+        store: config.store_url,
+      });
       break;
     }
     default:
