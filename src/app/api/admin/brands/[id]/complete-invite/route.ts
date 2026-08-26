@@ -1,7 +1,7 @@
 // POST /api/admin/brands/[id]/complete-invite
 //
-// Super admin only. Finalizes a pending brand admin invite when
-// the invitee signed up but never clicked Accept on /join/<token>.
+// Super admin only. Manually links the invited email to this brand
+// when /join redeem or confirmation email failed (see migration 062).
 
 import { NextResponse } from "next/server";
 import type { PostgrestError } from "@supabase/supabase-js";

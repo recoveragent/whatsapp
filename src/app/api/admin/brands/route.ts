@@ -107,10 +107,7 @@ export async function GET() {
       }
     }
     if (pendingInviteEmails.length > 0) {
-      const { data: inviteeProfiles } = await admin
-        .from("profiles")
-        .select("email, account_id")
-        .is("account_id", null);
+      const { data: inviteeProfiles } = await admin.from("profiles").select("email");
       for (const row of inviteeProfiles ?? []) {
         const email =
           typeof row.email === "string" ? row.email.trim().toLowerCase() : "";
@@ -135,6 +132,7 @@ export async function GET() {
         ...brand,
         admin_email: adminEmail,
         invite_pending: invitePending,
+        can_assign_admin: invitePending && invitedEmail.length > 0,
         can_complete_invite:
           invitePending &&
           invitedEmail.length > 0 &&

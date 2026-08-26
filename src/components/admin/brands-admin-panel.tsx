@@ -39,6 +39,7 @@ interface BrandRow {
   ecommerce_platform?: EcommercePlatform | null;
   admin_email: string | null;
   invite_pending: boolean;
+  can_assign_admin?: boolean;
   can_complete_invite?: boolean;
 }
 
@@ -172,22 +173,28 @@ export function BrandsAdminPanel() {
     }
   };
 
-  const handleCompleteInvite = async (id: string, adminEmail: string | null) => {
+  const handleAssignAdmin = async (id: string, adminEmail: string | null) => {
+    const label = adminEmail ?? 'this user';
+    if (
+      !confirm(
+        `Assign ${label} as admin of this brand? Their login will be linked to this workspace immediately.`,
+      )
+    ) {
+      return;
+    }
     setCompletingInviteId(id);
     try {
       const res = await fetch(`/api/admin/brands/${id}/complete-invite`, {
         method: 'POST',
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error ?? 'Could not complete invitation');
+      if (!res.ok) throw new Error(body.error ?? 'Could not assign admin');
       toast.success(
-        adminEmail
-          ? `Linked ${adminEmail} to this brand`
-          : 'Invitation completed',
+        adminEmail ? `${adminEmail} is now the brand admin` : 'Brand admin assigned',
       );
       await loadBrands();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not complete invitation');
+      toast.error(err instanceof Error ? err.message : 'Could not assign admin');
     } finally {
       setCompletingInviteId(null);
     }
@@ -416,26 +423,29 @@ export function BrandsAdminPanel() {
                       {b.owner_user_id
                         ? 'Admin assigned'
                         : b.can_complete_invite
-                          ? 'Signed up — finish linking below'
+                          ? 'Signed up — assign manually below'
                           : b.invite_pending
-                            ? 'Invite pending'
+                            ? b.admin_email
+                              ? `Invite pending for ${b.admin_email}`
+                              : 'Invite pending'
                             : 'Awaiting admin invite'}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {b.can_complete_invite ? (
+                    {b.can_assign_admin ? (
                       <Button
                         size="sm"
                         disabled={completingInviteId === b.id}
-                        onClick={() => void handleCompleteInvite(b.id, b.admin_email)}
+                        onClick={() => void handleAssignAdmin(b.id, b.admin_email)}
                       >
                         {completingInviteId === b.id ? (
                           <Loader2 className="size-4 animate-spin" />
                         ) : (
-                          'Complete invite'
+                          'Assign admin'
                         )}
                       </Button>
-                    ) : b.invite_pending ? (
+                    ) : null}
+                    {b.invite_pending ? (
                       <Button
                         size="sm"
                         variant="outline"
