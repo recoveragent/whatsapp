@@ -70,17 +70,23 @@ export async function GET() {
       return NextResponse.json({ error: "Failed to load brands" }, { status: 500 });
     }
 
-    const nowIso = new Date().toISOString();
+    const admin = supabaseAdmin();
+    const brandIds = brands.map((b) => b.id);
 
-    const { data: unredeemedInvites } = await supabase
-      .from("account_invitations")
-      .select("id, account_id, invited_email, role, expires_at, created_at")
-      .is("accepted_at", null)
-      .order("created_at", { ascending: false });
+    const { data: unredeemedInvites } =
+      brandIds.length > 0
+        ? await admin
+            .from("account_invitations")
+            .select("id, account_id, invited_email, role, expires_at, created_at")
+            .in("account_id", brandIds)
+            .is("accepted_at", null)
+            .order("created_at", { ascending: false })
+        : { data: [] as never[] };
 
     type InviteRow = NonNullable<typeof unredeemedInvites>[number];
     const latestUnredeemedByAccount = new Map<string, InviteRow>();
     const activePendingByAccount = new Map<string, InviteRow>();
+    const nowIso = new Date().toISOString();
 
     for (const inv of unredeemedInvites ?? []) {
       const accountId = inv.account_id as string;
@@ -112,7 +118,6 @@ export async function GET() {
 
     const emailByUserId = new Map<string, string>();
     const signedUpInviteEmails = new Set<string>();
-    const admin = supabaseAdmin();
     if (ownerIds.length > 0) {
       const { data: profiles } = await admin
         .from("profiles")
@@ -152,7 +157,7 @@ export async function GET() {
         Boolean(latestInvite) &&
         !activeInvite &&
         invitedEmail.length > 0;
-      const needsAdmin = !brand.owner_user_id && invitedEmail.length > 0;
+      const needsAdmin = !brand.owner_user_id;
 
       return {
         ...brand,
@@ -160,7 +165,10 @@ export async function GET() {
         invite_pending: invitePending,
         invite_expired: inviteExpired,
         can_assign_admin: needsAdmin,
-        can_complete_invite: needsAdmin && signedUpInviteEmails.has(invitedEmail),
+        can_complete_invite:
+          needsAdmin &&
+          invitedEmail.length > 0 &&
+          signedUpInviteEmails.has(invitedEmail),
       };
     });
 

@@ -175,10 +175,17 @@ export function BrandsAdminPanel() {
   };
 
   const handleAssignAdmin = async (id: string, adminEmail: string | null) => {
-    const label = adminEmail ?? 'this user';
+    let email = adminEmail?.trim().toLowerCase() ?? '';
+    if (!email) {
+      const entered = window.prompt(
+        'Admin email for this brand (must already have signed up):',
+      );
+      email = entered?.trim().toLowerCase() ?? '';
+      if (!email) return;
+    }
     if (
       !confirm(
-        `Assign ${label} as admin of this brand? Their login will be linked to this workspace immediately.`,
+        `Assign ${email} as admin of this brand? Their login will be linked to this workspace immediately.`,
       )
     ) {
       return;
@@ -187,12 +194,12 @@ export function BrandsAdminPanel() {
     try {
       const res = await fetch(`/api/admin/brands/${id}/complete-invite`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminEmail: email }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? 'Could not assign admin');
-      toast.success(
-        adminEmail ? `${adminEmail} is now the brand admin` : 'Brand admin assigned',
-      );
+      toast.success(`${email} is now the brand admin`);
       await loadBrands();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not assign admin');

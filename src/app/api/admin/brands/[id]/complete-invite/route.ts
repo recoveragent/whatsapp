@@ -51,16 +51,26 @@ function rpcErrorToResponse(err: PostgrestError): NextResponse {
 }
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const supabase = await requireSuperAdmin();
     const { id } = await params;
+    const body = (await request.json().catch(() => null)) as
+      | { adminEmail?: unknown }
+      | null;
+    const adminEmail =
+      typeof body?.adminEmail === "string"
+        ? body.adminEmail.trim().toLowerCase()
+        : undefined;
 
     const { data: accountId, error } = await supabase.rpc(
       "complete_brand_admin_invite",
-      { p_account_id: id },
+      {
+        p_account_id: id,
+        ...(adminEmail ? { p_admin_email: adminEmail } : {}),
+      },
     );
 
     if (error) return rpcErrorToResponse(error);

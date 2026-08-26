@@ -87,7 +87,8 @@ export async function POST(
         : "";
 
     if (!adminEmail) {
-      const { data: pending } = await supabase
+      const admin = supabaseAdmin();
+      const { data: pending } = await admin
         .from("account_invitations")
         .select("invited_email")
         .eq("account_id", id)
