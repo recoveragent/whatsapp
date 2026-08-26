@@ -196,7 +196,7 @@ export async function fetchCustomersPage(
     storeUrl,
     consumerKey,
     consumerSecret,
-    `/customers?per_page=${perPage}&page=${page}&orderby=registered&order=asc`,
+    `/customers?per_page=${perPage}&page=${page}&orderby=registered_date&order=asc`,
   );
 }
 
