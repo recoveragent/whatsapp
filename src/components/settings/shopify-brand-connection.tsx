@@ -313,7 +313,7 @@ export function ShopifyBrandConnection() {
                       ' (shown after load)'
                     )}
                   </li>
-                  <li>Enable Admin API scopes for orders, fulfillments, checkouts, and customers.</li>
+                  <li>Enable Admin API scopes for orders, fulfillments, checkouts, customers, and products (read_products).</li>
                   <li>Paste Client ID and Client Secret below, then connect.</li>
                 </ol>
               </div>

@@ -6,6 +6,7 @@ const DEFAULT_SCOPES = [
   'read_fulfillments',
   'read_checkouts',
   'read_customers',
+  'read_products',
 ].join(',');
 
 export const SHOPIFY_API_VERSION = '2025-01';
