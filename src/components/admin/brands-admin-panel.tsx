@@ -39,6 +39,7 @@ interface BrandRow {
   ecommerce_platform?: EcommercePlatform | null;
   admin_email: string | null;
   invite_pending: boolean;
+  invite_expired?: boolean;
   can_assign_admin?: boolean;
   can_complete_invite?: boolean;
 }
@@ -424,11 +425,15 @@ export function BrandsAdminPanel() {
                         ? 'Admin assigned'
                         : b.can_complete_invite
                           ? 'Signed up — assign manually below'
-                          : b.invite_pending
+                          : b.invite_expired
                             ? b.admin_email
-                              ? `Invite pending for ${b.admin_email}`
-                              : 'Invite pending'
-                            : 'Awaiting admin invite'}
+                              ? `Invite expired for ${b.admin_email} — assign or resend`
+                              : 'Invite expired — assign or resend'
+                            : b.invite_pending
+                              ? b.admin_email
+                                ? `Invite pending for ${b.admin_email}`
+                                : 'Invite pending'
+                              : 'Awaiting admin invite'}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -445,7 +450,7 @@ export function BrandsAdminPanel() {
                         )}
                       </Button>
                     ) : null}
-                    {b.invite_pending ? (
+                    {b.invite_pending || b.invite_expired || b.can_assign_admin ? (
                       <Button
                         size="sm"
                         variant="outline"

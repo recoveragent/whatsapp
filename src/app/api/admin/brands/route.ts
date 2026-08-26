@@ -70,21 +70,39 @@ export async function GET() {
       return NextResponse.json({ error: "Failed to load brands" }, { status: 500 });
     }
 
-    const { data: pending } = await supabase
+    const nowIso = new Date().toISOString();
+
+    const { data: unredeemedInvites } = await supabase
       .from("account_invitations")
       .select("id, account_id, invited_email, role, expires_at, created_at")
       .is("accepted_at", null)
-      .gt("expires_at", new Date().toISOString());
+      .order("created_at", { ascending: false });
 
-    const pendingByAccount = new Map(
-      (pending ?? []).map((inv) => [inv.account_id as string, inv]),
-    );
+    type InviteRow = NonNullable<typeof unredeemedInvites>[number];
+    const latestUnredeemedByAccount = new Map<string, InviteRow>();
+    const activePendingByAccount = new Map<string, InviteRow>();
+
+    for (const inv of unredeemedInvites ?? []) {
+      const accountId = inv.account_id as string;
+      if (!latestUnredeemedByAccount.has(accountId)) {
+        latestUnredeemedByAccount.set(accountId, inv);
+      }
+      if (
+        typeof inv.expires_at === "string" &&
+        inv.expires_at > nowIso &&
+        !activePendingByAccount.has(accountId)
+      ) {
+        activePendingByAccount.set(accountId, inv);
+      }
+    }
+
+    const pending = [...activePendingByAccount.values()];
 
     const ownerIds = brands
       .map((b) => b.owner_user_id)
       .filter((id): id is string => Boolean(id));
 
-    const pendingInviteEmails = (pending ?? [])
+    const pendingInviteEmails = [...latestUnredeemedByAccount.values()]
       .map((inv) =>
         typeof inv.invited_email === "string"
           ? inv.invited_email.trim().toLowerCase()
@@ -118,25 +136,31 @@ export async function GET() {
     }
 
     const brandRows = brands.map((brand) => {
-      const pendingInvite = pendingByAccount.get(brand.id);
+      const activeInvite = activePendingByAccount.get(brand.id);
+      const latestInvite = latestUnredeemedByAccount.get(brand.id);
+      const inviteForEmail = latestInvite ?? activeInvite;
       const invitedEmail =
-        typeof pendingInvite?.invited_email === "string"
-          ? pendingInvite.invited_email.trim().toLowerCase()
+        typeof inviteForEmail?.invited_email === "string"
+          ? inviteForEmail.invited_email.trim().toLowerCase()
           : "";
       const adminEmail = brand.owner_user_id
         ? (emailByUserId.get(brand.owner_user_id) ?? null)
         : invitedEmail || null;
-      const invitePending = !brand.owner_user_id && Boolean(pendingInvite);
+      const invitePending = !brand.owner_user_id && Boolean(activeInvite);
+      const inviteExpired =
+        !brand.owner_user_id &&
+        Boolean(latestInvite) &&
+        !activeInvite &&
+        invitedEmail.length > 0;
+      const needsAdmin = !brand.owner_user_id && invitedEmail.length > 0;
 
       return {
         ...brand,
         admin_email: adminEmail,
         invite_pending: invitePending,
-        can_assign_admin: invitePending && invitedEmail.length > 0,
-        can_complete_invite:
-          invitePending &&
-          invitedEmail.length > 0 &&
-          signedUpInviteEmails.has(invitedEmail),
+        invite_expired: inviteExpired,
+        can_assign_admin: needsAdmin,
+        can_complete_invite: needsAdmin && signedUpInviteEmails.has(invitedEmail),
       };
     });
 
