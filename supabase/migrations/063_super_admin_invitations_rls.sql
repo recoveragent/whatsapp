@@ -26,6 +26,8 @@ CREATE POLICY account_invitations_select ON account_invitations FOR SELECT
     )
   );
 
+DROP FUNCTION IF EXISTS public.complete_brand_admin_invite(UUID);
+
 CREATE OR REPLACE FUNCTION public.complete_brand_admin_invite(
   p_account_id UUID,
   p_admin_email TEXT DEFAULT NULL
