@@ -537,6 +537,12 @@ export interface DispatchInboundResult {
     | "duplicate_inbound_ignored"
     | "no_match"
     | "ended_by_exit";
+  /**
+   * When true, the inbound webhook must not flip a closed/followup
+   * conversation back to open — e.g. a template quick-reply path that
+   * ran `close_conversation`.
+   */
+  suppress_inbox_reopen?: boolean;
 }
 
 // ============================================================

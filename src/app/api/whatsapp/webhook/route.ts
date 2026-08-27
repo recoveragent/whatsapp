@@ -20,6 +20,7 @@ import {
   parseFlowNfmReply,
   type WhatsAppReferral,
 } from '@/lib/whatsapp/flow-form-message'
+import { shouldReopenConversationOnInbound } from '@/lib/inbox/reopen-on-inbound'
 
 // Lazy-initialized to avoid build-time crash when env vars are missing
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -733,11 +734,30 @@ async function processMessage(
     console.error('[webhook] pause cadence on reply failed:', err)
   }
 
+  // Run flows before inbox reopen so a template quick-reply path that
+  // closes the conversation can suppress the reopen.
+  const flowResult = await dispatchInboundToFlows({
+    accountId,
+    userId: configOwnerUserId,
+    contactId: contactRecord.id,
+    conversationId: conversation.id,
+    message: buildParsedInbound(
+      message.id,
+      contentText,
+      interactiveReplyId,
+      contentPayload,
+    ),
+    isFirstInboundMessage,
+  })
+
   // Update conversation. Customer reply should reopen the thread —
   // closed/followup chats staying closed hid replies from the Open
-  // inbox (agents only saw them if they switched filter).
-  const reopened =
-    conversation.status === 'closed' || conversation.status === 'followup'
+  // inbox (agents only saw them if they switched filter). Skip when
+  // the flow just ran close_conversation on this same inbound.
+  const reopened = shouldReopenConversationOnInbound({
+    conversationStatus: conversation.status,
+    suppressInboxReopen: flowResult.suppress_inbox_reopen,
+  })
   const convUpdate: Record<string, unknown> = {
     last_message_text: contentText || `[${message.type}]`,
     last_message_at: new Date().toISOString(),
@@ -776,38 +796,6 @@ async function processMessage(
   // trigger installed in migration 003).
   await flagBroadcastReplyIfAny(accountId, contactRecord.id)
 
-  // ============================================================
-  // Flow runner dispatch.
-  //
-  // If the runner consumes the message (it either advanced an active
-  // run or started a new one), we suppress the `new_message_received`
-  // + `keyword_match` automation triggers for this inbound. Customer
-  // is navigating the bot menu, not sending a fresh trigger word
-  // that should fork into automations.
-  //
-  // The relationship-level triggers (`new_contact_created`,
-  // `first_inbound_message`) still fire even when consumed — those
-  // are about WHO is messaging, not what they said.
-  //
-  // Awaited (not fire-and-forget) because we need the `consumed`
-  // result before deciding whether to dispatch automations. The
-  // runner has its own try/catch and never throws. Accounts with
-  // no active flows take the runner's early-exit "no_match" path
-  // basically for free (one indexed SELECT for the active run).
-  // ============================================================
-  const flowResult = await dispatchInboundToFlows({
-    accountId,
-    userId: configOwnerUserId,
-    contactId: contactRecord.id,
-    conversationId: conversation.id,
-    message: buildParsedInbound(
-      message.id,
-      contentText,
-      interactiveReplyId,
-      contentPayload,
-    ),
-    isFirstInboundMessage,
-  })
   const flowConsumed = flowResult.consumed
 
   // Fire any automations that react to this webhook event. All dispatches

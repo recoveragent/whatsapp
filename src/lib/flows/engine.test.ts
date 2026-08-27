@@ -95,6 +95,36 @@ describe("matchReplyId", () => {
       ),
     ).toBeNull();
   });
+
+  it("matches send_template quick-reply buttons by reply_id, title, or text", () => {
+    const node = {
+      node_type: "send_template",
+      config: {
+        template_name: "order_placed_cod",
+        buttons: [
+          {
+            reply_id: "Got it",
+            title: "Got it",
+            next_node_key: "close_chat",
+          },
+        ],
+      },
+    };
+    expect(matchReplyId(node, "Got it")).toBe("close_chat");
+    expect(matchReplyId(node, "got it", "Got it")).toBe("close_chat");
+    expect(matchReplyId(node, "GOT IT")).toBe("close_chat");
+    expect(matchReplyId(node, "Not now")).toBeNull();
+  });
+
+  it("ignores send_template buttons without a connected next node", () => {
+    const node = {
+      node_type: "send_template",
+      config: {
+        buttons: [{ reply_id: "Got it", title: "Got it", next_node_key: "" }],
+      },
+    };
+    expect(matchReplyId(node, "Got it")).toBeNull();
+  });
 });
 
 describe("matchesKeywordTrigger", () => {

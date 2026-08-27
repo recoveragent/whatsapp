@@ -85,6 +85,34 @@ import {
 // without a Supabase / Meta mock.
 // ============================================================
 
+function normalizeQuickReplyLabel(value: string | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function sendTemplateButtonsMatch(
+  buttons: Array<{
+    reply_id?: string;
+    title?: string;
+    next_node_key?: string;
+  }>,
+  reply_id: string,
+  reply_title?: string,
+): string | null {
+  const candidates = [reply_id, reply_title]
+    .map(normalizeQuickReplyLabel)
+    .filter(Boolean);
+  if (candidates.length === 0) return null;
+
+  const hit = buttons.find((b) => {
+    const labels = [b.reply_id, b.title]
+      .map(normalizeQuickReplyLabel)
+      .filter(Boolean);
+    return labels.some((label) => candidates.includes(label));
+  });
+  const next = hit?.next_node_key?.trim();
+  return next ? next : null;
+}
+
 /**
  * Given a node + the customer's reply_id, return the next_node_key
  * to advance to, or `null` if no option matches.
@@ -119,14 +147,7 @@ export function matchReplyId(
           }>;
         }).buttons)
       : [];
-    const hit = buttons.find(
-      (b) =>
-        b.reply_id === reply_id ||
-        b.title === reply_id ||
-        (reply_title &&
-          (b.reply_id === reply_title || b.title === reply_title)),
-    );
-    return hit?.next_node_key ?? null;
+    return sendTemplateButtonsMatch(buttons, reply_id, reply_title);
   }
   return null;
 }
@@ -633,8 +654,19 @@ async function advanceFromNodeKey(
   run: FlowRunRow,
   startNodeKey: string,
   nodes: Map<string, FlowNodeRow>,
-): Promise<{ outcome: "advanced" | "completed" | "handed_off" }> {
+): Promise<{
+  outcome: "advanced" | "completed" | "handed_off";
+  closed_conversation?: boolean;
+}> {
   let currentKey: string | null = startNodeKey;
+  let closedConversation = false;
+  const finish = (
+    outcome: "advanced" | "completed" | "handed_off",
+  ): {
+    outcome: "advanced" | "completed" | "handed_off";
+    closed_conversation?: boolean;
+  } =>
+    closedConversation ? { outcome, closed_conversation: true } : { outcome };
   // Defensive cap — if a flow has a cycle (which the validator
   // SHOULD catch but doesn't yet in v1), we bail rather than loop.
   for (let safety = 0; safety < 64; safety += 1) {
@@ -643,7 +675,7 @@ async function advanceFromNodeKey(
         reason: "next_node_key was null mid-advance",
       });
       await endRun(db, run.id, "failed", "missing_next_node");
-      return { outcome: "completed" };
+      return finish("completed");
     }
     const node: FlowNodeRow | null = nodes.get(currentKey) ?? null;
     if (!node) {
@@ -651,7 +683,7 @@ async function advanceFromNodeKey(
         reason: "node_not_found",
       });
       await endRun(db, run.id, "failed", "node_not_found");
-      return { outcome: "completed" };
+      return finish("completed");
     }
     await logEvent(db, run.id, "node_entered", node.node_key, {
       node_type: node.node_type,
@@ -681,7 +713,7 @@ async function advanceFromNodeKey(
           detail: err instanceof Error ? err.message : String(err),
         });
         await endRun(db, run.id, "failed", "send_text_failed");
-        return { outcome: "completed" };
+        return finish("completed");
       }
       currentKey = cfg.next_node_key;
       continue;
@@ -712,7 +744,7 @@ async function advanceFromNodeKey(
           detail: err instanceof Error ? err.message : String(err),
         });
         await endRun(db, run.id, "failed", "send_media_failed");
-        return { outcome: "completed" };
+        return finish("completed");
       }
       currentKey = cfg.next_node_key;
       continue;
@@ -750,7 +782,7 @@ async function advanceFromNodeKey(
           detail: err instanceof Error ? err.message : String(err),
         });
         await endRun(db, run.id, "failed", "collect_input_prompt_failed");
-        return { outcome: "completed" };
+        return finish("completed");
       }
       const advanced = await advanceCurrentNodeKey(
         db,
@@ -765,7 +797,7 @@ async function advanceFromNodeKey(
       } else {
         await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       }
-      return { outcome: "advanced" };
+      return finish("advanced");
     }
     if (node.node_type === "send_address") {
       // Send Meta's address form and suspend until nfm_reply arrives.
@@ -821,7 +853,7 @@ async function advanceFromNodeKey(
           detail: err instanceof Error ? err.message : String(err),
         });
         await endRun(db, run.id, "failed", "send_address_failed");
-        return { outcome: "completed" };
+        return finish("completed");
       }
       const advanced = await advanceCurrentNodeKey(
         db,
@@ -836,7 +868,7 @@ async function advanceFromNodeKey(
       } else {
         await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       }
-      return { outcome: "advanced" };
+      return finish("advanced");
     }
     if (node.node_type === "send_flow") {
       const cfg = node.config as unknown as SendFlowNodeConfig;
@@ -892,7 +924,7 @@ async function advanceFromNodeKey(
           detail: err instanceof Error ? err.message : String(err),
         });
         await endRun(db, run.id, "failed", "send_flow_failed");
-        return { outcome: "completed" };
+        return finish("completed");
       }
       const advanced = await advanceCurrentNodeKey(
         db,
@@ -907,7 +939,7 @@ async function advanceFromNodeKey(
       } else {
         await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       }
-      return { outcome: "advanced" };
+      return finish("advanced");
     }
     if (node.node_type === "condition") {
       const cfg = node.config as unknown as ConditionNodeConfig;
@@ -922,7 +954,7 @@ async function advanceFromNodeKey(
           detail: err instanceof Error ? err.message : String(err),
         });
         await endRun(db, run.id, "failed", "condition_evaluation_failed");
-        return { outcome: "completed" };
+        return finish("completed");
       }
       currentKey =
         branch === "true" ? cfg.true_next : cfg.false_next;
@@ -958,7 +990,7 @@ async function advanceFromNodeKey(
           detail: err instanceof Error ? err.message : String(err),
         });
         await endRun(db, run.id, "failed", "switch_evaluation_failed");
-        return { outcome: "completed" };
+        return finish("completed");
       }
       currentKey = nextKey;
       await logEvent(db, run.id, "node_entered", node.node_key, {
@@ -1019,7 +1051,7 @@ async function advanceFromNodeKey(
           detail: err instanceof Error ? err.message : String(err),
         });
         await endRun(db, run.id, "failed", "send_buttons_failed");
-        return { outcome: "completed" };
+        return finish("completed");
       }
       // Persist the new current_node_key via optimistic UPDATE.
       const advanced = await advanceCurrentNodeKey(
@@ -1035,7 +1067,7 @@ async function advanceFromNodeKey(
       } else {
         await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       }
-      return { outcome: "advanced" };
+      return finish("advanced");
     }
     if (node.node_type === "send_list") {
       try {
@@ -1046,7 +1078,7 @@ async function advanceFromNodeKey(
           detail: err instanceof Error ? err.message : String(err),
         });
         await endRun(db, run.id, "failed", "send_list_failed");
-        return { outcome: "completed" };
+        return finish("completed");
       }
       const advanced = await advanceCurrentNodeKey(
         db,
@@ -1061,25 +1093,25 @@ async function advanceFromNodeKey(
       } else {
         await maybeScheduleReplyTimeoutForNode(db, run, node, true);
       }
-      return { outcome: "advanced" };
+      return finish("advanced");
     }
     if (node.node_type === "handoff") {
       await executeHandoff(db, run, node);
-      return { outcome: "handed_off" };
+      return finish("handed_off");
     }
     if (isExtendedNodeType(node.node_type)) {
       const ext = await executeExtendedNode(db, run, node);
       if (ext.kind === "error") {
         await logEvent(db, run.id, "error", node.node_key, { reason: ext.message });
         await endRun(db, run.id, "failed", "extended_node_failed");
-        return { outcome: "completed" };
+        return finish("completed");
       }
       if (ext.kind === "wait") {
         await enqueueFlowWait(db, run, ext.nextKey, ext.runAt);
         await logEvent(db, run.id, "node_entered", node.node_key, {
           waiting_until: ext.runAt,
         });
-        return { outcome: "advanced" };
+        return finish("advanced");
       }
       if (ext.kind === "suspend") {
         const advanced = await advanceCurrentNodeKey(
@@ -1095,7 +1127,10 @@ async function advanceFromNodeKey(
         } else {
           await maybeScheduleReplyTimeoutForNode(db, run, node, true);
         }
-        return { outcome: "advanced" };
+        return finish("advanced");
+      }
+      if (node.node_type === "close_conversation") {
+        closedConversation = true;
       }
       currentKey = ext.nextKey;
       continue;
@@ -1103,21 +1138,21 @@ async function advanceFromNodeKey(
     if (node.node_type === "end") {
       await logEvent(db, run.id, "completed", node.node_key);
       await endRun(db, run.id, "completed", "end_node");
-      return { outcome: "completed" };
+      return finish("completed");
     }
     // Unknown node type — shouldn't happen given the CHECK constraint.
     await logEvent(db, run.id, "error", node.node_key, {
       reason: `unknown_node_type:${node.node_type}`,
     });
     await endRun(db, run.id, "failed", "unknown_node_type");
-    return { outcome: "completed" };
+    return finish("completed");
   }
   // Safety break — log + fail.
   await logEvent(db, run.id, "error", currentKey, {
     reason: "advance_loop_safety_break",
   });
   await endRun(db, run.id, "failed", "advance_loop_overflow");
-  return { outcome: "completed" };
+  return finish("completed");
 }
 
 /**
@@ -1356,10 +1391,11 @@ async function handleReplyForActiveRun(
     return { consumed: true, flow_run_id: run.id, outcome: "no_match" };
   }
 
-  // Three ways a reply can advance:
-  //   1. Interactive button/list tap on a send_buttons/send_list node.
-  //   2. Text reply on a collect_input node — capture into vars.
-  //   3. Address form submit on a send_address node — capture into vars.
+  // Ways a reply can advance:
+  //   1. Interactive button/list tap on send_buttons/send_list/send_template.
+  //   2. Text that matches a send_template quick-reply label (typed or quoted).
+  //   3. Text reply on a collect_input node — capture into vars.
+  //   4. Address form submit on a send_address node — capture into vars.
   //
   // Everything else falls through to the fallback policy below.
   let matched: string | null = null;
@@ -1374,6 +1410,14 @@ async function handleReplyForActiveRun(
       message.reply_id,
       message.reply_title,
     );
+  } else if (
+    message.kind === "text" &&
+    currentNode.node_type === "send_template"
+  ) {
+    const trimmed = message.text.trim();
+    if (trimmed) {
+      matched = matchReplyId(currentNode, trimmed, trimmed);
+    }
   } else if (
     message.kind === "text" &&
     currentNode.node_type === "collect_input"
@@ -1481,11 +1525,12 @@ async function handleReplyForActiveRun(
       if (!error) run.reprompt_count = 0;
     }
     await cancelAllReplyTimeouts(db, run.id);
-    const outcome = await advanceFromNodeKey(db, run, matched, nodes);
+    const advanceResult = await advanceFromNodeKey(db, run, matched, nodes);
     return {
       consumed: true,
       flow_run_id: run.id,
-      outcome: outcome.outcome,
+      outcome: advanceResult.outcome,
+      suppress_inbox_reopen: advanceResult.closed_conversation,
     };
   }
 
@@ -1705,6 +1750,7 @@ async function startNewRun(
     consumed: true,
     flow_run_id: run.id,
     outcome: outcome.outcome === "advanced" ? "started" : outcome.outcome,
+    suppress_inbox_reopen: outcome.closed_conversation,
   };
 }
 
