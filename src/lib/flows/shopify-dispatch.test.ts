@@ -20,17 +20,31 @@ vi.mock('@/lib/shopify/ensure-contact', () => ({
 
 vi.mock('./dispatch-external', () => ({ runFlowsForTrigger }))
 
+import type { ShopifyEventContext } from '@/lib/shopify/types'
+
 import { dispatchShopifyFlows } from './shopify-dispatch'
 
-const baseContext = {
+const baseContext: ShopifyEventContext = {
   resourceKey: 'order:123',
   phone: '919591141699',
   customerName: 'Jagadish',
+  email: null,
   orderNumber: '#TTF10017',
   orderTotal: '599.00 INR',
+  orderItems: null,
+  productImage: null,
+  shippingAddress: null,
+  shippingAddressFields: null,
+  trackingNumber: null,
+  trackingUrl: null,
+  orderStatusUrl: null,
+  orderStatusUrlSuffix: null,
+  checkoutUrl: null,
+  fulfillmentStatus: null,
+  shipmentStatus: null,
   financialStatus: 'paid',
   shopName: 'test-shop',
-} as const
+}
 
 describe('dispatchShopifyFlows', () => {
   beforeEach(() => {

@@ -41,7 +41,8 @@ export interface ExternalSendMetadata {
 
 export interface ExternalSendInput {
   accountId: string;
-  ownerUserId: string;
+  /** Key creator when known; resolved from account config otherwise. */
+  ownerUserId: string | null;
   templateId: string;
   phone: string;
   params?: string[] | Record<string, string>;
