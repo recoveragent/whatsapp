@@ -37,6 +37,7 @@ import {
   Megaphone,
   ClipboardList,
   List,
+  PanelRightClose,
 } from "lucide-react";
 import { isFulfilledStatus } from "@/lib/shopify/order-links";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,8 @@ interface ContactSidebarProps {
   contact: Contact | null;
   conversationId?: string | null;
   onNameClick?: () => void;
+  /** Desktop-only — collapses the contact sidebar. Issue #258. */
+  onToggleContactPanel?: () => void;
 }
 
 /** Session cache so revisiting a contact shows orders instantly. */
@@ -76,6 +79,7 @@ export function ContactSidebar({
   contact,
   conversationId,
   onNameClick,
+  onToggleContactPanel,
 }: ContactSidebarProps) {
   const { accountId, defaultCurrency, isLeadGenBrand, isEcommerceBrand, isWooCommerceBrand } =
     useAuth();
@@ -554,6 +558,19 @@ export function ContactSidebar({
 
   return (
     <div className="flex h-full min-h-0 w-70 flex-col overflow-hidden border-l border-border bg-card">
+      {onToggleContactPanel && (
+        <div className="flex shrink-0 items-center justify-end border-b border-border px-2 py-1.5">
+          <button
+            type="button"
+            onClick={onToggleContactPanel}
+            aria-label="Hide contact panel"
+            title="Hide contact"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-primary transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <PanelRightClose className="h-4 w-4" />
+          </button>
+        </div>
+      )}
       {/* `min-h-0` lets the ScrollArea shrink inside the flex column
           instead of growing with content and getting clipped (#inbox). */}
       <ScrollArea className="min-h-0 flex-1">

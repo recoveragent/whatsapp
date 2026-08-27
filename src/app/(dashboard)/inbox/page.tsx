@@ -827,6 +827,7 @@ export default function InboxPage() {
               contact={activeContact}
               conversationId={activeConversation?.id ?? null}
               onNameClick={handleOpenContactDetail}
+              onToggleContactPanel={handleToggleContactPanel}
             />
           </div>
         )}

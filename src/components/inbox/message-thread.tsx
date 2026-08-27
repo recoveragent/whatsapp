@@ -26,7 +26,6 @@ import {
   ArrowLeft,
   RefreshCw,
   PanelRightOpen,
-  PanelRightClose,
 } from "lucide-react";
 import {
   Sheet,
@@ -1162,30 +1161,19 @@ export function MessageThread({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Contact-panel toggle — desktop only. The contact sidebar
-              eats a chunk of horizontal width that crowds the thread on
-              smaller laptops; this lets agents reclaim it when they just
-              want to read and reply. Hidden on mobile, where the sidebar
-              never renders as a permanent panel anyway. Issue #258. */}
-          {onToggleContactPanel && (
+          {/* Show contact panel — desktop only, when the sidebar is
+              collapsed. The hide control lives in the sidebar header.
+              Issue #258. */}
+          {!contactPanelOpen && onToggleContactPanel && (
             <button
               type="button"
               onClick={onToggleContactPanel}
-              aria-label={
-                contactPanelOpen ? "Hide contact panel" : "Show contact panel"
-              }
-              aria-pressed={contactPanelOpen}
-              title={contactPanelOpen ? "Hide contact" : "Show contact"}
-              className={cn(
-                "hidden h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground lg:inline-flex",
-                contactPanelOpen ? "text-primary" : "text-muted-foreground",
-              )}
+              aria-label="Show contact panel"
+              aria-pressed={false}
+              title="Show contact"
+              className="hidden h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:inline-flex"
             >
-              {contactPanelOpen ? (
-                <PanelRightClose className="h-4 w-4" />
-              ) : (
-                <PanelRightOpen className="h-4 w-4" />
-              )}
+              <PanelRightOpen className="h-4 w-4" />
             </button>
           )}
 
