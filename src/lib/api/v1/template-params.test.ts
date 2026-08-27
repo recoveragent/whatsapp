@@ -51,6 +51,29 @@ describe('toPublicTemplateSummary', () => {
     expect(summary.id).toBe('cod_call_not_connected_v1');
     expect(summary.param_count).toBe(3);
     expect(summary.params).toEqual(['body_1', 'body_2', 'body_3']);
+    expect(summary.body).toBe(baseTemplate.body_text);
+  });
+
+  it('includes header, footer, and buttons for preview', () => {
+    const summary = toPublicTemplateSummary({
+      ...baseTemplate,
+      name: 'cod_not_picked_up',
+      body_text: "Hi {{1}}, we tried calling about your COD order but couldn't reach you.",
+      header_type: 'text',
+      header_content: 'Order update',
+      footer_text: 'Recover Agent',
+      buttons: [{ type: 'QUICK_REPLY', text: 'Call me back' }],
+    });
+
+    expect(summary).toMatchObject({
+      id: 'cod_not_picked_up',
+      params: ['body_1'],
+      body: "Hi {{1}}, we tried calling about your COD order but couldn't reach you.",
+      header: 'Order update',
+      header_type: 'text',
+      footer: 'Recover Agent',
+      buttons: [{ type: 'QUICK_REPLY', text: 'Call me back' }],
+    });
   });
 });
 

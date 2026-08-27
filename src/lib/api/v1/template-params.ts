@@ -1,4 +1,4 @@
-import type { MessageTemplate } from '@/types';
+import type { MessageTemplate, TemplateButton } from '@/types';
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder';
 import { extractVariableIndices } from '@/lib/whatsapp/template-validators';
 
@@ -25,6 +25,33 @@ export interface PublicTemplateSummary {
   param_count: number;
   language: string;
   category: MessageTemplate['category'];
+  /** Template body with Meta {{N}} placeholders. */
+  body: string;
+  /** Text header content, when `header_type` is `text`. */
+  header?: string;
+  /** Meta header format: text, image, video, or document. */
+  header_type?: MessageTemplate['header_type'];
+  /** Sample media URL for image/video/document headers (preview only). */
+  header_media_url?: string;
+  footer?: string;
+  buttons?: TemplateButton[];
+}
+
+function publicHeader(template: MessageTemplate): string | undefined {
+  if (template.header_type !== 'text') return undefined;
+  const content = template.header_content?.trim();
+  return content || undefined;
+}
+
+function publicHeaderMediaUrl(template: MessageTemplate): string | undefined {
+  if (
+    !template.header_type ||
+    !['image', 'video', 'document'].includes(template.header_type)
+  ) {
+    return undefined;
+  }
+  const url = template.header_media_url?.trim();
+  return url || undefined;
 }
 
 export function humanizeTemplateName(name: string): string {
@@ -71,6 +98,12 @@ export function toPublicTemplateSummary(
   template: MessageTemplate,
 ): PublicTemplateSummary {
   const params = deriveTemplateParamSlots(template);
+  const header = publicHeader(template);
+  const headerMediaUrl = publicHeaderMediaUrl(template);
+  const footer = template.footer_text?.trim() || undefined;
+  const buttons =
+    template.buttons && template.buttons.length > 0 ? template.buttons : undefined;
+
   return {
     id: template.name,
     name: humanizeTemplateName(template.name),
@@ -78,6 +111,12 @@ export function toPublicTemplateSummary(
     param_count: params.length,
     language: template.language ?? 'en_US',
     category: template.category,
+    body: template.body_text,
+    ...(header ? { header } : {}),
+    ...(template.header_type ? { header_type: template.header_type } : {}),
+    ...(headerMediaUrl ? { header_media_url: headerMediaUrl } : {}),
+    ...(footer ? { footer } : {}),
+    ...(buttons ? { buttons } : {}),
   };
 }
 

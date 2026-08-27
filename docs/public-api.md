@@ -138,15 +138,46 @@ curl https://wa.recoveragent.ai/api/v1/templates \
       "params": ["body_1", "body_2", "body_3"],
       "param_count": 3,
       "language": "en_US",
-      "category": "Utility"
+      "category": "Utility",
+      "body": "Hi {{1}}, your COD order {{2}} for {{3}} needs confirmation.",
+      "header": "Order update",
+      "header_type": "text",
+      "footer": "Reply STOP to opt out",
+      "buttons": [{ "type": "QUICK_REPLY", "text": "Confirm order" }]
     }
   ]
 }
 ```
 
 - `id` is the Meta template **name** — pass it as `template_id` on send.
+- `body`, `header`, `footer`, and `buttons` carry the approved template
+  text for integrator previews (placeholders stay as Meta `{{N}}`).
 - `params` lists variable slots in send order. Use these keys when
   sending object-style `params`, or pass a positional string array.
+
+### `GET /api/v1/templates/{id}`
+
+Returns one approved template with the same fields as a list item.
+Accepts the Meta template name or the wacrm UUID.
+
+```bash
+curl https://wa.recoveragent.ai/api/v1/templates/cod_not_picked_up \
+  -H "Authorization: Bearer wacrm_live_xxx"
+```
+
+```json
+{
+  "id": "cod_not_picked_up",
+  "name": "Cod Not Picked Up",
+  "params": ["body_1"],
+  "param_count": 1,
+  "language": "en_US",
+  "category": "Utility",
+  "body": "Hi {{1}}, we tried calling about your COD order but couldn't reach you.",
+  "header": "Order update",
+  "buttons": [{ "type": "QUICK_REPLY", "text": "Call me back" }]
+}
+```
 
 ### `POST /api/v1/send`
 
