@@ -16,6 +16,7 @@
 export const API_SCOPES = [
   'messages:send',
   'messages:read',
+  'templates:read',
   'contacts:read',
   'contacts:write',
   'conversations:read',
@@ -28,6 +29,7 @@ export type ApiScope = (typeof API_SCOPES)[number];
 export const SCOPE_DESCRIPTIONS: Record<ApiScope, string> = {
   'messages:send': 'Send WhatsApp messages',
   'messages:read': 'Read messages and their delivery status',
+  'templates:read': 'List approved WhatsApp message templates',
   'contacts:read': 'List and read contacts',
   'contacts:write': 'Create and update contacts',
   'conversations:read': 'List and read conversations',
@@ -70,4 +72,12 @@ export function hasScope(
   required: ApiScope
 ): boolean {
   return granted.includes(required);
+}
+
+/** True when the key carries at least one of the listed scopes. */
+export function hasAnyScope(
+  granted: readonly string[],
+  required: readonly ApiScope[]
+): boolean {
+  return required.some((scope) => granted.includes(scope));
 }

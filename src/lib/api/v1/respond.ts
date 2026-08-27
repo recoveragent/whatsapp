@@ -23,6 +23,8 @@ export type ApiErrorCode =
   | 'rate_limited' // per-key budget exhausted
   | 'bad_request' // malformed input
   | 'not_found'
+  | 'insufficient_balance' // wallet cannot cover the send
+  | 'provider_error' // Meta / upstream rejected the send
   | 'internal';
 
 /**
@@ -63,6 +65,21 @@ export function forbidden(message: string): ApiError {
 /** 400 — bad input. */
 export function badRequest(message: string): ApiError {
   return new ApiError('bad_request', message, 400);
+}
+
+/** 404 — resource not found. */
+export function notFound(message: string): ApiError {
+  return new ApiError('not_found', message, 404);
+}
+
+/** 402 — wallet cannot cover the send. */
+export function insufficientBalance(message: string): ApiError {
+  return new ApiError('insufficient_balance', message, 402);
+}
+
+/** 502 — Meta / upstream provider rejected the send. */
+export function providerError(message: string): ApiError {
+  return new ApiError('provider_error', message, 502);
 }
 
 /** 429 — built from a `checkRateLimit` miss, with the standard headers. */
