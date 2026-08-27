@@ -238,6 +238,7 @@ export async function sendExternalTemplateMessage(
       buildTemplateMessageSnapshot(template, {
         headerMediaUrl: messageParams.headerMediaUrl,
         headerText: messageParams.headerText,
+        buttonParams: messageParams.buttonParams,
       }),
     ),
     external_metadata: input.metadata ?? null,

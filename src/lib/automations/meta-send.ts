@@ -206,6 +206,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         buildTemplateMessageSnapshot(templateRow, {
           headerMediaUrl: input.messageParams?.headerMediaUrl,
           headerText: input.messageParams?.headerText,
+          buttonParams: input.messageParams?.buttonParams,
         }),
       )
     }

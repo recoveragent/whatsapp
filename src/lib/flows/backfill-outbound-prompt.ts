@@ -102,6 +102,7 @@ async function snapshotFromSendTemplateNode(
           buildTemplateMessageSnapshot(templateRow, {
             headerMediaUrl: messageParams.headerMediaUrl,
             headerText: messageParams.headerText,
+            buttonParams: messageParams.buttonParams,
           }),
         )
       : null,

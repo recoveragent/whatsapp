@@ -392,6 +392,7 @@ export async function POST(request: Request) {
             buildTemplateMessageSnapshot(templateRow, {
               headerMediaUrl: template_message_params?.headerMediaUrl,
               headerText: template_message_params?.headerText,
+              buttonParams: template_message_params?.buttonParams,
             }),
           )
         : null

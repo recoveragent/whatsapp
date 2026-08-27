@@ -1,6 +1,38 @@
 import { normalizeTemplateButtons } from '@/lib/flows/template-buttons'
 import type { Message, MessageTemplate, TemplateButton } from '@/types'
 
+/** Resolve a template URL button href for display / storage. */
+export function resolveUrlButtonHref(
+  url: string,
+  suffix?: string,
+): string | null {
+  const trimmed = url.trim()
+  if (!trimmed) return null
+
+  const resolved = trimmed.replace(/\{\{1\}\}/g, suffix?.trim() ?? '')
+  if (/\{\{\d+\}\}/.test(resolved)) return null
+
+  try {
+    const parsed = new URL(resolved)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+    return parsed.href
+  } catch {
+    return null
+  }
+}
+
+function resolveSnapshotButtonUrls(
+  buttons: TemplateButton[],
+  buttonParams?: Record<number, string>,
+): TemplateButton[] {
+  return buttons.map((button, index) => {
+    if (button.type !== 'URL') return button
+    const href = resolveUrlButtonHref(button.url, buttonParams?.[index])
+    if (!href) return button
+    return { ...button, url: href }
+  })
+}
+
 /** Snapshot stored on `messages.content_payload.template_display`. */
 export interface TemplateMessageSnapshot {
   header_type?: MessageTemplate['header_type'] | null
@@ -20,7 +52,11 @@ export function isMediaHeaderType(
 
 export function buildTemplateMessageSnapshot(
   template: MessageTemplate,
-  overrides?: { headerMediaUrl?: string; headerText?: string },
+  overrides?: {
+    headerMediaUrl?: string
+    headerText?: string
+    buttonParams?: Record<number, string>
+  },
 ): TemplateMessageSnapshot {
   const snapshot: TemplateMessageSnapshot = {
     header_type: template.header_type ?? null,
@@ -30,7 +66,10 @@ export function buildTemplateMessageSnapshot(
       template.header_media_url?.trim() ||
       null,
     footer_text: template.footer_text ?? null,
-    buttons: normalizeTemplateButtons(template.buttons),
+    buttons: resolveSnapshotButtonUrls(
+      normalizeTemplateButtons(template.buttons),
+      overrides?.buttonParams,
+    ),
   }
 
   if (overrides?.headerText?.trim() && snapshot.header_type === 'text') {

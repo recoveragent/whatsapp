@@ -17,6 +17,7 @@ import {
 import type { TemplateButton } from "@/types";
 import {
   isMediaHeaderType,
+  resolveUrlButtonHref,
   type TemplateMessageSnapshot,
 } from "@/lib/inbox/template-message-display";
 import { format } from "date-fns";
@@ -250,17 +251,36 @@ function TemplateButtonRow({
   else if (button.type === "URL") icon = <ExternalLink className={iconClass} />;
   else if (button.type === "COPY_CODE") icon = <Copy className={iconClass} />;
 
-  return (
-    <div
-      className={cn(
-        "flex items-center justify-center gap-1.5 px-3 py-2.5 text-center text-sm font-medium",
-        onPrimary ? "text-primary-foreground" : "text-foreground",
-      )}
-    >
+  const href =
+    button.type === "URL" ? resolveUrlButtonHref(button.url) : null;
+
+  const className = cn(
+    "flex items-center justify-center gap-1.5 px-3 py-2.5 text-center text-sm font-medium",
+    onPrimary ? "text-primary-foreground" : "text-foreground",
+    href && "cursor-pointer transition-colors hover:underline",
+  );
+
+  const content = (
+    <>
       {icon}
       <span>{button.text}</span>
-    </div>
+    </>
   );
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={className}
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return <div className={className}>{content}</div>;
 }
 
 function TemplateMessageContent({

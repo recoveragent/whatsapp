@@ -817,6 +817,7 @@ export function MessageThread({
       const tempId = `temp-${Date.now()}`;
       const templateSnapshot = buildTemplateMessageSnapshot(template, {
         headerText: values.headerText,
+        buttonParams: values.buttonParams,
       });
 
       const optimisticMsg: Message = {
