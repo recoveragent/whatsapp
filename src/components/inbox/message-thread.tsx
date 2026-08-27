@@ -123,6 +123,8 @@ interface MessageThreadProps {
   onToggleContactPanel?: () => void;
   /** Opens the desktop contact panel without toggling closed. */
   onOpenContactPanel?: () => void;
+  /** Fired when the agent clicks the contact name/avatar in the header. */
+  onOpenContact?: () => void;
   /** Parent uses this to block leaving the thread while a send is in flight. */
   onComposerPendingChange?: (pending: boolean) => void;
 }
@@ -208,6 +210,7 @@ export function MessageThread({
   contactPanelOpen,
   onToggleContactPanel,
   onOpenContactPanel,
+  onOpenContact,
   onComposerPendingChange,
 }: MessageThreadProps) {
   const { user, accountId } = useAuth();
@@ -242,15 +245,15 @@ export function MessageThread({
     }, 700);
   }, [isRefreshing, onRefresh]);
   const handleOpenContact = useCallback(() => {
+    onOpenContact?.();
+
     if (
       typeof window !== "undefined" &&
-      window.matchMedia("(min-width: 1024px)").matches
+      !window.matchMedia("(min-width: 1024px)").matches
     ) {
-      (onOpenContactPanel ?? onToggleContactPanel)?.();
-    } else {
       setContactSheetOpen(true);
     }
-  }, [onOpenContactPanel, onToggleContactPanel]);
+  }, [onOpenContact]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(
     null,
@@ -1127,15 +1130,15 @@ export function MessageThread({
           <button
             type="button"
             onClick={handleOpenContact}
-            className="flex min-w-0 items-center gap-2 rounded-md text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-3 -ml-1 pl-1 pr-2 py-0.5"
+            className="group relative z-10 flex min-w-0 max-w-[min(100%,16rem)] cursor-pointer items-center gap-2 rounded-md text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-xs sm:gap-3 -ml-1 pl-1 pr-2 py-0.5"
             aria-label={`Open contact details for ${displayName}`}
             title="Open contact"
           >
             <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
               {displayName.charAt(0).toUpperCase()}
             </div>
-            <div className="min-w-0">
-              <h2 className="truncate text-sm font-semibold text-foreground">
+            <div className="min-w-0 pointer-events-none">
+              <h2 className="truncate text-sm font-semibold text-foreground underline-offset-2 group-hover:underline">
                 {displayName}
               </h2>
               <p className="truncate text-xs text-muted-foreground">

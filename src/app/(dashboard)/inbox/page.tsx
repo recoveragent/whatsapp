@@ -8,6 +8,7 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
+import { ContactDetailView } from "@/components/contacts/contact-detail-view";
 import {
   hasOutboundInFlight,
   OUTBOUND_PENDING_TOAST,
@@ -62,6 +63,9 @@ export default function InboxPage() {
    * below reconciles to the stored value right after mount instead.
    */
   const [contactPanelOpen, setContactPanelOpen] = useState(true);
+  const [contactPanelHighlight, setContactPanelHighlight] = useState(false);
+  const [contactDetailOpen, setContactDetailOpen] = useState(false);
+  const contactSidebarRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     try {
       const stored = localStorage.getItem(CONTACT_PANEL_STORAGE_KEY);
@@ -91,6 +95,25 @@ export default function InboxPage() {
     setContactPanelOpen(true);
     persistContactPanelOpen(true);
   }, [persistContactPanelOpen]);
+
+  const handleOpenContactFromName = useCallback(() => {
+    setContactPanelOpen(true);
+    persistContactPanelOpen(true);
+    setContactPanelHighlight(true);
+    window.setTimeout(() => setContactPanelHighlight(false), 900);
+
+    window.requestAnimationFrame(() => {
+      contactSidebarRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    });
+  }, [persistContactPanelOpen]);
+
+  const handleOpenContactDetail = useCallback(() => {
+    handleOpenContactFromName();
+    setContactDetailOpen(true);
+  }, [handleOpenContactFromName]);
 
   // Fire the deep-link auto-select exactly once per URL — subsequent
   // list refreshes (realtime, manual refetch) must not snap the user
@@ -635,6 +658,29 @@ export default function InboxPage() {
     router.replace("/inbox", { scroll: false });
   }, [router, outboundInFlight]);
 
+  const handleContactUpdated = useCallback(async () => {
+    if (!activeContact) return;
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("contacts")
+      .select("*")
+      .eq("id", activeContact.id)
+      .maybeSingle();
+    if (!data) return;
+    const refreshed = data as Contact;
+    setActiveContact(refreshed);
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.contact_id === refreshed.id ? { ...c, contact: refreshed } : c,
+      ),
+    );
+    if (activeConversation?.contact_id === refreshed.id) {
+      setActiveConversation((prev) =>
+        prev ? { ...prev, contact: refreshed } : prev,
+      );
+    }
+  }, [activeContact, activeConversation?.contact_id]);
+
 
   const handleMessagesLoaded = useCallback((loaded: Message[]) => {
     setMessages(loaded);
@@ -759,6 +805,7 @@ export default function InboxPage() {
             contactPanelOpen={contactPanelOpen}
             onToggleContactPanel={handleToggleContactPanel}
             onOpenContactPanel={handleOpenContactPanel}
+            onOpenContact={handleOpenContactFromName}
             onComposerPendingChange={setComposerPending}
           />
         </div>
@@ -768,14 +815,29 @@ export default function InboxPage() {
             On mobile it's always hidden (the `lg:block` below), so the
             toggle — which is itself desktop-only — never affects it. */}
         {contactPanelOpen && (
-          <div className="hidden h-full min-h-0 shrink-0 lg:block">
+          <div
+            ref={contactSidebarRef}
+            className={cn(
+              "hidden h-full min-h-0 shrink-0 lg:block",
+              contactPanelHighlight &&
+                "ring-2 ring-inset ring-primary/60 transition-shadow duration-300",
+            )}
+          >
             <ContactSidebar
               contact={activeContact}
               conversationId={activeConversation?.id ?? null}
+              onNameClick={handleOpenContactDetail}
             />
           </div>
         )}
       </div>
+
+      <ContactDetailView
+        open={contactDetailOpen}
+        onOpenChange={setContactDetailOpen}
+        contactId={activeContact?.id ?? null}
+        onUpdated={handleContactUpdated}
+      />
     </div>
   );
 }

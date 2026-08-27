@@ -50,6 +50,7 @@ import { FormSubmissionFields } from "@/components/inbox/form-submission-fields"
 interface ContactSidebarProps {
   contact: Contact | null;
   conversationId?: string | null;
+  onNameClick?: () => void;
 }
 
 /** Session cache so revisiting a contact shows orders instantly. */
@@ -74,6 +75,7 @@ const storeOrdersCache = new Map<string, InboxStoreOrder[]>();
 export function ContactSidebar({
   contact,
   conversationId,
+  onNameClick,
 }: ContactSidebarProps) {
   const { accountId, defaultCurrency, isLeadGenBrand, isEcommerceBrand, isWooCommerceBrand } =
     useAuth();
@@ -569,9 +571,20 @@ export function ContactSidebar({
                 initials
               )}
             </div>
-            <h3 className="mt-3 text-sm font-semibold text-foreground">
-              {displayName}
-            </h3>
+            {onNameClick ? (
+              <button
+                type="button"
+                onClick={onNameClick}
+                className="mt-3 cursor-pointer text-sm font-semibold text-foreground underline-offset-2 transition-colors hover:text-primary hover:underline"
+                title="Open contact"
+              >
+                {displayName}
+              </button>
+            ) : (
+              <h3 className="mt-3 text-sm font-semibold text-foreground">
+                {displayName}
+              </h3>
+            )}
             {contact.company && (
               <p className="text-xs text-muted-foreground">{contact.company}</p>
             )}
