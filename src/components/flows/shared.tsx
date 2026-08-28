@@ -390,6 +390,17 @@ export function summarizeNode(node: BuilderNode): string | null {
       return url ? truncate(url, 60) : null;
     }
     case "update_contact_field": {
+      const fields = Array.isArray(cfg.fields) ? cfg.fields : null;
+      if (fields?.length) {
+        const labels = fields
+          .map((entry) => {
+            const row = entry as { field?: string };
+            return typeof row.field === "string" ? row.field : "";
+          })
+          .filter(Boolean);
+        if (labels.length === 1) return `Set ${labels[0]}`;
+        if (labels.length > 1) return `Set ${labels.length} fields`;
+      }
       const field = typeof cfg.field === "string" ? cfg.field : "";
       return field ? `Set ${field}` : null;
     }

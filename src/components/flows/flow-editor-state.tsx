@@ -263,7 +263,7 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
     case "http_fetch":
       return { url: "", headers: {}, body_template: "", next_node_key: "" };
     case "update_contact_field":
-      return { field: "name", value: "", next_node_key: "" };
+      return { fields: [{ field: "name", value: "" }], next_node_key: "" };
     case "assign_conversation":
       return { mode: "round_robin", next_node_key: "" };
     case "create_deal":

@@ -287,9 +287,17 @@ export interface SendWebhookNodeConfig {
   next_node_key: string;
 }
 
-export interface UpdateContactFieldNodeConfig {
+export interface ContactFieldMapping {
   field: string;
   value: string;
+}
+
+export interface UpdateContactFieldNodeConfig {
+  /** @deprecated Prefer `fields` — kept for older saved flows. */
+  field?: string;
+  /** @deprecated Prefer `fields` — kept for older saved flows. */
+  value?: string;
+  fields?: ContactFieldMapping[];
   next_node_key: string;
 }
 

@@ -4,7 +4,12 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import type { FlowNodeRow, FlowRunRow } from './types'
+import type {
+  ContactFieldMapping,
+  FlowNodeRow,
+  FlowRunRow,
+  UpdateContactFieldNodeConfig,
+} from './types'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { buildSendTimeParamsFromVariables, isDynamicHeaderMediaMapping } from '@/lib/flows/template-send-params'
 import { resolveFlowProductImageUrl } from '@/lib/flows/resolve-product-image'
@@ -53,12 +58,6 @@ export interface SendWebhookNodeConfig {
   next_node_key: string
 }
 
-export interface UpdateContactFieldNodeConfig {
-  field: string
-  value: string
-  next_node_key: string
-}
-
 export interface AssignConversationNodeConfig {
   mode: 'specific' | 'round_robin'
   agent_id?: string
@@ -91,6 +90,51 @@ export function interpolateFlowVars(
   messageText?: string,
 ): string {
   return interpolateTemplateString(template, vars, messageText)
+}
+
+export function resolveUpdateContactFieldEntries(
+  cfg: UpdateContactFieldNodeConfig,
+): ContactFieldMapping[] {
+  if (cfg.fields?.length) {
+    return cfg.fields.filter((entry) => entry.field?.trim())
+  }
+  if (cfg.field?.trim()) {
+    return [{ field: cfg.field.trim(), value: cfg.value ?? '' }]
+  }
+  return []
+}
+
+async function applyContactFieldUpdate(
+  db: AdminClient,
+  run: FlowRunRow,
+  field: string,
+  value: string,
+): Promise<void> {
+  if (field.startsWith('custom:')) {
+    const customFieldId = field.slice('custom:'.length)
+    const { data: customField } = await db
+      .from('custom_fields')
+      .select('id')
+      .eq('id', customFieldId)
+      .eq('account_id', run.account_id)
+      .maybeSingle()
+    if (!customField) throw new Error('unknown custom field')
+    await db.from('contact_custom_values').upsert(
+      {
+        contact_id: run.contact_id!,
+        custom_field_id: customFieldId,
+        value,
+      },
+      { onConflict: 'contact_id,custom_field_id' },
+    )
+    return
+  }
+
+  await db
+    .from('contacts')
+    .update({ [field]: value, updated_at: new Date().toISOString() })
+    .eq('id', run.contact_id!)
+    .eq('account_id', run.account_id)
 }
 
 function waitMs(cfg: WaitNodeConfig): number {
@@ -343,30 +387,12 @@ export async function executeExtendedNode(
       }
       case 'update_contact_field': {
         const c = cfg as unknown as UpdateContactFieldNodeConfig
-        const value = interpolateFlowVars(c.value, vars, messageText)
-        if (c.field.startsWith('custom:')) {
-          const customFieldId = c.field.slice('custom:'.length)
-          const { data: field } = await db
-            .from('custom_fields')
-            .select('id')
-            .eq('id', customFieldId)
-            .eq('account_id', run.account_id)
-            .maybeSingle()
-          if (!field) throw new Error('unknown custom field')
-          await db.from('contact_custom_values').upsert(
-            {
-              contact_id: run.contact_id!,
-              custom_field_id: customFieldId,
-              value,
-            },
-            { onConflict: 'contact_id,custom_field_id' },
-          )
-        } else {
-          await db
-            .from('contacts')
-            .update({ [c.field]: value, updated_at: new Date().toISOString() })
-            .eq('id', run.contact_id!)
-            .eq('account_id', run.account_id)
+        const entries = resolveUpdateContactFieldEntries(c)
+        if (entries.length === 0) throw new Error('update_contact_field needs at least one field')
+        if (!run.contact_id) throw new Error('update_contact_field needs a contact')
+        for (const entry of entries) {
+          const value = interpolateFlowVars(entry.value, vars, messageText)
+          await applyContactFieldUpdate(db, run, entry.field, value)
         }
         return { kind: 'continue', nextKey: c.next_node_key }
       }

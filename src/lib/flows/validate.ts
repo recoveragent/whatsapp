@@ -42,6 +42,8 @@ import {
   isReplyTimeoutEnabled,
   hasReplyTimeoutTiming,
 } from "./reply-timeout";
+import { resolveUpdateContactFieldEntries } from "./extended-nodes";
+import type { UpdateContactFieldNodeConfig } from "./types";
 
 export interface ValidationIssue {
   severity: "error" | "warning";
@@ -1439,6 +1441,39 @@ function validateNode(
             message: "Create-deal node needs a title.",
           });
         }
+      }
+      if (node.node_type === "update_contact_field") {
+        const updateCfg = node.config as unknown as UpdateContactFieldNodeConfig;
+        const entries = resolveUpdateContactFieldEntries(updateCfg);
+        if (entries.length === 0) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: "fields",
+            message: "Update-contact-field node needs at least one field.",
+          });
+        }
+        entries.forEach((entry, index) => {
+          if (!nonEmpty(entry.field)) {
+            issues.push({
+              severity: "error",
+              scope: "node",
+              node_key: node.node_key,
+              field: `fields.${index}.field`,
+              message: "Each field mapping needs a contact field selected.",
+            });
+          }
+          if (entry.value === undefined || entry.value === null || entry.value === "") {
+            issues.push({
+              severity: "error",
+              scope: "node",
+              node_key: node.node_key,
+              field: `fields.${index}.value`,
+              message: "Each field mapping needs a value.",
+            });
+          }
+        });
       }
       if (!cfg.next_node_key) {
         issues.push({

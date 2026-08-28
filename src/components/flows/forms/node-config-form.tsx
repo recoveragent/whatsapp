@@ -56,7 +56,7 @@ import {
   hasReplyTimeoutTiming,
   showReplyTimeoutHandle,
 } from "@/lib/flows/reply-timeout";
-import { NextNodeRow, NodeKeySelect, TextRow } from "./fields";
+import { NextNodeRow, NodeKeySelect, TextRow, UpdateContactFieldsForm } from "./fields";
 import { SendTemplateFields } from "@/components/shared/send-template-fields";
 import { templateVariableGroupsForFlow } from "@/lib/flows/template-variables";
 import type { TemplateQuickReplyButton } from "@/lib/flows/template-buttons";
@@ -422,16 +422,7 @@ function renderNodeConfigBody({
     case "update_contact_field":
       return (
         <>
-          <TextRow
-            label="Field"
-            value={(cfg as { field?: string }).field ?? "name"}
-            onChange={(v) => onUpdateConfig({ field: v })}
-          />
-          <TextRow
-            label="Value (supports {{vars.x}})"
-            value={(cfg as { value?: string }).value ?? ""}
-            onChange={(v) => onUpdateConfig({ value: v })}
-          />
+          <UpdateContactFieldsForm cfg={cfg} onUpdateConfig={onUpdateConfig} />
           <NextNodeRow
             value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
             allNodes={allNodes}
