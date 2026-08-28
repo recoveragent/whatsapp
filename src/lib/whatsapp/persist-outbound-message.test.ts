@@ -38,6 +38,6 @@ describe('insertOutboundMessage', () => {
     await expect(
       insertOutboundMessage(db as never, { conversation_id: 'conv-1' }),
     ).rejects.toThrow('sent to Meta but DB insert failed: fk violation')
-    expect(insert).toHaveBeenCalledTimes(3)
+    expect(insert).toHaveBeenCalledTimes(5)
   })
 })

@@ -7,7 +7,8 @@ import {
 import { buildSendTimeParamsFromVariables } from '@/lib/flows/template-send-params'
 import { interpolateTemplateString } from '@/lib/flows/template-interpolate'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
-import { insertOutboundMessage } from '@/lib/whatsapp/persist-outbound-message'
+import { insertOutboundMessage, isMetaSentDbInsertFailed } from '@/lib/whatsapp/persist-outbound-message'
+import type { AutomationLogStepResult, AutomationStep } from '@/types'
 import type { FlowNodeRow, FlowRunRow } from './types'
 
 type AdminClient = SupabaseClient
@@ -295,6 +296,180 @@ export async function backfillMissingOutboundPrompt(args: {
   return inserted?.id ?? null
 }
 
+const META_WAMID_FROM_AUTOMATION_LOG =
+  /(?:template )?sent via Meta \(([^)]+)\)/
+
+async function snapshotFromAutomationStep(
+  db: AdminClient,
+  accountId: string,
+  step: AutomationStep,
+  vars: Record<string, unknown>,
+): Promise<OutboundSnapshot | null> {
+  const interpolate = (raw: string) => interpolateTemplateString(raw, vars)
+
+  if (step.step_type === 'send_message') {
+    const cfg = step.step_config as { text?: string }
+    if (!cfg.text?.trim()) return null
+    return {
+      sender_type: 'bot',
+      content_type: 'text',
+      content_text: interpolate(cfg.text),
+    }
+  }
+
+  if (step.step_type === 'send_template') {
+    const cfg = step.step_config as {
+      template_name?: string
+      language?: string
+      variables?: Record<string, string>
+    }
+    if (!cfg.template_name) return null
+
+    const lang = cfg.language ?? 'en_US'
+    const messageParams = buildSendTimeParamsFromVariables(cfg.variables, interpolate)
+    const bodyParams = messageParams.body ?? []
+
+    const { data: templateRowRaw } = await db
+      .from('message_templates')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('name', cfg.template_name)
+      .eq('language', lang)
+      .maybeSingle()
+    const templateRow =
+      templateRowRaw && isMessageTemplate(templateRowRaw) ? templateRowRaw : null
+
+    let content_text: string | null = null
+    const body = templateRow?.body_text?.trim()
+    if (body) {
+      content_text = body.replace(/\{\{(\d+)\}\}/g, (_, raw: string) => {
+        const idx = Number(raw) - 1
+        return bodyParams[idx] ?? `{{${raw}}}`
+      })
+    }
+
+    return {
+      sender_type: 'bot',
+      content_type: 'template',
+      content_text,
+      template_name: cfg.template_name,
+      content_payload: templateRow
+        ? templateDisplayPayload(
+            buildTemplateMessageSnapshot(templateRow, {
+              headerMediaUrl: messageParams.headerMediaUrl,
+              headerText: messageParams.headerText,
+              buttonParams: messageParams.buttonParams,
+            }),
+          )
+        : null,
+    }
+  }
+
+  return null
+}
+
+async function repairMissingAutomationOutbound(args: {
+  db: AdminClient
+  accountId: string
+  conversationId: string
+  contactId: string
+  promptCreatedAt?: string
+}): Promise<string | null> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const { data: logs } = await args.db
+    .from('automation_logs')
+    .select('id, automation_id, steps_executed, created_at')
+    .eq('account_id', args.accountId)
+    .eq('contact_id', args.contactId)
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(8)
+
+  if (!logs?.length) return null
+
+  const vars = await resolveRunVars(args.db, { vars: {}, contact_id: args.contactId })
+
+  for (const log of logs) {
+    const stepsExecuted =
+      (log.steps_executed as AutomationLogStepResult[] | undefined) ?? []
+
+    for (const result of stepsExecuted) {
+      if (
+        result.step_type !== 'send_message' &&
+        result.step_type !== 'send_template'
+      ) {
+        continue
+      }
+
+      const sentToMeta =
+        result.status === 'success' ||
+        (result.status === 'failed' &&
+          !!result.detail &&
+          isMetaSentDbInsertFailed(result.detail))
+      if (!sentToMeta) continue
+
+      const wamidMatch = result.detail?.match(META_WAMID_FROM_AUTOMATION_LOG)
+      const metaMessageId = wamidMatch?.[1] ?? null
+
+      if (metaMessageId) {
+        const id = await backfillMissingOutboundPrompt({
+          db: args.db,
+          accountId: args.accountId,
+          contactId: args.contactId,
+          conversationId: args.conversationId,
+          metaMessageId,
+          createdAt: args.promptCreatedAt,
+        })
+        if (id) return id
+      }
+
+      const { data: stepRow } = await args.db
+        .from('automation_steps')
+        .select('*')
+        .eq('id', result.step_id)
+        .maybeSingle()
+      if (!stepRow) continue
+
+      const snapshot = await snapshotFromAutomationStep(
+        args.db,
+        args.accountId,
+        stepRow as AutomationStep,
+        vars,
+      )
+      if (!snapshot) continue
+
+      try {
+        await insertOutboundMessage(args.db, {
+          conversation_id: args.conversationId,
+          sender_type: snapshot.sender_type,
+          content_type: snapshot.content_type,
+          content_text: snapshot.content_text,
+          template_name: snapshot.template_name ?? null,
+          content_payload: snapshot.content_payload ?? null,
+          message_id: metaMessageId,
+          status: 'sent',
+          ...(args.promptCreatedAt ? { created_at: args.promptCreatedAt } : {}),
+        })
+      } catch (err) {
+        console.error('[automations] repair outbound message failed:', err)
+        continue
+      }
+
+      const { data: inserted } = await args.db
+        .from('messages')
+        .select('id')
+        .eq('conversation_id', args.conversationId)
+        .in('sender_type', ['bot'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (inserted?.id) return inserted.id
+    }
+  }
+
+  return null
+}
+
 /**
  * Repair a conversation thread that is missing a recent flow/campaign
  * outbound bubble (common when Meta accepted the send but persistence
@@ -402,5 +577,11 @@ export async function repairMissingFlowPromptForConversation(args: {
     if (inserted?.id) return inserted.id
   }
 
-  return null
+  return repairMissingAutomationOutbound({
+    db: args.db,
+    accountId: args.accountId,
+    conversationId: args.conversationId,
+    contactId: args.contactId,
+    promptCreatedAt,
+  })
 }

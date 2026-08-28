@@ -6,7 +6,7 @@ import {
   assertWalletCanSend,
   debitWalletForTemplateSend,
 } from '@/lib/wallet/billing'
-import { insertOutboundMessage } from '@/lib/whatsapp/persist-outbound-message'
+import { persistOutboundAfterMetaSend } from '@/lib/whatsapp/persist-outbound-message'
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -212,17 +212,30 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     }
   }
 
-  await insertOutboundMessage(db, {
-    conversation_id: input.conversationId,
-    sender_type: 'bot',
-    sender_id: input.userId,
-    content_type,
-    content_text,
-    template_name,
-    content_payload,
-    message_id: waMessageId,
-    status: 'sent',
-  })
+  const previewText =
+    content_text ??
+    (input.kind === 'template'
+      ? `[template:${input.templateName}]`
+      : input.text)
+
+  await persistOutboundAfterMetaSend(
+    db,
+    {
+      conversation_id: input.conversationId,
+      sender_type: 'bot',
+      sender_id: input.userId,
+      content_type,
+      content_text,
+      template_name,
+      content_payload,
+      message_id: waMessageId,
+      status: 'sent',
+    },
+    {
+      conversationId: input.conversationId,
+      lastMessageText: previewText,
+    },
+  )
 
   if (input.kind === 'template') {
     await debitWalletForTemplateSend({
@@ -232,19 +245,6 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       templateName: input.templateName,
     })
   }
-
-  await db
-    .from('conversations')
-    .update({
-      last_message_text:
-        content_text ??
-        (input.kind === 'template'
-          ? `[template:${input.templateName}]`
-          : input.text),
-      last_message_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', input.conversationId)
 
   return { whatsapp_message_id: waMessageId }
 }

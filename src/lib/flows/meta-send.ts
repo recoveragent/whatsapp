@@ -13,7 +13,7 @@ import {
   type AddressSavedAddress,
 } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
-import { insertOutboundMessage } from '@/lib/whatsapp/persist-outbound-message'
+import { persistOutboundAfterMetaSend } from '@/lib/whatsapp/persist-outbound-message'
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -127,23 +127,21 @@ export async function engineSendText(
     await db.from('contacts').update({ phone: contactPhoneAfterSuccessfulSend(sanitized, workingPhone) }).eq('id', contact.id)
   }
 
-  await insertOutboundMessage(db, {
-    conversation_id: args.conversationId,
-    sender_type: 'bot',
-    content_type: 'text',
-    content_text: args.text,
-    message_id: waMessageId,
-    status: 'sent',
-  })
-
-  await db
-    .from('conversations')
-    .update({
-      last_message_text: args.text,
-      last_message_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', args.conversationId)
+  await persistOutboundAfterMetaSend(
+    db,
+    {
+      conversation_id: args.conversationId,
+      sender_type: 'bot',
+      content_type: 'text',
+      content_text: args.text,
+      message_id: waMessageId,
+      status: 'sent',
+    },
+    {
+      conversationId: args.conversationId,
+      lastMessageText: args.text,
+    },
+  )
 
   return { whatsapp_message_id: waMessageId }
 }
@@ -241,23 +239,21 @@ export async function engineSendMedia(
   // content_text carries the caption (or empty) so the conversation
   // list preview shows something meaningful when the user glances at it.
   const preview = args.caption?.trim() || `[${args.kind}]`
-  await insertOutboundMessage(db, {
-    conversation_id: args.conversationId,
-    sender_type: 'bot',
-    content_type: args.kind,
-    content_text: args.caption ?? null,
-    message_id: waMessageId,
-    status: 'sent',
-  })
-
-  await db
-    .from('conversations')
-    .update({
-      last_message_text: preview,
-      last_message_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', args.conversationId)
+  await persistOutboundAfterMetaSend(
+    db,
+    {
+      conversation_id: args.conversationId,
+      sender_type: 'bot',
+      content_type: args.kind,
+      content_text: args.caption ?? null,
+      message_id: waMessageId,
+      status: 'sent',
+    },
+    {
+      conversationId: args.conversationId,
+      lastMessageText: preview,
+    },
+  )
 
   return { whatsapp_message_id: waMessageId }
 }
@@ -410,23 +406,21 @@ async function sendInteractiveViaMeta(
   // We do NOT set interactive_reply_id here — that column is reserved
   // for the customer's tap on this message, populated by the webhook
   // when their reply arrives.
-  await insertOutboundMessage(db, {
-    conversation_id: input.conversationId,
-    sender_type: 'bot',
-    content_type: 'interactive',
-    content_text: input.bodyText,
-    message_id: waMessageId,
-    status: 'sent',
-  })
-
-  await db
-    .from('conversations')
-    .update({
-      last_message_text: input.bodyText,
-      last_message_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', input.conversationId)
+  await persistOutboundAfterMetaSend(
+    db,
+    {
+      conversation_id: input.conversationId,
+      sender_type: 'bot',
+      content_type: 'interactive',
+      content_text: input.bodyText,
+      message_id: waMessageId,
+      status: 'sent',
+    },
+    {
+      conversationId: input.conversationId,
+      lastMessageText: input.bodyText,
+    },
+  )
 
   return { whatsapp_message_id: waMessageId }
 }
@@ -516,27 +510,25 @@ export async function engineSendAddressMessage(
     await db.from('contacts').update({ phone: contactPhoneAfterSuccessfulSend(sanitized, workingPhone) }).eq('id', contact.id)
   }
 
-  await insertOutboundMessage(db, {
-    conversation_id: args.conversationId,
-    sender_type: 'bot',
-    content_type: 'interactive',
-    content_text: args.bodyText,
-    message_id: waMessageId,
-    status: 'sent',
-    content_payload: {
-      type: 'address_message_request',
-      country: args.country,
+  await persistOutboundAfterMetaSend(
+    db,
+    {
+      conversation_id: args.conversationId,
+      sender_type: 'bot',
+      content_type: 'interactive',
+      content_text: args.bodyText,
+      message_id: waMessageId,
+      status: 'sent',
+      content_payload: {
+        type: 'address_message_request',
+        country: args.country,
+      },
     },
-  })
-
-  await db
-    .from('conversations')
-    .update({
-      last_message_text: args.bodyText,
-      last_message_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', args.conversationId)
+    {
+      conversationId: args.conversationId,
+      lastMessageText: args.bodyText,
+    },
+  )
 
   return { whatsapp_message_id: waMessageId }
 }
@@ -632,30 +624,28 @@ export async function engineSendFlowMessage(
     await db.from('contacts').update({ phone: contactPhoneAfterSuccessfulSend(sanitized, workingPhone) }).eq('id', contact.id)
   }
 
-  await insertOutboundMessage(db, {
-    conversation_id: args.conversationId,
-    sender_type: 'bot',
-    content_type: 'interactive',
-    content_text: args.bodyText,
-    message_id: waMessageId,
-    status: 'sent',
-    content_payload: {
-      type: 'whatsapp_flow_request',
-      flow_id: args.flowId,
-      flow_cta: args.flowCta,
-      flow_token: args.flowToken,
-      ...(args.flowScreen ? { flow_screen: args.flowScreen } : {}),
+  await persistOutboundAfterMetaSend(
+    db,
+    {
+      conversation_id: args.conversationId,
+      sender_type: 'bot',
+      content_type: 'interactive',
+      content_text: args.bodyText,
+      message_id: waMessageId,
+      status: 'sent',
+      content_payload: {
+        type: 'whatsapp_flow_request',
+        flow_id: args.flowId,
+        flow_cta: args.flowCta,
+        flow_token: args.flowToken,
+        ...(args.flowScreen ? { flow_screen: args.flowScreen } : {}),
+      },
     },
-  })
-
-  await db
-    .from('conversations')
-    .update({
-      last_message_text: args.bodyText,
-      last_message_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', args.conversationId)
+    {
+      conversationId: args.conversationId,
+      lastMessageText: args.bodyText,
+    },
+  )
 
   return { whatsapp_message_id: waMessageId }
 }

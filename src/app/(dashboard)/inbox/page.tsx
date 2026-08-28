@@ -282,6 +282,23 @@ export default function InboxPage() {
             );
             return [...withoutOptimistic, newMsg];
           });
+
+          // Customer replied but the automation bubble may be missing
+          // (Meta accepted the send while DB persist or realtime failed).
+          if (newMsg.sender_type === "customer") {
+            void fetch(
+              `/api/inbox/conversations/${newMsg.conversation_id}/repair-flow-prompt`,
+              { method: "POST" },
+            )
+              .then(async (res) => {
+                if (!res.ok) return;
+                const body = (await res.json()) as { repaired?: boolean };
+                if (body.repaired) {
+                  setResyncToken((n) => n + 1);
+                }
+              })
+              .catch(() => {});
+          }
         }
 
         // System microcopy (status/assign) belongs in the timeline only —

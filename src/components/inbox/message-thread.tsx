@@ -408,11 +408,10 @@ export function MessageThread({
         console.error("Failed to fetch messages:", error);
       } else {
         let rows = data ?? [];
-        const missingAutomationOnly =
+        const missingOutboundOnly =
           rows.length > 0 &&
-          rows.every((m) => m.sender_type === "customer") &&
-          rows.some((m) => m.interactive_reply_id || m.content_type === "interactive");
-        if (missingAutomationOnly) {
+          rows.every((m) => m.sender_type === "customer");
+        if (missingOutboundOnly) {
           try {
             const res = await fetch(
               `/api/inbox/conversations/${conversationId}/repair-flow-prompt`,
