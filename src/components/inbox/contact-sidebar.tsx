@@ -552,7 +552,6 @@ export function ContactSidebar({
   }
 
   const displayName = contact.name || contact.phone;
-  const initials = displayName.charAt(0).toUpperCase();
   const primaryDeal =
     deals.find((d) => d.status === "open" || !d.status) ?? deals[0] ?? null;
   const activePipelineId =
@@ -582,28 +581,17 @@ export function ContactSidebar({
         <div className="p-4">
           {/* Contact Info */}
           <div className="flex flex-col items-center text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-lg font-semibold text-foreground">
-              {contact.avatar_url ? (
-                <img
-                  src={contact.avatar_url}
-                  alt={displayName}
-                  className="h-16 w-16 rounded-full object-cover"
-                />
-              ) : (
-                initials
-              )}
-            </div>
             {onNameClick ? (
               <button
                 type="button"
                 onClick={onNameClick}
-                className="mt-3 cursor-pointer text-sm font-semibold text-foreground underline-offset-2 transition-colors hover:text-primary hover:underline"
+                className="cursor-pointer text-sm font-semibold text-foreground underline-offset-2 transition-colors hover:text-primary hover:underline"
                 title="Open contact"
               >
                 {displayName}
               </button>
             ) : (
-              <h3 className="mt-3 text-sm font-semibold text-foreground">
+              <h3 className="text-sm font-semibold text-foreground">
                 {displayName}
               </h3>
             )}
