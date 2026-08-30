@@ -156,7 +156,11 @@ export function ContactSidebar({
       setStagesLoaded(false);
     }
     const cachedOrders = storeOrdersCache.get(contactId);
-    if (cachedOrders) {
+    const canUseOrderCache =
+      cachedOrders &&
+      (!isEcommerceBrand ||
+        !cachedOrders.some((order) => order.product_title == null));
+    if (canUseOrderCache && cachedOrders) {
       setStoreOrders(cachedOrders);
       setOrdersLoading(false);
     } else {
@@ -171,7 +175,7 @@ export function ContactSidebar({
       : `/api/shopify/orders?contact_id=${contactId}`;
 
     const ordersPromise = isEcommerceBrand
-      ? fetch(ordersApiPath)
+      ? fetch(ordersApiPath, { cache: "no-store" })
           .then(async (res) => {
             if (!res.ok) return [] as InboxStoreOrder[];
             const payload = (await res.json()) as { orders?: InboxStoreOrder[] };

@@ -16,6 +16,11 @@ import {
   extractOrderTracking,
 } from '@/lib/shopify/order-links';
 import { orderInboxDisplayFields } from '@/lib/shopify/extract-context';
+import {
+  enrichOrdersFromLivePayloads,
+  hydrateLiveOrderPayloads,
+  ordersNeedInboxDisplayEnrichment,
+} from '@/lib/shopify/enrich-inbox-orders';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils';
 import type { ShopifyOrder } from '@/types';
@@ -156,25 +161,39 @@ async function loadCachedOrders(
   return filterCachedOrdersForContact((linked ?? []) as ShopifyOrder[], phone, contactId);
 }
 
+async function loadShopifyCredentials(accountId: string): Promise<{
+  shopDomain: string;
+  accessToken: string;
+  shopName: string;
+} | null> {
+  const db = supabaseAdmin();
+  const { data: config, error: configErr } = await db
+    .from('shopify_config')
+    .select('shop_domain, access_token, status')
+    .eq('account_id', accountId)
+    .maybeSingle();
+
+  if (configErr || !config || config.status !== 'connected' || !config.access_token) {
+    return null;
+  }
+
+  const shopDomain = config.shop_domain as string;
+  return {
+    shopDomain,
+    accessToken: decrypt(config.access_token as string),
+    shopName: shopDomain.replace('.myshopify.com', ''),
+  };
+}
+
 async function fetchLiveShopifyOrders(args: {
   accountId: string;
   phone: string | null;
   email: string | null;
 }): Promise<ShopifyOrderPayload[]> {
-  const db = supabaseAdmin();
+  const credentials = await loadShopifyCredentials(args.accountId);
+  if (!credentials) return [];
 
-  const { data: config, error: configErr } = await db
-    .from('shopify_config')
-    .select('shop_domain, access_token, status')
-    .eq('account_id', args.accountId)
-    .maybeSingle();
-
-  if (configErr || !config || config.status !== 'connected' || !config.access_token) {
-    return [];
-  }
-
-  const shopDomain = config.shop_domain as string;
-  const accessToken = decrypt(config.access_token as string);
+  const { shopDomain, accessToken } = credentials;
 
   let liveOrders = args.phone
     ? await fetchOrdersByPhone(shopDomain, accessToken, args.phone)
@@ -184,7 +203,34 @@ async function fetchLiveShopifyOrders(args: {
     liveOrders = await fetchOrdersByEmail(shopDomain, accessToken, args.email);
   }
 
-  return filterLiveOrdersForContact(liveOrders, args.phone, args.email);
+  const filtered = filterLiveOrdersForContact(liveOrders, args.phone, args.email);
+  if (filtered.length === 0) return [];
+
+  return hydrateLiveOrderPayloads(shopDomain, accessToken, filtered);
+}
+
+async function persistLiveShopifyOrders(args: {
+  accountId: string;
+  contactId: string;
+  liveOrders: ShopifyOrderPayload[];
+}): Promise<void> {
+  if (args.liveOrders.length === 0) return;
+
+  const credentials = await loadShopifyCredentials(args.accountId);
+  if (!credentials) return;
+
+  const db = supabaseAdmin();
+  await Promise.all(
+    args.liveOrders.map((order) =>
+      syncShopifyOrder(db, args.accountId, order, credentials.shopName),
+    ),
+  );
+
+  await db
+    .from('shopify_orders')
+    .update({ contact_id: args.contactId, updated_at: new Date().toISOString() })
+    .eq('account_id', args.accountId)
+    .in('shopify_order_id', args.liveOrders.map((o) => String(o.id)));
 }
 
 async function syncLiveShopifyOrders(args: {
@@ -196,24 +242,11 @@ async function syncLiveShopifyOrders(args: {
   const liveOrders = await fetchLiveShopifyOrders(args);
   if (liveOrders.length === 0) return [];
 
-  const db = supabaseAdmin();
-  const { data: config } = await db
-    .from('shopify_config')
-    .select('shop_domain')
-    .eq('account_id', args.accountId)
-    .maybeSingle();
-
-  const shopName = ((config?.shop_domain as string) ?? '').replace('.myshopify.com', '');
-
-  await Promise.all(
-    liveOrders.map((order) => syncShopifyOrder(db, args.accountId, order, shopName)),
-  );
-
-  await db
-    .from('shopify_orders')
-    .update({ contact_id: args.contactId, updated_at: new Date().toISOString() })
-    .eq('account_id', args.accountId)
-    .in('shopify_order_id', liveOrders.map((o) => String(o.id)));
+  await persistLiveShopifyOrders({
+    accountId: args.accountId,
+    contactId: args.contactId,
+    liveOrders,
+  });
 
   return liveOrders;
 }
@@ -250,13 +283,13 @@ export async function GET(req: Request) {
         contact.phone,
       );
 
-      const needsDisplayBackfill =
-        orders.length > 0 &&
-        !orders.some((order) => order.product_title != null);
+      let liveOrders: ShopifyOrderPayload[] = [];
+      const needsLive =
+        orders.length === 0 || ordersNeedInboxDisplayEnrichment(orders);
 
-      if (orders.length === 0 || needsDisplayBackfill) {
+      if (needsLive) {
         try {
-          const liveOrders = await syncLiveShopifyOrders({
+          liveOrders = await syncLiveShopifyOrders({
             accountId: ctx.accountId,
             contactId,
             phone: contact.phone,
@@ -278,6 +311,23 @@ export async function GET(req: Request) {
           }
         } catch (err) {
           console.warn('[shopify/orders] live sync failed:', err);
+        }
+      }
+
+      if (ordersNeedInboxDisplayEnrichment(orders)) {
+        if (liveOrders.length === 0) {
+          try {
+            liveOrders = await fetchLiveShopifyOrders({
+              accountId: ctx.accountId,
+              phone: contact.phone,
+              email: contact.email ?? null,
+            });
+          } catch (err) {
+            console.warn('[shopify/orders] live enrich fetch failed:', err);
+          }
+        }
+        if (liveOrders.length > 0) {
+          orders = enrichOrdersFromLivePayloads(orders, liveOrders);
         }
       }
 
