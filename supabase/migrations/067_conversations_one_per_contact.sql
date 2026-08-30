@@ -72,10 +72,10 @@ SET conversation_id = map.winner_id
 FROM conv_merge_map map
 WHERE fr.conversation_id = map.loser_id;
 
-UPDATE automation_logs al
+UPDATE flow_pending_executions fpe
 SET conversation_id = map.winner_id
 FROM conv_merge_map map
-WHERE al.conversation_id = map.loser_id;
+WHERE fpe.conversation_id = map.loser_id;
 
 UPDATE crm_tasks ct
 SET conversation_id = map.winner_id
