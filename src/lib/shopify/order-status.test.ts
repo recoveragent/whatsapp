@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
   splitPublicUrlForWhatsApp,
   extractOrderStatusUrl,
+  deriveShopifyOrderStatus,
+  formatShopifyOrderStatusLabel,
 } from './order-links'
 import {
   buildTemplateParams,
@@ -29,6 +31,31 @@ describe('splitPublicUrlForWhatsApp', () => {
       prefix: null,
       suffix: null,
     })
+  })
+})
+
+describe('Shopify order lifecycle status', () => {
+  it('derives cancelled when cancelled_at is set', () => {
+    expect(
+      deriveShopifyOrderStatus({ cancelled_at: '2026-07-06T06:30:00Z', closed_at: null }),
+    ).toBe('cancelled')
+  })
+
+  it('derives archived when closed_at is set without cancellation', () => {
+    expect(
+      deriveShopifyOrderStatus({ cancelled_at: null, closed_at: '2026-07-06T06:30:00Z' }),
+    ).toBe('archived')
+  })
+
+  it('derives open (active) for in-progress orders', () => {
+    expect(deriveShopifyOrderStatus({ cancelled_at: null, closed_at: null })).toBe('open')
+  })
+
+  it('formats labels for the inbox sidebar', () => {
+    expect(formatShopifyOrderStatusLabel('open')).toBe('Active')
+    expect(formatShopifyOrderStatusLabel('cancelled')).toBe('Cancelled')
+    expect(formatShopifyOrderStatusLabel('archived')).toBe('Archived')
+    expect(formatShopifyOrderStatusLabel(null)).toBe('Active')
   })
 })
 

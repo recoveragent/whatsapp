@@ -11,9 +11,11 @@ import { syncShopifyOrder } from '@/lib/shopify/sync-order';
 import { hasShopifyOrdersTable } from '@/lib/inbox/tables';
 import {
   buildShopifyAdminOrderUrl,
+  deriveShopifyOrderStatus,
   extractOrderStatusUrl,
   extractOrderTracking,
 } from '@/lib/shopify/order-links';
+import { orderInboxDisplayFields } from '@/lib/shopify/extract-context';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils';
 import type { ShopifyOrder } from '@/types';
@@ -34,6 +36,7 @@ function mapLiveOrder(
     ? order.payment_gateway_names[0] ?? null
     : null;
   const tracking = extractOrderTracking(order);
+  const inboxFields = orderInboxDisplayFields(order);
   const shopifyOrderId = String(order.id);
 
   return {
@@ -47,6 +50,9 @@ function mapLiveOrder(
     currency: order.currency ?? null,
     payment_status: order.financial_status ?? null,
     payment_gateway: paymentGateway,
+    order_status: deriveShopifyOrderStatus(order),
+    product_title: inboxFields.product_title,
+    shipping_address: inboxFields.shipping_address,
     fulfillment_status: order.fulfillment_status ?? 'unfulfilled',
     tracking_url: tracking.tracking_url,
     tracking_number: tracking.tracking_number,
@@ -244,7 +250,11 @@ export async function GET(req: Request) {
         contact.phone,
       );
 
-      if (orders.length === 0) {
+      const needsDisplayBackfill =
+        orders.length > 0 &&
+        !orders.some((order) => order.product_title != null);
+
+      if (orders.length === 0 || needsDisplayBackfill) {
         try {
           const liveOrders = await syncLiveShopifyOrders({
             accountId: ctx.accountId,

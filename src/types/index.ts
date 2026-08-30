@@ -207,6 +207,12 @@ export interface ShopifyOrder {
   currency?: string | null;
   payment_status?: string | null;
   payment_gateway?: string | null;
+  /** Shopify lifecycle: open (active), cancelled, or archived. */
+  order_status?: string | null;
+  /** First line item title for inbox order cards. */
+  product_title?: string | null;
+  /** Multi-line shipping address for inbox order cards. */
+  shipping_address?: string | null;
   fulfillment_status?: string | null;
   tracking_url?: string | null;
   tracking_number?: string | null;

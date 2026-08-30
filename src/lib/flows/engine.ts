@@ -1254,7 +1254,7 @@ export async function dispatchInboundToFlows(
       }
 
       const nodes = await loadAllNodes(db, activeRun.flow_id);
-      return handleReplyForActiveRun(db, activeRun, input.message, nodes);
+      return handleReplyForActiveRun(db, activeRun, input, nodes);
     }
 
     if (input.message.kind === "text") {
@@ -1353,9 +1353,27 @@ async function startMatchingFlowAfterExit(
 async function handleReplyForActiveRun(
   db: AdminClient,
   run: FlowRunRow,
-  message: ParsedInbound,
+  input: DispatchInboundInput,
   nodes: Map<string, FlowNodeRow>,
 ): Promise<DispatchInboundResult> {
+  const message = input.message;
+
+  // Inbound may land on the canonical inbox thread while the run still
+  // points at an older duplicate shell — keep them aligned so close
+  // and outbound sends hit the conversation the agent sees.
+  if (
+    run.conversation_id &&
+    run.conversation_id !== input.conversationId
+  ) {
+    const { error: syncErr } = await db
+      .from("flow_runs")
+      .update({ conversation_id: input.conversationId })
+      .eq("id", run.id);
+    if (!syncErr) {
+      run.conversation_id = input.conversationId;
+    }
+  }
+
   // Note: we intentionally do NOT persist the raw customer text. A
   // `collect_input` prompt that asks "what's your card number?" would
   // otherwise leave the PAN sitting in flow_run_events.payload forever,

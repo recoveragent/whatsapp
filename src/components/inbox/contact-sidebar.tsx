@@ -39,7 +39,9 @@ import {
   List,
   PanelRightClose,
 } from "lucide-react";
-import { isFulfilledStatus } from "@/lib/shopify/order-links";
+import {
+  isFulfilledStatus,
+} from "@/lib/shopify/order-links";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
@@ -64,6 +66,9 @@ type InboxStoreOrder = {
   currency?: string | null;
   payment_status?: string | null;
   payment_gateway?: string | null;
+  order_status?: string | null;
+  product_title?: string | null;
+  shipping_address?: string | null;
   fulfillment_status?: string | null;
   tracking_url?: string | null;
   tracking_number?: string | null;
@@ -889,20 +894,27 @@ export function ContactSidebar({
               ) : (
                 storeOrders.map((order) => (
                   <div key={order.id} className="rounded-lg bg-muted px-3 py-2 text-xs">
-                    <div className="flex items-center justify-between gap-2">
-                      {order.admin_url ? (
-                        <a
-                          href={order.admin_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-medium text-primary hover:underline"
-                        >
-                          {order.order_number}
-                        </a>
-                      ) : (
-                        <span className="font-medium text-foreground">{order.order_number}</span>
-                      )}
-                      <span className="text-muted-foreground">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        {order.admin_url ? (
+                          <a
+                            href={order.admin_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {order.order_number}
+                          </a>
+                        ) : (
+                          <span className="font-medium text-foreground">{order.order_number}</span>
+                        )}
+                        {!isWooCommerceBrand && order.product_title && (
+                          <p className="mt-0.5 line-clamp-2 text-[11px] font-normal text-muted-foreground">
+                            {order.product_title}
+                          </p>
+                        )}
+                      </div>
+                      <span className="shrink-0 text-muted-foreground">
                         {order.currency ?? ""}
                         {order.total_price ?? "—"}
                       </span>
@@ -914,6 +926,12 @@ export function ContactSidebar({
                           <span className="text-foreground">
                             {format(new Date(order.ordered_at), "MMM d, yyyy")}
                           </span>
+                        </p>
+                      )}
+                      {!isWooCommerceBrand && order.order_status === "cancelled" && (
+                        <p>
+                          Status:{" "}
+                          <span className="text-destructive">Cancelled</span>
                         </p>
                       )}
                       <p>
@@ -933,6 +951,16 @@ export function ContactSidebar({
                           Tracking:{" "}
                           <span className="text-foreground">{order.tracking_number}</span>
                         </p>
+                      )}
+                      {!isWooCommerceBrand && order.shipping_address && (
+                        <details className="group/shipping">
+                          <summary className="cursor-pointer list-none text-primary marker:content-none hover:underline [&::-webkit-details-marker]:hidden">
+                            Shipping address
+                          </summary>
+                          <p className="mt-1 whitespace-pre-line text-foreground">
+                            {order.shipping_address}
+                          </p>
+                        </details>
                       )}
                       {order.order_status_url ? (
                         <a

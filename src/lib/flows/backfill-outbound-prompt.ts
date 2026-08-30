@@ -240,10 +240,8 @@ export async function backfillMissingOutboundPrompt(args: {
       .eq('id', existingAnywhere.conversation_id)
       .maybeSingle()
     if (sourceConv?.contact_id === args.contactId) {
-      await args.db
-        .from('messages')
-        .update({ conversation_id: args.conversationId })
-        .eq('id', existingAnywhere.id)
+      // Parent bubble already persisted on the canonical thread — do not
+      // move rows across conversations (that split flow runs from inbox).
       return existingAnywhere.id
     }
   }

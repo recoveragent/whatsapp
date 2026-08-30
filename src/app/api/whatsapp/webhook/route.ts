@@ -8,6 +8,7 @@ import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { backfillMissingOutboundPrompt } from '@/lib/flows/backfill-outbound-prompt'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
+import { ensureConversationForContact } from '@/lib/inbox/ensure-conversation'
 import type { ParsedInbound } from '@/lib/flows/types'
 import {
   handleTemplateWebhookChange,
@@ -602,12 +603,24 @@ async function processMessage(
   const contactRecord = contactOutcome.contact
 
   // Find or create conversation
-  const conversation = await findOrCreateConversation(
+  const ensured = await ensureConversationForContact(
+    supabaseAdmin(),
     accountId,
     configOwnerUserId,
-    contactRecord.id
+    contactRecord.id,
+    { createStatus: 'open' },
   )
-  if (!conversation) return
+  if (!ensured) return
+
+  const { data: conversation, error: conversationError } = await supabaseAdmin()
+    .from('conversations')
+    .select('*')
+    .eq('id', ensured.id)
+    .single()
+  if (conversationError || !conversation) {
+    console.error('Error loading conversation:', conversationError)
+    return
+  }
 
   // Persist CTWA ad attribution once per contact (first message only).
   if (message.referral) {
@@ -1244,41 +1257,4 @@ async function findOrCreateContact(
   }
 
   return { contact: newContact, wasCreated: true }
-}
-
-async function findOrCreateConversation(
-  accountId: string,
-  configOwnerUserId: string,
-  contactId: string,
-) {
-  // Look for existing conversation in this account
-  const { data: existing, error: findError } = await supabaseAdmin()
-    .from('conversations')
-    .select('*')
-    .eq('account_id', accountId)
-    .eq('contact_id', contactId)
-    .single()
-
-  if (!findError && existing) {
-    return existing
-  }
-
-  // Create new conversation. Same tenancy + audit split as
-  // findOrCreateContact above.
-  const { data: newConv, error: createError } = await supabaseAdmin()
-    .from('conversations')
-    .insert({
-      account_id: accountId,
-      user_id: configOwnerUserId,
-      contact_id: contactId,
-    })
-    .select()
-    .single()
-
-  if (createError) {
-    console.error('Error creating conversation:', createError)
-    return null
-  }
-
-  return newConv
 }

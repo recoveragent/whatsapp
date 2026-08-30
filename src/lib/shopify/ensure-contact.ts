@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
+import {
+  ensureConversationForContact,
+  type ConversationCreateStatus,
+} from '@/lib/inbox/ensure-conversation';
 import { canonicalContactPhone, normalizePhone } from '@/lib/whatsapp/phone-utils';
 
 export interface EnsuredContact {
@@ -72,36 +76,11 @@ export async function ensureConversation(
   accountId: string,
   ownerUserId: string,
   contactId: string,
-  opts?: { createStatus?: 'open' | 'closed' | 'pending' | 'followup' },
+  opts?: { createStatus?: ConversationCreateStatus },
 ): Promise<{ id: string } | null> {
-  const createStatus = opts?.createStatus ?? 'closed';
-
-  const { data: existing } = await db
-    .from('conversations')
-    .select('id')
-    .eq('account_id', accountId)
-    .eq('contact_id', contactId)
-    .maybeSingle();
-
-  if (existing) return existing;
-
-  const { data: created, error } = await db
-    .from('conversations')
-    .insert({
-      account_id: accountId,
-      user_id: ownerUserId,
-      contact_id: contactId,
-      status: createStatus,
-    })
-    .select('id')
-    .single();
-
-  if (error) {
-    console.error('[shopify] ensureConversation failed:', error);
-    return null;
-  }
-
-  return created;
+  return ensureConversationForContact(db, accountId, ownerUserId, contactId, {
+    createStatus: opts?.createStatus ?? 'closed',
+  });
 }
 
 const OPEN_FLOW_RUN_STATUSES = ['active', 'waiting'] as const;

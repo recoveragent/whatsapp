@@ -1,5 +1,30 @@
 import type { ShopifyOrderPayload } from './types';
 
+export type ShopifyOrderLifecycleStatus = 'open' | 'cancelled' | 'archived';
+
+export function deriveShopifyOrderStatus(
+  order: Pick<ShopifyOrderPayload, 'cancelled_at' | 'closed_at'>,
+): ShopifyOrderLifecycleStatus {
+  if (order.cancelled_at) return 'cancelled';
+  if (order.closed_at) return 'archived';
+  return 'open';
+}
+
+export function formatShopifyOrderStatusLabel(
+  status: string | null | undefined,
+): string {
+  switch (status) {
+    case 'cancelled':
+      return 'Cancelled';
+    case 'archived':
+      return 'Archived';
+    case 'open':
+      return 'Active';
+    default:
+      return 'Active';
+  }
+}
+
 export function buildShopifyAdminOrderUrl(
   shopDomain: string,
   shopifyOrderId: string,

@@ -117,6 +117,7 @@ export interface ShopifyOrderPayload {
   financial_status?: string;
   fulfillment_status?: string | null;
   cancelled_at?: string | null;
+  closed_at?: string | null;
   payment_gateway_names?: string[];
   tags?: string;
   created_at?: string;

@@ -1,8 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { findExistingContact } from '@/lib/contacts/dedupe';
-import { contextFromOrder, extractOrderPhone } from './extract-context';
-import { extractOrderStatusUrl, extractOrderTracking } from './order-links';
+import {
+  contextFromOrder,
+  extractOrderPhone,
+  orderInboxDisplayFields,
+} from './extract-context';
+import {
+  deriveShopifyOrderStatus,
+  extractOrderStatusUrl,
+  extractOrderTracking,
+} from './order-links';
 import type { ShopifyOrderPayload } from './types';
 
 function parseTags(raw: unknown): string[] {
@@ -33,6 +41,7 @@ export async function syncShopifyOrder(
       : null;
 
   const tracking = extractOrderTracking(order);
+  const inboxFields = orderInboxDisplayFields(order);
 
   const { error } = await db.from('shopify_orders').upsert(
     {
@@ -45,6 +54,9 @@ export async function syncShopifyOrder(
       currency: order.currency ?? null,
       payment_status: (order as { financial_status?: string }).financial_status ?? null,
       payment_gateway: paymentGateway,
+      order_status: deriveShopifyOrderStatus(order),
+      product_title: inboxFields.product_title,
+      shipping_address: inboxFields.shipping_address,
       fulfillment_status:
         (order as { fulfillment_status?: string | null }).fulfillment_status ?? 'unfulfilled',
       tracking_url: tracking.tracking_url,

@@ -96,11 +96,10 @@ function formatMoney(amount: string | undefined, currency: string | undefined): 
   return currency ? `${amount} ${currency}` : amount;
 }
 
-/** Single-line shipping address suitable for template body params. */
-export function formatShippingAddress(
+function shippingAddressParts(
   address: ShopifyAddressFields | null | undefined,
-): string | null {
-  if (!address) return null;
+): string[] {
+  if (!address) return [];
 
   const name =
     address.name?.trim() ||
@@ -111,7 +110,7 @@ export function formatShippingAddress(
     .join(', ');
   const country = address.country || address.country_code || null;
 
-  const parts = [
+  return [
     name,
     address.company,
     address.address1,
@@ -121,8 +120,50 @@ export function formatShippingAddress(
   ]
     .map((p) => (typeof p === 'string' ? p.trim() : p))
     .filter((p): p is string => !!p);
+}
 
+/** Single-line shipping address suitable for template body params. */
+export function formatShippingAddress(
+  address: ShopifyAddressFields | null | undefined,
+): string | null {
+  const parts = shippingAddressParts(address);
   return parts.length > 0 ? parts.join(', ') : null;
+}
+
+/** Multi-line shipping address for inbox order cards. */
+export function formatShippingAddressMultiline(
+  address: ShopifyAddressFields | null | undefined,
+): string | null {
+  const parts = shippingAddressParts(address);
+  return parts.length > 0 ? parts.join('\n') : null;
+}
+
+/** Primary line item label for inbox order cards. */
+export function firstLineItemTitle(
+  items: ShopifyLineItemFields[] | undefined,
+): string | null {
+  if (!items?.length) return null;
+
+  const item = items[0];
+  const label = item.name ?? item.title ?? null;
+  if (!label) return null;
+
+  const qty = item.quantity ?? 1;
+  const titled = qty > 1 ? `${label} ×${qty}` : label;
+  if (items.length === 1) return titled;
+  return `${titled} +${items.length - 1} more`;
+}
+
+export function orderInboxDisplayFields(order: ShopifyOrderPayload): {
+  product_title: string | null;
+  shipping_address: string | null;
+} {
+  return {
+    product_title: firstLineItemTitle(order.line_items),
+    shipping_address:
+      formatShippingAddressMultiline(order.shipping_address) ||
+      formatShippingAddressMultiline(order.billing_address),
+  };
 }
 
 function orderStatusFields(

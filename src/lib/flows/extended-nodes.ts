@@ -466,20 +466,36 @@ export async function executeExtendedNode(
       }
       case 'close_conversation': {
         const c = cfg as unknown as CloseConversationNodeConfig
-        if (run.conversation_id) {
-          await db
+        const toClose = new Set<string>()
+        if (run.conversation_id) toClose.add(run.conversation_id)
+        if (run.contact_id) {
+          const { data: openRows } = await db
             .from('conversations')
-            .update({ status: 'closed', updated_at: new Date().toISOString() })
-            .eq('id', run.conversation_id)
+            .select('id')
+            .eq('account_id', run.account_id)
+            .eq('contact_id', run.contact_id)
+            .in('status', ['open', 'pending', 'followup'])
+          for (const row of openRows ?? []) {
+            toClose.add((row as { id: string }).id)
+          }
+        }
+        if (toClose.size > 0) {
           const { insertConversationStatusMessage } = await import(
             '@/lib/inbox/status-system-message'
           )
-          await insertConversationStatusMessage({
-            db,
-            conversationId: run.conversation_id,
-            status: 'closed',
-            actor: { kind: 'flow' },
-          })
+          const now = new Date().toISOString()
+          for (const conversationId of toClose) {
+            await db
+              .from('conversations')
+              .update({ status: 'closed', updated_at: now })
+              .eq('id', conversationId)
+            await insertConversationStatusMessage({
+              db,
+              conversationId,
+              status: 'closed',
+              actor: { kind: 'flow' },
+            })
+          }
         }
         return { kind: 'continue', nextKey: c.next_node_key }
       }
