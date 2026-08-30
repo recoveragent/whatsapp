@@ -159,7 +159,11 @@ export function ContactSidebar({
     const canUseOrderCache =
       cachedOrders &&
       (!isEcommerceBrand ||
-        !cachedOrders.some((order) => order.product_title == null));
+        !cachedOrders.some(
+          (order) =>
+            order.product_title == null ||
+            /\+\d+ more$/.test(order.product_title?.trim() ?? ""),
+        ));
     if (canUseOrderCache && cachedOrders) {
       setStoreOrders(cachedOrders);
       setOrdersLoading(false);
@@ -661,7 +665,7 @@ export function ContactSidebar({
                             <span className="font-medium text-foreground">{order.order_number}</span>
                           )}
                           {!isWooCommerceBrand && order.product_title && (
-                            <p className="mt-0.5 line-clamp-2 text-[11px] font-normal text-muted-foreground">
+                            <p className="mt-0.5 whitespace-pre-line text-[11px] font-normal leading-snug text-muted-foreground">
                               {order.product_title}
                             </p>
                           )}

@@ -63,7 +63,11 @@ export async function hydrateLiveOrderPayloads(
 }
 
 export function ordersNeedInboxDisplayEnrichment(orders: ShopifyOrder[]): boolean {
-  return orders.some((order) => order.product_title == null);
+  return orders.some(
+    (order) =>
+      order.product_title == null ||
+      /\+\d+ more$/.test(order.product_title.trim()),
+  );
 }
 
 /** Fetch full Shopify payloads for cached rows missing inbox display fields. */

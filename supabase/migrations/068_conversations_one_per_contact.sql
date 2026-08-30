@@ -1,5 +1,5 @@
 -- ============================================================
--- 067_conversations_one_per_contact.sql
+-- 068_conversations_one_per_contact.sql
 --
 -- One conversation per (account_id, contact_id). Duplicate rows
 -- (Shopify webhook races, inbound find-or-create with .single())

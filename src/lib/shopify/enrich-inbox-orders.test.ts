@@ -68,6 +68,29 @@ describe('enrich-inbox-orders', () => {
     )
   })
 
+  it('lists every line item on separate lines', () => {
+    const live: ShopifyOrderPayload = {
+      id: 1,
+      line_items: [
+        { name: 'Green Tea Trial Pack', quantity: 1 },
+        { name: 'Honey Lemon Tea', quantity: 2 },
+      ],
+    }
+
+    expect(mergeInboxDisplayFields(
+      {
+        id: 'db-1',
+        account_id: 'acc',
+        shopify_order_id: '1',
+        order_number: '#1',
+        tags: [],
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+      live,
+    ).product_title).toBe('Green Tea Trial Pack\nHoney Lemon Tea ×2')
+  })
+
   it('detects when a list payload needs a full order fetch', () => {
     expect(orderPayloadNeedsDetail({ id: 1 })).toBe(true)
     expect(

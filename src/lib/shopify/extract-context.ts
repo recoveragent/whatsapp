@@ -138,20 +138,22 @@ export function formatShippingAddressMultiline(
   return parts.length > 0 ? parts.join('\n') : null;
 }
 
-/** Primary line item label for inbox order cards. */
-export function firstLineItemTitle(
+/** All line item labels for inbox order cards (one product per line). */
+export function formatInboxLineItems(
   items: ShopifyLineItemFields[] | undefined,
 ): string | null {
   if (!items?.length) return null;
 
-  const item = items[0];
-  const label = item.name ?? item.title ?? null;
-  if (!label) return null;
+  const lines = items
+    .map((item) => {
+      const label = item.name ?? item.title ?? null;
+      if (!label) return null;
+      const qty = item.quantity ?? 1;
+      return qty > 1 ? `${label} ×${qty}` : label;
+    })
+    .filter((line): line is string => !!line);
 
-  const qty = item.quantity ?? 1;
-  const titled = qty > 1 ? `${label} ×${qty}` : label;
-  if (items.length === 1) return titled;
-  return `${titled} +${items.length - 1} more`;
+  return lines.length > 0 ? lines.join('\n') : null;
 }
 
 export function orderInboxDisplayFields(order: ShopifyOrderPayload): {
@@ -159,7 +161,7 @@ export function orderInboxDisplayFields(order: ShopifyOrderPayload): {
   shipping_address: string | null;
 } {
   return {
-    product_title: firstLineItemTitle(order.line_items),
+    product_title: formatInboxLineItems(order.line_items),
     shipping_address:
       formatShippingAddressMultiline(order.shipping_address) ||
       formatShippingAddressMultiline(order.billing_address),
