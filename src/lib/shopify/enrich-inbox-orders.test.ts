@@ -1,12 +1,18 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
+  enrichCachedOrdersFromShopify,
   enrichOrdersFromLivePayloads,
   mergeInboxDisplayFields,
   orderPayloadNeedsDetail,
 } from './enrich-inbox-orders'
+import * as adminApi from './admin-api'
 import type { ShopifyOrderPayload } from './types'
 import type { ShopifyOrder } from '@/types'
+
+vi.mock('./admin-api', () => ({
+  fetchOrder: vi.fn(),
+}))
 
 describe('enrich-inbox-orders', () => {
   it('merges product title and shipping address from live payload', () => {
@@ -70,5 +76,42 @@ describe('enrich-inbox-orders', () => {
         line_items: [{ name: 'Item', quantity: 1 }],
       }),
     ).toBe(false)
+  })
+
+  it('fetches cached orders by shopify_order_id when display fields are missing', async () => {
+    vi.mocked(adminApi.fetchOrder).mockResolvedValue({
+      id: 999,
+      line_items: [{ name: 'Fetched Tea', quantity: 1 }],
+      shipping_address: { city: 'Gurgaon' },
+    })
+
+    const cached: ShopifyOrder[] = [
+      {
+        id: 'db-1',
+        account_id: 'acc',
+        shopify_order_id: '999',
+        order_number: '#999',
+        tags: [],
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]
+
+    const result = await enrichCachedOrdersFromShopify(
+      'acc',
+      cached,
+      async () => ({
+        shopDomain: 'shop.myshopify.com',
+        accessToken: 'token',
+      }),
+    )
+
+    expect(adminApi.fetchOrder).toHaveBeenCalledWith(
+      'shop.myshopify.com',
+      'token',
+      '999',
+    )
+    expect(result.orders[0].product_title).toBe('Fetched Tea')
+    expect(result.orders[0].shipping_address).toContain('Gurgaon')
   })
 })

@@ -17,7 +17,7 @@ import {
 } from '@/lib/shopify/order-links';
 import { orderInboxDisplayFields } from '@/lib/shopify/extract-context';
 import {
-  enrichOrdersFromLivePayloads,
+  enrichCachedOrdersFromShopify,
   hydrateLiveOrderPayloads,
   ordersNeedInboxDisplayEnrichment,
 } from '@/lib/shopify/enrich-inbox-orders';
@@ -315,19 +315,31 @@ export async function GET(req: Request) {
       }
 
       if (ordersNeedInboxDisplayEnrichment(orders)) {
-        if (liveOrders.length === 0) {
-          try {
-            liveOrders = await fetchLiveShopifyOrders({
+        try {
+          const enriched = await enrichCachedOrdersFromShopify(
+            ctx.accountId,
+            orders,
+            loadShopifyCredentials,
+            async (accountId) =>
+              fetchLiveShopifyOrders({
+                accountId,
+                phone: contact.phone,
+                email: contact.email ?? null,
+              }),
+          );
+          orders = enriched.orders;
+          if (enriched.liveOrders.length > 0) {
+            liveOrders = enriched.liveOrders;
+            await persistLiveShopifyOrders({
               accountId: ctx.accountId,
-              phone: contact.phone,
-              email: contact.email ?? null,
+              contactId,
+              liveOrders: enriched.liveOrders,
+            }).catch((err) => {
+              console.warn('[shopify/orders] persist enriched orders failed:', err);
             });
-          } catch (err) {
-            console.warn('[shopify/orders] live enrich fetch failed:', err);
           }
-        }
-        if (liveOrders.length > 0) {
-          orders = enrichOrdersFromLivePayloads(orders, liveOrders);
+        } catch (err) {
+          console.warn('[shopify/orders] cached order enrich failed:', err);
         }
       }
 

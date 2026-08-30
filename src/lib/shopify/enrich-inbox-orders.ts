@@ -65,3 +65,67 @@ export async function hydrateLiveOrderPayloads(
 export function ordersNeedInboxDisplayEnrichment(orders: ShopifyOrder[]): boolean {
   return orders.some((order) => order.product_title == null);
 }
+
+/** Fetch full Shopify payloads for cached rows missing inbox display fields. */
+export async function fetchLivePayloadsForCachedOrders(
+  shopDomain: string,
+  accessToken: string,
+  orders: ShopifyOrder[],
+): Promise<ShopifyOrderPayload[]> {
+  const shopifyOrderIds = [
+    ...new Set(
+      orders
+        .filter((order) => order.product_title == null && order.shopify_order_id?.trim())
+        .map((order) => order.shopify_order_id.trim()),
+    ),
+  ];
+
+  if (shopifyOrderIds.length === 0) return [];
+
+  const payloads = await Promise.all(
+    shopifyOrderIds.map(async (shopifyOrderId) => {
+      try {
+        return await fetchOrder(shopDomain, accessToken, shopifyOrderId);
+      } catch (err) {
+        console.warn('[shopify] fetchLivePayloadsForCachedOrders failed:', shopifyOrderId, err);
+        return null;
+      }
+    }),
+  );
+
+  return payloads.filter((order): order is ShopifyOrderPayload => order != null);
+}
+
+export async function enrichCachedOrdersFromShopify(
+  accountId: string,
+  orders: ShopifyOrder[],
+  loadCredentials: (accountId: string) => Promise<{
+    shopDomain: string;
+    accessToken: string;
+  } | null>,
+  fetchByContact?: (accountId: string) => Promise<ShopifyOrderPayload[]>,
+): Promise<{ orders: ShopifyOrder[]; liveOrders: ShopifyOrderPayload[] }> {
+  if (!ordersNeedInboxDisplayEnrichment(orders)) {
+    return { orders, liveOrders: [] };
+  }
+
+  const credentials = await loadCredentials(accountId);
+  if (!credentials) return { orders, liveOrders: [] };
+
+  let liveOrders = await fetchLivePayloadsForCachedOrders(
+    credentials.shopDomain,
+    credentials.accessToken,
+    orders,
+  );
+
+  if (liveOrders.length === 0 && fetchByContact) {
+    liveOrders = await fetchByContact(accountId);
+  }
+
+  if (liveOrders.length === 0) return { orders, liveOrders: [] };
+
+  return {
+    orders: enrichOrdersFromLivePayloads(orders, liveOrders),
+    liveOrders,
+  };
+}
