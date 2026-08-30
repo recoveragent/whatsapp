@@ -627,93 +627,138 @@ export function ContactSidebar({
             )}
           </div>
 
-          {customFields.length > 0 && (
+          {isEcommerceBrand && (
             <div className="mt-4">
               <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                <List className="h-3 w-3" />
-                Details
+                <ShoppingBag className="h-3 w-3" />
+                {isWooCommerceBrand ? 'WooCommerce Orders' : 'Shopify Orders'}
               </div>
-              <div className="mt-2 space-y-1.5 rounded-lg border border-border px-3 py-2 text-xs">
-                {customFields.map((field) => (
-                  <div key={field.id} className="flex justify-between gap-3">
-                    <span className="shrink-0 capitalize text-muted-foreground">
-                      {field.field_name}
-                    </span>
-                    <span className="text-right text-foreground">
-                      {customValues[field.id]?.trim() || "—"}
-                    </span>
+              <div className="mt-2 space-y-2">
+                {ordersLoading ? (
+                  <div className="flex items-center gap-2 px-1 py-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Loading orders…
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {contact.referral && (
-            <div className="mt-4">
-              <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                <Megaphone className="h-3 w-3" />
-                Ad source
-              </div>
-              <div className="mt-2 space-y-1 rounded-lg border border-border px-3 py-2 text-xs">
-                {contact.referral.headline && (
-                  <p className="text-sm font-medium text-foreground">
-                    {contact.referral.headline}
+                ) : storeOrders.length === 0 ? (
+                  <p className="px-1 text-xs text-muted-foreground">
+                    {isWooCommerceBrand ? 'No WooCommerce orders' : 'No Shopify orders'}
                   </p>
-                )}
-                {contact.referral.body && (
-                  <p className="text-muted-foreground">{contact.referral.body}</p>
-                )}
-                {contact.referral.source_type && (
-                  <p className="text-muted-foreground">
-                    Source: {contact.referral.source_type}
-                    {contact.referral.source_id
-                      ? ` · ${contact.referral.source_id}`
-                      : ""}
-                  </p>
-                )}
-                {contact.referral.source_url && (
-                  <a
-                    href={contact.referral.source_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-primary hover:underline"
-                  >
-                    View ad
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
+                ) : (
+                  storeOrders.map((order) => (
+                    <div key={order.id} className="rounded-lg bg-muted px-3 py-2 text-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          {order.admin_url ? (
+                            <a
+                              href={order.admin_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium text-primary hover:underline"
+                            >
+                              {order.order_number}
+                            </a>
+                          ) : (
+                            <span className="font-medium text-foreground">{order.order_number}</span>
+                          )}
+                          {!isWooCommerceBrand && order.product_title && (
+                            <p className="mt-0.5 line-clamp-2 text-[11px] font-normal text-muted-foreground">
+                              {order.product_title}
+                            </p>
+                          )}
+                        </div>
+                        <span className="shrink-0 text-muted-foreground">
+                          {order.currency ?? ""}
+                          {order.total_price ?? "—"}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 space-y-0.5 text-[11px] text-muted-foreground">
+                        {order.ordered_at && (
+                          <p>
+                            Received:{" "}
+                            <span className="text-foreground">
+                              {format(new Date(order.ordered_at), "MMM d, yyyy")}
+                            </span>
+                          </p>
+                        )}
+                        {!isWooCommerceBrand && order.order_status === "cancelled" && (
+                          <p>
+                            Status:{" "}
+                            <span className="text-destructive">Cancelled</span>
+                          </p>
+                        )}
+                        <p>
+                          Payment:{" "}
+                          <span className="text-foreground">
+                            {formatPaymentLabel(order.payment_gateway, order.payment_status)}
+                          </span>
+                        </p>
+                        <p>
+                          Fulfillment:{" "}
+                          <span className="text-foreground">
+                            {formatFulfillment(order.fulfillment_status)}
+                          </span>
+                        </p>
+                        {isFulfilledStatus(order.fulfillment_status) && order.tracking_number && (
+                          <p>
+                            Tracking:{" "}
+                            <span className="text-foreground">{order.tracking_number}</span>
+                          </p>
+                        )}
+                        {!isWooCommerceBrand && order.shipping_address && (
+                          <details className="group/shipping">
+                            <summary className="cursor-pointer list-none text-primary marker:content-none hover:underline [&::-webkit-details-marker]:hidden">
+                              Shipping address
+                            </summary>
+                            <p className="mt-1 whitespace-pre-line text-foreground">
+                              {order.shipping_address}
+                            </p>
+                          </details>
+                        )}
+                        {order.order_status_url ? (
+                          <a
+                            href={order.order_status_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            View order status
+                          </a>
+                        ) : isFulfilledStatus(order.fulfillment_status) && order.tracking_url ? (
+                          <a
+                            href={order.tracking_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            Track shipment
+                            {order.tracking_number ? ` (${order.tracking_number})` : ""}
+                          </a>
+                        ) : null}
+                        {(order.tags?.length ?? 0) > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {(order.tags ?? []).map((tag) => (
+                              <span
+                                key={tag}
+                                className="rounded-full bg-background px-1.5 py-0.5 text-[10px] text-foreground"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>
           )}
-
-          {formSubmissions.length > 0 && (
-            <div className="mt-4">
-              <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                <ClipboardList className="h-3 w-3" />
-                Form responses
-              </div>
-              <div className="mt-2 space-y-3">
-                {formSubmissions.map((submission) => (
-                  <div
-                    key={submission.id}
-                    className="rounded-lg border border-border px-3 py-2"
-                  >
-                    <p className="text-[11px] text-muted-foreground">
-                      {format(new Date(submission.created_at), "PPp")}
-                    </p>
-                    <FormSubmissionFields values={submission.values} compact />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Divider */}
-          <div className="my-4 border-t border-border" />
 
           {/* Follow-up reminders */}
           {conversationId ? (
-            <div className="mb-4">
+            <div className="mt-4">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   <Bell className="h-3 w-3" />
@@ -810,7 +855,6 @@ export function ContactSidebar({
                   })
                 )}
               </div>
-              <div className="my-4 border-t border-border" />
               <ScheduleReminderDialog
                 open={reminderDialogOpen}
                 onOpenChange={setReminderDialogOpen}
@@ -824,7 +868,7 @@ export function ContactSidebar({
           ) : null}
 
           {/* Tags */}
-          <div>
+          <div className="mt-4">
             <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
               <TagIcon className="h-3 w-3" />
               Tags
@@ -863,138 +907,85 @@ export function ContactSidebar({
             </div>
           </div>
 
-          {isEcommerceBrand && (
-          <>
-          <div className="my-4 border-t border-border" />
-
-          {/* Store order history */}
-          <div>
-            <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              <ShoppingBag className="h-3 w-3" />
-              {isWooCommerceBrand ? 'WooCommerce Orders' : 'Shopify Orders'}
-            </div>
-            <div className="mt-2 space-y-2">
-              {ordersLoading ? (
-                <div className="flex items-center gap-2 px-1 py-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Loading orders…
-                </div>
-              ) : storeOrders.length === 0 ? (
-                <p className="px-1 text-xs text-muted-foreground">
-                  {isWooCommerceBrand ? 'No WooCommerce orders' : 'No Shopify orders'}
-                </p>
-              ) : (
-                storeOrders.map((order) => (
-                  <div key={order.id} className="rounded-lg bg-muted px-3 py-2 text-xs">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        {order.admin_url ? (
-                          <a
-                            href={order.admin_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-medium text-primary hover:underline"
-                          >
-                            {order.order_number}
-                          </a>
-                        ) : (
-                          <span className="font-medium text-foreground">{order.order_number}</span>
-                        )}
-                        {!isWooCommerceBrand && order.product_title && (
-                          <p className="mt-0.5 line-clamp-2 text-[11px] font-normal text-muted-foreground">
-                            {order.product_title}
-                          </p>
-                        )}
-                      </div>
-                      <span className="shrink-0 text-muted-foreground">
-                        {order.currency ?? ""}
-                        {order.total_price ?? "—"}
-                      </span>
-                    </div>
-                    <div className="mt-1.5 space-y-0.5 text-[11px] text-muted-foreground">
-                      {order.ordered_at && (
-                        <p>
-                          Received:{" "}
-                          <span className="text-foreground">
-                            {format(new Date(order.ordered_at), "MMM d, yyyy")}
-                          </span>
-                        </p>
-                      )}
-                      {!isWooCommerceBrand && order.order_status === "cancelled" && (
-                        <p>
-                          Status:{" "}
-                          <span className="text-destructive">Cancelled</span>
-                        </p>
-                      )}
-                      <p>
-                        Payment:{" "}
-                        <span className="text-foreground">
-                          {formatPaymentLabel(order.payment_gateway, order.payment_status)}
-                        </span>
-                      </p>
-                      <p>
-                        Fulfillment:{" "}
-                        <span className="text-foreground">
-                          {formatFulfillment(order.fulfillment_status)}
-                        </span>
-                      </p>
-                      {isFulfilledStatus(order.fulfillment_status) && order.tracking_number && (
-                        <p>
-                          Tracking:{" "}
-                          <span className="text-foreground">{order.tracking_number}</span>
-                        </p>
-                      )}
-                      {!isWooCommerceBrand && order.shipping_address && (
-                        <details className="group/shipping">
-                          <summary className="cursor-pointer list-none text-primary marker:content-none hover:underline [&::-webkit-details-marker]:hidden">
-                            Shipping address
-                          </summary>
-                          <p className="mt-1 whitespace-pre-line text-foreground">
-                            {order.shipping_address}
-                          </p>
-                        </details>
-                      )}
-                      {order.order_status_url ? (
-                        <a
-                          href={order.order_status_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          View order status
-                        </a>
-                      ) : isFulfilledStatus(order.fulfillment_status) && order.tracking_url ? (
-                        <a
-                          href={order.tracking_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          Track shipment
-                          {order.tracking_number ? ` (${order.tracking_number})` : ""}
-                        </a>
-                      ) : null}
-                      {(order.tags?.length ?? 0) > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {(order.tags ?? []).map((tag) => (
-                            <span
-                              key={tag}
-                              className="rounded-full bg-background px-1.5 py-0.5 text-[10px] text-foreground"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+          {customFields.length > 0 && (
+            <div className="mt-4">
+              <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <List className="h-3 w-3" />
+                Details
+              </div>
+              <div className="mt-2 space-y-1.5 rounded-lg border border-border px-3 py-2 text-xs">
+                {customFields.map((field) => (
+                  <div key={field.id} className="flex justify-between gap-3">
+                    <span className="shrink-0 capitalize text-muted-foreground">
+                      {field.field_name}
+                    </span>
+                    <span className="text-right text-foreground">
+                      {customValues[field.id]?.trim() || "—"}
+                    </span>
                   </div>
-                ))
-              )}
+                ))}
+              </div>
             </div>
-          </div>
-          </>
+          )}
+
+          {contact.referral && (
+            <div className="mt-4">
+              <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <Megaphone className="h-3 w-3" />
+                Ad source
+              </div>
+              <div className="mt-2 space-y-1 rounded-lg border border-border px-3 py-2 text-xs">
+                {contact.referral.headline && (
+                  <p className="text-sm font-medium text-foreground">
+                    {contact.referral.headline}
+                  </p>
+                )}
+                {contact.referral.body && (
+                  <p className="text-muted-foreground">{contact.referral.body}</p>
+                )}
+                {contact.referral.source_type && (
+                  <p className="text-muted-foreground">
+                    Source: {contact.referral.source_type}
+                    {contact.referral.source_id
+                      ? ` · ${contact.referral.source_id}`
+                      : ""}
+                  </p>
+                )}
+                {contact.referral.source_url && (
+                  <a
+                    href={contact.referral.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    View ad
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+
+          {formSubmissions.length > 0 && (
+            <div className="mt-4">
+              <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <ClipboardList className="h-3 w-3" />
+                Form responses
+              </div>
+              <div className="mt-2 space-y-3">
+                {formSubmissions.map((submission) => (
+                  <div
+                    key={submission.id}
+                    className="rounded-lg border border-border px-3 py-2"
+                  >
+                    <p className="text-[11px] text-muted-foreground">
+                      {format(new Date(submission.created_at), "PPp")}
+                    </p>
+                    <FormSubmissionFields values={submission.values} compact />
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {isLeadGenBrand && (
