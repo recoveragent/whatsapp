@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { shouldShowInInboxList } from "@/lib/inbox/conversation-list";
+import { shouldShowInInboxList, matchesInboxSearch } from "@/lib/inbox/conversation-list";
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -118,18 +118,15 @@ export function ConversationList({
     // up on any events sent while the WS was disconnected or throttled.
   }, [resyncToken]);
 
-  const matchesSearch = useCallback(
-    (c: Conversation, q: string) => {
-      const name = c.contact?.name?.toLowerCase() ?? "";
-      const phone = c.contact?.phone?.toLowerCase() ?? "";
-      const lastMsg = c.last_message_text?.toLowerCase() ?? "";
-      return name.includes(q) || phone.includes(q) || lastMsg.includes(q);
-    },
-    []
-  );
-
   const filtered = useMemo(() => {
     let result = conversations.filter(shouldShowInInboxList);
+    const q = search.trim();
+
+    // Search spans all statuses — Shopify outbound threads start closed
+    // and agents expect search to find them without switching filters.
+    if (q) {
+      return result.filter((c) => matchesInboxSearch(c, q));
+    }
 
     if (filter === "unread") {
       result = result.filter((c) => c.unread_count > 0);
@@ -137,22 +134,16 @@ export function ConversationList({
       result = result.filter((c) => c.status === filter);
     }
 
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter((c) => matchesSearch(c, q));
-    }
-
     return result;
-  }, [conversations, filter, search, matchesSearch]);
+  }, [conversations, filter, search]);
 
   const hasSearchMatchesInAll = useMemo(() => {
     if (!search.trim() || filter === "all") return false;
 
-    const q = search.toLowerCase();
     return conversations
       .filter(shouldShowInInboxList)
-      .some((c) => matchesSearch(c, q));
-  }, [conversations, filter, search, matchesSearch]);
+      .some((c) => matchesInboxSearch(c, search));
+  }, [conversations, filter, search]);
 
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {

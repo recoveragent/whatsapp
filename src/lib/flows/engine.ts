@@ -70,7 +70,10 @@ import {
   enqueueFlowWait,
   isExtendedNodeType,
 } from "./extended-nodes";
-import { applyFlowExitEventWithClient } from "./apply-exit";
+import {
+  applyFlowExitEventWithClient,
+  endOrderPlacedRunsForFulfillmentWithClient,
+} from "./apply-exit";
 import { parseExitConfig, exitConfigMatchesEvent } from "./exit-conditions";
 import { resolveFlowStartNodeKey } from "./trigger-types";
 import {
@@ -1797,6 +1800,13 @@ export async function startFlowForExternalEvent(input: {
   if (!startKey || !nodes.has(startKey)) {
     return { ok: false };
   }
+
+  await endOrderPlacedRunsForFulfillmentWithClient(db, {
+    accountId: input.flow.account_id,
+    contactId: input.contactId,
+    incomingFlowId: input.flow.id,
+    incomingTriggerType: input.flow.trigger_type,
+  });
 
   await applyFlowExitEventWithClient(db, {
     accountId: input.flow.account_id,

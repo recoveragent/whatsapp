@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { isOpenInboxConversation, shouldShowInInboxList } from './conversation-list';
+import {
+  isOpenInboxConversation,
+  matchesInboxSearch,
+  shouldShowInInboxList,
+} from './conversation-list';
 
 describe('shouldShowInInboxList', () => {
   it('hides threads that have never received a message', () => {
@@ -44,5 +48,25 @@ describe('isOpenInboxConversation', () => {
         last_message_at: '2026-08-21T07:00:00Z',
       }),
     ).toBe(false);
+  });
+});
+
+describe('matchesInboxSearch', () => {
+  const conv = {
+    contact: { name: 'Akhilesh Kanodia', phone: '919903620741' },
+    last_message_text: 'Your order #TTF9867 is received.',
+  };
+
+  it('matches name and phone substrings', () => {
+    expect(matchesInboxSearch(conv, 'akhilesh')).toBe(true);
+    expect(matchesInboxSearch(conv, '919903620741')).toBe(true);
+  });
+
+  it('matches domestic phone digits without country code', () => {
+    expect(matchesInboxSearch(conv, '9903620741')).toBe(true);
+  });
+
+  it('returns true for empty query', () => {
+    expect(matchesInboxSearch(conv, '   ')).toBe(true);
   });
 });
