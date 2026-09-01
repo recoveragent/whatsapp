@@ -908,21 +908,34 @@ export function MessageThread({
     [contactDisplayName],
   );
 
+  const displayNameForUser = useCallback(
+    (userId: string): string | null => {
+      const profile = profiles.find((p) => p.user_id === userId);
+      if (profile?.full_name?.trim()) return profile.full_name.trim();
+      if (profile?.email?.trim()) {
+        const email = profile.email.trim();
+        return email.split("@")[0] || email;
+      }
+      return null;
+    },
+    [profiles],
+  );
+
   const senderLabelFor = useCallback(
     (m: Message): string => {
       if (m.sender_type === "customer") return contactDisplayName;
       if (m.sender_type === "bot") return "Automation";
       if (m.sender_id) {
-        const profile = profiles.find((p) => p.id === m.sender_id);
-        if (profile?.full_name?.trim()) return profile.full_name.trim();
+        const name = displayNameForUser(m.sender_id);
+        if (name) return name;
       }
       if (m.sender_type === "agent" && user?.id) {
-        const self = profiles.find((p) => p.id === user.id);
-        if (self?.full_name?.trim()) return self.full_name.trim();
+        const name = displayNameForUser(user.id);
+        if (name) return name;
       }
       return "Agent";
     },
-    [contactDisplayName, profiles, user?.id],
+    [contactDisplayName, displayNameForUser, user?.id],
   );
 
   const handleStartReply = useCallback(
