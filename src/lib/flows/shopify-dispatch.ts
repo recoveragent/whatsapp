@@ -11,6 +11,12 @@ function shopifyOrderIdFromContext(ctx: ShopifyEventContext): string | undefined
   return id || undefined
 }
 
+function shopifyCheckoutIdFromContext(ctx: ShopifyEventContext): string | undefined {
+  if (!ctx.resourceKey.startsWith('checkout:')) return undefined
+  const id = ctx.resourceKey.slice('checkout:'.length).trim()
+  return id || undefined
+}
+
 function contextToVars(ctx: ShopifyEventContext): Record<string, unknown> {
   return {
     customer_name: ctx.customerName,
@@ -20,6 +26,7 @@ function contextToVars(ctx: ShopifyEventContext): Record<string, unknown> {
     order_total: ctx.orderTotal,
     order_items: ctx.orderItems,
     shopify_order_id: shopifyOrderIdFromContext(ctx),
+    checkout_id: shopifyCheckoutIdFromContext(ctx),
     product_image: ctx.productImage,
     shipping_address: ctx.shippingAddress,
     shipping_address_fields: ctx.shippingAddressFields,

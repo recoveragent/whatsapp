@@ -304,7 +304,7 @@ function validateTrigger(
       });
     }
   }
-  if (trigger_type === "webhook_received") {
+  if (trigger_type === "webhook_received" || trigger_type === "shopify_checkout_app_abandoned") {
     if (!nonEmpty(trigger_config.webhook_token)) {
       issues.push({
         severity: "error",
@@ -319,6 +319,24 @@ function validateTrigger(
         scope: "trigger",
         field: "trigger_config.phone_path",
         message: "Webhook triggers need a phone path.",
+      });
+    }
+  }
+  if (trigger_type === "shopify_checkout_abandoned") {
+    const delay = trigger_config.delay_minutes;
+    if (typeof delay !== "number" || !Number.isFinite(delay)) {
+      issues.push({
+        severity: "error",
+        scope: "trigger",
+        field: "trigger_config.delay_minutes",
+        message: "Abandoned checkout triggers need a delay in minutes.",
+      });
+    } else if (delay < 5 || delay > 10080) {
+      issues.push({
+        severity: "error",
+        scope: "trigger",
+        field: "trigger_config.delay_minutes",
+        message: "Delay must be between 5 and 10080 minutes.",
       });
     }
   }

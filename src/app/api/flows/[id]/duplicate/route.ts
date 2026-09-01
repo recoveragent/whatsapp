@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { accountIsLeadGen } from '@/lib/auth/brand-accounts'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { ensureFlowWebhookConfig } from '@/lib/flows/webhook-config'
+import { defaultCheckoutAppTriggerConfig } from '@/lib/flows/checkout-app-webhook'
 import { generateWebhookToken } from '@/lib/automations/webhook-token'
 import {
   ensureGoogleSheetRowConfig,
@@ -52,6 +53,19 @@ function cloneTriggerConfig(
 
   if (triggerType === 'webhook_received') {
     const ensured = ensureFlowWebhookConfig(cfg)
+    return {
+      ...ensured,
+      webhook_token: generateWebhookToken(),
+      last_received_payload: undefined,
+      last_received_at: undefined,
+    }
+  }
+
+  if (triggerType === 'shopify_checkout_app_abandoned') {
+    const ensured = ensureFlowWebhookConfig({
+      ...defaultCheckoutAppTriggerConfig(),
+      ...cfg,
+    })
     return {
       ...ensured,
       webhook_token: generateWebhookToken(),

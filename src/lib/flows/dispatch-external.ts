@@ -36,6 +36,10 @@ import {
   fulfillmentOrderKeyFromVars,
   releaseShopifyFulfillmentFlowDispatch,
 } from '@/lib/shopify/fulfillment-flow-dedup'
+import {
+  enrichCheckoutAppWebhookVars,
+  isCheckoutAppFlowTrigger,
+} from './checkout-app-webhook'
 
 export interface FlowDispatchContext {
   message_text?: string
@@ -497,13 +501,17 @@ export async function handleFlowInboundWebhook(
     vars.booking_uid = bookingUid
   }
 
+  const flowVars = isCheckoutAppFlowTrigger(flow.trigger_type)
+    ? enrichCheckoutAppWebhookVars(payload, vars)
+    : vars
+
   await runFlowsForTrigger({
     accountId: flow.account_id,
-    triggerType: 'webhook_received',
+    triggerType: flow.trigger_type as FlowTriggerType,
     contactId: contact.id,
     conversationId: conversation.id,
     flowId: flow.id,
-    context: { vars },
+    context: { vars: flowVars },
   })
 
   return { ok: true, status: 200, flow_id: flow.id }

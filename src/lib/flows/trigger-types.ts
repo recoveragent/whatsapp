@@ -3,6 +3,11 @@ import {
   resolveEcommercePlatform,
   type EcommercePlatform,
 } from '@/lib/ecommerce/platform'
+import {
+  SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_DEFAULT,
+  SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_MAX,
+  SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_MIN,
+} from '@/lib/shopify/abandoned-checkout-delay'
 
 /**
  * Flow trigger types — parity with automations where applicable.
@@ -19,6 +24,8 @@ export const FLOW_TRIGGER_TYPES = [
   'shopify_order_fulfilled',
   'shopify_order_cancelled',
   'shopify_order_partially_fulfilled',
+  'shopify_checkout_abandoned',
+  'shopify_checkout_app_abandoned',
   'woocommerce_order_placed',
   'woocommerce_order_updated',
   'woocommerce_order_completed',
@@ -39,6 +46,8 @@ export const EXTERNAL_FLOW_TRIGGERS: FlowTriggerType[] = [
   'shopify_order_fulfilled',
   'shopify_order_cancelled',
   'shopify_order_partially_fulfilled',
+  'shopify_checkout_abandoned',
+  'shopify_checkout_app_abandoned',
   'woocommerce_order_placed',
   'woocommerce_order_updated',
   'woocommerce_order_completed',
@@ -60,6 +69,8 @@ export const FLOW_TRIGGER_LABELS: Record<FlowTriggerType, string> = {
   shopify_order_fulfilled: 'Shopify: order fulfilled',
   shopify_order_cancelled: 'Shopify: order cancelled',
   shopify_order_partially_fulfilled: 'Shopify: order partially fulfilled',
+  shopify_checkout_abandoned: 'Shopify: abandoned checkout (native)',
+  shopify_checkout_app_abandoned: 'Shopify: abandoned checkout (checkout app)',
   woocommerce_order_placed: 'WooCommerce: order placed',
   woocommerce_order_updated: 'WooCommerce: order updated',
   woocommerce_order_completed: 'WooCommerce: order completed',
@@ -131,6 +142,35 @@ export function isShopifyOrderFlowTrigger(
   t: string,
 ): t is ShopifyOrderFlowTrigger {
   return (SHOPIFY_ORDER_FLOW_TRIGGERS as readonly string[]).includes(t)
+}
+
+/** Native Shopify checkout abandonment (checkouts/create + delayed cron). */
+export const SHOPIFY_CHECKOUT_ABANDONMENT_FLOW_TRIGGERS = [
+  'shopify_checkout_abandoned',
+] as const satisfies readonly FlowTriggerType[]
+
+export type ShopifyCheckoutAbandonmentFlowTrigger =
+  (typeof SHOPIFY_CHECKOUT_ABANDONMENT_FLOW_TRIGGERS)[number]
+
+export function isShopifyCheckoutAbandonmentFlowTrigger(
+  t: string,
+): t is ShopifyCheckoutAbandonmentFlowTrigger {
+  return (SHOPIFY_CHECKOUT_ABANDONMENT_FLOW_TRIGGERS as readonly string[]).includes(
+    t,
+  )
+}
+
+export {
+  SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_DEFAULT,
+  SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_MIN,
+  SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_MAX,
+}
+
+export function defaultShopifyCheckoutAbandonedTriggerConfig(): Record<
+  string,
+  unknown
+> {
+  return { delay_minutes: SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_DEFAULT }
 }
 
 /** Fulfilled / partially-fulfilled — driven by fulfillments/create and update. */

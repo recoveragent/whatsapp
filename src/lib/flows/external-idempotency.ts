@@ -17,6 +17,26 @@ export function buildExternalIdempotencyKey(
   if (!trigger || !vars) return null
 
   if (trigger.startsWith('shopify_')) {
+    if (trigger === 'shopify_checkout_abandoned') {
+      const checkoutKey =
+        typeof vars.checkout_id === 'string' && vars.checkout_id.trim()
+          ? vars.checkout_id.trim()
+          : null
+      if (!checkoutKey) return null
+      return `shopify:${trigger}:${checkoutKey}`
+    }
+
+    if (trigger === 'shopify_checkout_app_abandoned') {
+      const cartKey =
+        typeof vars.checkout_id === 'string' && vars.checkout_id.trim()
+          ? vars.checkout_id.trim()
+          : typeof vars.cart_id === 'string' && vars.cart_id.trim()
+            ? vars.cart_id.trim()
+            : null
+      if (!cartKey) return null
+      return `shopify:${trigger}:${cartKey}`
+    }
+
     const orderKey =
       typeof vars.order_number === 'string' && vars.order_number.trim()
         ? vars.order_number.trim()

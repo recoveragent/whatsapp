@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import type { FlowWebhookTriggerConfig } from '@/lib/flows/webhook-config'
 import { generateWebhookToken } from '@/lib/automations/webhook-token'
+import { isWebhookFlowTrigger } from '@/lib/flows/checkout-app-webhook'
 
 async function requireOwnedFlow(id: string, userId: string) {
   const admin = supabaseAdmin()
@@ -32,7 +33,7 @@ export async function GET(
 
   const flow = await requireOwnedFlow(id, user.id)
   if (!flow) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (flow.trigger_type !== 'webhook_received') {
+  if (!isWebhookFlowTrigger(flow.trigger_type)) {
     return NextResponse.json({ error: 'Not a webhook flow' }, { status: 400 })
   }
 
@@ -60,7 +61,7 @@ export async function POST(
 
   const flow = await requireOwnedFlow(id, user.id)
   if (!flow) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (flow.trigger_type !== 'webhook_received') {
+  if (!isWebhookFlowTrigger(flow.trigger_type)) {
     return NextResponse.json({ error: 'Not a webhook flow' }, { status: 400 })
   }
 

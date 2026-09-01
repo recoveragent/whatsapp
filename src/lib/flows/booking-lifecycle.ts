@@ -11,7 +11,8 @@ export function extractWebhookTriggerEvent(payload: unknown): string | null {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return null
   }
-  const event = (payload as Record<string, unknown>).triggerEvent
+  const root = payload as Record<string, unknown>
+  const event = root.triggerEvent ?? root.type
   return typeof event === 'string' && event.trim() ? event.trim() : null
 }
 

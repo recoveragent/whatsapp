@@ -4,6 +4,7 @@ import { accountIsLeadGen } from '@/lib/auth/brand-accounts'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { getFlowTemplate } from '@/lib/flows/templates'
 import { ensureFlowWebhookConfig } from '@/lib/flows/webhook-config'
+import { defaultCheckoutAppTriggerConfig } from '@/lib/flows/checkout-app-webhook'
 import { ensureGoogleSheetRowConfig } from '@/lib/google-sheets/trigger-config'
 import type { FlowTriggerType } from '@/lib/flows/trigger-types'
 
@@ -152,6 +153,14 @@ export async function POST(request: Request) {
   let trigger_config = body.trigger_config ?? {}
   if (trigger_type === 'webhook_received') {
     trigger_config = { ...ensureFlowWebhookConfig(trigger_config) }
+  }
+  if (trigger_type === 'shopify_checkout_app_abandoned') {
+    trigger_config = {
+      ...ensureFlowWebhookConfig({
+        ...defaultCheckoutAppTriggerConfig(),
+        ...trigger_config,
+      }),
+    }
   }
   if (trigger_type === 'google_sheet_row') {
     if (!(await accountIsLeadGen(supabase, accountId))) {

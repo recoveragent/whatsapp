@@ -5,9 +5,11 @@ import {
 } from '@/lib/automations/webhook-payload'
 import {
   isShopifyOrderFlowTrigger,
+  isShopifyCheckoutAbandonmentFlowTrigger,
   isWooCommerceOrderFlowTrigger,
   type FlowTriggerType,
 } from './trigger-types'
+import { isCheckoutAppFlowTrigger } from './checkout-app-webhook'
 
 export type TemplateVariableType = 'text' | 'boolean' | 'array'
 
@@ -173,6 +175,13 @@ export function templateVariableGroupsForFlow(
   if (triggerType && isShopifyOrderFlowTrigger(triggerType)) {
     triggerOptions.push(...SHOPIFY_OPTIONS)
   }
+  if (
+    triggerType &&
+    (isShopifyCheckoutAbandonmentFlowTrigger(triggerType) ||
+      isCheckoutAppFlowTrigger(triggerType))
+  ) {
+    triggerOptions.push(...SHOPIFY_OPTIONS)
+  }
   if (triggerType && isWooCommerceOrderFlowTrigger(triggerType)) {
     triggerOptions.push(...WOOCOMMERCE_OPTIONS)
   }
@@ -183,7 +192,10 @@ export function templateVariableGroupsForFlow(
   ) {
     triggerOptions.push(...MESSAGE_OPTIONS)
   }
-  if (triggerType === 'webhook_received') {
+  if (
+    triggerType === 'webhook_received' ||
+    triggerType === 'shopify_checkout_app_abandoned'
+  ) {
     triggerOptions.push(...webhookTemplateVariableOptions(triggerConfig))
   }
   if (triggerType === 'google_sheet_row') {

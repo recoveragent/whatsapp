@@ -38,4 +38,20 @@ describe('buildExternalIdempotencyKey', () => {
   it('returns null when order context is missing', () => {
     expect(buildExternalIdempotencyKey(flow('shopify_order_placed'), {})).toBeNull()
   })
+
+  it('builds native checkout abandonment key from checkout_id', () => {
+    expect(
+      buildExternalIdempotencyKey(flow('shopify_checkout_abandoned'), {
+        checkout_id: 'checkout-token-1',
+      }),
+    ).toBe('shopify:shopify_checkout_abandoned:checkout-token-1')
+  })
+
+  it('builds checkout-app abandonment key from cart id', () => {
+    expect(
+      buildExternalIdempotencyKey(flow('shopify_checkout_app_abandoned'), {
+        checkout_id: '32868848',
+      }),
+    ).toBe('shopify:shopify_checkout_app_abandoned:32868848')
+  })
 })

@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { accountIsLeadGen } from '@/lib/auth/brand-accounts'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { ensureFlowWebhookConfig } from '@/lib/flows/webhook-config'
+import { defaultCheckoutAppTriggerConfig } from '@/lib/flows/checkout-app-webhook'
 import { ensureGoogleSheetRowConfig, preserveGoogleSheetWatermarks } from '@/lib/google-sheets/trigger-config'
 import type { FlowTriggerType } from '@/lib/flows/trigger-types'
 
@@ -152,6 +153,26 @@ export async function PUT(
     let cfg = body.trigger_config
     if (effectiveTriggerType === 'webhook_received') {
       let ensured = { ...ensureFlowWebhookConfig(cfg) }
+      const prev = existing?.trigger_config as Record<string, unknown> | null
+      if (
+        prev?.last_received_payload != null &&
+        ensured.last_received_payload == null
+      ) {
+        ensured = {
+          ...ensured,
+          last_received_payload: prev.last_received_payload,
+          last_received_at: prev.last_received_at as string | undefined,
+        }
+      }
+      cfg = ensured
+    }
+    if (effectiveTriggerType === 'shopify_checkout_app_abandoned') {
+      let ensured = {
+        ...ensureFlowWebhookConfig({
+          ...defaultCheckoutAppTriggerConfig(),
+          ...cfg,
+        }),
+      }
       const prev = existing?.trigger_config as Record<string, unknown> | null
       if (
         prev?.last_received_payload != null &&

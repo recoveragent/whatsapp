@@ -14,6 +14,7 @@ import {
 import { loadCampaign, sendShopifyCampaign } from './send-campaign';
 import { logShopifyFulfillmentEvent } from './log-fulfillment-event';
 import { syncShopifyOrder } from './sync-order';
+import { resolveAbandonedCheckoutDelayMinutes } from './abandoned-checkout-delay';
 import {
   dispatchShopifyFlows,
   shopifyTopicToFlowTrigger,
@@ -252,15 +253,17 @@ async function handleCheckoutCreate(
 ) {
   if (checkout.completed_at) return;
 
-  const campaign = await loadCampaign(db, config.account_id, 'abandoned_checkout');
-  if (!campaign?.is_enabled) return;
+  const delayMinutes = await resolveAbandonedCheckoutDelayMinutes(
+    db,
+    config.account_id,
+  );
+  if (delayMinutes == null) return;
 
-  const context = contextFromCheckout(checkout, shopName);
   const checkoutId = String(checkout.id ?? checkout.token ?? '');
   if (!checkoutId) return;
 
   const runAt = new Date(
-    Date.now() + (campaign.delay_minutes ?? 60) * 60 * 1000,
+    Date.now() + delayMinutes * 60 * 1000,
   ).toISOString();
 
   const { error } = await db.from('shopify_pending_checkouts').upsert(
@@ -278,7 +281,7 @@ async function handleCheckoutCreate(
     console.error('[shopify] schedule abandoned checkout failed:', error);
   }
 
-  void context;
+  void shopName;
 }
 
 async function handleCheckoutUpdate(
@@ -349,15 +352,9 @@ export async function processDueAbandonedCheckouts(db: SupabaseClient): Promise<
     }
 
     const campaign = await loadCampaign(db, accountId, 'abandoned_checkout');
-    if (!campaign?.is_enabled || !campaign.template_name) {
-      await db
-        .from('shopify_pending_checkouts')
-        .update({ status: 'cancelled', error_message: 'campaign disabled' })
-        .eq('id', row.id);
-      continue;
-    }
-
+    const campaignEnabled = !!(campaign?.is_enabled && campaign.template_name);
     const shopName = (config.shop_domain as string).replace('.myshopify.com', '');
+
     let context = contextFromCheckout(checkout, shopName);
     if (config.access_token) {
       context = await enrichCheckoutContextImage({
@@ -366,6 +363,30 @@ export async function processDueAbandonedCheckouts(db: SupabaseClient): Promise<
         shopDomain: config.shop_domain as string,
         encryptedAccessToken: config.access_token as string,
       });
+    }
+
+    let flowDispatched = false;
+    const flowOutcome = await dispatchShopifyFlows({
+      db,
+      accountId,
+      ownerUserId: config.user_id as string,
+      triggerType: 'shopify_checkout_abandoned',
+      context,
+    });
+    flowDispatched = (flowOutcome.dispatch?.started.length ?? 0) > 0;
+    logFlowDispatch('checkouts/abandoned', flowOutcome);
+
+    if (!campaignEnabled) {
+      await db
+        .from('shopify_pending_checkouts')
+        .update({
+          status: flowDispatched ? 'sent' : 'cancelled',
+          error_message: flowDispatched ? null : 'no handlers enabled',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id);
+      if (flowDispatched) processed++;
+      continue;
     }
 
     const result = await sendShopifyCampaign({
@@ -379,8 +400,13 @@ export async function processDueAbandonedCheckouts(db: SupabaseClient): Promise<
     await db
       .from('shopify_pending_checkouts')
       .update({
-        status: result.ok || result.error === 'already sent' ? 'sent' : 'failed',
-        error_message: result.ok ? null : result.error ?? null,
+        status:
+          result.ok ||
+          result.error === 'already sent' ||
+          flowDispatched
+            ? 'sent'
+            : 'failed',
+        error_message: result.ok || flowDispatched ? null : result.error ?? null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id);

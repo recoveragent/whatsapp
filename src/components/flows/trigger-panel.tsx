@@ -16,11 +16,15 @@ import {
   flowTriggersForBrand,
   isShopifyFulfillmentFlowTrigger,
   isShopifyOrderFlowTrigger,
+  isShopifyCheckoutAbandonmentFlowTrigger,
   defaultShopifyTriggerConfig,
+  defaultShopifyCheckoutAbandonedTriggerConfig,
   defaultWooCommerceTriggerConfig,
   isWooCommerceOrderFlowTrigger,
   SHOPIFY_PAYMENT_STATUSES,
   SHOPIFY_PAYMENT_STATUS_LABELS,
+  SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_MIN,
+  SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_MAX,
   WOOCOMMERCE_ORDER_STATUSES,
   WOOCOMMERCE_ORDER_STATUS_LABELS,
   selectedShipmentStatuses,
@@ -34,6 +38,7 @@ import {
   defaultFlowWebhookConfig,
   type FlowWebhookTriggerConfig,
 } from "@/lib/flows/webhook-config";
+import { defaultCheckoutAppTriggerConfig } from "@/lib/flows/checkout-app-webhook";
 import { defaultGoogleSheetRowConfig } from "@/lib/google-sheets/trigger-config";
 import { FlowWebhookTriggerPanel } from "./webhook-trigger-panel";
 import { FlowGoogleSheetTriggerPanel } from "./google-sheet-trigger-panel";
@@ -109,6 +114,17 @@ export function summarizeTrigger(
     case "conversation_assigned":
       return "When conversation is assigned";
     default:
+      if (isShopifyCheckoutAbandonmentFlowTrigger(triggerType)) {
+        const delay =
+          typeof triggerConfig.delay_minutes === "number"
+            ? triggerConfig.delay_minutes
+            : null;
+        const base = FLOW_TRIGGER_LABELS[triggerType] ?? triggerType;
+        return delay != null ? `${base} · ${delay} min delay` : base;
+      }
+      if (triggerType === "shopify_checkout_app_abandoned") {
+        return "Checkout app webhook (GoKwik, Fastrr, …)";
+      }
       if (isShopifyOrderFlowTrigger(triggerType)) {
         const ps = triggerConfig.payment_status as ShopifyPaymentStatus | undefined;
         const base = FLOW_TRIGGER_LABELS[triggerType] ?? triggerType;
@@ -213,6 +229,13 @@ export function TriggerPanel({
                           ? { schedule: "", tag_id: "" }
                           : v && isShopifyOrderFlowTrigger(v)
                             ? defaultShopifyTriggerConfig(v)
+                            : v === "shopify_checkout_abandoned"
+                              ? defaultShopifyCheckoutAbandonedTriggerConfig()
+                              : v === "shopify_checkout_app_abandoned"
+                                ? (defaultCheckoutAppTriggerConfig() as unknown as Record<
+                                    string,
+                                    unknown
+                                  >)
                             : v && isWooCommerceOrderFlowTrigger(v)
                               ? defaultWooCommerceTriggerConfig(v)
                               : {},
@@ -313,6 +336,57 @@ export function TriggerPanel({
             config={state.trigger_config as unknown as FlowWebhookTriggerConfig}
             onChange={(c) => setState((s) => ({ ...s, trigger_config: c }))}
           />
+        )}
+        {state.trigger_type === "shopify_checkout_app_abandoned" && (
+          <div className="md:col-span-2 space-y-2">
+            <p className="text-[11px] text-muted-foreground">
+              For third-party Shopify checkouts — GoKwik, Fastrr, Shopflo,
+              Breeze, and similar apps. Paste this webhook URL into your
+              checkout app&apos;s abandoned-cart webhook settings (often under
+              Integrations or Webhooks). Each app sends a different payload
+              shape — send a test webhook, then map phone and checkout fields
+              below.
+            </p>
+            <FlowWebhookTriggerPanel
+              flowId={flowId}
+              config={state.trigger_config as unknown as FlowWebhookTriggerConfig}
+              onChange={(c) => setState((s) => ({ ...s, trigger_config: c }))}
+            />
+          </div>
+        )}
+        {isShopifyCheckoutAbandonmentFlowTrigger(state.trigger_type) && (
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              Wait before starting flow (minutes)
+            </label>
+            <Input
+              type="number"
+              min={SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_MIN}
+              max={SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_MAX}
+              value={
+                typeof state.trigger_config.delay_minutes === "number"
+                  ? state.trigger_config.delay_minutes
+                  : ""
+              }
+              onChange={(e) => {
+                const parsed = Number(e.target.value);
+                setState((s) => ({
+                  ...s,
+                  trigger_config: {
+                    ...s.trigger_config,
+                    delay_minutes: Number.isFinite(parsed) ? parsed : undefined,
+                  },
+                }));
+              }}
+              className="bg-muted"
+              placeholder="60"
+            />
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              Uses Shopify&apos;s <code className="text-[10px]">checkouts/create</code>{" "}
+              webhook, then waits this long before starting the flow if the order
+              was not completed.
+            </p>
+          </div>
         )}
         {state.trigger_type === "google_sheet_row" && (
           <FlowGoogleSheetTriggerPanel
