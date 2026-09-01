@@ -90,15 +90,10 @@ export async function dispatchWooCommerceFlows(args: {
     context: { vars: contextToVars(args.context) },
   });
 
-  const blockedByActiveRun = dispatch.skipped.some(
-    (s) => s.reason === 'active_run_exists',
-  );
-  if (!blockedByActiveRun) {
-    await deleteConversationIfEmpty(args.db, conversation.id, {
-      accountId: args.accountId,
-      contactId: contact.id,
-    });
-  }
+  await deleteConversationIfEmpty(args.db, conversation.id, {
+    accountId: args.accountId,
+    contactId: contact.id,
+  });
 
   return {
     ok: dispatch.started.length > 0,

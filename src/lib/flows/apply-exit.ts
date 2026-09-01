@@ -12,7 +12,6 @@ import {
   parseExitConfig,
   type FlowExitEvent,
 } from "./exit-conditions";
-import { isShopifyFulfillmentFlowTrigger } from "./trigger-types";
 
 type AdminClient = ReturnType<typeof supabaseAdmin>;
 
@@ -74,63 +73,6 @@ export async function applyFlowExitEventWithClient(
     if (!exitConfigMatchesEvent(config, input.event, run.flow_id)) continue;
 
     await completeRunForExit(db, run, input.event);
-    endedRunIds.push(run.id);
-  }
-  return { endedRunIds };
-}
-
-/**
- * Shopify order-placed flows often suspend at send_template without
- * exit_config, which blocks fulfillment flows for the same contact.
- */
-export async function endOrderPlacedRunsForFulfillmentWithClient(
-  db: AdminClient,
-  input: {
-    accountId: string;
-    contactId: string;
-    incomingFlowId: string;
-    incomingTriggerType: string;
-  },
-): Promise<{ endedRunIds: string[] }> {
-  if (!isShopifyFulfillmentFlowTrigger(input.incomingTriggerType)) {
-    return { endedRunIds: [] };
-  }
-
-  const { data, error } = await db
-    .from("flow_runs")
-    .select("id, flow_id, current_node_key, status, flows!inner(trigger_type)")
-    .eq("account_id", input.accountId)
-    .eq("contact_id", input.contactId)
-    .in("status", [...OPEN_RUN_STATUSES]);
-
-  if (error) {
-    console.error(
-      "[flows] endOrderPlacedRunsForFulfillment load error:",
-      error.message,
-    );
-    return { endedRunIds: [] };
-  }
-
-  const endedRunIds: string[] = [];
-  for (const row of data ?? []) {
-    const run = row as {
-      id: string;
-      flow_id: string;
-      current_node_key: string | null;
-      flows:
-        | { trigger_type: string | null }
-        | { trigger_type: string | null }[]
-        | null;
-    };
-    if (run.flow_id === input.incomingFlowId) continue;
-
-    const flowsField = Array.isArray(run.flows) ? run.flows[0] : run.flows;
-    if (flowsField?.trigger_type !== "shopify_order_placed") continue;
-
-    await completeRunForExit(db, run, {
-      type: "another_flow",
-      incomingFlowId: input.incomingFlowId,
-    });
     endedRunIds.push(run.id);
   }
   return { endedRunIds };

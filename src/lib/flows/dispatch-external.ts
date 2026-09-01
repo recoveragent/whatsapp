@@ -70,7 +70,6 @@ export interface FlowDispatchSkipped {
     | 'no_entry_node'
     | 'no_conversation'
     | 'start_failed'
-    | 'active_run_exists'
     | 'duplicate_fulfillment_status'
 }
 
@@ -350,26 +349,6 @@ export async function runFlowsForTrigger(
           flow_id: flow.id,
           flow_name: flow.name,
           flow_run_id: result.flow_run_id,
-        })
-      } else if (result.ok) {
-        if (isShopifyFulfillmentFlowTrigger(input.triggerType)) {
-          const orderKey = fulfillmentOrderKeyFromVars(input.context?.vars)
-          if (orderKey) {
-            await releaseShopifyFulfillmentFlowDispatch({
-              db,
-              accountId: input.accountId,
-              flowId: flow.id,
-              orderKey,
-              shipmentStatusKey: resolveShipmentStatusKey(
-                input.context?.vars?.shipment_status,
-              ),
-            })
-          }
-        }
-        outcome.skipped.push({
-          flow_id: flow.id,
-          flow_name: flow.name,
-          reason: 'active_run_exists',
         })
       } else {
         if (isShopifyFulfillmentFlowTrigger(input.triggerType)) {

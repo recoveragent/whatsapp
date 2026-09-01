@@ -27,9 +27,11 @@
  *   - Optimistic UPDATE with `current_node_key` precondition: two
  *     simultaneous taps for the same run collide at the DB layer; the
  *     second is a no-op.
- *   - Partial unique index `idx_one_active_run_per_contact`: two
- *     simultaneous starts for the same contact collide; the second
- *     INSERT raises 23505 and the runner catches & exits.
+ *   - `external_idempotency_key` on flow_runs: duplicate external
+ *     webhook deliveries for the same order/event return the existing
+ *     run instead of starting a second copy of the same flow.
+ *   - Multiple active runs per contact are allowed; inbound replies
+ *     are routed to the run whose current node matches the message.
  */
 
 import { supabaseAdmin } from "./admin-client";
@@ -72,8 +74,16 @@ import {
 } from "./extended-nodes";
 import {
   applyFlowExitEventWithClient,
-  endOrderPlacedRunsForFulfillmentWithClient,
 } from "./apply-exit";
+import {
+  buildExternalIdempotencyKey,
+  isExternalIdempotencyConflict,
+} from "./external-idempotency";
+import {
+  pickSuspendingRunForFallback,
+  routeInboundToActiveRun,
+  type InboundRunCandidate,
+} from "./inbound-router";
 import { parseExitConfig, exitConfigMatchesEvent } from "./exit-conditions";
 import { resolveFlowStartNodeKey } from "./trigger-types";
 import {
@@ -252,33 +262,61 @@ export function evaluateConditionPredicate(args: {
 
 type AdminClient = ReturnType<typeof supabaseAdmin>;
 
-async function loadActiveRunForContact(
+async function loadActiveRunsForContact(
   db: AdminClient,
   accountId: string,
   contactId: string,
-): Promise<FlowRunRow | null> {
-  // The partial unique index `idx_one_active_run_per_contact` was
-  // rebuilt in migration 017 over `(account_id, contact_id)` — so
-  // "two active runs for one contact in one account" is impossible
-  // by design. But a future migration glitch or manual SQL could
-  // create one, and .maybeSingle() throws on >1 row — which would
-  // kill dispatch for that contact's webhook entirely. .limit(1) is
-  // forgiving: pick the newest, let the cron sweep clean up the
-  // stale one.
+): Promise<FlowRunRow[]> {
   const { data, error } = await db
     .from("flow_runs")
     .select("*")
     .eq("account_id", accountId)
     .eq("contact_id", contactId)
-    .eq("status", "active")
+    .in("status", ["active", "waiting"])
+    .order("last_advanced_at", { ascending: false });
+  if (error) {
+    console.error("[flows] loadActiveRunsForContact error:", error.message);
+    return [];
+  }
+  return (data as FlowRunRow[] | null) ?? [];
+}
+
+async function findActiveRunByIdempotencyKey(
+  db: AdminClient,
+  accountId: string,
+  flowId: string,
+  idempotencyKey: string,
+): Promise<FlowRunRow | null> {
+  const { data, error } = await db
+    .from("flow_runs")
+    .select("*")
+    .eq("account_id", accountId)
+    .eq("flow_id", flowId)
+    .eq("external_idempotency_key", idempotencyKey)
+    .in("status", ["active", "waiting"])
     .order("started_at", { ascending: false })
     .limit(1);
   if (error) {
-    console.error("[flows] loadActiveRunForContact error:", error.message);
+    console.error("[flows] findActiveRunByIdempotencyKey error:", error.message);
     return null;
   }
   const rows = (data as FlowRunRow[] | null) ?? [];
   return rows[0] ?? null;
+}
+
+async function buildInboundRunCandidates(
+  db: AdminClient,
+  runs: FlowRunRow[],
+): Promise<InboundRunCandidate[]> {
+  const candidates: InboundRunCandidate[] = [];
+  for (const run of runs) {
+    const nodes = await loadAllNodes(db, run.flow_id);
+    const currentNode = run.current_node_key
+      ? nodes.get(run.current_node_key) ?? null
+      : null;
+    candidates.push({ run, currentNode });
+  }
+  return candidates;
 }
 
 async function loadFlow(
@@ -1214,16 +1252,13 @@ export async function dispatchInboundToFlows(
 ): Promise<DispatchInboundResult> {
   const db = supabaseAdmin();
   try {
-    const activeRun = await loadActiveRunForContact(
+    const activeRuns = await loadActiveRunsForContact(
       db,
       input.accountId,
       input.contactId,
     );
 
-    // Idempotency — only matters if there's already a run for this
-    // contact. For new runs, the partial unique index catches duplicate
-    // starts at INSERT time.
-    if (activeRun) {
+    if (activeRuns.length > 0) {
       const dupe = await isDuplicateInbound(
         db,
         input.accountId,
@@ -1233,10 +1268,12 @@ export async function dispatchInboundToFlows(
       if (dupe) {
         return {
           consumed: true,
-          flow_run_id: activeRun.id,
+          flow_run_id: activeRuns[0]!.id,
           outcome: "duplicate_inbound_ignored",
         };
       }
+
+      const candidates = await buildInboundRunCandidates(db, activeRuns);
 
       if (input.message.kind === "text") {
         const keywordExit = await applyFlowExitEventWithClient(db, {
@@ -1244,20 +1281,45 @@ export async function dispatchInboundToFlows(
           contactId: input.contactId,
           event: { type: "keyword", text: input.message.text },
         });
-        if (keywordExit.endedRunIds.includes(activeRun.id)) {
-          return startMatchingFlowAfterExit(db, input, activeRun.id);
+        const endedActive = activeRuns.find((run) =>
+          keywordExit.endedRunIds.includes(run.id),
+        );
+        if (endedActive) {
+          return startMatchingFlowAfterExit(db, input, endedActive.id);
         }
 
-        const yielded = await maybeYieldActiveRunToAnotherFlow(
-          db,
-          activeRun,
-          input,
-        );
-        if (yielded) return yielded;
+        const suspending = pickSuspendingRunForFallback(candidates);
+        if (suspending) {
+          const yielded = await maybeYieldActiveRunToAnotherFlow(
+            db,
+            suspending,
+            input,
+          );
+          if (yielded) return yielded;
+        }
       }
 
-      const nodes = await loadAllNodes(db, activeRun.flow_id);
-      return handleReplyForActiveRun(db, activeRun, input, nodes);
+      const matchedRun = routeInboundToActiveRun(
+        candidates,
+        input.message,
+        matchReplyId,
+      );
+      if (matchedRun) {
+        const nodes = await loadAllNodes(db, matchedRun.flow_id);
+        return handleReplyForActiveRun(db, matchedRun, input, nodes);
+      }
+
+      const fallbackRun = pickSuspendingRunForFallback(candidates);
+      if (fallbackRun) {
+        const nodes = await loadAllNodes(db, fallbackRun.flow_id);
+        return handleReplyForActiveRun(db, fallbackRun, input, nodes);
+      }
+
+      return {
+        consumed: true,
+        flow_run_id: activeRuns[0]!.id,
+        outcome: "no_match",
+      };
     }
 
     if (input.message.kind === "text") {
@@ -1268,7 +1330,6 @@ export async function dispatchInboundToFlows(
       });
     }
 
-    // No active run → look for a flow whose entry trigger matches.
     const flow = await findEntryFlow(
       db,
       input.accountId,
@@ -1703,8 +1764,6 @@ async function startNewRun(
   input: DispatchInboundInput,
   nodes: Map<string, FlowNodeRow>,
 ): Promise<DispatchInboundResult> {
-  // End other open runs that opted into "stop when they enter another flow"
-  // so the unique index on active runs is free for this insert.
   await applyFlowExitEventWithClient(db, {
     accountId: input.accountId,
     contactId: input.contactId,
@@ -1712,35 +1771,54 @@ async function startNewRun(
     exceptFlowId: flow.id,
   });
 
-  // INSERT — partial unique index `idx_one_active_run_per_contact`
-  // catches concurrent inserts with 23505. We catch and return as
-  // consumed:true (the parallel webhook handles it).
+  const idempotencyKey = `inbound:${flow.id}:${input.message.meta_message_id}`;
+  const existing = await findActiveRunByIdempotencyKey(
+    db,
+    flow.account_id,
+    flow.id,
+    idempotencyKey,
+  );
+  if (existing) {
+    return {
+      consumed: true,
+      flow_run_id: existing.id,
+      outcome: "duplicate_inbound_ignored",
+    };
+  }
+
   const { data: inserted, error: insErr } = await db
     .from("flow_runs")
     .insert({
       flow_id: flow.id,
-      // Tenancy: NOT NULL post-017. The partial unique index
-      // `idx_one_active_run_per_contact` is over (account_id,
-      // contact_id) WHERE status='active', so two accounts sharing
-      // a contact phone number each run their own flows independently.
       account_id: flow.account_id,
-      // Audit: preserves the flow's author on the run row for log
-      // attribution.
       user_id: flow.user_id,
       contact_id: input.contactId,
       conversation_id: input.conversationId,
       status: "active",
       current_node_key: flow.entry_node_id,
+      external_idempotency_key: idempotencyKey,
     })
     .select("*")
     .maybeSingle();
-  if (insErr) {
-    // 23505 = unique_violation → another webhook is starting the run.
-    const msg = insErr.message ?? "";
-    if (msg.includes("23505") || msg.includes("duplicate key")) {
-      return { consumed: true, outcome: "duplicate_inbound_ignored" };
+  if (insErr || !inserted) {
+    if (isExternalIdempotencyConflict(insErr)) {
+      const raced = await findActiveRunByIdempotencyKey(
+        db,
+        flow.account_id,
+        flow.id,
+        idempotencyKey,
+      );
+      if (raced) {
+        return {
+          consumed: true,
+          flow_run_id: raced.id,
+          outcome: "duplicate_inbound_ignored",
+        };
+      }
     }
-    console.error("[flows] startNewRun insert error:", insErr.message);
+    if (insErr) {
+      console.error("[flows] startNewRun insert error:", insErr.message);
+    }
     return { consumed: false, outcome: "no_match" };
   }
   const run = inserted as FlowRunRow;
@@ -1801,12 +1879,21 @@ export async function startFlowForExternalEvent(input: {
     return { ok: false };
   }
 
-  await endOrderPlacedRunsForFulfillmentWithClient(db, {
-    accountId: input.flow.account_id,
-    contactId: input.contactId,
-    incomingFlowId: input.flow.id,
-    incomingTriggerType: input.flow.trigger_type,
-  });
+  const idempotencyKey = buildExternalIdempotencyKey(
+    input.flow,
+    input.initialVars,
+  );
+  if (idempotencyKey) {
+    const existing = await findActiveRunByIdempotencyKey(
+      db,
+      input.flow.account_id,
+      input.flow.id,
+      idempotencyKey,
+    );
+    if (existing) {
+      return { ok: true, flow_run_id: existing.id };
+    }
+  }
 
   await applyFlowExitEventWithClient(db, {
     accountId: input.flow.account_id,
@@ -1826,13 +1913,24 @@ export async function startFlowForExternalEvent(input: {
       status: "active",
       current_node_key: startKey,
       vars: input.initialVars ?? {},
+      external_idempotency_key: idempotencyKey,
     })
     .select("*")
     .maybeSingle();
 
   if (insErr || !inserted) {
-    if (insErr?.message?.includes("23505")) return { ok: true }
-    console.error("[flows] startFlowForExternalEvent:", insErr?.message);
+    if (idempotencyKey && isExternalIdempotencyConflict(insErr)) {
+      const raced = await findActiveRunByIdempotencyKey(
+        db,
+        input.flow.account_id,
+        input.flow.id,
+        idempotencyKey,
+      );
+      if (raced) return { ok: true, flow_run_id: raced.id };
+    }
+    if (insErr) {
+      console.error("[flows] startFlowForExternalEvent:", insErr?.message);
+    }
     return { ok: false };
   }
 

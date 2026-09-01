@@ -13,10 +13,8 @@ import { runTimeBasedFlowTriggers } from '@/lib/flows/dispatch-external'
  * past its cutoff as `timed_out`. Writes a matching `flow_run_events`
  * row for the audit trail.
  *
- * Without this sweep, a customer who abandons a flow mid-conversation
- * keeps a row in `idx_one_active_run_per_contact` (the partial unique
- * index on `flow_runs WHERE status='active'`) forever — blocking any
- * new triggers for them. The cron is therefore not optional.
+ * Without this sweep, abandoned suspending runs linger and keep routing
+ * inbound replies to stale prompts. The cron is therefore not optional.
  *
  * Auth: re-uses `AUTOMATION_CRON_SECRET` so operators only have one
  * secret to provision. The two endpoints (`/api/automations/cron`

@@ -56,14 +56,14 @@ describe('dispatchShopifyFlows', () => {
     ensureConversation.mockResolvedValue({ id: 'conv-1' })
   })
 
-  it('does not delete conversation when duplicate webhook hit active_run_exists', async () => {
+  it('always attempts empty-shell cleanup (active runs guarded inside helper)', async () => {
     runFlowsForTrigger.mockResolvedValue({
       started: [],
       skipped: [
         {
           flow_id: 'flow-1',
           flow_name: 'Prepaid order placed',
-          reason: 'active_run_exists',
+          reason: 'start_failed',
         },
       ],
       no_active_flows: false,
@@ -77,7 +77,11 @@ describe('dispatchShopifyFlows', () => {
       context: baseContext,
     })
 
-    expect(deleteConversationIfEmpty).not.toHaveBeenCalled()
+    expect(deleteConversationIfEmpty).toHaveBeenCalledWith(
+      {},
+      'conv-1',
+      { accountId: 'acc-1', contactId: 'contact-1' },
+    )
   })
 
   it('cleans up empty shell when dispatch did not defer to an active run', async () => {

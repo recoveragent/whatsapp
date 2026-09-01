@@ -446,6 +446,8 @@ export interface FlowRunRow {
   last_advanced_at: string;
   ended_at: string | null;
   end_reason: string | null;
+  /** Dedupes concurrent external/inbound starts for the same event. */
+  external_idempotency_key?: string | null;
 }
 
 // ============================================================

@@ -7,6 +7,7 @@ import {
 import { canSendMessages } from '@/lib/auth/roles'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { startFlowForExternalEvent } from '@/lib/flows/engine'
+import { applyFlowExitEventWithClient } from '@/lib/flows/apply-exit'
 import type { FlowRow } from '@/lib/flows/types'
 
 /**
@@ -99,26 +100,12 @@ export async function POST(
 
     const db = supabaseAdmin()
 
-    // One active run per contact — end any in-progress run so manual
-    // start can proceed (agent explicitly chose to run this flow now).
-    const { error: endErr } = await db
-      .from('flow_runs')
-      .update({
-        status: 'completed',
-        ended_at: new Date().toISOString(),
-        end_reason: 'manual_start',
-      })
-      .eq('account_id', ctx.accountId)
-      .eq('contact_id', contactId)
-      .eq('status', 'active')
-
-    if (endErr) {
-      console.error('[flows/start] failed to end active run:', endErr.message)
-      return NextResponse.json(
-        { error: 'Could not clear the existing flow run for this contact' },
-        { status: 500 },
-      )
-    }
+    await applyFlowExitEventWithClient(db, {
+      accountId: ctx.accountId,
+      contactId,
+      event: { type: 'another_flow', incomingFlowId: flowRow.id },
+      exceptFlowId: flowRow.id,
+    })
 
     const result = await startFlowForExternalEvent({
       flow: flowRow,

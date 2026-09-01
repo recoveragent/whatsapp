@@ -94,18 +94,10 @@ export async function dispatchShopifyFlows(args: {
     context: { vars: contextToVars(args.context) },
   })
 
-  // Duplicate Shopify webhooks can overlap: webhook B may finish while
-  // webhook A's flow is still sending. Never delete the shell when a
-  // sibling handler hit active_run_exists or a flow is still open.
-  const blockedByActiveRun = dispatch.skipped.some(
-    (s) => s.reason === 'active_run_exists',
-  )
-  if (!blockedByActiveRun) {
-    await deleteConversationIfEmpty(args.db, conversation.id, {
-      accountId: args.accountId,
-      contactId: contact.id,
-    })
-  }
+  await deleteConversationIfEmpty(args.db, conversation.id, {
+    accountId: args.accountId,
+    contactId: contact.id,
+  })
 
   return {
     ok: dispatch.started.length > 0,
