@@ -27,6 +27,5 @@ CREATE INDEX IF NOT EXISTS idx_shopify_tracking_redirects_token
 ALTER TABLE shopify_tracking_redirects ENABLE ROW LEVEL SECURITY;
 
 DROP TRIGGER IF EXISTS set_updated_at ON shopify_tracking_redirects;
-CREATE TRIGGER set_updated_at
-  BEFORE UPDATE ON shopify_tracking_redirects
-  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON shopify_tracking_redirects
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
