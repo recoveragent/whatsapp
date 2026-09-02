@@ -207,6 +207,7 @@ export function contextFromOrder(
     trackingNumber: null,
     trackingUrl: null,
     ...orderStatusFields(order),
+    trackingRedirectSuffix: null,
     checkoutUrl: null,
     fulfillmentStatus: order.fulfillment_status ?? null,
     shipmentStatus: null,
@@ -242,6 +243,7 @@ export function contextFromCheckout(
     trackingUrl: null,
     orderStatusUrl: null,
     orderStatusUrlSuffix: null,
+    trackingRedirectSuffix: null,
     checkoutUrl: checkout.abandoned_checkout_url ?? null,
     fulfillmentStatus: null,
     shipmentStatus: null,
@@ -270,6 +272,7 @@ export function contextFromFulfillment(
     trackingUrl: null,
     orderStatusUrl: null,
     orderStatusUrlSuffix: null,
+    trackingRedirectSuffix: null,
     checkoutUrl: null,
     fulfillmentStatus: null,
     shipmentStatus: null,
@@ -331,6 +334,8 @@ function resolveVariable(key: ShopifyVariableKey, ctx: ShopifyEventContext): str
       return ctx.orderStatusUrl ?? '';
     case 'order_status_url_suffix':
       return ctx.orderStatusUrlSuffix ?? '';
+    case 'tracking_url_redirect_suffix':
+      return ctx.trackingRedirectSuffix ?? '';
     case 'checkout_url':
       return ctx.checkoutUrl ?? '';
     case 'fulfillment_status':

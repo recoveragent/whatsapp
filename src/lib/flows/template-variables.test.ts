@@ -76,8 +76,20 @@ describe('templateVariableGroupsForFlow', () => {
       ),
     ).toBe(true)
     expect(
-      trigger?.options.some((o) => o.token === '{{ vars.shipment_status }}'),
+      trigger?.options.some(
+        (o) => o.token === '{{ vars.tracking_url_redirect_suffix }}',
+      ),
     ).toBe(true)
+  })
+
+  it('does not include tracking redirect suffix for non-fulfillment Shopify triggers', () => {
+    const groups = templateVariableGroupsForFlow('shopify_order_placed')
+    const trigger = groups.find((g) => g.id === 'trigger')
+    expect(
+      trigger?.options.some(
+        (o) => o.token === '{{ vars.tracking_url_redirect_suffix }}',
+      ),
+    ).toBe(false)
   })
 
   it('includes webhook trigger attributes from config', () => {

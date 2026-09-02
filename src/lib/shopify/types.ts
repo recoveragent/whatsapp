@@ -14,6 +14,7 @@ export type ShopifyVariableKey =
   | 'tracking_url'
   | 'order_status_url'
   | 'order_status_url_suffix'
+  | 'tracking_url_redirect_suffix'
   | 'checkout_url'
   | 'fulfillment_status'
   | 'shipment_status'
@@ -86,6 +87,8 @@ export interface ShopifyEventContext {
   orderStatusUrl: string | null;
   /** Path + query for a WhatsApp URL button `https://store.com/{{1}}`. */
   orderStatusUrlSuffix: string | null;
+  /** Token suffix for platform redirect `https://site.com/t/{{1}}`. */
+  trackingRedirectSuffix: string | null;
   checkoutUrl: string | null;
   fulfillmentStatus: string | null;
   /** Shopify fulfillment `shipment_status` (in_transit, delivered, …). */

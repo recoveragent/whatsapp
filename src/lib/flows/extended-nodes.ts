@@ -291,8 +291,11 @@ export async function executeExtendedNode(
           }
         }
         if (!messageParams.defaultUrlButtonSuffix) {
+          const trackingSuffix = vars.tracking_url_redirect_suffix
           const statusSuffix = vars.order_status_url_suffix
-          if (typeof statusSuffix === 'string' && statusSuffix.trim()) {
+          if (typeof trackingSuffix === 'string' && trackingSuffix.trim()) {
+            messageParams.defaultUrlButtonSuffix = trackingSuffix.trim()
+          } else if (typeof statusSuffix === 'string' && statusSuffix.trim()) {
             messageParams.defaultUrlButtonSuffix = statusSuffix.trim()
           }
         }

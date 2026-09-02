@@ -6,6 +6,7 @@ import {
 import {
   isShopifyOrderFlowTrigger,
   isShopifyCheckoutAbandonmentFlowTrigger,
+  isShopifyFulfillmentFlowTrigger,
   isWooCommerceOrderFlowTrigger,
   type FlowTriggerType,
 } from './trigger-types'
@@ -65,6 +66,14 @@ const SHOPIFY_OPTIONS: TemplateVariableOption[] = [
   },
   { label: 'Checkout URL', token: '{{ vars.checkout_url }}', type: 'text' },
   { label: 'Shop name', token: '{{ vars.shop_name }}', type: 'text' },
+]
+
+const SHOPIFY_FULFILLMENT_OPTIONS: TemplateVariableOption[] = [
+  {
+    label: 'Tracking redirect suffix (Track button)',
+    token: '{{ vars.tracking_url_redirect_suffix }}',
+    type: 'text',
+  },
 ]
 
 const MESSAGE_OPTIONS: TemplateVariableOption[] = [
@@ -174,6 +183,9 @@ export function templateVariableGroupsForFlow(
 
   if (triggerType && isShopifyOrderFlowTrigger(triggerType)) {
     triggerOptions.push(...SHOPIFY_OPTIONS)
+    if (isShopifyFulfillmentFlowTrigger(triggerType)) {
+      triggerOptions.push(...SHOPIFY_FULFILLMENT_OPTIONS)
+    }
   }
   if (
     triggerType &&

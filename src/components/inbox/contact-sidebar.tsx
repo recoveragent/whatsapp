@@ -702,10 +702,33 @@ export function ContactSidebar({
                             {formatFulfillment(order.fulfillment_status)}
                           </span>
                         </p>
-                        {isFulfilledStatus(order.fulfillment_status) && order.tracking_number && (
+                        {isFulfilledStatus(order.fulfillment_status) &&
+                          (order.tracking_url || order.order_status_url || order.tracking_number) && (
                           <p>
                             Tracking:{" "}
-                            <span className="text-foreground">{order.tracking_number}</span>
+                            {order.tracking_url ? (
+                              <a
+                                href={order.tracking_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 text-primary hover:underline"
+                              >
+                                Track shipment
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            ) : order.order_status_url ? (
+                              <a
+                                href={order.order_status_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 text-primary hover:underline"
+                              >
+                                View order status
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            ) : (
+                              <span className="text-foreground">{order.tracking_number}</span>
+                            )}
                           </p>
                         )}
                         {!isWooCommerceBrand && order.shipping_address && (
@@ -718,7 +741,7 @@ export function ContactSidebar({
                             </p>
                           </details>
                         )}
-                        {order.order_status_url ? (
+                        {order.order_status_url && order.tracking_url ? (
                           <a
                             href={order.order_status_url}
                             target="_blank"
@@ -727,17 +750,6 @@ export function ContactSidebar({
                           >
                             <ExternalLink className="h-3 w-3" />
                             View order status
-                          </a>
-                        ) : isFulfilledStatus(order.fulfillment_status) && order.tracking_url ? (
-                          <a
-                            href={order.tracking_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            Track shipment
-                            {order.tracking_number ? ` (${order.tracking_number})` : ""}
                           </a>
                         ) : null}
                         {(order.tags?.length ?? 0) > 0 && (

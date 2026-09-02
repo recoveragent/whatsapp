@@ -39,6 +39,7 @@ const baseContext: ShopifyEventContext = {
   trackingUrl: null,
   orderStatusUrl: null,
   orderStatusUrlSuffix: null,
+  trackingRedirectSuffix: null,
   checkoutUrl: null,
   fulfillmentStatus: null,
   shipmentStatus: null,

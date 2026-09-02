@@ -43,6 +43,16 @@ vi.mock('./admin-api', () => ({
 vi.mock('./log-fulfillment-event', () => ({
   logShopifyFulfillmentEvent: vi.fn().mockResolvedValue(undefined),
 }))
+vi.mock('./tracking-redirect', () => ({
+  enrichContextWithTrackingRedirect: vi.fn(
+    async (_db, _accountId, context: { trackingUrl?: string | null }) => ({
+      ...context,
+      trackingRedirectSuffix: context.trackingUrl?.trim()
+        ? 'mock-track-token'
+        : null,
+    }),
+  ),
+}))
 vi.mock('@/lib/whatsapp/encryption', () => ({ decrypt: vi.fn(() => 'test-token') }))
 
 import { handleShopifyWebhook } from './handle-webhook'
@@ -219,6 +229,7 @@ describe('handleShopifyWebhook — Shopify → flow dispatch', () => {
           trackingNumber: 'TRACK123',
           phone: '919788274333',
           shipmentStatus: 'in_transit',
+          trackingRedirectSuffix: 'mock-track-token',
           orderStatusUrl:
             'https://www.brand.com/690933842/orders/abc123/authenticate?key=secret',
           orderStatusUrlSuffix:

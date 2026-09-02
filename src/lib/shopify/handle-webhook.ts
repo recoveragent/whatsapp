@@ -13,6 +13,7 @@ import {
 } from './enrich-product-image';
 import { loadCampaign, sendShopifyCampaign } from './send-campaign';
 import { logShopifyFulfillmentEvent } from './log-fulfillment-event';
+import { enrichContextWithTrackingRedirect } from './tracking-redirect';
 import { syncShopifyOrder } from './sync-order';
 import { resolveAbandonedCheckoutDelayMinutes } from './abandoned-checkout-delay';
 import {
@@ -214,6 +215,10 @@ async function handleFulfillment(
       encryptedAccessToken: config.access_token,
     });
   }
+  context = await enrichContextWithTrackingRedirect(db, config.account_id, context, {
+    shopifyFulfillmentId: fulfillment.id,
+    shopifyOrderId: fulfillment.order_id ?? order?.id,
+  });
 
   const campaign = await loadCampaign(db, config.account_id, 'fulfillment_update');
   if (campaign) {

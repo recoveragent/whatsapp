@@ -129,7 +129,10 @@ export async function sendShopifyCampaign(args: {
   const mediaHeader = isMediaHeaderType(templateRow?.header_type);
 
   const params = buildTemplateParams(campaign.variable_mapping ?? {}, enrichedContext);
-  const suffix = enrichedContext.orderStatusUrlSuffix?.trim() || undefined;
+  const suffix =
+    enrichedContext.trackingRedirectSuffix?.trim() ||
+    enrichedContext.orderStatusUrlSuffix?.trim() ||
+    undefined;
   const productImage = enrichedContext.productImage?.trim() || undefined;
 
   const messageParams: SendTimeParams = {

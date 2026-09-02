@@ -390,21 +390,29 @@ export function SendTemplateFields({
     [selectedTemplate],
   );
 
-  // Shopify order-status suffix for Track buttons (same store domain,
-  // path changes per order). Only seed empty slots.
+  // Shopify fulfillment: platform tracking redirect for URL buttons.
+  // Other order triggers: Shopify order-status suffix. Only seed empty slots.
   useEffect(() => {
     if (!selectedTemplate || urlSuffixButtons.length === 0) return;
+    const hasTrackingRedirect = variableGroups.some((g) =>
+      g.options.some((o) => o.token.includes("vars.tracking_url_redirect_suffix")),
+    );
     const hasStatusSuffix = variableGroups.some((g) =>
       g.options.some((o) => o.token.includes("vars.order_status_url_suffix")),
     );
-    if (!hasStatusSuffix) return;
+    const preferredToken = hasTrackingRedirect
+      ? "{{ vars.tracking_url_redirect_suffix }}"
+      : hasStatusSuffix
+        ? "{{ vars.order_status_url_suffix }}"
+        : null;
+    if (!preferredToken) return;
 
     const next = { ...variables };
     let changed = false;
     for (const slot of urlSuffixButtons) {
       const key = `button_${slot.index}`;
       if (next[key]?.trim()) continue;
-      next[key] = "{{ vars.order_status_url_suffix }}";
+      next[key] = preferredToken;
       changed = true;
     }
     if (!changed) return;
@@ -824,7 +832,7 @@ export function SendTemplateFields({
                           },
                         })
                       }
-                      placeholder="{{ vars.order_status_url_suffix }}"
+                      placeholder="{{ vars.tracking_url_redirect_suffix }}"
                       active={activeField === `button_${slot.index}`}
                     />
                     <p className="mt-1 text-[10px] text-muted-foreground">
@@ -924,7 +932,7 @@ export function SendTemplateFields({
                           },
                         })
                       }
-                      placeholder="{{ vars.order_status_url_suffix }}"
+                      placeholder="{{ vars.tracking_url_redirect_suffix }}"
                       active={activeField === `button_${slot.index}`}
                     />
                     <p className="mt-1 text-[10px] text-muted-foreground">
