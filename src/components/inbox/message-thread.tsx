@@ -1103,8 +1103,8 @@ export function MessageThread({
     <div className={cn("flex min-w-0 flex-1 flex-col", DOODLE_BG_CLASSES)}>
       {/* Header — solid card surface sits on top of the doodle so the
           name/avatar/dropdowns stay legible. */}
-      <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-3 sm:px-4">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+      <div className="flex items-center gap-2 border-b border-border bg-card px-3 py-3 sm:px-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           {/* Back-to-list button — mobile only. Hidden on lg+ where the
               conversation list is always visible next to the thread. */}
           {onBack && (
@@ -1120,7 +1120,7 @@ export function MessageThread({
           <button
             type="button"
             onClick={handleOpenContact}
-            className="group relative z-10 flex min-w-0 max-w-[min(100%,16rem)] cursor-pointer items-center gap-2 rounded-md text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-xs sm:gap-3 -ml-1 pl-1 pr-2 py-0.5"
+            className="group relative z-10 flex min-w-0 cursor-pointer items-center gap-2 rounded-md text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-3 -ml-1 pl-1 pr-2 py-0.5"
             aria-label={`Open contact details for ${displayName}`}
             title="Open contact"
           >
@@ -1141,7 +1141,7 @@ export function MessageThread({
           <Badge
             variant="outline"
             className={cn(
-              "ml-1 hidden gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
+              "ml-1 hidden shrink-0 gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
               sessionInfo.expired ? "text-red-400" : "text-primary"
             )}
           >
@@ -1150,7 +1150,7 @@ export function MessageThread({
           </Badge>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {/* Show contact panel — desktop only, when the sidebar is
               collapsed. The hide control lives in the sidebar header.
               Issue #258. */}
