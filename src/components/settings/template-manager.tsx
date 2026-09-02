@@ -13,7 +13,7 @@ import {
   RotateCcw,
   Upload,
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+import { getWhatsAppTrackingButtonUrlTemplate } from '@/lib/shopify/tracking-redirect';
 import {
   uploadAccountMedia,
   MEDIA_MAX_BYTES_BY_KIND,
@@ -78,7 +78,7 @@ interface TemplateFormData {
 
 const emptyForm: TemplateFormData = {
   name: '',
-  category: 'Marketing',
+  category: 'Utility',
   language: 'en_US',
   header_format: 'none',
   header_content: '',
@@ -1042,11 +1042,15 @@ export function TemplateManager() {
                                 className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
                               />
                               <p className="text-[10px] text-muted-foreground">
-                                For Shopify fulfilled: use your storefront domain
-                                as the static part, e.g.{' '}
-                                {`https://www.yourstore.com/{{1}}`}. The suffix is
-                                the order status path, not a courier tracking
-                                link.
+                                Order fulfilled (any carrier): use the platform
+                                redirect URL, e.g.{' '}
+                                <span className="font-mono">
+                                  {getWhatsAppTrackingButtonUrlTemplate()}
+                                </span>
+                                . In the flow, map button {`{{1}}`} to{' '}
+                                {`{{ vars.tracking_url_redirect_suffix }}`} — we
+                                redirect to the courier tracking link at send
+                                time.
                               </p>
                             </>
                           )}
