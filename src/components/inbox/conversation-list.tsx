@@ -203,14 +203,14 @@ export function ConversationList({
           />
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center justify-end gap-1">
           <DropdownMenu>
             <DropdownMenuTrigger className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
               {activeFilter?.label ?? "All"}
               <ChevronDown className="h-3 w-3" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
-              align="start"
+              align="end"
               className="border-border bg-popover"
             >
               {FILTER_OPTIONS.map((opt) => (
@@ -236,7 +236,7 @@ export function ConversationList({
               <ChevronDown className="h-3 w-3" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
-              align="start"
+              align="end"
               className="border-border bg-popover"
             >
               {SORT_OPTIONS.map((opt) => (
