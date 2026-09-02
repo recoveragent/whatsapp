@@ -732,6 +732,13 @@ export function MessageThread({
     [conversation, onPatchStatus],
   );
 
+  const handleToggleOpenClose = useCallback(() => {
+    if (!conversation) return;
+    const next: ConversationStatus =
+      conversation.status === "closed" ? "open" : "closed";
+    void handleStatusChange(next);
+  }, [conversation, handleStatusChange]);
+
   const handleOpenTemplates = useCallback(() => {
     setTemplateModalOpen(true);
   }, []);
@@ -1073,6 +1080,11 @@ export function MessageThread({
   }
 
   const displayName = contact.name || contact.phone;
+  const isClosed = conversation.status === "closed";
+  const primaryStatusLabel = isClosed ? "Open" : "Close";
+  const primaryStatusColor = isClosed
+    ? STATUS_COLORS.open
+    : STATUS_COLORS[conversation.status] ?? STATUS_COLORS.open;
   const assignedAgentId = conversation.assigned_agent_id ?? null;
   const currentAssignee = profiles.find((p) => p.user_id === assignedAgentId);
   const assignLabel = assignedAgentId
@@ -1177,30 +1189,41 @@ export function MessageThread({
             </button>
           )}
 
-          {/* Status: follow-up scheduling */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
+          {/* Status: primary toggles open/closed; dropdown sets follow-up */}
+          <div className="inline-flex items-center rounded-md border border-border">
+            <button
+              type="button"
+              onClick={handleToggleOpenClose}
               className={cn(
-                "inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
-                conversation.status === "followup" && "text-amber-500",
+                "inline-flex h-7 items-center px-2.5 text-xs font-medium hover:bg-muted",
+                primaryStatusColor,
               )}
-              aria-label="More status options"
             >
-              Followup
-              <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="border-border bg-popover"
-            >
-              <DropdownMenuItem
-                onClick={() => void handleStatusChange("followup")}
-                className={cn("text-sm", STATUS_COLORS.followup)}
+              {primaryStatusLabel}
+            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={cn(
+                  "inline-flex h-7 w-7 items-center justify-center border-l border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+                  conversation.status === "followup" && "text-amber-500",
+                )}
+                aria-label="More status options"
               >
-                Schedule follow-up
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <ChevronDown className="h-3 w-3" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="border-border bg-popover"
+              >
+                <DropdownMenuItem
+                  onClick={() => void handleStatusChange("followup")}
+                  className={cn("text-sm", STATUS_COLORS.followup)}
+                >
+                  Followup
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
           {/* Assign dropdown */}
           <DropdownMenu>
