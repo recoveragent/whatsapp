@@ -10,9 +10,30 @@ type InboxListConversation = {
   status: ConversationStatus;
   unread_count?: number;
   last_message_at?: string | null;
+  updated_at?: string | null;
   contact?: { name?: string | null; phone?: string | null } | null;
   last_message_text?: string | null;
 };
+
+/** Latest customer/agent message or status/assignment change — drives sidebar order. */
+export function getInboxActivityAt(conv: {
+  last_message_at?: string | null;
+  updated_at?: string | null;
+}): string | null {
+  const msg = conv.last_message_at
+    ? Date.parse(conv.last_message_at)
+    : Number.NaN;
+  const updated = conv.updated_at ? Date.parse(conv.updated_at) : Number.NaN;
+  const msgValid = Number.isFinite(msg);
+  const updatedValid = Number.isFinite(updated);
+
+  if (msgValid && updatedValid) {
+    return msg >= updated ? conv.last_message_at! : conv.updated_at!;
+  }
+  if (msgValid) return conv.last_message_at!;
+  if (updatedValid) return conv.updated_at!;
+  return null;
+}
 
 /** Only conversations with at least one message belong in the inbox sidebar. */
 export function shouldShowInInboxList(conv: {
@@ -80,19 +101,17 @@ export function filterInboxConversations<T extends InboxListConversation>(
   return result;
 }
 
-/** Sort sidebar rows by last message time. */
+/** Sort sidebar rows by most recent inbox activity (message or status change). */
 export function sortInboxConversations<T extends InboxListConversation>(
   conversations: T[],
   sort: InboxSortOrder,
 ): T[] {
   const sorted = [...conversations];
   sorted.sort((a, b) => {
-    const aTime = a.last_message_at
-      ? new Date(a.last_message_at).getTime()
-      : 0;
-    const bTime = b.last_message_at
-      ? new Date(b.last_message_at).getTime()
-      : 0;
+    const aAt = getInboxActivityAt(a);
+    const bAt = getInboxActivityAt(b);
+    const aTime = aAt ? new Date(aAt).getTime() : 0;
+    const bTime = bAt ? new Date(bAt).getTime() : 0;
     return sort === 'newest' ? bTime - aTime : aTime - bTime;
   });
   return sorted;

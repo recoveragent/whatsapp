@@ -83,7 +83,7 @@ interface MessageThreadProps {
   onMessagesLoaded: (messages: Message[]) => void;
   onNewMessage: (message: Message) => void;
   onUpdateMessage: (id: string, updates: Partial<Message>) => void;
-  onStatusChange: (conversationId: string, status: ConversationStatus) => void;
+  onPatchStatus: (status: ConversationStatus) => Promise<void>;
   onAssignChange: (
     conversationId: string,
     assignedAgentId: string | null,
@@ -201,7 +201,7 @@ export function MessageThread({
   onMessagesLoaded,
   onNewMessage,
   onUpdateMessage,
-  onStatusChange,
+  onPatchStatus,
   onAssignChange,
   onBack,
   resyncToken = 0,
@@ -727,39 +727,10 @@ export function MessageThread({
   const handleStatusChange = useCallback(
     async (status: ConversationStatus) => {
       if (!conversation) return;
-
-      const res = await fetch(`/api/inbox/conversations/${conversation.id}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        toast.error(body?.error ?? "Failed to update conversation status");
-        return;
-      }
-
-      const updated = (await res.json()) as Conversation & {
-        system_message?: Message | null;
-      };
-      onStatusChange(conversation.id, updated.status);
-      if (updated.system_message) {
-        onNewMessage(updated.system_message);
-      }
-      if (updated.status === "followup") {
-        toast.success("Follow-up scheduled");
-      }
+      await onPatchStatus(status);
     },
-    [conversation, onStatusChange, onNewMessage]
+    [conversation, onPatchStatus],
   );
-
-  const handleToggleOpenClose = useCallback(() => {
-    if (!conversation) return;
-    const next: ConversationStatus =
-      conversation.status === "closed" ? "open" : "closed";
-    void handleStatusChange(next);
-  }, [conversation, handleStatusChange]);
 
   const handleOpenTemplates = useCallback(() => {
     setTemplateModalOpen(true);
@@ -1102,11 +1073,6 @@ export function MessageThread({
   }
 
   const displayName = contact.name || contact.phone;
-  const isClosed = conversation.status === "closed";
-  const primaryStatusLabel = isClosed ? "Open" : "Close";
-  const primaryStatusColor = isClosed
-    ? STATUS_COLORS.open
-    : STATUS_COLORS[conversation.status] ?? STATUS_COLORS.open;
   const assignedAgentId = conversation.assigned_agent_id ?? null;
   const currentAssignee = profiles.find((p) => p.user_id === assignedAgentId);
   const assignLabel = assignedAgentId
@@ -1211,41 +1177,30 @@ export function MessageThread({
             </button>
           )}
 
-          {/* Status: primary toggles open/closed; dropdown sets follow-up */}
-          <div className="inline-flex items-center rounded-md border border-border">
-            <button
-              type="button"
-              onClick={handleToggleOpenClose}
+          {/* Status: follow-up scheduling */}
+          <DropdownMenu>
+            <DropdownMenuTrigger
               className={cn(
-                "inline-flex h-7 items-center px-2.5 text-xs font-medium hover:bg-muted",
-                primaryStatusColor,
+                "inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
+                conversation.status === "followup" && "text-amber-500",
               )}
+              aria-label="More status options"
             >
-              {primaryStatusLabel}
-            </button>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className={cn(
-                  "inline-flex h-7 w-7 items-center justify-center border-l border-border text-muted-foreground hover:bg-muted hover:text-foreground",
-                  conversation.status === "followup" && "text-amber-500",
-                )}
-                aria-label="More status options"
+              Followup
+              <ChevronDown className="h-3 w-3" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="border-border bg-popover"
+            >
+              <DropdownMenuItem
+                onClick={() => void handleStatusChange("followup")}
+                className={cn("text-sm", STATUS_COLORS.followup)}
               >
-                <ChevronDown className="h-3 w-3" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className="border-border bg-popover"
-              >
-                <DropdownMenuItem
-                  onClick={() => handleStatusChange("followup")}
-                  className={cn("text-sm", STATUS_COLORS.followup)}
-                >
-                  Followup
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+                Schedule follow-up
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* Assign dropdown */}
           <DropdownMenu>

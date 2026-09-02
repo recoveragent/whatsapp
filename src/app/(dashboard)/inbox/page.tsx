@@ -794,6 +794,59 @@ export default function InboxPage() {
     ]
   );
 
+  const patchConversationStatus = useCallback(
+    async (conversationId: string, status: ConversationStatus) => {
+      const res = await fetch(`/api/inbox/conversations/${conversationId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        toast.error(body?.error ?? "Failed to update conversation status");
+        return;
+      }
+
+      const updated = (await res.json()) as Conversation & {
+        system_message?: Message | null;
+      };
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conversationId
+            ? {
+                ...c,
+                status: updated.status,
+                updated_at: updated.updated_at,
+                followup_scheduled_at: updated.followup_scheduled_at,
+                followup_sent_at: updated.followup_sent_at,
+              }
+            : c,
+        ),
+      );
+      handleStatusChange(conversationId, updated.status);
+      if (updated.system_message && activeConversation?.id === conversationId) {
+        handleNewMessage(updated.system_message);
+      }
+      if (updated.status === "followup") {
+        toast.success("Follow-up scheduled");
+      }
+    },
+    [handleStatusChange, handleNewMessage, activeConversation?.id],
+  );
+
+  const handlePatchActiveStatus = useCallback(
+    (status: ConversationStatus) => {
+      if (!activeConversation) {
+        return Promise.resolve();
+      }
+      return patchConversationStatus(activeConversation.id, status);
+    },
+    [activeConversation, patchConversationStatus],
+  );
+
   const handleAssignChange = useCallback(
     (conversationId: string, assignedAgentId: string | null) => {
       setConversations((prev) =>
@@ -851,6 +904,7 @@ export default function InboxPage() {
             onConversationsLoaded={handleConversationsLoaded}
             onConversationCreated={handleConversationCreated}
             onListViewChange={handleListViewChange}
+            onPatchStatus={patchConversationStatus}
             resyncToken={resyncToken}
           />
         </div>
@@ -878,7 +932,7 @@ export default function InboxPage() {
             onMessagesLoaded={handleMessagesLoaded}
             onNewMessage={handleNewMessage}
             onUpdateMessage={handleUpdateMessage}
-            onStatusChange={handleStatusChange}
+            onPatchStatus={handlePatchActiveStatus}
             onAssignChange={handleAssignChange}
             onBack={handleCloseConversation}
             resyncToken={resyncToken}

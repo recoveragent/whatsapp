@@ -21,6 +21,7 @@ import {
   matchesInboxSearch,
   filterInboxConversations,
   sortInboxConversations,
+  getInboxActivityAt,
   type InboxFilter,
   type InboxSortOrder,
 } from "@/lib/inbox/conversation-list";
@@ -45,6 +46,11 @@ interface ConversationListProps {
     search: string;
     sort: InboxSortOrder;
   }) => void;
+  /** Toggle open/closed from the sidebar row action. */
+  onPatchStatus?: (
+    conversationId: string,
+    status: ConversationStatus,
+  ) => Promise<void>;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -76,6 +82,7 @@ export function ConversationList({
   resyncToken = 0,
   onConversationCreated,
   onListViewChange,
+  onPatchStatus,
 }: ConversationListProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("open");
@@ -203,14 +210,14 @@ export function ConversationList({
           />
         </div>
 
-        <div className="flex items-center justify-end gap-1">
+        <div className="flex items-center justify-between gap-1">
           <DropdownMenu>
             <DropdownMenuTrigger className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
               {activeFilter?.label ?? "All"}
               <ChevronDown className="h-3 w-3" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
-              align="end"
+              align="start"
               className="border-border bg-popover"
             >
               {FILTER_OPTIONS.map((opt) => (
@@ -291,6 +298,7 @@ export function ConversationList({
                 conversation={conv}
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
+                onPatchStatus={onPatchStatus}
               />
             ))}
           </div>
@@ -304,23 +312,40 @@ interface ConversationItemProps {
   conversation: Conversation;
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
+  onPatchStatus?: (
+    conversationId: string,
+    status: ConversationStatus,
+  ) => Promise<void>;
 }
 
 function ConversationItem({
   conversation,
   isActive,
   onSelect,
+  onPatchStatus,
 }: ConversationItemProps) {
   const contact = conversation.contact;
   const displayName = contact?.name || contact?.phone || "Unknown";
   const initials = displayName.charAt(0).toUpperCase();
+  const isClosed = conversation.status === "closed";
 
   const handleClick = useCallback(() => {
     onSelect(conversation);
   }, [onSelect, conversation]);
 
-  const timeAgo = conversation.last_message_at
-    ? formatDistanceToNow(new Date(conversation.last_message_at), {
+  const handleToggleOpenClose = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!onPatchStatus) return;
+      const next: ConversationStatus = isClosed ? "open" : "closed";
+      void onPatchStatus(conversation.id, next);
+    },
+    [conversation.id, isClosed, onPatchStatus],
+  );
+
+  const activityAt = getInboxActivityAt(conversation);
+  const timeAgo = activityAt
+    ? formatDistanceToNow(new Date(activityAt), {
         addSuffix: false,
       })
     : "";
@@ -359,6 +384,20 @@ function ConversationItem({
             {conversation.last_message_text || "No messages yet"}
           </p>
           <div className="flex shrink-0 items-center gap-1.5">
+            {onPatchStatus && (
+              <button
+                type="button"
+                onClick={handleToggleOpenClose}
+                className={cn(
+                  "rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors hover:bg-muted",
+                  isClosed
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {isClosed ? "Open" : "Close"}
+              </button>
+            )}
             {conversation.unread_count > 0 && (
               <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
                 {conversation.unread_count}

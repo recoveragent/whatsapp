@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  getInboxActivityAt,
   getNextInboxConversation,
   isOpenInboxConversation,
   matchesInboxSearch,
@@ -100,10 +101,57 @@ const sampleConversations = [
   },
 ];
 
+describe('getInboxActivityAt', () => {
+  it('prefers the newer of last message and updated timestamps', () => {
+    expect(
+      getInboxActivityAt({
+        last_message_at: '2026-08-21T08:00:00Z',
+        updated_at: '2026-08-21T10:00:00Z',
+      }),
+    ).toBe('2026-08-21T10:00:00Z');
+    expect(
+      getInboxActivityAt({
+        last_message_at: '2026-08-21T10:00:00Z',
+        updated_at: '2026-08-21T08:00:00Z',
+      }),
+    ).toBe('2026-08-21T10:00:00Z');
+  });
+
+  it('falls back to whichever timestamp is present', () => {
+    expect(
+      getInboxActivityAt({ last_message_at: '2026-08-21T08:00:00Z' }),
+    ).toBe('2026-08-21T08:00:00Z');
+    expect(getInboxActivityAt({ updated_at: '2026-08-21T09:00:00Z' })).toBe(
+      '2026-08-21T09:00:00Z',
+    );
+  });
+});
+
 describe('sortInboxConversations', () => {
   it('orders by newest last message first by default', () => {
     const sorted = sortInboxConversations(sampleConversations, 'newest');
     expect(sorted.map((c) => c.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('ranks a recently closed thread above older messages', () => {
+    const sorted = sortInboxConversations(
+      [
+        {
+          id: 'old-msg',
+          status: 'closed' as const,
+          last_message_at: '2026-08-21T09:00:00Z',
+          updated_at: '2026-08-21T09:00:00Z',
+        },
+        {
+          id: 'closed-now',
+          status: 'closed' as const,
+          last_message_at: '2026-08-21T07:00:00Z',
+          updated_at: '2026-08-21T11:00:00Z',
+        },
+      ],
+      'newest',
+    );
+    expect(sorted.map((c) => c.id)).toEqual(['closed-now', 'old-msg']);
   });
 
   it('orders by oldest last message first when requested', () => {
