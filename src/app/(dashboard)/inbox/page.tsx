@@ -672,13 +672,7 @@ export default function InboxPage() {
     [handleSelectConversation],
   );
 
-  // Mobile "back" — deselect the conversation so the list pane comes
-  // back. Also clears the ?c= param so a refresh lands on the list
-  // instead of re-opening the thread the user just backed out of.
-  const handleCloseConversation = useCallback(() => {
-    if (blockIfOutboundInFlight()) {
-      return;
-    }
+  const clearActiveConversation = useCallback(() => {
     setActiveConversation(null);
     setActiveContact(null);
     setMessages([]);
@@ -686,7 +680,17 @@ export default function InboxPage() {
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
     router.replace("/inbox", { scroll: false });
-  }, [router, blockIfOutboundInFlight]);
+  }, [router]);
+
+  // Mobile "back" — deselect the conversation so the list pane comes
+  // back. Also clears the ?c= param so a refresh lands on the list
+  // instead of re-opening the thread the user just backed out of.
+  const handleCloseConversation = useCallback(() => {
+    if (blockIfOutboundInFlight()) {
+      return;
+    }
+    clearActiveConversation();
+  }, [blockIfOutboundInFlight, clearActiveConversation]);
 
   const handleContactUpdated = useCallback(async () => {
     if (!activeContact) return;
@@ -738,10 +742,14 @@ export default function InboxPage() {
         prev.map((c) => (c.id === conversationId ? { ...c, status } : c))
       );
       if (activeConversation?.id === conversationId) {
-        setActiveConversation((prev) => (prev ? { ...prev, status } : prev));
+        if (status === "closed") {
+          clearActiveConversation();
+        } else {
+          setActiveConversation((prev) => (prev ? { ...prev, status } : prev));
+        }
       }
     },
-    [activeConversation]
+    [activeConversation, clearActiveConversation]
   );
 
   const handleAssignChange = useCallback(
