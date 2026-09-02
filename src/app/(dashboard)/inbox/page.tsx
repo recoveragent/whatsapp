@@ -16,7 +16,12 @@ import {
 import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { shouldShowInInboxList } from "@/lib/inbox/conversation-list";
+import {
+  shouldShowInInboxList,
+  getNextInboxConversation,
+  type InboxFilter,
+  type InboxSortOrder,
+} from "@/lib/inbox/conversation-list";
 
 // Remembers the agent's show/hide choice for the desktop contact panel
 // across reloads and sessions (device-scoped, like the theme prefs).
@@ -136,6 +141,15 @@ export default function InboxPage() {
   // back to the deep-linked conversation if they've already clicked
   // elsewhere.
   const autoSelectedForDeepLinkRef = useRef<string | null>(null);
+  const listViewRef = useRef<{
+    filter: InboxFilter;
+    search: string;
+    sort: InboxSortOrder;
+  }>({
+    filter: "open",
+    search: "",
+    sort: "newest",
+  });
   /** Tracks the last `?c=` seen by handleConversationsLoaded so we can
    *  tell a stale URL (list click before router.replace lands) from a
    *  genuine external navigation (reminder / dashboard link). */
@@ -736,20 +750,48 @@ export default function InboxPage() {
     []
   );
 
+  const handleListViewChange = useCallback(
+    (view: { filter: InboxFilter; search: string; sort: InboxSortOrder }) => {
+      listViewRef.current = view;
+    },
+    [],
+  );
+
   const handleStatusChange = useCallback(
     (conversationId: string, status: ConversationStatus) => {
+      const isClosingActive =
+        activeConversation?.id === conversationId && status === "closed";
+      const nextConv = isClosingActive
+        ? getNextInboxConversation(
+            conversations,
+            conversationId,
+            listViewRef.current.filter,
+            listViewRef.current.search,
+            listViewRef.current.sort,
+          )
+        : null;
+
       setConversations((prev) =>
         prev.map((c) => (c.id === conversationId ? { ...c, status } : c))
       );
       if (activeConversation?.id === conversationId) {
         if (status === "closed") {
-          clearActiveConversation();
+          if (nextConv) {
+            handleSelectConversation(nextConv);
+          } else {
+            clearActiveConversation();
+          }
         } else {
           setActiveConversation((prev) => (prev ? { ...prev, status } : prev));
         }
       }
     },
-    [activeConversation, clearActiveConversation]
+    [
+      activeConversation,
+      conversations,
+      clearActiveConversation,
+      handleSelectConversation,
+    ]
   );
 
   const handleAssignChange = useCallback(
@@ -808,6 +850,7 @@ export default function InboxPage() {
             conversations={conversations}
             onConversationsLoaded={handleConversationsLoaded}
             onConversationCreated={handleConversationCreated}
+            onListViewChange={handleListViewChange}
             resyncToken={resyncToken}
           />
         </div>

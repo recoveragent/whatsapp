@@ -16,7 +16,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { shouldShowInInboxList, matchesInboxSearch } from "@/lib/inbox/conversation-list";
+import {
+  shouldShowInInboxList,
+  matchesInboxSearch,
+  filterInboxConversations,
+  sortInboxConversations,
+  type InboxFilter,
+  type InboxSortOrder,
+} from "@/lib/inbox/conversation-list";
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -32,6 +39,12 @@ interface ConversationListProps {
   resyncToken?: number;
   /** Called when the agent starts a new conversation from the dialog. */
   onConversationCreated?: (conversation: Conversation) => void;
+  /** Reports the sidebar filter/search/sort so the parent can pick the next thread. */
+  onListViewChange?: (view: {
+    filter: InboxFilter;
+    search: string;
+    sort: InboxSortOrder;
+  }) => void;
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
@@ -40,8 +53,6 @@ const STATUS_COLORS: Record<ConversationStatus, string> = {
   closed: "bg-muted-foreground",
   followup: "bg-amber-500",
 };
-
-type InboxFilter = ConversationStatus | "all" | "unread";
 
 const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = [
   { label: "All", value: "all" },
@@ -52,6 +63,11 @@ const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = [
   { label: "Closed", value: "closed" },
 ];
 
+const SORT_OPTIONS: { label: string; value: InboxSortOrder }[] = [
+  { label: "Newest", value: "newest" },
+  { label: "Oldest", value: "oldest" },
+];
+
 export function ConversationList({
   activeConversationId,
   onSelect,
@@ -59,10 +75,16 @@ export function ConversationList({
   onConversationsLoaded,
   resyncToken = 0,
   onConversationCreated,
+  onListViewChange,
 }: ConversationListProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("open");
+  const [sort, setSort] = useState<InboxSortOrder>("newest");
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    onListViewChange?.({ filter, search, sort });
+  }, [filter, search, sort, onListViewChange]);
 
   // Keep the latest callback in a ref so the fetch effect below can
   // have a stable, empty-dep identity. Previously the fetch useCallback
@@ -118,24 +140,14 @@ export function ConversationList({
     // up on any events sent while the WS was disconnected or throttled.
   }, [resyncToken]);
 
-  const filtered = useMemo(() => {
-    let result = conversations.filter(shouldShowInInboxList);
-    const q = search.trim();
-
-    // Search spans all statuses — Shopify outbound threads start closed
-    // and agents expect search to find them without switching filters.
-    if (q) {
-      return result.filter((c) => matchesInboxSearch(c, q));
-    }
-
-    if (filter === "unread") {
-      result = result.filter((c) => c.unread_count > 0);
-    } else if (filter !== "all") {
-      result = result.filter((c) => c.status === filter);
-    }
-
-    return result;
-  }, [conversations, filter, search]);
+  const filtered = useMemo(
+    () =>
+      sortInboxConversations(
+        filterInboxConversations(conversations, filter, search),
+        sort,
+      ),
+    [conversations, filter, search, sort],
+  );
 
   const hasSearchMatchesInAll = useMemo(() => {
     if (!search.trim() || filter === "all") return false;
@@ -164,6 +176,7 @@ export function ConversationList({
   }, []);
 
   const activeFilter = FILTER_OPTIONS.find((o) => o.value === filter);
+  const activeSort = SORT_OPTIONS.find((o) => o.value === sort);
 
   return (
     // w-full on mobile so the list occupies the whole viewport when it's
@@ -190,31 +203,59 @@ export function ConversationList({
           />
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-muted">
+        <div className="flex items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
               {activeFilter?.label ?? "All"}
               <ChevronDown className="h-3 w-3" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="start"
-            className="border-border bg-popover"
-          >
-            {FILTER_OPTIONS.map((opt) => (
-              <DropdownMenuItem
-                key={opt.value}
-                onClick={() => setFilter(opt.value)}
-                className={cn(
-                  "text-sm",
-                  filter === opt.value
-                    ? "text-primary"
-                    : "text-popover-foreground"
-                )}
-              >
-                {opt.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              className="border-border bg-popover"
+            >
+              {FILTER_OPTIONS.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.value}
+                  onClick={() => setFilter(opt.value)}
+                  className={cn(
+                    "text-sm",
+                    filter === opt.value
+                      ? "text-primary"
+                      : "text-popover-foreground",
+                  )}
+                >
+                  {opt.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
+              {activeSort?.label ?? "Newest"}
+              <ChevronDown className="h-3 w-3" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              className="border-border bg-popover"
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.value}
+                  onClick={() => setSort(opt.value)}
+                  className={cn(
+                    "text-sm",
+                    sort === opt.value
+                      ? "text-primary"
+                      : "text-popover-foreground",
+                  )}
+                >
+                  {opt.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* Conversation Items.

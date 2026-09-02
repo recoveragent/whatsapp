@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  getNextInboxConversation,
   isOpenInboxConversation,
   matchesInboxSearch,
   shouldShowInInboxList,
+  sortInboxConversations,
 } from './conversation-list';
 
 describe('shouldShowInInboxList', () => {
@@ -68,5 +70,64 @@ describe('matchesInboxSearch', () => {
 
   it('returns true for empty query', () => {
     expect(matchesInboxSearch(conv, '   ')).toBe(true);
+  });
+});
+
+const sampleConversations = [
+  {
+    id: 'a',
+    status: 'open' as const,
+    unread_count: 1,
+    last_message_at: '2026-08-21T09:00:00Z',
+    contact: { name: 'Alice', phone: '9111111111' },
+    last_message_text: 'Hi',
+  },
+  {
+    id: 'b',
+    status: 'open' as const,
+    unread_count: 0,
+    last_message_at: '2026-08-21T08:00:00Z',
+    contact: { name: 'Bob', phone: '9222222222' },
+    last_message_text: 'Hello',
+  },
+  {
+    id: 'c',
+    status: 'open' as const,
+    unread_count: 0,
+    last_message_at: '2026-08-21T07:00:00Z',
+    contact: { name: 'Carol', phone: '9333333333' },
+    last_message_text: 'Hey',
+  },
+];
+
+describe('sortInboxConversations', () => {
+  it('orders by newest last message first by default', () => {
+    const sorted = sortInboxConversations(sampleConversations, 'newest');
+    expect(sorted.map((c) => c.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('orders by oldest last message first when requested', () => {
+    const sorted = sortInboxConversations(sampleConversations, 'oldest');
+    expect(sorted.map((c) => c.id)).toEqual(['c', 'b', 'a']);
+  });
+});
+
+describe('getNextInboxConversation', () => {
+  it('prefers the row below the closed thread', () => {
+    expect(
+      getNextInboxConversation(sampleConversations, 'a', 'open'),
+    ).toMatchObject({ id: 'b' });
+  });
+
+  it('falls back to the row above when closing the last thread', () => {
+    expect(
+      getNextInboxConversation(sampleConversations, 'c', 'open'),
+    ).toMatchObject({ id: 'b' });
+  });
+
+  it('returns null when closing the only visible thread', () => {
+    expect(
+      getNextInboxConversation([sampleConversations[0]], 'a', 'open'),
+    ).toBeNull();
   });
 });

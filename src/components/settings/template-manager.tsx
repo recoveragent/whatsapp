@@ -1033,28 +1033,32 @@ export function TemplateManager() {
                             className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
                           />
                           {extractVariableIndices(btn.url).length > 0 && (
-                            <>
-                              <Input
-                                placeholder="Example value for {{1}} (required when URL has a variable)"
-                                value={btn.example ?? ''}
-                                onChange={(e) =>
-                                  updateButton(i, { example: e.target.value })
-                                }
-                                className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
-                              />
-                              <p className="text-[10px] text-muted-foreground">
-                                Order fulfilled (any carrier): use the platform
-                                redirect URL, e.g.{' '}
-                                <span className="font-mono">
-                                  {getWhatsAppTrackingButtonUrlTemplate()}
-                                </span>
-                                . In the flow, map button {`{{1}}`} to{' '}
-                                {`{{ vars.tracking_url_redirect_suffix }}`} — we
-                                redirect to the courier tracking link at send
-                                time.
-                              </p>
-                            </>
+                            <Input
+                              placeholder="Example value for {{1}} (required when URL has a variable)"
+                              value={btn.example ?? ''}
+                              onChange={(e) =>
+                                updateButton(i, { example: e.target.value })
+                              }
+                              className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
+                            />
                           )}
+                          <p className="text-[10px] text-muted-foreground">
+                            Order fulfilled (any carrier): use the platform
+                            redirect URL, e.g.{' '}
+                            <span className="font-mono">
+                              {getWhatsAppTrackingButtonUrlTemplate()}
+                            </span>
+                            . In the flow, map button {`{{1}}`} to{' '}
+                            {`{{ vars.tracking_url_redirect_suffix }}`} — we
+                            redirect to the courier tracking link at send time.
+                            {extractVariableIndices(btn.url).length === 0 && (
+                              <>
+                                {' '}
+                                A static URL (no {`{{1}}`}) sends the same link
+                                to every customer.
+                              </>
+                            )}
+                          </p>
                         </div>
                       )}
                       {btn.type === 'PHONE_NUMBER' && (
