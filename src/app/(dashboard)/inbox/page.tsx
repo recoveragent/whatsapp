@@ -42,6 +42,22 @@ export default function InboxPage() {
     () => hasOutboundInFlight(messages, composerPending),
     [messages, composerPending],
   );
+  // Read via ref in navigation guards so callback identities stay stable.
+  // Otherwise deep-link effects that depend on applyDeepLinkConversation
+  // re-fire when a send starts (outboundInFlight flips true) and spuriously
+  // show the "wait before leaving" toast right after Enter-to-send.
+  const outboundInFlightRef = useRef(outboundInFlight);
+  useEffect(() => {
+    outboundInFlightRef.current = outboundInFlight;
+  }, [outboundInFlight]);
+
+  const blockIfOutboundInFlight = useCallback(() => {
+    if (outboundInFlightRef.current) {
+      toast.error(OUTBOUND_PENDING_TOAST);
+      return true;
+    }
+    return false;
+  }, []);
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null
   );
@@ -129,8 +145,7 @@ export default function InboxPage() {
 
   const applyDeepLinkConversation = useCallback(
     (match: Conversation) => {
-      if (outboundInFlight) {
-        toast.error(OUTBOUND_PENDING_TOAST);
+      if (blockIfOutboundInFlight()) {
         return false;
       }
       autoSelectedForDeepLinkRef.current = match.id;
@@ -147,7 +162,7 @@ export default function InboxPage() {
       }
       return true;
     },
-    [outboundInFlight],
+    [blockIfOutboundInFlight],
   );
 
   // Tracks conversations whose hydrate fetch is currently in flight. The
@@ -603,8 +618,7 @@ export default function InboxPage() {
   const handleSelectConversation = useCallback(
     (conv: Conversation) => {
       if (activeConversation?.id === conv.id) return;
-      if (outboundInFlight) {
-        toast.error(OUTBOUND_PENDING_TOAST);
+      if (blockIfOutboundInFlight()) {
         return;
       }
       setActiveConversation(conv);
@@ -639,7 +653,7 @@ export default function InboxPage() {
       // replace() to avoid polluting browser history with every click.
       router.replace(`/inbox?c=${conv.id}`, { scroll: false });
     },
-    [activeConversation?.id, router, outboundInFlight],
+    [activeConversation?.id, router, blockIfOutboundInFlight],
   );
 
   const handleConversationCreated = useCallback(
@@ -662,8 +676,7 @@ export default function InboxPage() {
   // back. Also clears the ?c= param so a refresh lands on the list
   // instead of re-opening the thread the user just backed out of.
   const handleCloseConversation = useCallback(() => {
-    if (outboundInFlight) {
-      toast.error(OUTBOUND_PENDING_TOAST);
+    if (blockIfOutboundInFlight()) {
       return;
     }
     setActiveConversation(null);
@@ -673,7 +686,7 @@ export default function InboxPage() {
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
     router.replace("/inbox", { scroll: false });
-  }, [router, outboundInFlight]);
+  }, [router, blockIfOutboundInFlight]);
 
   const handleContactUpdated = useCallback(async () => {
     if (!activeContact) return;
