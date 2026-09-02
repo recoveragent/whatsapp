@@ -69,9 +69,35 @@ export function extractOrderStatusUrl(
   return splitPublicUrlForWhatsApp(order?.order_status_url).url;
 }
 
+function normalizeShipmentStatus(raw: string | null | undefined): string | null {
+  if (!raw?.trim()) return null;
+  return raw.trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+const SHIPMENT_STATUS_LABELS: Record<string, string> = {
+  confirmed: 'Confirmed',
+  in_transit: 'In transit',
+  out_for_delivery: 'Out for delivery',
+  delivered: 'Delivered',
+  ready_for_pickup: 'Ready for pickup',
+  attempted_delivery: 'Attempted delivery',
+  label_printed: 'Label printed',
+  label_purchased: 'Label purchased',
+  failure: 'Failure',
+};
+
+export function formatShipmentStatusLabel(
+  status: string | null | undefined,
+): string | null {
+  const normalized = normalizeShipmentStatus(status);
+  if (!normalized) return null;
+  return SHIPMENT_STATUS_LABELS[normalized] ?? normalized.replace(/_/g, ' ');
+}
+
 export function extractOrderTracking(order: ShopifyOrderPayload): {
   tracking_url: string | null;
   tracking_number: string | null;
+  shipment_status: string | null;
 } {
   const fulfillments = order.fulfillments ?? [];
 
@@ -81,6 +107,7 @@ export function extractOrderTracking(order: ShopifyOrderPayload): {
       return {
         tracking_url: url,
         tracking_number: fulfillment.tracking_number?.trim() || null,
+        shipment_status: normalizeShipmentStatus(fulfillment.shipment_status),
       };
     }
   }
@@ -88,11 +115,22 @@ export function extractOrderTracking(order: ShopifyOrderPayload): {
   for (const fulfillment of fulfillments) {
     const number = fulfillment.tracking_number?.trim();
     if (number) {
-      return { tracking_url: null, tracking_number: number };
+      return {
+        tracking_url: null,
+        tracking_number: number,
+        shipment_status: normalizeShipmentStatus(fulfillment.shipment_status),
+      };
     }
   }
 
-  return { tracking_url: null, tracking_number: null };
+  for (let i = fulfillments.length - 1; i >= 0; i -= 1) {
+    const status = normalizeShipmentStatus(fulfillments[i]?.shipment_status);
+    if (status) {
+      return { tracking_url: null, tracking_number: null, shipment_status: status };
+    }
+  }
+
+  return { tracking_url: null, tracking_number: null, shipment_status: null };
 }
 
 export function isFulfilledStatus(status: string | null | undefined): boolean {

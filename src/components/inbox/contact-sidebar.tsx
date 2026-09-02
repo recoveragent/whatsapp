@@ -40,6 +40,7 @@ import {
   PanelRightClose,
 } from "lucide-react";
 import {
+  formatShipmentStatusLabel,
   isFulfilledStatus,
 } from "@/lib/shopify/order-links";
 import { Button } from "@/components/ui/button";
@@ -70,6 +71,7 @@ type InboxStoreOrder = {
   product_title?: string | null;
   shipping_address?: string | null;
   fulfillment_status?: string | null;
+  shipment_status?: string | null;
   tracking_url?: string | null;
   tracking_number?: string | null;
   order_status_url?: string | null;
@@ -708,29 +710,39 @@ export function ContactSidebar({
                           (order.tracking_url || order.order_status_url || order.tracking_number) && (
                           <p>
                             Tracking:{" "}
-                            {order.tracking_url ? (
-                              <a
-                                href={order.tracking_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-0.5 text-primary hover:underline"
-                              >
-                                Track shipment
-                                <ExternalLink className="h-3 w-3" />
-                              </a>
-                            ) : order.order_status_url ? (
-                              <a
-                                href={order.order_status_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-0.5 text-primary hover:underline"
-                              >
-                                View order status
-                                <ExternalLink className="h-3 w-3" />
-                              </a>
-                            ) : (
-                              <span className="text-foreground">{order.tracking_number}</span>
-                            )}
+                            <span className="inline-flex flex-wrap items-center gap-x-1">
+                              {order.tracking_url ? (
+                                <a
+                                  href={order.tracking_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-0.5 text-primary hover:underline"
+                                >
+                                  Track shipment
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              ) : order.order_status_url ? (
+                                <a
+                                  href={order.order_status_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-0.5 text-primary hover:underline"
+                                >
+                                  View order status
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              ) : (
+                                <span className="text-foreground">{order.tracking_number}</span>
+                              )}
+                              {order.shipment_status && formatShipmentStatusLabel(order.shipment_status) && (
+                                <>
+                                  <span className="text-muted-foreground">·</span>
+                                  <span className="text-foreground">
+                                    {formatShipmentStatusLabel(order.shipment_status)}
+                                  </span>
+                                </>
+                              )}
+                            </span>
                           </p>
                         )}
                         {!isWooCommerceBrand && order.shipping_address && (

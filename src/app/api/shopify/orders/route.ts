@@ -59,6 +59,7 @@ function mapLiveOrder(
     product_title: inboxFields.product_title,
     shipping_address: inboxFields.shipping_address,
     fulfillment_status: order.fulfillment_status ?? 'unfulfilled',
+    shipment_status: tracking.shipment_status,
     tracking_url: tracking.tracking_url,
     tracking_number: tracking.tracking_number,
     order_status_url: extractOrderStatusUrl(order),

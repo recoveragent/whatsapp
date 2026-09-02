@@ -1,6 +1,6 @@
 import { fetchOrder } from './admin-api';
 import { orderInboxDisplayFields } from './extract-context';
-import { deriveShopifyOrderStatus } from './order-links';
+import { deriveShopifyOrderStatus, extractOrderTracking } from './order-links';
 import type { ShopifyOrderPayload } from './types';
 import type { ShopifyOrder } from '@/types';
 
@@ -9,11 +9,16 @@ export function mergeInboxDisplayFields(
   live: ShopifyOrderPayload,
 ): ShopifyOrder {
   const inbox = orderInboxDisplayFields(live);
+  const tracking = extractOrderTracking(live);
   return {
     ...order,
     order_status: deriveShopifyOrderStatus(live),
     product_title: inbox.product_title ?? order.product_title ?? null,
     shipping_address: inbox.shipping_address ?? order.shipping_address ?? null,
+    fulfillment_status: live.fulfillment_status ?? order.fulfillment_status ?? null,
+    shipment_status: tracking.shipment_status ?? order.shipment_status ?? null,
+    tracking_url: tracking.tracking_url ?? order.tracking_url ?? null,
+    tracking_number: tracking.tracking_number ?? order.tracking_number ?? null,
   };
 }
 

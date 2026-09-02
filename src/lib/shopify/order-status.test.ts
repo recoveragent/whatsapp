@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest'
 import {
   splitPublicUrlForWhatsApp,
   extractOrderStatusUrl,
+  extractOrderTracking,
   deriveShopifyOrderStatus,
   formatShopifyOrderStatusLabel,
+  formatShipmentStatusLabel,
 } from './order-links'
 import {
   buildTemplateParams,
@@ -31,6 +33,33 @@ describe('splitPublicUrlForWhatsApp', () => {
       prefix: null,
       suffix: null,
     })
+  })
+})
+
+describe('extractOrderTracking', () => {
+  it('returns shipment_status from the fulfillment with tracking URL', () => {
+    expect(
+      extractOrderTracking({
+        fulfillments: [
+          {
+            tracking_url: 'https://delhivery.com/track/tf4433',
+            tracking_number: 'tf4433',
+            shipment_status: 'In transit',
+          },
+        ],
+      }),
+    ).toEqual({
+      tracking_url: 'https://delhivery.com/track/tf4433',
+      tracking_number: 'tf4433',
+      shipment_status: 'in_transit',
+    })
+  })
+
+  it('formats shipment status labels for the inbox sidebar', () => {
+    expect(formatShipmentStatusLabel('in_transit')).toBe('In transit')
+    expect(formatShipmentStatusLabel('out_for_delivery')).toBe('Out for delivery')
+    expect(formatShipmentStatusLabel('delivered')).toBe('Delivered')
+    expect(formatShipmentStatusLabel(null)).toBeNull()
   })
 })
 

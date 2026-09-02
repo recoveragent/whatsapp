@@ -59,6 +59,7 @@ export async function syncShopifyOrder(
       shipping_address: inboxFields.shipping_address,
       fulfillment_status:
         (order as { fulfillment_status?: string | null }).fulfillment_status ?? 'unfulfilled',
+      shipment_status: tracking.shipment_status,
       tracking_url: tracking.tracking_url,
       tracking_number: tracking.tracking_number,
       order_status_url: extractOrderStatusUrl(order),

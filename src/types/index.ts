@@ -214,6 +214,8 @@ export interface ShopifyOrder {
   /** Multi-line shipping address for inbox order cards. */
   shipping_address?: string | null;
   fulfillment_status?: string | null;
+  /** Latest Shopify fulfillment shipment_status (in_transit, delivered, …). */
+  shipment_status?: string | null;
   tracking_url?: string | null;
   tracking_number?: string | null;
   /** Customer-facing Shopify order status page (not courier tracking). */
