@@ -1112,7 +1112,7 @@ export function MessageThread({
               type="button"
               onClick={onBack}
               aria-label="Back to conversations"
-              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
@@ -1120,14 +1120,14 @@ export function MessageThread({
           <button
             type="button"
             onClick={handleOpenContact}
-            className="group relative z-10 flex min-w-0 cursor-pointer items-center gap-2 rounded-md text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-3 -ml-1 pl-1 pr-2 py-0.5"
+            className="group relative z-10 flex min-w-0 flex-1 cursor-pointer items-center gap-2 overflow-hidden rounded-md text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-3 -ml-1 pl-1 pr-2 py-0.5"
             aria-label={`Open contact details for ${displayName}`}
             title="Open contact"
           >
-            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
               {displayName.charAt(0).toUpperCase()}
             </div>
-            <div className="min-w-0 pointer-events-none">
+            <div className="min-w-0 flex-1 pointer-events-none">
               <h2 className="truncate text-sm font-semibold text-foreground underline-offset-2 group-hover:underline">
                 {displayName}
               </h2>
@@ -1136,21 +1136,20 @@ export function MessageThread({
               </p>
             </div>
           </button>
-          {/* Session timer badge — hidden on the narrowest phones so
-              the name + back arrow keep their room. */}
+        </div>
+
+        {/* Fixed-width toolbar — badge + actions stay put regardless of name length. */}
+        <div className="flex shrink-0 items-center gap-2">
           <Badge
             variant="outline"
             className={cn(
-              "ml-1 hidden shrink-0 gap-1 border-border text-[10px] sm:inline-flex sm:ml-2",
+              "hidden shrink-0 gap-1 border-border text-[10px] sm:inline-flex",
               sessionInfo.expired ? "text-red-400" : "text-primary"
             )}
           >
             <Clock className="h-3 w-3" />
             {sessionInfo.remaining}
           </Badge>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2">
           {/* Show contact panel — desktop only, when the sidebar is
               collapsed. The hide control lives in the sidebar header.
               Issue #258. */}
@@ -1225,17 +1224,20 @@ export function MessageThread({
             </DropdownMenu>
           </div>
 
-          {/* Assign dropdown */}
+          {/* Assign dropdown — fixed width so Close stays in the same spot. */}
           <DropdownMenu>
             <DropdownMenuTrigger
               className={cn(
-                "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
+                "inline-flex h-7 w-[6.75rem] items-center justify-center gap-1 rounded-md px-2 text-xs hover:bg-muted sm:w-[7.5rem]",
                 assignedAgentId ? "text-primary" : "text-muted-foreground"
               )}
+              title={assignLabel}
             >
-              <UserPlus className="h-3 w-3" />
-              <span className="hidden sm:inline">{assignLabel}</span>
-              <ChevronDown className="h-3 w-3" />
+              <UserPlus className="h-3 w-3 shrink-0" />
+              <span className="hidden min-w-0 flex-1 truncate text-left sm:inline">
+                {assignLabel}
+              </span>
+              <ChevronDown className="h-3 w-3 shrink-0" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
