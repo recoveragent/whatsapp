@@ -696,12 +696,14 @@ export function ContactSidebar({
                             {formatPaymentLabel(order.payment_gateway, order.payment_status)}
                           </span>
                         </p>
-                        <p>
-                          Fulfillment:{" "}
-                          <span className="text-foreground">
-                            {formatFulfillment(order.fulfillment_status)}
-                          </span>
-                        </p>
+                        {!isFulfilledStatus(order.fulfillment_status) && (
+                          <p>
+                            Fulfillment:{" "}
+                            <span className="text-foreground">
+                              {formatFulfillment(order.fulfillment_status)}
+                            </span>
+                          </p>
+                        )}
                         {isFulfilledStatus(order.fulfillment_status) &&
                           (order.tracking_url || order.order_status_url || order.tracking_number) && (
                           <p>
