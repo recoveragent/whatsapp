@@ -593,7 +593,15 @@ export function ContactSidebar({
   ) {
     leadStageSelectItems.push({
       value: primaryDeal.stage_id,
-      label: primaryDeal.stage.name,
+      label: (
+        <span className="flex items-center gap-1.5">
+          <span
+            className="inline-block h-2 w-2 shrink-0 rounded-full"
+            style={{ backgroundColor: primaryDeal.stage.color }}
+          />
+          {primaryDeal.stage.name}
+        </span>
+      ),
     });
   }
 
