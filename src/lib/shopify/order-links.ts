@@ -100,9 +100,15 @@ type FulfillmentTrackingOverride = {
   shipment_status?: string | null;
 };
 
+type OrderTrackingFields = {
+  tracking_url: string | null;
+  tracking_number: string | null;
+  shipment_status: string | null;
+};
+
 function extractTrackingFromFulfillments(
   fulfillments: NonNullable<ShopifyOrderPayload['fulfillments']>,
-): FulfillmentTrackingOverride & { shipment_status: string | null } {
+): OrderTrackingFields {
   for (const fulfillment of fulfillments) {
     const url = fulfillment.tracking_url?.trim();
     if (url) {
@@ -139,11 +145,7 @@ function extractTrackingFromFulfillments(
 export function extractOrderTracking(
   order: ShopifyOrderPayload,
   fulfillmentOverride?: FulfillmentTrackingOverride | null,
-): {
-  tracking_url: string | null;
-  tracking_number: string | null;
-  shipment_status: string | null;
-} {
+): OrderTrackingFields {
   const base = extractTrackingFromFulfillments(order.fulfillments ?? []);
   if (!fulfillmentOverride) return base;
 
