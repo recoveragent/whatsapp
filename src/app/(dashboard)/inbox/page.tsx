@@ -904,7 +904,6 @@ export default function InboxPage() {
             onConversationsLoaded={handleConversationsLoaded}
             onConversationCreated={handleConversationCreated}
             onListViewChange={handleListViewChange}
-            onPatchStatus={patchConversationStatus}
             resyncToken={resyncToken}
           />
         </div>
