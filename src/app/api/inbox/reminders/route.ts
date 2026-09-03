@@ -58,11 +58,13 @@ export async function POST(request: Request) {
       conversation_id?: string
       due_at?: string
       note?: string
+      assignee_id?: string
     }
 
     const conversationId = body.conversation_id?.trim()
     const note = body.note?.trim() ?? ''
     const dueAtRaw = body.due_at?.trim()
+    const assigneeId = body.assignee_id?.trim()
 
     if (!conversationId) {
       return NextResponse.json(
@@ -81,6 +83,12 @@ export async function POST(request: Request) {
     }
     if (!dueAtRaw) {
       return NextResponse.json({ error: 'due_at is required' }, { status: 400 })
+    }
+    if (!assigneeId) {
+      return NextResponse.json(
+        { error: 'assignee_id is required' },
+        { status: 400 },
+      )
     }
 
     const dueAt = new Date(dueAtRaw)
@@ -105,9 +113,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
     }
 
+    const { data: assignee, error: assigneeError } = await ctx.supabase
+      .from('profiles')
+      .select('user_id')
+      .eq('account_id', ctx.accountId)
+      .eq('user_id', assigneeId)
+      .maybeSingle()
+
+    if (assigneeError || !assignee) {
+      return NextResponse.json(
+        { error: 'Assignee must be a member of this account' },
+        { status: 400 },
+      )
+    }
+
     const reminder = await createReminder(ctx.supabase, {
       accountId: ctx.accountId,
       userId: ctx.userId,
+      assigneeId,
       conversationId: conversation.id,
       contactId: conversation.contact_id,
       note,

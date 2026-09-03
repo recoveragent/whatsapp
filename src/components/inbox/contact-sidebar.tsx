@@ -572,6 +572,30 @@ export function ContactSidebar({
   const stagesForPipeline = activePipelineId
     ? pipelineStages.filter((s) => s.pipeline_id === activePipelineId)
     : [];
+  const leadStageSelectItems = [
+    ...stagesForPipeline.map((stage) => ({
+      value: stage.id,
+      label: (
+        <span className="flex items-center gap-1.5">
+          <span
+            className="inline-block h-2 w-2 shrink-0 rounded-full"
+            style={{ backgroundColor: stage.color }}
+          />
+          {stage.name}
+        </span>
+      ),
+    })),
+  ];
+  if (
+    primaryDeal?.stage_id &&
+    !stagesForPipeline.some((s) => s.id === primaryDeal.stage_id) &&
+    primaryDeal.stage
+  ) {
+    leadStageSelectItems.push({
+      value: primaryDeal.stage_id,
+      label: primaryDeal.stage.name,
+    });
+  }
 
   return (
     <div className="flex h-full min-h-0 w-70 flex-col overflow-hidden border-l border-border bg-card">
@@ -832,6 +856,10 @@ export function ContactSidebar({
                       >
                         <p className="text-sm text-foreground">{reminder.note}</p>
                         <p className="mt-1 text-[11px] text-muted-foreground">
+                          Follow up:{" "}
+                          {reminder.assignee?.full_name?.trim() || "Team member"}
+                        </p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
                           {isDue ? "Due" : "Scheduled"}{" "}
                           {format(new Date(reminder.due_at), "PPp")}
                         </p>
@@ -1048,6 +1076,7 @@ export function ContactSidebar({
                   </label>
                   <Select
                     value={primaryDeal?.stage_id || undefined}
+                    items={leadStageSelectItems}
                     onValueChange={(value) => {
                       if (value) void handleStageChange(value);
                     }}

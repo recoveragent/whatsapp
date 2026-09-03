@@ -55,13 +55,16 @@ const STATUS_COLORS: Record<ConversationStatus, string> = {
   followup: "bg-amber-500",
 };
 
-const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = [
-  { label: "All", value: "all" },
-  { label: "Unread", value: "unread" },
+const PRIMARY_FILTERS: { label: string; value: InboxFilter }[] = [
   { label: "Open", value: "open" },
+  { label: "Closed", value: "closed" },
+];
+
+const OTHER_FILTERS: { label: string; value: InboxFilter }[] = [
   { label: "Followup", value: "followup" },
   { label: "Pending", value: "pending" },
-  { label: "Closed", value: "closed" },
+  { label: "Unread", value: "unread" },
+  { label: "All", value: "all" },
 ];
 
 const SORT_OPTIONS: { label: string; value: InboxSortOrder }[] = [
@@ -176,7 +179,7 @@ export function ConversationList({
     setFilter("all");
   }, []);
 
-  const activeFilter = FILTER_OPTIONS.find((o) => o.value === filter);
+  const activeOtherFilter = OTHER_FILTERS.find((o) => o.value === filter);
   const activeSort = SORT_OPTIONS.find((o) => o.value === sort);
 
   return (
@@ -204,32 +207,61 @@ export function ConversationList({
           />
         </div>
 
-        <div className="flex items-center justify-between gap-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
-              {activeFilter?.label ?? "All"}
-              <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="border-border bg-popover"
-            >
-              {FILTER_OPTIONS.map((opt) => (
-                <DropdownMenuItem
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-1">
+            <div className="flex shrink-0 items-center rounded-md bg-muted p-0.5">
+              {PRIMARY_FILTERS.map((opt) => (
+                <button
                   key={opt.value}
+                  type="button"
                   onClick={() => setFilter(opt.value)}
                   className={cn(
-                    "text-sm",
+                    "h-6 rounded-[5px] px-2.5 text-xs font-medium transition-colors",
                     filter === opt.value
-                      ? "text-primary"
-                      : "text-popover-foreground",
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   {opt.label}
-                </DropdownMenuItem>
+                </button>
               ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </div>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={cn(
+                  "inline-flex h-7 max-w-[7rem] shrink-0 items-center justify-center gap-1 rounded-md px-2 text-xs hover:bg-muted hover:text-foreground",
+                  activeOtherFilter
+                    ? "font-medium text-primary"
+                    : "text-muted-foreground",
+                )}
+              >
+                <span className="truncate">
+                  {activeOtherFilter?.label ?? "Others"}
+                </span>
+                <ChevronDown className="h-3 w-3 shrink-0" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="border-border bg-popover"
+              >
+                {OTHER_FILTERS.map((opt) => (
+                  <DropdownMenuItem
+                    key={opt.value}
+                    onClick={() => setFilter(opt.value)}
+                    className={cn(
+                      "text-sm",
+                      filter === opt.value
+                        ? "text-primary"
+                        : "text-popover-foreground",
+                    )}
+                  >
+                    {opt.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
           <DropdownMenu>
             <DropdownMenuTrigger className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">

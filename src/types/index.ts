@@ -285,6 +285,7 @@ export interface InboxReminder {
   conversation_id: string;
   contact_id: string;
   created_by: string;
+  assignee_id: string;
   note: string;
   due_at: string;
   status: InboxReminderStatus;
@@ -292,6 +293,7 @@ export interface InboxReminder {
   created_at: string;
   updated_at: string;
   contact?: { id: string; name?: string | null; phone: string } | null;
+  assignee?: { user_id: string; full_name?: string | null } | null;
 }
 
 export type SenderType = 'customer' | 'agent' | 'bot';

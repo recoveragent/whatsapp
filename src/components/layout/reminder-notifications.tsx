@@ -17,6 +17,7 @@ import type { InboxReminder } from '@/types'
 
 type ReminderRow = InboxReminder & {
   contact?: { id: string; name?: string | null; phone: string } | null
+  assignee?: { user_id: string; full_name?: string | null } | null
 }
 
 type PanelTab = 'due' | 'history'
@@ -27,6 +28,10 @@ function contactLabel(reminder: ReminderRow): string {
     reminder.contact?.phone ||
     'Contact'
   )
+}
+
+function assigneeLabel(reminder: ReminderRow): string {
+  return reminder.assignee?.full_name?.trim() || 'Team member'
 }
 
 function splitDue(pending: ReminderRow[], nowMs: number) {
@@ -198,6 +203,9 @@ export function ReminderNotifications() {
                       <p className="mt-0.5 text-xs text-muted-foreground">{phone}</p>
                       <p className="mt-1 text-sm text-foreground/90">{reminder.note}</p>
                       <p className="mt-1 text-[11px] text-muted-foreground">
+                        Follow up: {assigneeLabel(reminder)}
+                      </p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
                         Due {format(new Date(reminder.due_at), 'PPp')}
                       </p>
                       <p className="mt-1 text-[11px] text-muted-foreground">
@@ -257,6 +265,9 @@ export function ReminderNotifications() {
                       {contactLabel(reminder)}
                     </Link>
                     <p className="mt-1 text-sm text-foreground/90">{reminder.note}</p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Follow up: {assigneeLabel(reminder)}
+                    </p>
                     <p className="mt-1 text-[11px] text-muted-foreground">
                       Completed{' '}
                       {reminder.completed_at

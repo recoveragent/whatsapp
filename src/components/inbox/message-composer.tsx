@@ -39,6 +39,11 @@ import {
   deleteAccountMedia,
   MEDIA_MAX_BYTES_BY_KIND,
 } from "@/lib/storage/upload-media";
+import {
+  clearComposerDraft,
+  loadComposerDraft,
+  saveComposerDraft,
+} from "@/lib/inbox/composer-drafts";
 import { ReplyQuote } from "./reply-quote";
 import type { ConversationPrivateNote } from "@/types";
 
@@ -185,6 +190,10 @@ export function MessageComposer({
   const [sending, setSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const textRef = useRef(text);
+  textRef.current = text;
+  const conversationIdRef = useRef(conversationId);
+  const isFirstConversationEffect = useRef(true);
 
   // Media attachment state. `draft` holds an uploaded-but-not-yet-sent
   // attachment; `busy` covers the upload/transcode window.
@@ -293,6 +302,33 @@ export function MessageComposer({
     el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
   }, []);
 
+  // Restore the saved draft when opening a chat; save the outgoing draft
+  // when switching away so each conversation keeps its own unsent text.
+  useEffect(() => {
+    if (isFirstConversationEffect.current) {
+      isFirstConversationEffect.current = false;
+      const stored = loadComposerDraft(conversationId);
+      if (stored) setText(stored);
+      conversationIdRef.current = conversationId;
+      requestAnimationFrame(() => adjustHeight());
+      return;
+    }
+
+    const prevId = conversationIdRef.current;
+    if (prevId === conversationId) return;
+
+    saveComposerDraft(prevId, textRef.current);
+    setText(loadComposerDraft(conversationId));
+    conversationIdRef.current = conversationId;
+    requestAnimationFrame(() => adjustHeight());
+  }, [conversationId, adjustHeight]);
+
+  useEffect(() => {
+    return () => {
+      saveComposerDraft(conversationIdRef.current, textRef.current);
+    };
+  }, []);
+
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed || sending || sessionExpired) return;
@@ -301,13 +337,14 @@ export function MessageComposer({
     try {
       onSend(trimmed, replyTo?.id);
       setText("");
+      clearComposerDraft(conversationId);
       if (textareaRef.current) {
         textareaRef.current.style.height = "auto";
       }
     } finally {
       setSending(false);
     }
-  }, [text, sending, sessionExpired, onSend, replyTo?.id]);
+  }, [text, sending, sessionExpired, onSend, replyTo?.id, conversationId]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -321,10 +358,12 @@ export function MessageComposer({
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setText(e.target.value);
+      const value = e.target.value;
+      setText(value);
+      saveComposerDraft(conversationId, value);
       adjustHeight();
     },
-    [adjustHeight]
+    [adjustHeight, conversationId]
   );
 
   // Upload a captured file to chat-media and stage it as a draft.

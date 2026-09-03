@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { Bell, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -10,6 +10,13 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -17,7 +24,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { useAuth } from '@/hooks/use-auth'
 import { REMINDER_NOTE_MAX_LENGTH } from '@/lib/inbox/reminders'
+import type { AccountMember } from '@/types'
 
 function toDatetimeLocalValue(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -28,6 +37,14 @@ function defaultDueLocal(): string {
   const d = new Date()
   d.setHours(d.getHours() + 1, 0, 0, 0)
   return toDatetimeLocalValue(d)
+}
+
+function memberLabel(member: AccountMember, currentUserId?: string | null): string {
+  const name = member.full_name?.trim() || member.email?.trim() || member.user_id
+  if (currentUserId && member.user_id === currentUserId) {
+    return `${name} (me)`
+  }
+  return name
 }
 
 interface ScheduleReminderDialogProps {
@@ -45,14 +62,52 @@ export function ScheduleReminderDialog({
   contactLabel,
   onScheduled,
 }: ScheduleReminderDialogProps) {
+  const { user } = useAuth()
   const [dueLocal, setDueLocal] = useState(defaultDueLocal)
   const [note, setNote] = useState('')
+  const [assigneeId, setAssigneeId] = useState('')
+  const [members, setMembers] = useState<AccountMember[]>([])
+  const [membersLoading, setMembersLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   const reset = useCallback(() => {
     setDueLocal(defaultDueLocal())
     setNote('')
-  }, [])
+    setAssigneeId(user?.id ?? '')
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!open) return
+
+    let cancelled = false
+    setMembersLoading(true)
+
+    void (async () => {
+      try {
+        const res = await fetch('/api/account/members', { cache: 'no-store' })
+        if (!res.ok) return
+        const data = (await res.json()) as { members?: AccountMember[] }
+        if (cancelled) return
+        const loaded = data.members ?? []
+        setMembers(loaded)
+        setAssigneeId((prev) => {
+          if (prev && loaded.some((m) => m.user_id === prev)) return prev
+          if (user?.id && loaded.some((m) => m.user_id === user.id)) {
+            return user.id
+          }
+          return loaded[0]?.user_id ?? ''
+        })
+      } catch {
+        // Dialog stays usable; submit will fail if assignee is missing.
+      } finally {
+        if (!cancelled) setMembersLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, user?.id])
 
   const preview = useMemo(() => {
     if (!dueLocal) return null
@@ -69,6 +124,10 @@ export function ScheduleReminderDialog({
     }
     if (trimmed.length > REMINDER_NOTE_MAX_LENGTH) {
       toast.error(`Note must be at most ${REMINDER_NOTE_MAX_LENGTH} characters`)
+      return
+    }
+    if (!assigneeId) {
+      toast.error('Choose who should follow up')
       return
     }
 
@@ -91,6 +150,7 @@ export function ScheduleReminderDialog({
           conversation_id: conversationId,
           due_at: due.toISOString(),
           note: trimmed,
+          assignee_id: assigneeId,
         }),
       })
       if (!res.ok) {
@@ -116,6 +176,7 @@ export function ScheduleReminderDialog({
     }
   }, [
     note,
+    assigneeId,
     dueLocal,
     conversationId,
     onScheduled,
@@ -174,6 +235,38 @@ export function ScheduleReminderDialog({
               {note.trim().length}/{REMINDER_NOTE_MAX_LENGTH}
             </p>
           </div>
+          <div className="grid gap-2">
+            <Label htmlFor="reminder-assignee">Whom to follow up</Label>
+            {membersLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                Loading team…
+              </div>
+            ) : members.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No team members found
+              </p>
+            ) : (
+              <Select
+                value={assigneeId}
+                onValueChange={(value) => {
+                  if (value) setAssigneeId(value)
+                }}
+                disabled={submitting}
+              >
+                <SelectTrigger id="reminder-assignee">
+                  <SelectValue placeholder="Select a team member" />
+                </SelectTrigger>
+                <SelectContent>
+                  {members.map((member) => (
+                    <SelectItem key={member.user_id} value={member.user_id}>
+                      {memberLabel(member, user?.id)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
         </div>
 
         <DialogFooter>
@@ -185,7 +278,11 @@ export function ScheduleReminderDialog({
           >
             Cancel
           </Button>
-          <Button type="button" onClick={() => void handleSubmit()} disabled={submitting}>
+          <Button
+            type="button"
+            onClick={() => void handleSubmit()}
+            disabled={submitting || membersLoading || members.length === 0}
+          >
             {submitting ? (
               <>
                 <Loader2 className="size-4 animate-spin" />

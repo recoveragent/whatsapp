@@ -19,12 +19,24 @@ function resolveContact(
   return Array.isArray(contact) ? contact[0] ?? null : contact
 }
 
+function resolveAssignee(
+  assignee:
+    | { user_id: string; full_name?: string | null }
+    | { user_id: string; full_name?: string | null }[]
+    | null
+    | undefined,
+): ReminderWithContact['assignee'] {
+  if (!assignee) return null
+  return Array.isArray(assignee) ? assignee[0] ?? null : assignee
+}
+
 export function normalizeReminderRow(row: {
   id: string
   account_id: string
   conversation_id: string
   contact_id: string
   created_by: string
+  assignee_id: string
   note: string
   due_at: string
   status: string
@@ -35,6 +47,10 @@ export function normalizeReminderRow(row: {
     | { id: string; name?: string | null; phone: string }
     | { id: string; name?: string | null; phone: string }[]
     | null
+  assignee?:
+    | { user_id: string; full_name?: string | null }
+    | { user_id: string; full_name?: string | null }[]
+    | null
 }): ReminderWithContact {
   return {
     id: row.id,
@@ -42,6 +58,7 @@ export function normalizeReminderRow(row: {
     conversation_id: row.conversation_id,
     contact_id: row.contact_id,
     created_by: row.created_by,
+    assignee_id: row.assignee_id,
     note: row.note,
     due_at: row.due_at,
     status: row.status as InboxReminder['status'],
@@ -49,11 +66,12 @@ export function normalizeReminderRow(row: {
     created_at: row.created_at,
     updated_at: row.updated_at,
     contact: resolveContact(row.contact),
+    assignee: resolveAssignee(row.assignee),
   }
 }
 
 const REMINDER_SELECT =
-  'id, account_id, conversation_id, contact_id, created_by, note, due_at, status, completed_at, created_at, updated_at, contact:contacts(id, name, phone)'
+  'id, account_id, conversation_id, contact_id, created_by, assignee_id, note, due_at, status, completed_at, created_at, updated_at, contact:contacts(id, name, phone), assignee:profiles!inbox_reminders_assignee_id_fkey(user_id, full_name)'
 
 export async function listDueReminders(
   db: SupabaseClient,
@@ -151,6 +169,7 @@ export async function createReminder(
   args: {
     accountId: string
     userId: string
+    assigneeId: string
     conversationId: string
     contactId: string
     note: string
@@ -164,6 +183,7 @@ export async function createReminder(
       conversation_id: args.conversationId,
       contact_id: args.contactId,
       created_by: args.userId,
+      assignee_id: args.assigneeId,
       note: args.note,
       due_at: args.dueAt,
       status: 'pending',
