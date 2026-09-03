@@ -161,16 +161,36 @@ describe('sortInboxConversations', () => {
 });
 
 describe('getNextInboxConversation', () => {
-  it('prefers the row below the closed thread', () => {
+  it('prefers the unread row below the closed thread', () => {
+    const conversations = [
+      { ...sampleConversations[0], id: 'a', unread_count: 0 },
+      { ...sampleConversations[1], id: 'b', unread_count: 1 },
+      { ...sampleConversations[2], id: 'c', unread_count: 0 },
+    ];
     expect(
-      getNextInboxConversation(sampleConversations, 'a', 'open'),
+      getNextInboxConversation(conversations, 'a', 'open'),
     ).toMatchObject({ id: 'b' });
   });
 
-  it('falls back to the row above when closing the last thread', () => {
+  it('skips read rows below and falls back to an unread row above', () => {
+    const conversations = [
+      { ...sampleConversations[0], id: 'a', unread_count: 1 },
+      { ...sampleConversations[1], id: 'b', unread_count: 0 },
+      { ...sampleConversations[2], id: 'c', unread_count: 0 },
+    ];
     expect(
-      getNextInboxConversation(sampleConversations, 'c', 'open'),
-    ).toMatchObject({ id: 'b' });
+      getNextInboxConversation(conversations, 'c', 'open'),
+    ).toMatchObject({ id: 'a' });
+  });
+
+  it('returns null when no unread threads remain', () => {
+    const conversations = sampleConversations.map((c) => ({
+      ...c,
+      unread_count: 0,
+    }));
+    expect(
+      getNextInboxConversation(conversations, 'b', 'open'),
+    ).toBeNull();
   });
 
   it('returns null when closing the only visible thread', () => {

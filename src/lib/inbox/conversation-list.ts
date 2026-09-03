@@ -117,9 +117,14 @@ export function sortInboxConversations<T extends InboxListConversation>(
   return sorted;
 }
 
+function isUnreadInboxConversation(conv: InboxListConversation): boolean {
+  return (conv.unread_count ?? 0) > 0;
+}
+
 /**
- * Pick the next thread to open after closing the current one — prefer the
- * row below in the sidebar, then the row above, else none.
+ * Pick the next unread thread to open after closing the current one — scan
+ * the row below in the sidebar first, then rows above. Threads that were
+ * opened but not replied to (unread_count cleared) are skipped.
  */
 export function getNextInboxConversation<T extends InboxListConversation>(
   conversations: T[],
@@ -135,15 +140,19 @@ export function getNextInboxConversation<T extends InboxListConversation>(
   const idx = filtered.findIndex((c) => c.id === currentId);
 
   if (idx === -1) {
-    return filtered.find((c) => c.id !== currentId) ?? null;
+    return filtered.find((c) => c.id !== currentId && isUnreadInboxConversation(c)) ?? null;
   }
 
-  if (filtered[idx + 1]) {
-    return filtered[idx + 1];
+  for (let i = idx + 1; i < filtered.length; i++) {
+    if (isUnreadInboxConversation(filtered[i])) {
+      return filtered[i];
+    }
   }
 
-  if (idx > 0) {
-    return filtered[idx - 1];
+  for (let i = idx - 1; i >= 0; i--) {
+    if (isUnreadInboxConversation(filtered[i])) {
+      return filtered[i];
+    }
   }
 
   return null;
