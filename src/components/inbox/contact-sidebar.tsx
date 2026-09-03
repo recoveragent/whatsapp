@@ -164,7 +164,10 @@ export function ContactSidebar({
         !cachedOrders.some(
           (order) =>
             order.product_title == null ||
-            /\+\d+ more$/.test(order.product_title?.trim() ?? ""),
+            /\+\d+ more$/.test(order.product_title?.trim() ?? "") ||
+            (isFulfilledStatus(order.fulfillment_status) &&
+              Boolean(order.tracking_url?.trim() || order.tracking_number?.trim()) &&
+              !order.shipment_status?.trim()),
         ));
     if (canUseOrderCache && cachedOrders) {
       setStoreOrders(cachedOrders);

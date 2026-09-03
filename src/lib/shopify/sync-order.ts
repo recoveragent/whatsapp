@@ -11,7 +11,7 @@ import {
   extractOrderStatusUrl,
   extractOrderTracking,
 } from './order-links';
-import type { ShopifyOrderPayload } from './types';
+import type { ShopifyFulfillmentPayload, ShopifyOrderPayload } from './types';
 
 function parseTags(raw: unknown): string[] {
   if (typeof raw !== 'string' || !raw.trim()) return [];
@@ -23,6 +23,7 @@ export async function syncShopifyOrder(
   accountId: string,
   order: ShopifyOrderPayload,
   shopName: string,
+  fulfillmentOverride?: ShopifyFulfillmentPayload | null,
 ): Promise<void> {
   if (!order.id) return;
 
@@ -40,7 +41,7 @@ export async function syncShopifyOrder(
       ? (order as { payment_gateway_names?: string[] }).payment_gateway_names?.[0] ?? null
       : null;
 
-  const tracking = extractOrderTracking(order);
+  const tracking = extractOrderTracking(order, fulfillmentOverride);
   const inboxFields = orderInboxDisplayFields(order);
 
   const { error } = await db.from('shopify_orders').upsert(

@@ -94,13 +94,15 @@ export function formatShipmentStatusLabel(
   return SHIPMENT_STATUS_LABELS[normalized] ?? normalized.replace(/_/g, ' ');
 }
 
-export function extractOrderTracking(order: ShopifyOrderPayload): {
-  tracking_url: string | null;
-  tracking_number: string | null;
-  shipment_status: string | null;
-} {
-  const fulfillments = order.fulfillments ?? [];
+type FulfillmentTrackingOverride = {
+  tracking_number?: string | null;
+  tracking_url?: string | null;
+  shipment_status?: string | null;
+};
 
+function extractTrackingFromFulfillments(
+  fulfillments: NonNullable<ShopifyOrderPayload['fulfillments']>,
+): FulfillmentTrackingOverride & { shipment_status: string | null } {
   for (const fulfillment of fulfillments) {
     const url = fulfillment.tracking_url?.trim();
     if (url) {
@@ -131,6 +133,28 @@ export function extractOrderTracking(order: ShopifyOrderPayload): {
   }
 
   return { tracking_url: null, tracking_number: null, shipment_status: null };
+}
+
+/** Prefer webhook fulfillment fields — REST order payloads often omit shipment_status. */
+export function extractOrderTracking(
+  order: ShopifyOrderPayload,
+  fulfillmentOverride?: FulfillmentTrackingOverride | null,
+): {
+  tracking_url: string | null;
+  tracking_number: string | null;
+  shipment_status: string | null;
+} {
+  const base = extractTrackingFromFulfillments(order.fulfillments ?? []);
+  if (!fulfillmentOverride) return base;
+
+  const overrideStatus = normalizeShipmentStatus(fulfillmentOverride.shipment_status);
+  return {
+    tracking_url:
+      base.tracking_url ?? fulfillmentOverride.tracking_url?.trim() ?? null,
+    tracking_number:
+      base.tracking_number ?? fulfillmentOverride.tracking_number?.trim() ?? null,
+    shipment_status: overrideStatus ?? base.shipment_status,
+  };
 }
 
 export function isFulfilledStatus(status: string | null | undefined): boolean {

@@ -21,6 +21,11 @@ import {
   hydrateLiveOrderPayloads,
   ordersNeedInboxDisplayEnrichment,
 } from '@/lib/shopify/enrich-inbox-orders';
+import {
+  applyLatestShipmentStatuses,
+  loadLatestShipmentStatuses,
+  ordersNeedTrackingRefresh,
+} from '@/lib/shopify/fulfillment-shipment-status';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils';
 import type { ShopifyOrder } from '@/types';
@@ -77,6 +82,21 @@ function enrichOrders(orders: ShopifyOrder[], shopDomain: string | null): Shopif
     ...order,
     admin_url: buildShopifyAdminOrderUrl(shopDomain, order.shopify_order_id),
   }));
+}
+
+async function backfillShipmentStatusFromEvents(
+  accountId: string,
+  orders: ShopifyOrder[],
+): Promise<ShopifyOrder[]> {
+  if (!ordersNeedTrackingRefresh(orders)) return orders;
+
+  const db = supabaseAdmin();
+  const latest = await loadLatestShipmentStatuses(
+    db,
+    accountId,
+    orders.map((order) => order.shopify_order_id),
+  );
+  return applyLatestShipmentStatuses(orders, latest);
 }
 
 async function loadShopDomain(accountId: string): Promise<string | null> {
@@ -283,10 +303,13 @@ export async function GET(req: Request) {
         contactId,
         contact.phone,
       );
+      orders = await backfillShipmentStatusFromEvents(ctx.accountId, orders);
 
       let liveOrders: ShopifyOrderPayload[] = [];
       const needsLive =
-        orders.length === 0 || ordersNeedInboxDisplayEnrichment(orders);
+        orders.length === 0 ||
+        ordersNeedInboxDisplayEnrichment(orders) ||
+        ordersNeedTrackingRefresh(orders);
 
       if (needsLive) {
         try {
@@ -301,6 +324,7 @@ export async function GET(req: Request) {
             contactId,
             contact.phone,
           );
+          orders = await backfillShipmentStatusFromEvents(ctx.accountId, orders);
 
           // Sync wrote rows but cache match missed — return live map once (no second Shopify fetch).
           if (orders.length === 0 && liveOrders.length > 0) {
@@ -315,7 +339,10 @@ export async function GET(req: Request) {
         }
       }
 
-      if (ordersNeedInboxDisplayEnrichment(orders)) {
+      if (
+        ordersNeedInboxDisplayEnrichment(orders) ||
+        ordersNeedTrackingRefresh(orders)
+      ) {
         try {
           const enriched = await enrichCachedOrdersFromShopify(
             ctx.accountId,

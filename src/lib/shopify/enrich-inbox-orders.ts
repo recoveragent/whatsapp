@@ -1,4 +1,5 @@
 import { fetchOrder } from './admin-api';
+import { ordersNeedTrackingRefresh } from './fulfillment-shipment-status';
 import { orderInboxDisplayFields } from './extract-context';
 import { deriveShopifyOrderStatus, extractOrderTracking } from './order-links';
 import type { ShopifyOrderPayload } from './types';
@@ -114,7 +115,7 @@ export async function enrichCachedOrdersFromShopify(
   } | null>,
   fetchByContact?: (accountId: string) => Promise<ShopifyOrderPayload[]>,
 ): Promise<{ orders: ShopifyOrder[]; liveOrders: ShopifyOrderPayload[] }> {
-  if (!ordersNeedInboxDisplayEnrichment(orders)) {
+  if (!ordersNeedInboxDisplayEnrichment(orders) && !ordersNeedTrackingRefresh(orders)) {
     return { orders, liveOrders: [] };
   }
 

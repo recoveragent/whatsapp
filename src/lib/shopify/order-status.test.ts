@@ -55,6 +55,26 @@ describe('extractOrderTracking', () => {
     })
   })
 
+  it('prefers webhook fulfillment shipment_status over REST order payload', () => {
+    expect(
+      extractOrderTracking(
+        {
+          fulfillments: [
+            {
+              tracking_url: 'https://delhivery.com/track/tf4433',
+              tracking_number: 'tf4433',
+            },
+          ],
+        },
+        { shipment_status: 'Out for delivery' },
+      ),
+    ).toEqual({
+      tracking_url: 'https://delhivery.com/track/tf4433',
+      tracking_number: 'tf4433',
+      shipment_status: 'out_for_delivery',
+    })
+  })
+
   it('formats shipment status labels for the inbox sidebar', () => {
     expect(formatShipmentStatusLabel('in_transit')).toBe('In transit')
     expect(formatShipmentStatusLabel('out_for_delivery')).toBe('Out for delivery')

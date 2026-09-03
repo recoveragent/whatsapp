@@ -189,7 +189,13 @@ async function handleFulfillment(
         fulfillment.order_id,
       )) as ShopifyOrderPayload;
       if (order) {
-        await syncShopifyOrder(db, config.account_id, order, shopName);
+        await syncShopifyOrder(
+          db,
+          config.account_id,
+          order,
+          shopName,
+          fulfillment,
+        );
       }
     } catch (err) {
       console.warn('[shopify] fetch order for fulfillment failed:', err);
