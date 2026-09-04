@@ -23,6 +23,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { extractVariableIndices } from "@/lib/whatsapp/template-validators";
+import { normalizeTemplateButtons } from "@/lib/flows/template-buttons";
+import { TemplateMobilePreview } from "@/components/shared/template-mobile-preview";
 
 export interface TemplateSendValues {
   body: string[];
@@ -244,15 +246,31 @@ export function TemplatePicker({
         ) : (
           <div className="space-y-3">
             <div className="rounded-md border border-border bg-background/50 p-3">
-              <p className="mb-1 text-xs text-muted-foreground">Preview</p>
-              <p className="whitespace-pre-wrap text-sm text-popover-foreground">
-                {renderBodyPreview(selected.body_text, params)}
-              </p>
-              {selected.footer_text && (
-                <p className="mt-2 text-xs italic text-muted-foreground">
-                  {selected.footer_text}
-                </p>
-              )}
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <p className="text-xs font-medium text-popover-foreground">Preview</p>
+                <Badge className="border border-primary/30 bg-primary/20 text-[10px] text-primary">
+                  {selected.category}
+                </Badge>
+                <span className="text-[10px] text-muted-foreground">
+                  As seen on customer&apos;s phone
+                </span>
+              </div>
+              <TemplateMobilePreview
+                bodyText={renderBodyPreview(selected.body_text, params)}
+                headerType={selected.header_type}
+                headerContent={
+                  selected.header_type === "text" && selected.header_content
+                    ? selected.header_content.replace(
+                        /\{\{(\d+)\}\}/g,
+                        (_, n) =>
+                          n === "1" ? headerText.trim() || `{{${n}}}` : `{{${n}}}`,
+                      )
+                    : null
+                }
+                headerMediaUrl={selected.header_media_url}
+                footerText={selected.footer_text}
+                buttons={normalizeTemplateButtons(selected.buttons)}
+              />
             </div>
             {slots && slots.headerVarCount > 0 && (
               <div className="space-y-1">

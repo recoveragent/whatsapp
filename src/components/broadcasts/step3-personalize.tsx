@@ -13,6 +13,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ArrowLeft, ArrowRight, Eye, ImageIcon, Loader2 } from 'lucide-react';
+import { normalizeTemplateButtons } from '@/lib/flows/template-buttons';
+import { TemplateMobilePreview } from '@/components/shared/template-mobile-preview';
 
 type VariableType = 'static' | 'field' | 'custom_field';
 
@@ -271,16 +273,6 @@ export function Step3Personalize({
             Public URL of the {mediaHeaderType} sent as the message header.
             Used for every recipient in this broadcast.
           </p>
-          {mediaHeaderType === 'image' &&
-            headerMediaError === null &&
-            headerMediaUrl.trim() && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={headerMediaUrl.trim()}
-                alt="Header preview"
-                className="mt-3 max-h-40 rounded-lg border border-border object-contain"
-              />
-            )}
           {headerMediaError && (
             <p className="mt-1.5 text-xs text-amber-300">
               {headerMediaError === 'missing'
@@ -407,8 +399,7 @@ export function Step3Personalize({
         </div>
       )}
 
-      {/* Live Preview — rendered as a WhatsApp-style bubble so the user
-          sees approximately what the recipient will see. */}
+      {/* Live Preview — mobile mockup approximating the recipient view. */}
       <div className="rounded-xl border border-border bg-card/50 p-4">
         <div className="mb-3 flex items-center gap-2">
           <Eye className="h-4 w-4 text-primary" />
@@ -418,13 +409,16 @@ export function Step3Personalize({
             <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
           )}
         </div>
-        <div className="rounded-lg bg-[#0e1a12] p-3">
-          <div className="ml-auto max-w-[85%] rounded-lg bg-primary/30 px-3 py-2 shadow-sm">
-            <p className="whitespace-pre-wrap text-sm text-primary">
-              {previewText}
-            </p>
-          </div>
-        </div>
+        <TemplateMobilePreview
+          bodyText={previewText}
+          headerType={template.header_type}
+          headerContent={template.header_content}
+          headerMediaUrl={
+            mediaHeaderType ? headerMediaUrl.trim() || template.header_media_url : null
+          }
+          footerText={template.footer_text}
+          buttons={normalizeTemplateButtons(template.buttons)}
+        />
       </div>
 
       {unmappedKeys.length > 0 && (

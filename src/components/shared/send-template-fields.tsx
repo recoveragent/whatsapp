@@ -29,6 +29,7 @@ import {
   type TemplateQuickReplyButton,
 } from "@/lib/flows/template-buttons";
 import { TemplateVariablePicker } from "@/components/shared/template-variable-picker";
+import { TemplateMobilePreview } from "@/components/shared/template-mobile-preview";
 import { NextNodeRow } from "@/components/flows/forms/fields";
 import type { BuilderNode } from "@/components/flows/shared";
 import {
@@ -632,7 +633,7 @@ export function SendTemplateFields({
       {selectedTemplate && (
         <>
           <div className="rounded-md border border-border bg-muted/30 p-3">
-            <div className="mb-2 flex flex-wrap items-center gap-2">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
               <p className="text-xs font-medium text-foreground">Preview</p>
               <Badge
                 variant="outline"
@@ -640,91 +641,45 @@ export function SendTemplateFields({
               >
                 {selectedTemplate.category}
               </Badge>
+              <span className="text-[10px] text-muted-foreground">
+                As seen on customer&apos;s phone
+              </span>
             </div>
-            {selectedTemplate.header_type === "text" &&
-              selectedTemplate.header_content && (
-                <p className="mb-1 text-sm font-semibold text-foreground">
-                  {selectedTemplate.header_content.replace(
-                    /\{\{(\d+)\}\}/g,
-                    (_, n) => variables[`header_${n}`]?.trim() || `{{${n}}}`,
-                  )}
-                </p>
-              )}
-            {isMediaHeaderType(selectedTemplate.header_type) && (
-              <div className="mb-2">
-                <Badge
-                  variant="outline"
-                  className="mb-1.5 border-primary/30 text-[10px] uppercase text-primary"
-                >
-                  {selectedTemplate.header_type} header
-                </Badge>
-                {selectedTemplate.header_type === "image" &&
-                  (variables.header_media?.trim() ||
-                    selectedTemplate.header_media_url) && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={
-                        variables.header_media?.match(
-                          /^\{\{\s*vars\.[\w.]+\s*\}\}$/,
-                        )
-                          ? selectedTemplate.header_media_url ?? undefined
-                          : variables.header_media?.trim() ||
-                            selectedTemplate.header_media_url ||
-                            undefined
-                      }
-                      alt="Header preview"
-                      className="max-h-28 rounded border border-border object-contain"
-                    />
-                  )}
-              </div>
-            )}
-            <p className="whitespace-pre-wrap text-sm text-foreground">
-              {renderPreviewBody(selectedTemplate.body_text, variables)}
-            </p>
-            {selectedTemplate.footer_text && (
-              <p className="mt-2 text-xs italic text-muted-foreground">
-                {selectedTemplate.footer_text}
-              </p>
-            )}
-            {hasQuickReplies && (
-              <div className="mt-3 space-y-1 border-t border-border pt-2">
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Quick reply buttons
-                </p>
-                {quickReplies.map((b) => (
-                  <div
-                    key={b.reply_id}
-                    className="rounded border border-border bg-background/60 px-2 py-1 text-center text-xs text-foreground"
-                  >
-                    {b.title}
-                  </div>
-                ))}
-              </div>
-            )}
+            <TemplateMobilePreview
+              bodyText={renderPreviewBody(selectedTemplate.body_text, variables)}
+              headerType={selectedTemplate.header_type}
+              headerContent={
+                selectedTemplate.header_type === "text" &&
+                selectedTemplate.header_content
+                  ? selectedTemplate.header_content.replace(
+                      /\{\{(\d+)\}\}/g,
+                      (_, n) => variables[`header_${n}`]?.trim() || `{{${n}}}`,
+                    )
+                  : null
+              }
+              headerMediaUrl={
+                isMediaHeaderType(selectedTemplate.header_type)
+                  ? variables.header_media?.match(/^\{\{\s*vars\.[\w.]+\s*\}\}$/)
+                    ? selectedTemplate.header_media_url ?? null
+                    : variables.header_media?.trim() ||
+                      selectedTemplate.header_media_url ||
+                      null
+                  : null
+              }
+              footerText={selectedTemplate.footer_text}
+              buttons={normalizeTemplateButtons(selectedTemplate.buttons)}
+            />
             {!hasQuickReplies && otherButtons.length > 0 && (
-              <div className="mt-3 space-y-1 border-t border-border pt-2">
-                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Template buttons (URL / call — no branch)
-                </p>
-                {otherButtons.map((b) => (
-                  <div
-                    key={`${b.type}-${b.text}`}
-                    className="rounded border border-dashed border-border bg-background/40 px-2 py-1 text-center text-xs text-muted-foreground"
-                  >
-                    {b.text} ({b.type.replace("_", " ").toLowerCase()})
-                  </div>
-                ))}
-                <p className="text-[10px] text-muted-foreground">
-                  Only quick-reply buttons can branch the flow. Re-sync templates
-                  in Settings → Templates if quick replies are missing.
-                </p>
-              </div>
+              <p className="mt-3 text-[10px] text-muted-foreground">
+                Only quick-reply buttons can branch the flow. Re-sync templates
+                in Settings → Templates if quick replies are missing.
+              </p>
             )}
             {!hasQuickReplies &&
               otherButtons.length === 0 &&
               selectedTemplate &&
               !normalizeTemplateButtons(selectedTemplate.buttons).length && (
-                <div className="mt-2 space-y-2">
+                <div className="mt-3 space-y-2">
                   <p className="text-[10px] text-muted-foreground">
                     This template has no quick-reply buttons, so the flow can only
                     continue to one next step after send. Pick a template with
