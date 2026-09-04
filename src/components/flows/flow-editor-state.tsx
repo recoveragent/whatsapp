@@ -50,7 +50,7 @@ import {
   validateFlowForActivation,
   type ValidationIssue,
 } from "@/lib/flows/validate";
-import { unlinkNodeReferences } from "@/lib/flows/edges";
+import { renameNodeReferences, unlinkNodeReferences } from "@/lib/flows/edges";
 import type { FlowNodeRow, FlowRow } from "@/lib/flows/types";
 import type { FlowTriggerType } from "@/lib/flows/trigger-types";
 import {
@@ -106,6 +106,8 @@ export interface FlowEditorContextValue {
   /** Deep-clone a node (config + offset position). Does not change entry. */
   duplicateNode: (key: string) => string | null;
   updateNode: (key: string, patch: Partial<BuilderNode>) => void;
+  /** Rename a node key and rewrite inbound edge references. Returns the new key, or null on failure. */
+  renameNode: (oldKey: string, rawNewKey: string) => string | null;
   updateNodeConfig: (key: string, patch: Record<string, unknown>) => void;
   updateNodePosition: (key: string, x: number, y: number) => void;
   updateNodePositions: (
@@ -524,6 +526,44 @@ export function FlowEditorProvider({
     [setState],
   );
 
+  const renameNode = useCallback(
+    (oldKey: string, rawNewKey: string): string | null => {
+      const newKey = slugify(rawNewKey, oldKey);
+      if (!newKey || newKey === oldKey) return oldKey;
+
+      let rejected = false;
+      setState((s) => {
+        if (!s.nodes.some((n) => n.node_key === oldKey)) return s;
+        if (s.nodes.some((n) => n.node_key === newKey && n.node_key !== oldKey)) {
+          rejected = true;
+          return s;
+        }
+
+        const routes = { ...shipmentRoutesFromConfig(s.trigger_config) };
+        for (const [status, next] of Object.entries(routes)) {
+          if (next === oldKey) routes[status] = newKey;
+        }
+
+        return {
+          ...s,
+          nodes: renameNodeReferences(s.nodes, oldKey, newKey),
+          entry_node_id: s.entry_node_id === oldKey ? newKey : s.entry_node_id,
+          trigger_config: {
+            ...s.trigger_config,
+            shipment_routes: routes,
+          },
+        };
+      });
+
+      if (rejected) {
+        toast.error(`Node name "${newKey}" is already in use.`);
+        return null;
+      }
+      return newKey;
+    },
+    [setState],
+  );
+
   const updateNodeConfig = useCallback(
     (key: string, configPatch: Record<string, unknown>) => {
       setState((s) => ({
@@ -648,6 +688,7 @@ export function FlowEditorProvider({
       addNode,
       duplicateNode,
       updateNode,
+      renameNode,
       updateNodeConfig,
       updateNodePosition,
       updateNodePositions,
@@ -670,6 +711,7 @@ export function FlowEditorProvider({
       addNode,
       duplicateNode,
       updateNode,
+      renameNode,
       updateNodeConfig,
       updateNodePosition,
       updateNodePositions,

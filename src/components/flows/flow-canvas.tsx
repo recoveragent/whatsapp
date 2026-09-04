@@ -98,6 +98,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useFlowEditor } from "./flow-editor-state";
 import { NodeConfigForm } from "./forms/node-config-form";
+import { NodeKeyField } from "./node-key-field";
 import {
   TRIGGER_NODE_ID,
   TriggerPanel,
@@ -333,6 +334,7 @@ function FlowCanvasInner() {
     updateNodePositions,
     removeNode,
     duplicateNode,
+    renameNode,
     flashKey,
   } = useFlowEditor();
   const reactFlow = useReactFlow();
@@ -709,6 +711,18 @@ function FlowCanvasInner() {
     if (newKey) setSelectedNodeKey(newKey);
   }, [selectedNodeKey, duplicateNode]);
 
+  const handleRenameSelected = useCallback(
+    (newKey: string): string | null => {
+      if (!selectedNodeKey || selectedNodeKey === TRIGGER_NODE_ID) return null;
+      const result = renameNode(selectedNodeKey, newKey);
+      if (result && result !== selectedNodeKey) {
+        setSelectedNodeKey(result);
+      }
+      return result;
+    },
+    [selectedNodeKey, renameNode],
+  );
+
   // Ctrl/Cmd+D duplicates the selected canvas node. Skip when focus is
   // in a form field so we don't fight typing / browser bookmark dialogs
   // while editing config in the sheet.
@@ -797,6 +811,7 @@ function FlowCanvasInner() {
         triggerConfig={state.trigger_config}
         onClose={() => setSelectedNodeKey(null)}
         onUpdateConfig={onSelectedUpdateConfig}
+        onRename={handleRenameSelected}
         onDuplicate={handleDuplicateSelected}
         onDelete={handleDeleteSelected}
       />
@@ -866,6 +881,7 @@ function NodeEditPanelBody({
   triggerType,
   triggerConfig,
   onUpdateConfig,
+  onRename,
   onDuplicate,
   onDelete,
 }: {
@@ -874,6 +890,7 @@ function NodeEditPanelBody({
   triggerType: import("./flow-editor-state").BuilderState["trigger_type"];
   triggerConfig: import("./flow-editor-state").BuilderState["trigger_config"];
   onUpdateConfig: (patch: Record<string, unknown>) => void;
+  onRename: (newKey: string) => string | null;
   onDuplicate: () => void;
   onDelete: () => void;
 }) {
@@ -887,9 +904,11 @@ function NodeEditPanelBody({
           <Icon className={cn("h-4 w-4 shrink-0", meta.color)} />
           <span className="font-heading text-base font-medium">{meta.label}</span>
         </div>
-        <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-          {node.node_key}
-        </p>
+        <NodeKeyField
+          nodeKey={node.node_key}
+          onRename={onRename}
+          className="mt-3"
+        />
       </div>
 
       <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
@@ -931,6 +950,7 @@ function NodeEditSheet({
   triggerConfig,
   onClose,
   onUpdateConfig,
+  onRename,
   onDuplicate,
   onDelete,
 }: {
@@ -940,6 +960,7 @@ function NodeEditSheet({
   triggerConfig: import("./flow-editor-state").BuilderState["trigger_config"];
   onClose: () => void;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
+  onRename: (newKey: string) => string | null;
   onDuplicate: () => void;
   onDelete: () => void;
 }) {
@@ -966,6 +987,7 @@ function NodeEditSheet({
             triggerType={triggerType}
             triggerConfig={triggerConfig}
             onUpdateConfig={onUpdateConfig}
+            onRename={onRename}
             onDuplicate={onDuplicate}
             onDelete={onDelete}
           />
@@ -995,9 +1017,11 @@ function NodeEditSheet({
             <Icon className={cn("h-4 w-4 shrink-0", meta.color)} />
             <span>{meta.label}</span>
           </SheetTitle>
-          <SheetDescription className="font-mono text-[11px] text-muted-foreground">
-            {node.node_key}
-          </SheetDescription>
+          <NodeKeyField
+            nodeKey={node.node_key}
+            onRename={onRename}
+            className="mt-3"
+          />
         </SheetHeader>
 
         <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">

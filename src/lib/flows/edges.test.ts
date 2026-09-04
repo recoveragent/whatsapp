@@ -3,6 +3,7 @@ import {
   applyEdgeConnection,
   deriveCanvasEdges,
   outgoingSlots,
+  renameNodeReferences,
   unlinkNodeReferences,
 } from "./edges";
 import type { BuilderNode } from "@/components/flows/shared";
@@ -635,6 +636,130 @@ describe("unlinkNodeReferences", () => {
     expect(after).toHaveLength(2);
     expect(after[0]).toBe(nodes[0]);
     expect(after[1]).toBe(nodes[1]);
+  });
+});
+
+describe("renameNodeReferences", () => {
+  it("renames the node and rewrites next_node_key references", () => {
+    const before: BuilderNode[] = [
+      {
+        node_key: "old_name",
+        node_type: "send_template",
+        config: { template_name: "t", next_node_key: "end" },
+      },
+      {
+        node_key: "a",
+        node_type: "send_message",
+        config: { text: "hi", next_node_key: "old_name" },
+      },
+      { node_key: "end", node_type: "end", config: {} },
+    ];
+    const after = renameNodeReferences(before, "old_name", "in_transit");
+    expect(after.find((n) => n.node_key === "in_transit")).toBeDefined();
+    expect(after.find((n) => n.node_key === "old_name")).toBeUndefined();
+    expect(
+      (after.find((n) => n.node_key === "a")!.config as { next_node_key: string })
+        .next_node_key,
+    ).toBe("in_transit");
+    expect(
+      (
+        after.find((n) => n.node_key === "in_transit")!.config as {
+          next_node_key: string;
+        }
+      ).next_node_key,
+    ).toBe("end");
+  });
+
+  it("rewrites condition, switch, button, list, and timeout refs", () => {
+    const before: BuilderNode[] = [
+      {
+        node_key: "victim",
+        node_type: "end",
+        config: {},
+      },
+      {
+        node_key: "c",
+        node_type: "condition",
+        config: { true_next: "victim", false_next: "safe" },
+      },
+      {
+        node_key: "sw",
+        node_type: "switch",
+        config: {
+          default_next: "victim",
+          branches: [{ branch_id: "b1", next_node_key: "victim" }],
+        },
+      },
+      {
+        node_key: "m",
+        node_type: "send_buttons",
+        config: {
+          text: "x",
+          buttons: [{ reply_id: "a", title: "A", next_node_key: "victim" }],
+        },
+      },
+      {
+        node_key: "l",
+        node_type: "send_list",
+        config: {
+          sections: [{ rows: [{ reply_id: "r1", next_node_key: "victim" }] }],
+        },
+      },
+      {
+        node_key: "prompt",
+        node_type: "collect_input",
+        config: {
+          prompt_text: "Name?",
+          var_key: "name",
+          next_node_key: "safe",
+          reply_timeout_next_node_key: "victim",
+        },
+      },
+      { node_key: "safe", node_type: "end", config: {} },
+    ];
+    const after = renameNodeReferences(before, "victim", "renamed");
+    expect(after.find((n) => n.node_key === "renamed")).toBeDefined();
+    expect(
+      (after.find((n) => n.node_key === "c")!.config as { true_next: string })
+        .true_next,
+    ).toBe("renamed");
+    expect(
+      (after.find((n) => n.node_key === "sw")!.config as { default_next: string })
+        .default_next,
+    ).toBe("renamed");
+    expect(
+      (
+        after.find((n) => n.node_key === "m")!.config as {
+          buttons: Array<{ next_node_key: string }>;
+        }
+      ).buttons[0].next_node_key,
+    ).toBe("renamed");
+    expect(
+      (
+        after.find((n) => n.node_key === "l")!.config as {
+          sections: Array<{ rows: Array<{ next_node_key: string }> }>;
+        }
+      ).sections[0].rows[0].next_node_key,
+    ).toBe("renamed");
+    expect(
+      (
+        after.find((n) => n.node_key === "prompt")!.config as {
+          reply_timeout_next_node_key: string;
+        }
+      ).reply_timeout_next_node_key,
+    ).toBe("renamed");
+  });
+
+  it("returns the input nodes by identity when old and new keys match", () => {
+    const nodes: BuilderNode[] = [
+      {
+        node_key: "a",
+        node_type: "send_message",
+        config: { text: "hi", next_node_key: "b" },
+      },
+    ];
+    const after = renameNodeReferences(nodes, "a", "a");
+    expect(after).toBe(nodes);
   });
 });
 

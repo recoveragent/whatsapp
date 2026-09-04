@@ -594,6 +594,181 @@ export function unlinkNodeReferences(
   });
 }
 
+/**
+ * Rename a node and rewrite every inbound `next_node_key` (and related
+ * branch refs) that pointed at `oldKey` so they now point at `newKey`.
+ *
+ * Returns a new array; nodes without matching references pass through
+ * by identity when only the renamed node's key changes.
+ */
+export function renameNodeReferences(
+  nodes: BuilderNode[],
+  oldKey: string,
+  newKey: string,
+): BuilderNode[] {
+  if (oldKey === newKey) return nodes;
+  return nodes.map((n) => {
+    if (n.node_key === oldKey) {
+      return { ...n, node_key: newKey };
+    }
+    const patched = patchedConfigRenamedKey(n, oldKey, newKey);
+    if (!patched) return n;
+    return { ...n, config: patched };
+  });
+}
+
+function patchedConfigRenamedKey(
+  node: BuilderNode,
+  oldKey: string,
+  newKey: string,
+): Record<string, unknown> | null {
+  const cfg = node.config;
+  const timeoutNext = (cfg as { reply_timeout_next_node_key?: string })
+    .reply_timeout_next_node_key;
+  const timeoutMatch =
+    timeoutNext === oldKey && nodeTypeHasReplyTimeoutSlot(node.node_type);
+
+  const inner = patchedConfigRenamedKeyInner(node, oldKey, newKey);
+  if (!inner && !timeoutMatch) return null;
+  if (timeoutMatch) {
+    return { ...(inner ?? cfg), reply_timeout_next_node_key: newKey };
+  }
+  return inner;
+}
+
+function patchedConfigRenamedKeyInner(
+  node: BuilderNode,
+  oldKey: string,
+  newKey: string,
+): Record<string, unknown> | null {
+  const cfg = node.config;
+  switch (node.node_type) {
+    case "start":
+    case "send_message":
+    case "send_media":
+    case "wait":
+    case "send_webhook":
+    case "http_fetch":
+    case "update_contact_field":
+    case "assign_conversation":
+    case "create_deal":
+    case "close_conversation":
+    case "collect_input":
+    case "send_address":
+    case "send_flow":
+    case "set_tag": {
+      const next = (cfg as { next_node_key?: string }).next_node_key;
+      if (next !== oldKey) return null;
+      return { ...cfg, next_node_key: newKey };
+    }
+
+    case "send_template": {
+      const next = (cfg as { next_node_key?: string }).next_node_key;
+      const buttons = Array.isArray((cfg as { buttons?: unknown }).buttons)
+        ? (cfg as { buttons: Array<Record<string, unknown>> }).buttons
+        : [];
+      const nextMatch = next === oldKey;
+      const buttonMatch = buttons.some((b) => b.next_node_key === oldKey);
+      if (!nextMatch && !buttonMatch) return null;
+      return {
+        ...cfg,
+        ...(nextMatch ? { next_node_key: newKey } : {}),
+        ...(buttonMatch
+          ? {
+              buttons: buttons.map((b) =>
+                b.next_node_key === oldKey
+                  ? { ...b, next_node_key: newKey }
+                  : b,
+              ),
+            }
+          : {}),
+      };
+    }
+
+    case "condition": {
+      const c = cfg as { true_next?: string; false_next?: string };
+      const trueMatch = c.true_next === oldKey;
+      const falseMatch = c.false_next === oldKey;
+      if (!trueMatch && !falseMatch) return null;
+      return {
+        ...cfg,
+        ...(trueMatch ? { true_next: newKey } : {}),
+        ...(falseMatch ? { false_next: newKey } : {}),
+      };
+    }
+
+    case "switch": {
+      const c = cfg as {
+        default_next?: string;
+        branches?: Array<{ next_node_key?: string }>;
+      };
+      const defaultMatch = c.default_next === oldKey;
+      const branches = Array.isArray(c.branches) ? c.branches : [];
+      const branchMatch = branches.some((b) => b.next_node_key === oldKey);
+      if (!defaultMatch && !branchMatch) return null;
+      return {
+        ...cfg,
+        ...(defaultMatch ? { default_next: newKey } : {}),
+        ...(branchMatch
+          ? {
+              branches: branches.map((b) =>
+                b.next_node_key === oldKey
+                  ? { ...b, next_node_key: newKey }
+                  : b,
+              ),
+            }
+          : {}),
+      };
+    }
+
+    case "send_buttons": {
+      const buttons = Array.isArray((cfg as { buttons?: unknown }).buttons)
+        ? (cfg as {
+            buttons: Array<Record<string, unknown>>;
+          }).buttons
+        : [];
+      if (!buttons.some((b) => b.next_node_key === oldKey)) return null;
+      return {
+        ...cfg,
+        buttons: buttons.map((b) =>
+          b.next_node_key === oldKey ? { ...b, next_node_key: newKey } : b,
+        ),
+      };
+    }
+
+    case "send_list": {
+      const sections = Array.isArray((cfg as { sections?: unknown }).sections)
+        ? (cfg as {
+            sections: Array<Record<string, unknown>>;
+          }).sections
+        : [];
+      let dirty = false;
+      const next = sections.map((s) => {
+        const rows = Array.isArray(s.rows)
+          ? (s.rows as Array<Record<string, unknown>>)
+          : [];
+        return {
+          ...s,
+          rows: rows.map((r) => {
+            if (r.next_node_key === oldKey) {
+              dirty = true;
+              return { ...r, next_node_key: newKey };
+            }
+            return r;
+          }),
+        };
+      });
+      return dirty ? { ...cfg, sections: next } : null;
+    }
+
+    case "handoff":
+    case "end":
+      return null;
+    default:
+      return null;
+  }
+}
+
 function patchedConfigWithoutKey(
   node: BuilderNode,
   deletedKey: string,
