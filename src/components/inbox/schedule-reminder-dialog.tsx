@@ -116,6 +116,15 @@ export function ScheduleReminderDialog({
     return format(d, 'PPp')
   }, [dueLocal])
 
+  const memberSelectItems = useMemo(
+    () =>
+      members.map((member) => ({
+        value: member.user_id,
+        label: memberLabel(member, user?.id),
+      })),
+    [members, user?.id],
+  )
+
   const handleSubmit = useCallback(async () => {
     const trimmed = note.trim()
     if (!trimmed) {
@@ -249,6 +258,7 @@ export function ScheduleReminderDialog({
             ) : (
               <Select
                 value={assigneeId}
+                items={memberSelectItems}
                 onValueChange={(value) => {
                   if (value) setAssigneeId(value)
                 }}
