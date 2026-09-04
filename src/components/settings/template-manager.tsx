@@ -52,6 +52,7 @@ import {
   extractVariableIndices,
   TEMPLATE_LIMITS,
 } from '@/lib/whatsapp/template-validators';
+import { TemplateMobilePreview } from '@/components/shared/template-mobile-preview';
 
 const CATEGORIES = ['Marketing', 'Utility', 'Authentication'] as const;
 type HeaderFormat = 'none' | 'text' | 'image' | 'video' | 'document';
@@ -124,6 +125,20 @@ function emptyButton(type: TemplateButton['type']): TemplateButton {
   }
 }
 
+function renderFormPreviewBody(body: string, samples: string[]): string {
+  return body.replace(/\{\{(\d+)\}\}/g, (_, n) => {
+    const idx = Number(n) - 1;
+    const value = samples[idx]?.trim();
+    return value || `{{${n}}}`;
+  });
+}
+
+function renderFormPreviewHeader(header: string, sample: string): string {
+  return header.replace(/\{\{(\d+)\}\}/g, (_, n) =>
+    n === '1' ? sample.trim() || `{{${n}}}` : `{{${n}}}`,
+  );
+}
+
 export function TemplateManager() {
   const supabase = createClient();
   const { accountId, loading: authLoading, profileLoading } = useAuth();
@@ -164,6 +179,31 @@ export function TemplateManager() {
         : 0,
     [form.header_format, form.header_content],
   );
+
+  const previewBodyText = useMemo(
+    () => renderFormPreviewBody(form.body_text, form.body_samples),
+    [form.body_text, form.body_samples],
+  );
+
+  const previewHeaderContent = useMemo(() => {
+    if (form.header_format !== 'text' || !form.header_content.trim()) {
+      return null;
+    }
+    return renderFormPreviewHeader(form.header_content, form.header_sample);
+  }, [form.header_format, form.header_content, form.header_sample]);
+
+  const previewButtons = useMemo(
+    () => form.buttons.filter((button) => button.text.trim()),
+    [form.buttons],
+  );
+
+  const previewHeaderType =
+    form.header_format === 'none' ? null : form.header_format;
+
+  const previewHeaderMediaUrl =
+    form.header_format !== 'none' && form.header_format !== 'text'
+      ? form.header_media_url.trim() || null
+      : null;
 
   // Resize body_samples so it always has exactly bodyVarCount entries.
   // (We mutate via setForm in an effect so React owns the state.)
@@ -853,12 +893,9 @@ export function TemplateManager() {
                     className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
                   />
                   {form.header_format === 'image' && form.header_media_url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={form.header_media_url}
-                      alt="Header sample"
-                      className="max-h-28 rounded-md border border-border object-contain"
-                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Header image shown in the preview below.
+                    </p>
                   )}
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
                     {form.header_format === 'image'
@@ -1086,6 +1123,31 @@ export function TemplateManager() {
                 </div>
               )}
             </div>
+
+            {form.category !== 'Authentication' && (
+              <div className="rounded-md border border-border bg-muted/30 p-3">
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-medium text-foreground">Preview</p>
+                  <Badge
+                    variant="outline"
+                    className="border-primary/30 text-[10px] text-primary"
+                  >
+                    {form.category}
+                  </Badge>
+                  <span className="text-[10px] text-muted-foreground">
+                    As seen on customer&apos;s phone
+                  </span>
+                </div>
+                <TemplateMobilePreview
+                  bodyText={previewBodyText.trim() || 'Your message body…'}
+                  headerType={previewHeaderType}
+                  headerContent={previewHeaderContent}
+                  headerMediaUrl={previewHeaderMediaUrl}
+                  footerText={form.footer_text.trim() || null}
+                  buttons={previewButtons}
+                />
+              </div>
+            )}
           </div>
 
           <DialogFooter className="bg-popover border-border">
