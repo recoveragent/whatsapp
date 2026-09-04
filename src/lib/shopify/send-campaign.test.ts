@@ -90,6 +90,7 @@ describe('sendShopifyCampaign header media', () => {
         shippingAddressFields: null,
         trackingNumber: null,
         trackingUrl: null,
+        trackingRedirectSuffix: null,
         orderStatusUrl: null,
         orderStatusUrlSuffix: '/1234567890/orders/abc',
         checkoutUrl: null,

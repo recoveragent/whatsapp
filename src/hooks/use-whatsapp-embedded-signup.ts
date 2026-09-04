@@ -7,9 +7,15 @@ import type {
   EmbeddedSignupSession,
   FacebookLoginResponse,
 } from '@/lib/whatsapp/facebook-sdk-types';
+import {
+  COEXISTENCE_FEATURE_TYPE,
+  COEXISTENCE_FINISH_EVENT,
+} from '@/lib/whatsapp/facebook-sdk-types';
 
 const FB_SDK_URL = 'https://connect.facebook.net/en_US/sdk.js';
 const FB_API_VERSION = 'v21.0';
+
+export type EmbeddedSignupMode = 'standard' | 'coexistence';
 
 function isFacebookOrigin(origin: string): boolean {
   return (
@@ -81,11 +87,18 @@ export function useWhatsAppEmbeddedSignup({
     code?: string;
     waba_id?: string;
     phone_number_id?: string;
+    coexistence?: boolean;
   }>({});
 
+  const canCompletePending = useCallback(() => {
+    const { code, waba_id, phone_number_id, coexistence } = pendingRef.current;
+    if (!code || !waba_id) return false;
+    return Boolean(phone_number_id || coexistence);
+  }, []);
+
   const completeSignup = useCallback(async () => {
-      const { code, waba_id, phone_number_id } = pendingRef.current;
-      if (!code || !waba_id || !phone_number_id) {
+      const { code, waba_id, phone_number_id, coexistence } = pendingRef.current;
+      if (!code || !waba_id || (!phone_number_id && !coexistence)) {
         return 'noop' as const;
       }
 
@@ -95,8 +108,9 @@ export function useWhatsAppEmbeddedSignup({
         body: JSON.stringify({
           code,
           waba_id,
-          phone_number_id,
+          phone_number_id: phone_number_id ?? null,
           pin: null,
+          coexistence: coexistence === true,
         }),
       });
 
@@ -123,8 +137,7 @@ export function useWhatsAppEmbeddedSignup({
   );
 
   const tryComplete = useCallback(async () => {
-    const { code, waba_id, phone_number_id } = pendingRef.current;
-    if (!code || !waba_id || !phone_number_id) return;
+    if (!canCompletePending()) return;
 
     try {
       const result = await completeSignup();
@@ -143,7 +156,7 @@ export function useWhatsAppEmbeddedSignup({
     } finally {
       setLaunching(false);
     }
-  }, [completeSignup]);
+  }, [canCompletePending, completeSignup]);
 
   useEffect(() => {
     let cancelled = false;
@@ -194,9 +207,22 @@ export function useWhatsAppEmbeddedSignup({
 
         if (data.type !== 'WA_EMBEDDED_SIGNUP') return;
 
-        if (data.event === 'FINISH' && data.data?.waba_id && data.data?.phone_number_id) {
+        if (
+          data.event === 'FINISH' &&
+          data.data?.waba_id &&
+          data.data?.phone_number_id
+        ) {
           pendingRef.current.waba_id = data.data.waba_id;
           pendingRef.current.phone_number_id = data.data.phone_number_id;
+          pendingRef.current.coexistence = false;
+          void tryComplete();
+        } else if (
+          data.event === COEXISTENCE_FINISH_EVENT &&
+          data.data?.waba_id
+        ) {
+          pendingRef.current.waba_id = data.data.waba_id;
+          pendingRef.current.phone_number_id = data.data.phone_number_id;
+          pendingRef.current.coexistence = true;
           void tryComplete();
         } else if (data.event === 'CANCEL') {
           setLaunching(false);
@@ -211,40 +237,44 @@ export function useWhatsAppEmbeddedSignup({
     return () => window.removeEventListener('message', onMessage);
   }, [tryComplete]);
 
-  const launch = useCallback(() => {
-    if (!config?.enabled || !config.configId || !window.FB) {
-      toast.error('WhatsApp Embedded Signup is not available');
-      return;
-    }
+  const launch = useCallback(
+    (mode: EmbeddedSignupMode = 'standard') => {
+      if (!config?.enabled || !config.configId || !window.FB) {
+        toast.error('WhatsApp Embedded Signup is not available');
+        return;
+      }
 
-    setLaunching(true);
-    pendingRef.current = {};
+      setLaunching(true);
+      pendingRef.current = { coexistence: mode === 'coexistence' };
 
-    window.FB.login(
-      (response: FacebookLoginResponse) => {
-        if (response.authResponse?.code) {
-          pendingRef.current.code = response.authResponse.code;
-          void tryComplete();
-        } else {
-          setLaunching(false);
-          if (response.status !== 'unknown') {
-            toast.message('WhatsApp connection was not completed');
+      window.FB.login(
+        (response: FacebookLoginResponse) => {
+          if (response.authResponse?.code) {
+            pendingRef.current.code = response.authResponse.code;
+            void tryComplete();
+          } else {
+            setLaunching(false);
+            if (response.status !== 'unknown') {
+              toast.message('WhatsApp connection was not completed');
+            }
           }
-        }
-      },
-      {
-        config_id: config.configId,
-        response_type: 'code',
-        override_default_response_type: true,
-        extras: {
-          setup: {},
-          featureType: '',
-          sessionInfoVersion: '3',
-          feature: 'whatsapp_embedded_signup',
         },
-      },
-    );
-  }, [config, tryComplete]);
+        {
+          config_id: config.configId,
+          response_type: 'code',
+          override_default_response_type: true,
+          extras: {
+            setup: {},
+            featureType:
+              mode === 'coexistence' ? COEXISTENCE_FEATURE_TYPE : '',
+            sessionInfoVersion: '3',
+            feature: 'whatsapp_embedded_signup',
+          },
+        },
+      );
+    },
+    [config, tryComplete],
+  );
 
   const retryWithPin = useCallback(async () => {
     if (!/^\d{6}$/.test(pin)) {
@@ -286,10 +316,6 @@ export function useWhatsAppEmbeddedSignup({
     pin,
     setPin,
     retryWithPin,
-    hasPendingSession: Boolean(
-      pendingRef.current.code &&
-        pendingRef.current.waba_id &&
-        pendingRef.current.phone_number_id,
-    ),
+    hasPendingSession: canCompletePending(),
   };
 }

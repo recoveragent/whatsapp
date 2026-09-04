@@ -6,6 +6,7 @@ import {
   isEmbeddedSignupEnabled,
 } from '@/lib/whatsapp/embedded-signup';
 import { exchangeEmbeddedSignupCode } from '@/lib/whatsapp/exchange-oauth-code';
+import { resolveCoexistencePhoneNumberId } from '@/lib/whatsapp/meta-api';
 import { persistWhatsAppConfig } from '@/lib/whatsapp/persist-config';
 
 interface CompleteBody {
@@ -13,6 +14,7 @@ interface CompleteBody {
   waba_id?: unknown;
   phone_number_id?: unknown;
   pin?: unknown;
+  coexistence?: unknown;
 }
 
 /**
@@ -36,8 +38,9 @@ export async function POST(request: Request) {
 
     const code = typeof body?.code === 'string' ? body.code.trim() : '';
     const wabaId = typeof body?.waba_id === 'string' ? body.waba_id.trim() : '';
-    const phoneNumberId =
+    const phoneNumberIdInput =
       typeof body?.phone_number_id === 'string' ? body.phone_number_id.trim() : '';
+    const coexistence = body?.coexistence === true;
     const pin =
       body?.pin === undefined || body?.pin === null || body?.pin === ''
         ? null
@@ -51,7 +54,7 @@ export async function POST(request: Request) {
     if (!wabaId) {
       return NextResponse.json({ error: 'waba_id is required' }, { status: 400 });
     }
-    if (!phoneNumberId) {
+    if (!phoneNumberIdInput && !coexistence) {
       return NextResponse.json(
         { error: 'phone_number_id is required' },
         { status: 400 },
@@ -74,6 +77,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
 
+    let phoneNumberId = phoneNumberIdInput;
+    if (!phoneNumberId) {
+      try {
+        phoneNumberId = await resolveCoexistencePhoneNumberId({
+          wabaId,
+          accessToken,
+        });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : 'Could not resolve phone number';
+        return NextResponse.json({ error: message }, { status: 400 });
+      }
+    }
+
     const verifyToken = generateWebhookVerifyToken();
 
     const result = await persistWhatsAppConfig({
@@ -85,6 +102,7 @@ export async function POST(request: Request) {
       access_token: accessToken,
       verify_token: verifyToken,
       pin,
+      coexistence,
     });
 
     if (!result.ok) {
@@ -97,6 +115,7 @@ export async function POST(request: Request) {
         saved: true,
         registered: false,
         registration_error: result.registration_error,
+        coexistence: result.coexistence ?? false,
         phone_info: result.phone_info,
         message:
           'Connected to Meta, but inbound registration needs a 2-step PIN. Add your PIN below and try again.',
@@ -108,6 +127,8 @@ export async function POST(request: Request) {
       saved: true,
       registered: result.registered,
       registration_skipped: result.registration_skipped,
+      coexistence: result.coexistence ?? false,
+      sync_initiated: result.sync_initiated ?? false,
       phone_info: result.phone_info,
     });
   } catch (err) {

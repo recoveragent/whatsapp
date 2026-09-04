@@ -23,6 +23,10 @@ export interface MetaPhoneInfo {
   display_phone_number: string
   verified_name?: string
   quality_rating?: string
+  /** True when the number is also active on the WhatsApp Business app. */
+  is_on_biz_app?: boolean
+  /** e.g. CLOUD_API when registered for Cloud API + Business app coexistence. */
+  platform_type?: string
 }
 
 interface MetaErrorResponse {
@@ -130,9 +134,107 @@ export async function verifyPhoneNumber(
   args: VerifyPhoneNumberArgs
 ): Promise<MetaPhoneInfo> {
   const { phoneNumberId, accessToken } = args
-  const url = `${META_API_BASE}/${phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating`
+  const url = `${META_API_BASE}/${phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating,is_on_biz_app,platform_type`
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+  return response.json()
+}
+
+export function isCoexistencePhone(info: MetaPhoneInfo): boolean {
+  return info.is_on_biz_app === true && info.platform_type === 'CLOUD_API'
+}
+
+export interface ListWabaPhoneNumbersArgs {
+  wabaId: string
+  accessToken: string
+}
+
+/**
+ * List phone numbers on a WABA. Used when Embedded Signup coexistence
+ * finishes with only a waba_id (no phone_number_id in the session event).
+ */
+export async function listWabaPhoneNumbers(
+  args: ListWabaPhoneNumbersArgs,
+): Promise<MetaPhoneInfo[]> {
+  const { wabaId, accessToken } = args
+  const fields =
+    'id,display_phone_number,verified_name,quality_rating,is_on_biz_app,platform_type'
+  const url = `${META_API_BASE}/${wabaId}/phone_numbers?fields=${fields}`
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+  const data = (await response.json()) as { data?: MetaPhoneInfo[] }
+  return data.data ?? []
+}
+
+export interface ResolveCoexistencePhoneNumberIdArgs {
+  wabaId: string
+  accessToken: string
+}
+
+/**
+ * Pick the business phone number ID after a coexistence Embedded Signup
+ * session. Prefers numbers flagged for Cloud API + Business app use.
+ */
+export async function resolveCoexistencePhoneNumberId(
+  args: ResolveCoexistencePhoneNumberIdArgs,
+): Promise<string> {
+  const phones = await listWabaPhoneNumbers(args)
+  if (phones.length === 0) {
+    throw new Error(
+      'No phone numbers found on the WhatsApp Business account. Complete Meta setup and try again.',
+    )
+  }
+
+  const coexistence = phones.filter(isCoexistencePhone)
+  if (coexistence.length === 1) return coexistence[0]!.id
+  if (coexistence.length > 1) {
+    throw new Error(
+      'Multiple coexistence phone numbers found on this account. Disconnect extras in Meta WhatsApp Manager, then try again.',
+    )
+  }
+
+  if (phones.length === 1) return phones[0]!.id
+
+  throw new Error(
+    'Could not determine which phone number was connected. Open Meta WhatsApp Manager and retry.',
+  )
+}
+
+export type SmbAppDataSyncType = 'smb_app_state_sync' | 'history'
+
+export interface InitiateSmbAppDataSyncArgs {
+  phoneNumberId: string
+  accessToken: string
+  syncType: SmbAppDataSyncType
+}
+
+/**
+ * Kick off WhatsApp Business app contact or history sync after coexistence
+ * onboarding. Meta delivers results via smb_app_state_sync / history webhooks.
+ */
+export async function initiateSmbAppDataSync(
+  args: InitiateSmbAppDataSyncArgs,
+): Promise<{ request_id?: string }> {
+  const { phoneNumberId, accessToken, syncType } = args
+  const url = `${META_API_BASE}/${phoneNumberId}/smb_app_data`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      sync_type: syncType,
+    }),
   })
   if (!response.ok) {
     await throwMetaError(response, `Meta API error: ${response.status}`)

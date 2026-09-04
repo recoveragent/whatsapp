@@ -39,7 +39,11 @@ export interface FacebookLoginOptions {
 
 export interface EmbeddedSignupSession {
   waba_id: string;
-  phone_number_id: string;
+  phone_number_id?: string;
 }
+
+/** Meta session event when coexistence onboarding completes. */
+export const COEXISTENCE_FINISH_EVENT = 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING';
+export const COEXISTENCE_FEATURE_TYPE = 'whatsapp_business_app_onboarding';
 
 export {};

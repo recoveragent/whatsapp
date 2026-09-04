@@ -55,29 +55,39 @@ export function WhatsAppEmbeddedSignupPanel({
         <div>
           <p className="font-medium text-foreground">Connect with Meta</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Sign in with your Meta Business account, select or create a WhatsApp
-            Business account, and verify your phone number. Recover Agent never sees
-            your Meta password.
+            Sign in with your Meta Business account. Use a new Cloud API number, or
+            connect a number already on the WhatsApp Business app (coexistence).
+            Recover Agent never sees your Meta password.
           </p>
         </div>
       )}
 
       {showConnect && (
-        <Button
-          type="button"
-          onClick={launch}
-          disabled={!sdkReady || launching}
-          className="bg-[#1877F2] hover:bg-[#166FE5] text-white"
-        >
-          {launching ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              Connecting…
-            </>
-          ) : (
-            'Connect WhatsApp with Meta'
-          )}
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <Button
+            type="button"
+            onClick={() => launch('standard')}
+            disabled={!sdkReady || launching}
+            className="bg-[#1877F2] hover:bg-[#166FE5] text-white"
+          >
+            {launching ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Connecting…
+              </>
+            ) : (
+              'Connect new WhatsApp number'
+            )}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => launch('coexistence')}
+            disabled={!sdkReady || launching}
+          >
+            Connect existing Business app number
+          </Button>
+        </div>
       )}
 
       {showPin && (

@@ -22,6 +22,10 @@ import {
   type WhatsAppReferral,
 } from '@/lib/whatsapp/flow-form-message'
 import { shouldReopenConversationOnInbound } from '@/lib/inbox/reopen-on-inbound'
+import {
+  handleCoexistenceWebhookChange,
+  isCoexistenceWebhookField,
+} from '@/lib/whatsapp/coexistence-webhook'
 
 // Lazy-initialized to avoid build-time crash when env vars are missing
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -234,6 +238,14 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
       // don't try to read message-shaped fields off a template event.
       if (isTemplateWebhookField(change.field)) {
         await handleTemplateWebhookChange(
+          { field: change.field, value: change.value as unknown },
+          supabaseAdmin(),
+        )
+        continue
+      }
+
+      if (isCoexistenceWebhookField(change.field)) {
+        await handleCoexistenceWebhookChange(
           { field: change.field, value: change.value as unknown },
           supabaseAdmin(),
         )

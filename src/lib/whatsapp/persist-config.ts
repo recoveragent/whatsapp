@@ -3,6 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { encrypt } from '@/lib/whatsapp/encryption';
 import {
+  initiateSmbAppDataSync,
+  isCoexistencePhone,
   registerPhoneNumber,
   subscribeWabaToApp,
   verifyPhoneNumber,
@@ -17,6 +19,8 @@ export interface PersistWhatsAppConfigInput {
   access_token: string;
   verify_token?: string | null;
   pin?: string | null;
+  /** Set when the number was onboarded via WhatsApp Business app coexistence. */
+  coexistence?: boolean;
 }
 
 export type PersistWhatsAppConfigResult =
@@ -25,6 +29,8 @@ export type PersistWhatsAppConfigResult =
       registered: boolean;
       registration_skipped: boolean;
       registration_error?: string;
+      coexistence?: boolean;
+      sync_initiated?: boolean;
       phone_info: Awaited<ReturnType<typeof verifyPhoneNumber>>;
     }
   | {
@@ -45,6 +51,7 @@ export async function persistWhatsAppConfig(
     access_token,
     verify_token,
     pin,
+    coexistence: coexistenceRequested = false,
   } = input;
 
   if (pin !== undefined && pin !== null && pin !== '') {
@@ -115,22 +122,30 @@ export async function persistWhatsAppConfig(
   let registrationError: string | null = null;
   let registrationSkipped = false;
 
-  const needsRegistration = !sameNumber || (typeof pin === 'string' && pin.length > 0);
-  if (needsRegistration) {
-    if (!pin) {
-      registrationSkipped = true;
-    } else {
-      try {
-        await registerPhoneNumber({
-          phoneNumberId: phone_number_id,
-          accessToken: access_token,
-          pin,
-        });
-        registeredAt = new Date().toISOString();
-      } catch (err) {
-        registrationError =
-          err instanceof Error ? err.message : 'Unknown Meta API error';
-        console.error('Phone number /register failed:', registrationError);
+  const isCoexistence =
+    coexistenceRequested || isCoexistencePhone(phoneInfo);
+
+  if (isCoexistence) {
+    // Coexistence numbers are already registered on Cloud API — skip /register.
+    registeredAt = registeredAt ?? new Date().toISOString();
+  } else {
+    const needsRegistration = !sameNumber || (typeof pin === 'string' && pin.length > 0);
+    if (needsRegistration) {
+      if (!pin) {
+        registrationSkipped = true;
+      } else {
+        try {
+          await registerPhoneNumber({
+            phoneNumberId: phone_number_id,
+            accessToken: access_token,
+            pin,
+          });
+          registeredAt = new Date().toISOString();
+        } catch (err) {
+          registrationError =
+            err instanceof Error ? err.message : 'Unknown Meta API error';
+          console.error('Phone number /register failed:', registrationError);
+        }
       }
     }
   }
@@ -187,12 +202,33 @@ export async function persistWhatsAppConfig(
     }
   }
 
+  let syncInitiated = false;
+  if (isCoexistence && !registrationError) {
+    try {
+      await initiateSmbAppDataSync({
+        phoneNumberId: phone_number_id,
+        accessToken: access_token,
+        syncType: 'smb_app_state_sync',
+      });
+      await initiateSmbAppDataSync({
+        phoneNumberId: phone_number_id,
+        accessToken: access_token,
+        syncType: 'history',
+      });
+      syncInitiated = true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn('[persist-config] coexistence sync initiation failed:', message);
+    }
+  }
+
   if (registrationError) {
     return {
       ok: true,
       registered: false,
       registration_skipped: false,
       registration_error: registrationError,
+      coexistence: isCoexistence,
       phone_info: phoneInfo,
     };
   }
@@ -201,6 +237,8 @@ export async function persistWhatsAppConfig(
     ok: true,
     registered: registeredAt != null,
     registration_skipped: registrationSkipped,
+    coexistence: isCoexistence,
+    sync_initiated: syncInitiated,
     phone_info: phoneInfo,
   };
 }
