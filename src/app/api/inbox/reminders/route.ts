@@ -4,6 +4,7 @@ import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import {
   createReminder,
   listCompletedReminders,
+  listConversationCompletedReminders,
   listConversationReminders,
   listDueReminders,
   listPendingReminders,
@@ -16,8 +17,18 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const conversationId = searchParams.get('conversation_id')?.trim()
     const scope = searchParams.get('scope') ?? 'due'
+    const status = searchParams.get('status')?.trim()
 
     if (conversationId) {
+      if (status === 'completed') {
+        const reminders = await listConversationCompletedReminders(
+          ctx.supabase,
+          ctx.accountId,
+          conversationId,
+        )
+        return NextResponse.json({ reminders })
+      }
+
       const reminders = await listConversationReminders(
         ctx.supabase,
         ctx.accountId,

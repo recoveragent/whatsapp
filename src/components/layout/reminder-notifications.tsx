@@ -18,6 +18,7 @@ import type { InboxReminder } from '@/types'
 type ReminderRow = InboxReminder & {
   contact?: { id: string; name?: string | null; phone: string } | null
   assignee?: { user_id: string; full_name?: string | null } | null
+  completer?: { user_id: string; full_name?: string | null } | null
 }
 
 type PanelTab = 'due' | 'history'
@@ -32,6 +33,10 @@ function contactLabel(reminder: ReminderRow): string {
 
 function assigneeLabel(reminder: ReminderRow): string {
   return reminder.assignee?.full_name?.trim() || 'Team member'
+}
+
+function completerLabel(reminder: ReminderRow): string {
+  return reminder.completer?.full_name?.trim() || 'Team member'
 }
 
 function splitDue(pending: ReminderRow[], nowMs: number) {
@@ -273,6 +278,9 @@ export function ReminderNotifications() {
                       {reminder.completed_at
                         ? format(new Date(reminder.completed_at), 'PPp')
                         : '—'}
+                      {reminder.completer?.full_name?.trim()
+                        ? ` by ${completerLabel(reminder)}`
+                        : ''}
                     </p>
                   </li>
                 ))}

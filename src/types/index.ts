@@ -290,10 +290,12 @@ export interface InboxReminder {
   due_at: string;
   status: InboxReminderStatus;
   completed_at?: string | null;
+  completed_by?: string | null;
   created_at: string;
   updated_at: string;
   contact?: { id: string; name?: string | null; phone: string } | null;
   assignee?: { user_id: string; full_name?: string | null } | null;
+  completer?: { user_id: string; full_name?: string | null } | null;
 }
 
 export type SenderType = 'customer' | 'agent' | 'bot';

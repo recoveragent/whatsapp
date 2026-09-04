@@ -50,6 +50,13 @@ import { toast } from "sonner";
 import { ReminderSnoozeControls } from "@/components/inbox/reminder-snooze-controls";
 import { ScheduleReminderDialog } from "@/components/inbox/schedule-reminder-dialog";
 import { FormSubmissionFields } from "@/components/inbox/form-submission-fields";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -109,6 +116,11 @@ export function ContactSidebar({
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [snoozeId, setSnoozeId] = useState<string | null>(null);
   const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
+  const [completedDialogOpen, setCompletedDialogOpen] = useState(false);
+  const [completedReminders, setCompletedReminders] = useState<InboxReminder[]>(
+    [],
+  );
+  const [completedLoading, setCompletedLoading] = useState(false);
   const [formSubmissions, setFormSubmissions] = useState<
     Array<{ id: string; created_at: string; values: Record<string, string> }>
   >([]);
@@ -283,6 +295,35 @@ export function ContactSidebar({
     }
   }, [contact, isEcommerceBrand, isLeadGenBrand, isWooCommerceBrand]);
 
+  const fetchCompletedReminders = useCallback(async () => {
+    if (!conversationId) {
+      setCompletedReminders([]);
+      return;
+    }
+    setCompletedLoading(true);
+    try {
+      const res = await fetch(
+        `/api/inbox/reminders?conversation_id=${encodeURIComponent(conversationId)}&status=completed`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) {
+        setCompletedReminders([]);
+        return;
+      }
+      const data = (await res.json()) as { reminders?: InboxReminder[] };
+      setCompletedReminders(data.reminders ?? []);
+    } catch {
+      setCompletedReminders([]);
+    } finally {
+      setCompletedLoading(false);
+    }
+  }, [conversationId]);
+
+  const handleOpenCompletedDialog = useCallback(() => {
+    setCompletedDialogOpen(true);
+    void fetchCompletedReminders();
+  }, [fetchCompletedReminders]);
+
   const fetchReminders = useCallback(async () => {
     if (!conversationId) {
       setReminders([]);
@@ -318,6 +359,12 @@ export function ContactSidebar({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchReminders();
   }, [fetchReminders]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCompletedReminders([]);
+    setCompletedDialogOpen(false);
+  }, [conversationId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -847,7 +894,14 @@ export function ContactSidebar({
                   </div>
                 ) : reminders.length === 0 ? (
                   <p className="px-1 text-xs text-muted-foreground">
-                    No open reminders
+                    No open reminders{" "}
+                    <button
+                      type="button"
+                      onClick={handleOpenCompletedDialog}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      · Completed
+                    </button>
                   </p>
                 ) : (
                   reminders.map((reminder) => {
@@ -923,7 +977,69 @@ export function ContactSidebar({
                     );
                   })
                 )}
+                {reminders.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={handleOpenCompletedDialog}
+                    className="px-1 text-xs font-medium text-primary hover:underline"
+                  >
+                    View completed
+                  </button>
+                ) : null}
               </div>
+              <Dialog
+                open={completedDialogOpen}
+                onOpenChange={setCompletedDialogOpen}
+              >
+                <DialogContent className="max-h-[min(32rem,85dvh)] overflow-hidden sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Completed reminders</DialogTitle>
+                    <DialogDescription>
+                      Past follow-ups for this conversation.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="max-h-[min(24rem,60dvh)] overflow-y-auto overscroll-contain">
+                    {completedLoading ? (
+                      <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                        <Loader2 className="size-4 animate-spin" />
+                        Loading…
+                      </div>
+                    ) : completedReminders.length === 0 ? (
+                      <p className="py-8 text-center text-sm text-muted-foreground">
+                        No completed reminders yet
+                      </p>
+                    ) : (
+                      <ul className="divide-y divide-border">
+                        {completedReminders.map((reminder) => (
+                          <li key={reminder.id} className="py-3 first:pt-0">
+                            <p className="text-sm text-foreground">
+                              {reminder.note}
+                            </p>
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              Follow up:{" "}
+                              {reminder.assignee?.full_name?.trim() ||
+                                "Team member"}
+                            </p>
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              Was due{" "}
+                              {format(new Date(reminder.due_at), "PPp")}
+                            </p>
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              Completed{" "}
+                              {reminder.completed_at
+                                ? format(new Date(reminder.completed_at), "PPp")
+                                : "—"}
+                              {reminder.completer?.full_name?.trim()
+                                ? ` by ${reminder.completer.full_name.trim()}`
+                                : ""}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
               <ScheduleReminderDialog
                 open={reminderDialogOpen}
                 onOpenChange={setReminderDialogOpen}

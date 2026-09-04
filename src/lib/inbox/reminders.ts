@@ -30,6 +30,17 @@ function resolveAssignee(
   return Array.isArray(assignee) ? assignee[0] ?? null : assignee
 }
 
+function resolveCompleter(
+  completer:
+    | { user_id: string; full_name?: string | null }
+    | { user_id: string; full_name?: string | null }[]
+    | null
+    | undefined,
+): ReminderWithContact['completer'] {
+  if (!completer) return null
+  return Array.isArray(completer) ? completer[0] ?? null : completer
+}
+
 export function normalizeReminderRow(row: {
   id: string
   account_id: string
@@ -41,6 +52,7 @@ export function normalizeReminderRow(row: {
   due_at: string
   status: string
   completed_at: string | null
+  completed_by?: string | null
   created_at: string
   updated_at: string
   contact?:
@@ -48,6 +60,10 @@ export function normalizeReminderRow(row: {
     | { id: string; name?: string | null; phone: string }[]
     | null
   assignee?:
+    | { user_id: string; full_name?: string | null }
+    | { user_id: string; full_name?: string | null }[]
+    | null
+  completer?:
     | { user_id: string; full_name?: string | null }
     | { user_id: string; full_name?: string | null }[]
     | null
@@ -63,15 +79,17 @@ export function normalizeReminderRow(row: {
     due_at: row.due_at,
     status: row.status as InboxReminder['status'],
     completed_at: row.completed_at,
+    completed_by: row.completed_by ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
     contact: resolveContact(row.contact),
     assignee: resolveAssignee(row.assignee),
+    completer: resolveCompleter(row.completer),
   }
 }
 
 const REMINDER_SELECT =
-  'id, account_id, conversation_id, contact_id, created_by, assignee_id, note, due_at, status, completed_at, created_at, updated_at, contact:contacts(id, name, phone), assignee:profiles!inbox_reminders_assignee_id_fkey(user_id, full_name)'
+  'id, account_id, conversation_id, contact_id, created_by, assignee_id, note, due_at, status, completed_at, completed_by, created_at, updated_at, contact:contacts(id, name, phone), assignee:profiles!inbox_reminders_assignee_id_fkey(user_id, full_name), completer:profiles!inbox_reminders_completed_by_fkey(user_id, full_name)'
 
 export async function listDueReminders(
   db: SupabaseClient,
@@ -151,6 +169,27 @@ export async function listConversationReminders(
   )
 }
 
+export async function listConversationCompletedReminders(
+  db: SupabaseClient,
+  accountId: string,
+  conversationId: string,
+  limit = 50,
+): Promise<ReminderWithContact[]> {
+  const { data, error } = await db
+    .from('inbox_reminders')
+    .select(REMINDER_SELECT)
+    .eq('account_id', accountId)
+    .eq('conversation_id', conversationId)
+    .eq('status', 'completed')
+    .order('completed_at', { ascending: false })
+    .limit(limit)
+
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((row) =>
+    normalizeReminderRow(row as Parameters<typeof normalizeReminderRow>[0]),
+  )
+}
+
 /** Quick snooze offsets (minutes). Custom datetime is also allowed. */
 export const SNOOZE_PRESETS_MINUTES = [15, 30, 60, 180, 300] as const
 
@@ -202,6 +241,7 @@ export async function completeReminder(
   db: SupabaseClient,
   accountId: string,
   reminderId: string,
+  completedBy: string,
 ): Promise<ReminderWithContact> {
   const now = new Date().toISOString()
   const { data, error } = await db
@@ -209,6 +249,7 @@ export async function completeReminder(
     .update({
       status: 'completed',
       completed_at: now,
+      completed_by: completedBy,
       updated_at: now,
     })
     .eq('id', reminderId)

@@ -16,7 +16,12 @@ export async function PATCH(
     }
 
     if (body.action === 'complete') {
-      const reminder = await completeReminder(ctx.supabase, ctx.accountId, id)
+      const reminder = await completeReminder(
+        ctx.supabase,
+        ctx.accountId,
+        id,
+        ctx.userId,
+      )
       return NextResponse.json(reminder)
     }
 
