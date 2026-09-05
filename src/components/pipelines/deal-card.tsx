@@ -2,7 +2,10 @@
 
 import type { Deal, PipelineStage } from "@/types";
 import { Calendar, Check, X } from "lucide-react";
-import { resolveDealCardContactFields } from "@/lib/deals/display";
+import {
+  resolveDealCardContactFields,
+  resolveDealCardLastNoteLine,
+} from "@/lib/deals/display";
 
 interface DealCardProps {
   deal: Deal;
@@ -28,6 +31,7 @@ function initials(name?: string, fallback?: string) {
 export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
   const { name, phone, company } = resolveDealCardContactFields(deal);
   const assigneeLabel = deal.assignee?.full_name || null;
+  const lastNote = resolveDealCardLastNoteLine(deal.notes);
 
   return (
     <button
@@ -102,6 +106,15 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
             </span>
           )}
         </div>
+      )}
+
+      {lastNote && (
+        <p
+          className="mt-2 truncate border-t border-border/50 pt-2 text-[11px] italic text-muted-foreground"
+          title={lastNote}
+        >
+          {lastNote}
+        </p>
       )}
     </button>
   );

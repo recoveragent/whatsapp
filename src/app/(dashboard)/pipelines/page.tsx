@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Pipeline, PipelineStage, Deal } from "@/types";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
+import { StageMoveReasonDialog } from "@/components/pipelines/stage-move-reason-dialog";
 import { PipelineSettings } from "@/components/pipelines/pipeline-settings";
 import { DealForm } from "@/components/pipelines/deal-form";
 import { PipelineAnalytics } from "@/components/pipelines/pipeline-analytics";
@@ -36,6 +37,7 @@ import {
   hasActivePipelineDealFilters,
   type PipelineDealDateField,
 } from "@/lib/deals/filter";
+import { appendStageMoveNote } from "@/lib/deals/display";
 
 // Pipeline creation is admin-class (settings-tier write under
 // the new RLS); deal creation is operational and only requires
@@ -79,6 +81,15 @@ export default function PipelinesPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [dateField, setDateField] = useState<PipelineDealDateField>("received");
+
+  // Pending drag-move: reason required before stage change is persisted.
+  const [pendingMove, setPendingMove] = useState<{
+    dealId: string;
+    fromStageId: string;
+    toStageId: string;
+  } | null>(null);
+  const [moveReason, setMoveReason] = useState("");
+  const [movingDeal, setMovingDeal] = useState(false);
 
   // Guard against double-seeding (React StrictMode double-effect in dev).
   const seedAttempted = useRef(false);
@@ -247,34 +258,89 @@ export default function PipelinesPage() {
     setDeals(await loadDeals(selectedPipelineId));
   }, [loadDeals, selectedPipelineId]);
 
-  const handleDealMoved = useCallback(
-    async (dealId: string, newStageId: string) => {
-      // Optimistic update — board already animated; just persist.
-      const moved = deals.find((d) => d.id === dealId);
-      setDeals((prev) =>
-        prev.map((d) => (d.id === dealId ? { ...d, stage_id: newStageId } : d)),
-      );
-      const { error } = await supabase
-        .from("deals")
-        .update({ stage_id: newStageId })
-        .eq("id", dealId);
-      if (error) {
-        toast.error("Failed to move deal");
-        refreshDeals();
-      } else if (accountId && moved?.contact_id) {
+  const handleDealMoveRequest = useCallback(
+    (dealId: string, newStageId: string) => {
+      const deal = deals.find((d) => d.id === dealId);
+      if (!deal || deal.stage_id === newStageId) return;
+      setPendingMove({
+        dealId,
+        fromStageId: deal.stage_id,
+        toStageId: newStageId,
+      });
+      setMoveReason("");
+    },
+    [deals],
+  );
+
+  const handleCancelDealMove = useCallback(() => {
+    setPendingMove(null);
+    setMoveReason("");
+  }, []);
+
+  const handleConfirmDealMove = useCallback(async () => {
+    if (!pendingMove) return;
+    const reason = moveReason.trim();
+    if (!reason) {
+      toast.error("Please enter a reason for the move");
+      return;
+    }
+
+    const { dealId, fromStageId, toStageId } = pendingMove;
+    const moved = deals.find((d) => d.id === dealId);
+    if (!moved) return;
+
+    const fromStage = stages.find((s) => s.id === fromStageId);
+    const toStage = stages.find((s) => s.id === toStageId);
+    const updatedNotes = appendStageMoveNote(
+      moved.notes,
+      fromStage?.name ?? "Unknown",
+      toStage?.name ?? "Unknown",
+      reason,
+    );
+
+    setMovingDeal(true);
+    setDeals((prev) =>
+      prev.map((d) =>
+        d.id === dealId
+          ? { ...d, stage_id: toStageId, notes: updatedNotes }
+          : d,
+      ),
+    );
+
+    const { error } = await supabase
+      .from("deals")
+      .update({ stage_id: toStageId, notes: updatedNotes })
+      .eq("id", dealId);
+
+    setMovingDeal(false);
+
+    if (error) {
+      toast.error("Failed to move deal");
+      refreshDeals();
+    } else {
+      if (accountId && moved.contact_id) {
         void fetch("/api/crm/triggers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             trigger_type: "deal_stage_changed",
             contact_id: moved.contact_id,
-            stage_id: newStageId,
+            stage_id: toStageId,
           }),
         });
       }
-    },
-    [supabase, refreshDeals, accountId, deals],
-  );
+      setPendingMove(null);
+      setMoveReason("");
+    }
+  }, [
+    pendingMove,
+    moveReason,
+    deals,
+    stages,
+    supabase,
+    refreshDeals,
+    accountId,
+  ]);
 
   const handleAddDeal = useCallback(
     (stageId?: string) => {
@@ -579,12 +645,32 @@ export default function PipelinesPage() {
             <PipelineBoard
               stages={stages}
               deals={filteredDeals}
-              onDealMoved={handleDealMoved}
+              onDealMoveRequest={handleDealMoveRequest}
               onAddDeal={handleAddDeal}
               onEditDeal={handleEditDeal}
             />
           )}
         </>
+      )}
+
+      {/* Move reason dialog — shown after drag-drop between stages */}
+      {pendingMove && (
+        <StageMoveReasonDialog
+          open
+          fromStageName={
+            stages.find((s) => s.id === pendingMove.fromStageId)?.name ??
+            "Unknown"
+          }
+          toStageName={
+            stages.find((s) => s.id === pendingMove.toStageId)?.name ??
+            "Unknown"
+          }
+          reason={moveReason}
+          onReasonChange={setMoveReason}
+          onConfirm={() => void handleConfirmDealMove()}
+          onCancel={handleCancelDealMove}
+          loading={movingDeal}
+        />
       )}
 
       {/* New Pipeline Dialog */}

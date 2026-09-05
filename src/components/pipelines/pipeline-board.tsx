@@ -24,7 +24,7 @@ import { formatCurrency } from "@/lib/currency";
 interface PipelineBoardProps {
   stages: PipelineStage[];
   deals: Deal[];
-  onDealMoved: (dealId: string, newStageId: string) => void;
+  onDealMoveRequest: (dealId: string, newStageId: string) => void;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
 }
@@ -32,7 +32,7 @@ interface PipelineBoardProps {
 export function PipelineBoard({
   stages,
   deals,
-  onDealMoved,
+  onDealMoveRequest,
   onAddDeal,
   onEditDeal,
 }: PipelineBoardProps) {
@@ -81,7 +81,7 @@ export function PipelineBoard({
     if (!deal || deal.stage_id === targetStageId) return;
     if (!sortedStages.some((s) => s.id === targetStageId)) return;
 
-    onDealMoved(dealId, targetStageId);
+    onDealMoveRequest(dealId, targetStageId);
   }
 
   function handleDragCancel() {

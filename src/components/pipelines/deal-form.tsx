@@ -18,7 +18,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -26,7 +25,11 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
-import { resolveDealInsertTitle } from "@/lib/deals/display";
+import { StageMoveReasonDialog } from "@/components/pipelines/stage-move-reason-dialog";
+import {
+  appendStageMoveNote,
+  resolveDealInsertTitle,
+} from "@/lib/deals/display";
 
 interface DealFormProps {
   open: boolean;
@@ -50,7 +53,6 @@ export function DealForm({
   const supabase = createClient();
   const { accountId, defaultCurrency } = useAuth();
 
-  const [title, setTitle] = useState("");
   const [contactId, setContactId] = useState("");
   const [stageId, setStageId] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
@@ -64,16 +66,21 @@ export function DealForm({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [stageMoveDialogOpen, setStageMoveDialogOpen] = useState(false);
+  const [moveReason, setMoveReason] = useState("");
 
   // Reset the form fields every time the sheet opens or its input
   // props change. This is a legitimate prop-driven sync; the rule is
   // over-cautious here, hence the block-level disable.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setStageMoveDialogOpen(false);
+      setMoveReason("");
+      return;
+    }
     setConfirmDelete(false);
     if (deal) {
-      setTitle(deal.title);
       // contact_id is nullable when the contact has been deleted
       // (migration 004: ON DELETE SET NULL). "" means "no selection".
       setContactId(deal.contact_id ?? "");
@@ -81,7 +88,6 @@ export function DealForm({
       setAssignedTo(deal.assigned_to ?? "");
       setNotes(deal.notes ?? "");
     } else {
-      setTitle("");
       setContactId("");
       setStageId(defaultStageId || stages[0]?.id || "");
       setAssignedTo("");
@@ -134,21 +140,12 @@ export function DealForm({
     };
   }, [open, contactId, supabase]);
 
-  async function handleSave() {
-    if (!contactId) {
-      toast.error("Contact is required");
-      return;
-    }
+  async function performSave(finalNotes: string | null) {
     const effectiveStageId = stageId || stages[0]?.id || "";
-    if (!effectiveStageId) {
-      toast.error("This pipeline has no stages yet");
-      return;
-    }
-
     const contact = contacts.find((c) => c.id === contactId);
     const stage = stages.find((s) => s.id === effectiveStageId);
     const resolvedTitle = resolveDealInsertTitle({
-      configuredTitle: title,
+      configuredTitle: "",
       contact,
       stageName: stage?.name,
     });
@@ -161,7 +158,7 @@ export function DealForm({
       pipeline_id: pipelineId,
       stage_id: effectiveStageId,
       assigned_to: assignedTo || null,
-      notes: notes.trim() || null,
+      notes: finalNotes,
     };
 
     if (deal) {
@@ -240,6 +237,49 @@ export function DealForm({
     onSaved();
   }
 
+  async function handleSave() {
+    if (!contactId) {
+      toast.error("Contact is required");
+      return;
+    }
+    const effectiveStageId = stageId || stages[0]?.id || "";
+    if (!effectiveStageId) {
+      toast.error("This pipeline has no stages yet");
+      return;
+    }
+
+    if (deal && deal.stage_id !== effectiveStageId) {
+      setStageMoveDialogOpen(true);
+      setMoveReason("");
+      return;
+    }
+
+    await performSave(notes.trim() || null);
+  }
+
+  async function handleConfirmStageMove() {
+    if (!deal) return;
+    const reason = moveReason.trim();
+    if (!reason) {
+      toast.error("Please enter a reason for the move");
+      return;
+    }
+
+    const effectiveStageId = stageId || stages[0]?.id || "";
+    const fromStage = stages.find((s) => s.id === deal.stage_id);
+    const toStage = stages.find((s) => s.id === effectiveStageId);
+    const updatedNotes = appendStageMoveNote(
+      notes,
+      fromStage?.name ?? "Unknown",
+      toStage?.name ?? "Unknown",
+      reason,
+    );
+
+    setStageMoveDialogOpen(false);
+    setMoveReason("");
+    await performSave(updatedNotes);
+  }
+
   async function handleDelete() {
     if (!deal) return;
     setDeleting(true);
@@ -255,20 +295,8 @@ export function DealForm({
     onSaved();
   }
 
-  function handleContactChange(newContactId: string) {
-    setContactId(newContactId);
-    const contact = contacts.find((c) => c.id === newContactId);
-    const suggested = resolveDealInsertTitle({
-      configuredTitle: title,
-      contact,
-      stageName: stages.find((s) => s.id === stageId)?.name,
-    });
-    if (suggested && suggested !== title.trim()) {
-      setTitle(suggested);
-    }
-  }
-
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
@@ -286,7 +314,7 @@ export function DealForm({
               <Label className="text-muted-foreground">Contact</Label>
               <select
                 value={contactId}
-                onChange={(e) => handleContactChange(e.target.value)}
+                onChange={(e) => setContactId(e.target.value)}
                 className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
               >
                 <option value="">Select a contact</option>
@@ -306,22 +334,6 @@ export function DealForm({
                   Link to Conversation
                 </Link>
               )}
-            </div>
-
-            <div className="grid gap-2">
-              <Label className="text-muted-foreground">
-                Deal name <span className="text-muted-foreground/70">(optional)</span>
-              </Label>
-              <Input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Defaults to contact name"
-                className="border-border bg-muted text-foreground"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Leave blank to use the contact name. Pipeline cards show the
-                contact name first.
-              </p>
             </div>
 
             <div className="grid gap-2">
@@ -421,5 +433,28 @@ export function DealForm({
         </div>
       </SheetContent>
     </Sheet>
+
+    {deal && stageMoveDialogOpen && (
+      <StageMoveReasonDialog
+        open
+        fromStageName={
+          stages.find((s) => s.id === deal.stage_id)?.name ?? "Unknown"
+        }
+        toStageName={
+          stages.find((s) => s.id === (stageId || stages[0]?.id))?.name ??
+          "Unknown"
+        }
+        reason={moveReason}
+        onReasonChange={setMoveReason}
+        onConfirm={() => void handleConfirmStageMove()}
+        onCancel={() => {
+          setStageMoveDialogOpen(false);
+          setMoveReason("");
+        }}
+        loading={saving}
+        confirmLabel="Save changes"
+      />
+    )}
+    </>
   );
 }

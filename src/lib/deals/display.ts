@@ -84,6 +84,27 @@ export function suggestDealTitle(
   return null;
 }
 
+export function resolveDealCardLastNoteLine(notes?: string | null): string | null {
+  if (!notes?.trim()) return null;
+  const lines = notes
+    .trim()
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines.at(-1) ?? null;
+}
+
+export function appendStageMoveNote(
+  existingNotes: string | null | undefined,
+  fromStageName: string,
+  toStageName: string,
+  reason: string,
+): string {
+  const entry = `Moved ${fromStageName} → ${toStageName}: ${reason.trim()}`;
+  const prior = existingNotes?.trim();
+  return prior ? `${prior}\n${entry}` : entry;
+}
+
 export function resolveDealInsertTitle(args: {
   configuredTitle: string;
   contact?: Pick<Contact, "name" | "phone"> | null;

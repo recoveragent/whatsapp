@@ -57,6 +57,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { StageMoveReasonDialog } from "@/components/pipelines/stage-move-reason-dialog";
+import { appendStageMoveNote } from "@/lib/deals/display";
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -103,6 +105,12 @@ export function ContactSidebar({
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
   const [stagesLoaded, setStagesLoaded] = useState(false);
   const [savingStage, setSavingStage] = useState(false);
+  const [pendingStageMove, setPendingStageMove] = useState<{
+    dealId: string;
+    fromStageId: string;
+    toStageId: string;
+  } | null>(null);
+  const [moveReason, setMoveReason] = useState("");
   const [notes, setNotes] = useState<ContactNote[]>([]);
   const [storeOrders, setStoreOrders] = useState<InboxStoreOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -473,8 +481,62 @@ export function ContactSidebar({
     [contact, tags, accountId, allTags],
   );
 
-  const handleStageChange = useCallback(
-    async (newStageId: string) => {
+  const handleCreateDealAtStage = useCallback(
+    async (newStageId: string, stage: PipelineStage) => {
+      if (!contact || !accountId) return;
+
+      setSavingStage(true);
+      const supabase = createClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user) {
+        toast.error("Not signed in");
+        setSavingStage(false);
+        return;
+      }
+
+      const title = contact.name?.trim() || contact.phone;
+      const { data, error } = await supabase
+        .from("deals")
+        .insert({
+          user_id: user.id,
+          account_id: accountId,
+          pipeline_id: stage.pipeline_id,
+          stage_id: newStageId,
+          contact_id: contact.id,
+          conversation_id: conversationId ?? undefined,
+          title,
+          value: 0,
+          currency: defaultCurrency,
+          status: "open",
+        })
+        .select("*, stage:pipeline_stages(*)")
+        .single();
+
+      if (error) {
+        toast.error("Failed to create deal");
+      } else if (data) {
+        setDeals((prev) => [data as Deal, ...prev]);
+        void fetch("/api/crm/triggers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trigger_type: "deal_stage_changed",
+            contact_id: contact.id,
+            stage_id: newStageId,
+          }),
+        });
+      }
+
+      setSavingStage(false);
+    },
+    [contact, accountId, conversationId, defaultCurrency],
+  );
+
+  const handleStageSelectRequest = useCallback(
+    (newStageId: string) => {
       if (!contact || !accountId || !newStageId) return;
 
       const stage = pipelineStages.find((s) => s.id === newStageId);
@@ -485,94 +547,91 @@ export function ContactSidebar({
 
       if (primaryDeal?.stage_id === newStageId) return;
 
-      setSavingStage(true);
-      const supabase = createClient();
-
       if (primaryDeal) {
-        setDeals((prev) =>
-          prev.map((d) =>
-            d.id === primaryDeal.id
-              ? { ...d, stage_id: newStageId, stage }
-              : d,
-          ),
-        );
-
-        const { error } = await supabase
-          .from("deals")
-          .update({ stage_id: newStageId })
-          .eq("id", primaryDeal.id);
-
-        if (error) {
-          toast.error("Failed to update lead stage");
-          void fetchContactData();
-        } else {
-          void fetch("/api/crm/triggers", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              trigger_type: "deal_stage_changed",
-              contact_id: contact.id,
-              stage_id: newStageId,
-            }),
-          });
-        }
-      } else {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        const user = session?.user;
-        if (!user) {
-          toast.error("Not signed in");
-          setSavingStage(false);
-          return;
-        }
-
-        const title = contact.name?.trim() || contact.phone;
-        const { data, error } = await supabase
-          .from("deals")
-          .insert({
-            user_id: user.id,
-            account_id: accountId,
-            pipeline_id: stage.pipeline_id,
-            stage_id: newStageId,
-            contact_id: contact.id,
-            conversation_id: conversationId ?? undefined,
-            title,
-            value: 0,
-            currency: defaultCurrency,
-            status: "open",
-          })
-          .select("*, stage:pipeline_stages(*)")
-          .single();
-
-        if (error) {
-          toast.error("Failed to create deal");
-        } else if (data) {
-          setDeals((prev) => [data as Deal, ...prev]);
-          void fetch("/api/crm/triggers", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              trigger_type: "deal_stage_changed",
-              contact_id: contact.id,
-              stage_id: newStageId,
-            }),
-          });
-        }
+        setPendingStageMove({
+          dealId: primaryDeal.id,
+          fromStageId: primaryDeal.stage_id,
+          toStageId: newStageId,
+        });
+        setMoveReason("");
+        return;
       }
 
-      setSavingStage(false);
+      void handleCreateDealAtStage(newStageId, stage);
     },
-    [
-      contact,
-      accountId,
-      pipelineStages,
-      deals,
-      conversationId,
-      defaultCurrency,
-      fetchContactData,
-    ],
+    [contact, accountId, pipelineStages, deals, handleCreateDealAtStage],
   );
+
+  const handleCancelStageMove = useCallback(() => {
+    setPendingStageMove(null);
+    setMoveReason("");
+  }, []);
+
+  const handleConfirmStageMove = useCallback(async () => {
+    if (!pendingStageMove || !contact || !accountId) return;
+    const reason = moveReason.trim();
+    if (!reason) {
+      toast.error("Please enter a reason for the move");
+      return;
+    }
+
+    const { dealId, fromStageId, toStageId } = pendingStageMove;
+    const deal = deals.find((d) => d.id === dealId);
+    if (!deal) return;
+
+    const fromStage = pipelineStages.find((s) => s.id === fromStageId);
+    const toStage = pipelineStages.find((s) => s.id === toStageId);
+    if (!toStage) return;
+
+    const updatedNotes = appendStageMoveNote(
+      deal.notes,
+      fromStage?.name ?? deal.stage?.name ?? "Unknown",
+      toStage.name,
+      reason,
+    );
+
+    setSavingStage(true);
+    setDeals((prev) =>
+      prev.map((d) =>
+        d.id === dealId
+          ? { ...d, stage_id: toStageId, stage: toStage, notes: updatedNotes }
+          : d,
+      ),
+    );
+
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("deals")
+      .update({ stage_id: toStageId, notes: updatedNotes })
+      .eq("id", dealId);
+
+    setSavingStage(false);
+
+    if (error) {
+      toast.error("Failed to update lead stage");
+      void fetchContactData();
+    } else {
+      void fetch("/api/crm/triggers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trigger_type: "deal_stage_changed",
+          contact_id: contact.id,
+          stage_id: toStageId,
+        }),
+      });
+      setPendingStageMove(null);
+      setMoveReason("");
+    }
+  }, [
+    pendingStageMove,
+    moveReason,
+    contact,
+    accountId,
+    deals,
+    pipelineStages,
+    fetchContactData,
+  ]);
 
   const handleAddNote = useCallback(async () => {
     if (!contact || !newNote.trim()) return;
@@ -1202,7 +1261,7 @@ export function ContactSidebar({
                     value={primaryDeal?.stage_id || undefined}
                     items={leadStageSelectItems}
                     onValueChange={(value) => {
-                      if (value) void handleStageChange(value);
+                      if (value) handleStageSelectRequest(value);
                     }}
                     disabled={savingStage}
                   >
@@ -1325,6 +1384,27 @@ export function ContactSidebar({
           </div>
         </div>
       </ScrollArea>
+
+      {pendingStageMove && (
+        <StageMoveReasonDialog
+          open
+          fromStageName={
+            pipelineStages.find((s) => s.id === pendingStageMove.fromStageId)
+              ?.name ??
+            deals.find((d) => d.id === pendingStageMove.dealId)?.stage?.name ??
+            "Unknown"
+          }
+          toStageName={
+            pipelineStages.find((s) => s.id === pendingStageMove.toStageId)
+              ?.name ?? "Unknown"
+          }
+          reason={moveReason}
+          onReasonChange={setMoveReason}
+          onConfirm={() => void handleConfirmStageMove()}
+          onCancel={handleCancelStageMove}
+          loading={savingStage}
+        />
+      )}
     </div>
   );
 }
