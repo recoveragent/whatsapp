@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Pipeline, PipelineStage, Deal } from "@/types";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
@@ -24,13 +24,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { GitBranch, Plus, ChevronDown, Settings } from "lucide-react";
+import { GitBranch, Plus, ChevronDown, Settings, Search, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { useCan } from "@/hooks/use-can";
 import { useAuth } from "@/hooks/use-auth";
 import { GatedButton } from "@/components/ui/gated-button";
 import { PageHeader } from "@/components/layout/page-header";
 import { useRouter } from "next/navigation";
+import {
+  filterPipelineDeals,
+  hasActivePipelineDealFilters,
+  type PipelineDealDateField,
+} from "@/lib/deals/filter";
 
 // Pipeline creation is admin-class (settings-tier write under
 // the new RLS); deal creation is operational and only requires
@@ -70,6 +75,10 @@ export default function PipelinesPage() {
   const [dealFormOpen, setDealFormOpen] = useState(false);
   const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
   const [defaultStageId, setDefaultStageId] = useState<string>("");
+  const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [dateField, setDateField] = useState<PipelineDealDateField>("received");
 
   // Guard against double-seeding (React StrictMode double-effect in dev).
   const seedAttempted = useRef(false);
@@ -196,6 +205,29 @@ export default function PipelinesPage() {
       cancelled = true;
     };
   }, [selectedPipelineId, loadStages, loadDeals]);
+
+  useEffect(() => {
+    setSearch("");
+    setDateFrom("");
+    setDateTo("");
+  }, [selectedPipelineId]);
+
+  const filteredDeals = useMemo(
+    () =>
+      filterPipelineDeals(deals, {
+        search,
+        dateFrom,
+        dateTo,
+        dateField,
+      }),
+    [deals, search, dateFrom, dateTo, dateField],
+  );
+
+  const filtersActive = hasActivePipelineDealFilters({
+    search,
+    dateFrom,
+    dateTo,
+  });
 
   const refreshPipelines = useCallback(async () => {
     const list = await loadPipelines();
@@ -417,6 +449,87 @@ export default function PipelinesPage() {
         </div>
       </div>
 
+      {pipelines.length > 0 && selectedPipelineId && (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
+            <div className="relative w-full max-w-sm">
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name, phone, or company..."
+                className="border-border bg-card pl-8 text-foreground placeholder:text-muted-foreground"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                className="flex rounded-lg border border-border bg-card p-0.5"
+                role="group"
+                aria-label="Date filter type"
+              >
+                {(
+                  [
+                    ["received", "Received"],
+                    ["updated", "Updated"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setDateField(value)}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                      dateField === value
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="h-9 w-36 border-border bg-card text-foreground"
+                aria-label={`From date (${dateField})`}
+              />
+              <span className="text-muted-foreground">–</span>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="h-9 w-36 border-border bg-card text-foreground"
+                aria-label={`To date (${dateField})`}
+              />
+              {filtersActive && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSearch("");
+                    setDateFrom("");
+                    setDateTo("");
+                  }}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  Clear filters
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {filtersActive && (
+            <p className="text-xs text-muted-foreground">
+              Showing {filteredDeals.length} of {deals.length} deals
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Board */}
       {pipelines.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20">
@@ -439,14 +552,38 @@ export default function PipelinesPage() {
         </div>
       ) : (
         <>
-          <PipelineAnalytics stages={stages} deals={deals} />
-          <PipelineBoard
-            stages={stages}
-            deals={deals}
-            onDealMoved={handleDealMoved}
-            onAddDeal={handleAddDeal}
-            onEditDeal={handleEditDeal}
-          />
+          <PipelineAnalytics stages={stages} deals={filteredDeals} />
+          {filtersActive && filteredDeals.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16">
+              <Search className="h-10 w-10 text-muted-foreground" />
+              <h3 className="mt-4 text-lg font-medium text-foreground">
+                No deals match your filters
+              </h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Try a different search term or date range.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setSearch("");
+                  setDateFrom("");
+                  setDateTo("");
+                }}
+                className="mt-4 border-border text-muted-foreground hover:bg-muted"
+              >
+                Clear filters
+              </Button>
+            </div>
+          ) : (
+            <PipelineBoard
+              stages={stages}
+              deals={filteredDeals}
+              onDealMoved={handleDealMoved}
+              onAddDeal={handleAddDeal}
+              onEditDeal={handleEditDeal}
+            />
+          )}
         </>
       )}
 
