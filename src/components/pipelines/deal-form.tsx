@@ -32,6 +32,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { suggestDealTitle } from "@/lib/deals/display";
 
 interface DealFormProps {
   open: boolean;
@@ -270,6 +271,13 @@ export function DealForm({
     onSaved();
   }
 
+  function handleContactChange(newContactId: string) {
+    setContactId(newContactId);
+    const contact = contacts.find((c) => c.id === newContactId);
+    const suggested = suggestDealTitle(contact, title, stages);
+    if (suggested) setTitle(suggested);
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -285,20 +293,10 @@ export function DealForm({
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             <div className="grid gap-2">
-              <Label className="text-muted-foreground">Title</Label>
-              <Input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Deal title"
-                className="border-border bg-muted text-foreground"
-              />
-            </div>
-
-            <div className="grid gap-2">
               <Label className="text-muted-foreground">Contact</Label>
               <select
                 value={contactId}
-                onChange={(e) => setContactId(e.target.value)}
+                onChange={(e) => handleContactChange(e.target.value)}
                 className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
               >
                 <option value="">Select a contact</option>
@@ -318,6 +316,20 @@ export function DealForm({
                   Link to Conversation
                 </Link>
               )}
+            </div>
+
+            <div className="grid gap-2">
+              <Label className="text-muted-foreground">Deal name</Label>
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Defaults to contact name"
+                className="border-border bg-muted text-foreground"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Used internally and when no contact is linked. Pipeline cards show
+                the contact name first.
+              </p>
             </div>
 
             <div className="grid grid-cols-[1fr_110px] gap-3">

@@ -167,7 +167,7 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
     case "update_contact_field":
       return { field: "name", value: "" }
     case "create_deal":
-      return { pipeline_id: "", stage_id: "", title: "", value: 0 }
+      return { pipeline_id: "", stage_id: "", title: "{{ vars.name }}", value: 0 }
     case "wait":
       return { amount: 1, unit: "hours" }
     case "condition":

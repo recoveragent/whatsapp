@@ -553,6 +553,24 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         .select('default_currency')
         .eq('id', args.automation.account_id)
         .maybeSingle()
+      const [{ data: contact }, { data: stage }] = await Promise.all([
+        db
+          .from('contacts')
+          .select('name, phone')
+          .eq('id', args.contactId)
+          .maybeSingle(),
+        db
+          .from('pipeline_stages')
+          .select('name')
+          .eq('id', cfg.stage_id)
+          .maybeSingle(),
+      ])
+      const { resolveDealInsertTitle } = await import('@/lib/deals/display')
+      const title = resolveDealInsertTitle({
+        configuredTitle: interpolate(cfg.title, args),
+        contact,
+        stageName: stage?.name,
+      })
       await db.from('deals').insert({
         // Tenancy + audit, same split as automation_logs above.
         account_id: args.automation.account_id,
@@ -560,7 +578,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         pipeline_id: cfg.pipeline_id,
         stage_id: cfg.stage_id,
         contact_id: args.contactId,
-        title: interpolate(cfg.title, args),
+        title,
         value: cfg.value ?? 0,
         currency: acct?.default_currency ?? 'USD',
         status: 'open',

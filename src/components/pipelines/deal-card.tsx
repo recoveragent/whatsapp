@@ -3,6 +3,11 @@
 import type { Deal, PipelineStage } from "@/types";
 import { Calendar, Check, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
+import {
+  contactDisplayName,
+  resolveDealCardLabel,
+  resolveDealCardSubtitle,
+} from "@/lib/deals/display";
 
 interface DealCardProps {
   deal: Deal;
@@ -26,7 +31,9 @@ function initials(name?: string, fallback?: string) {
 }
 
 export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
-  const contactLabel = deal.contact?.name || deal.contact?.phone || "No contact";
+  const cardLabel = resolveDealCardLabel(deal);
+  const subtitle = resolveDealCardSubtitle(deal, stage, cardLabel);
+  const contactLabel = contactDisplayName(deal.contact);
   const assigneeLabel = deal.assignee?.full_name || null;
 
   return (
@@ -54,7 +61,7 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
 
       <div className="flex items-start justify-between gap-2">
         <h4 className="flex-1 text-sm font-semibold leading-snug text-foreground break-words">
-          {deal.title}
+          {cardLabel}
         </h4>
         {deal.status === "won" && (
           <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
@@ -70,13 +77,18 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         )}
       </div>
 
-      {/* Contact row */}
-      <div className="mt-2 flex items-center gap-2">
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-foreground">
-          {initials(deal.contact?.name, deal.contact?.phone)}
-        </span>
-        <span className="truncate text-xs text-muted-foreground">{contactLabel}</span>
-      </div>
+      {(subtitle || !contactLabel) && (
+        <div className="mt-1.5 flex items-center gap-2">
+          {contactLabel && (
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-foreground">
+              {initials(deal.contact?.name, deal.contact?.phone)}
+            </span>
+          )}
+          <span className="truncate text-xs text-muted-foreground">
+            {subtitle ?? "No contact"}
+          </span>
+        </div>
+      )}
 
       <div className="mt-2 flex items-center justify-between">
         <span className="text-sm font-bold text-primary">

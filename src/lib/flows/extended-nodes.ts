@@ -443,13 +443,31 @@ export async function executeExtendedNode(
           .select('default_currency')
           .eq('id', run.account_id)
           .maybeSingle()
+        const [{ data: contact }, { data: stage }] = await Promise.all([
+          db
+            .from('contacts')
+            .select('name, phone')
+            .eq('id', run.contact_id)
+            .maybeSingle(),
+          db
+            .from('pipeline_stages')
+            .select('name')
+            .eq('id', c.stage_id)
+            .maybeSingle(),
+        ])
+        const { resolveDealInsertTitle } = await import('@/lib/deals/display')
+        const title = resolveDealInsertTitle({
+          configuredTitle: interpolateFlowVars(c.title, vars, messageText),
+          contact,
+          stageName: stage?.name,
+        })
         await db.from('deals').insert({
           account_id: run.account_id,
           user_id: run.user_id,
           pipeline_id: c.pipeline_id,
           stage_id: c.stage_id,
           contact_id: run.contact_id,
-          title: interpolateFlowVars(c.title, vars, messageText),
+          title,
           value: c.value ?? 0,
           currency: acct?.default_currency ?? 'USD',
           status: 'open',

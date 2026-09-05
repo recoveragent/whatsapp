@@ -269,7 +269,7 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
     case "assign_conversation":
       return { mode: "round_robin", next_node_key: "" };
     case "create_deal":
-      return { pipeline_id: "", stage_id: "", title: "", value: 0, next_node_key: "" };
+      return { pipeline_id: "", stage_id: "", title: "{{ vars.name }}", value: 0, next_node_key: "" };
     case "close_conversation":
       return { next_node_key: "" };
     case "end":
