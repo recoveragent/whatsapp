@@ -32,7 +32,6 @@ import {
   ArrowDown,
   ArrowUp,
   Copy,
-  RefreshCw,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -59,7 +58,6 @@ import { createClient } from "@/lib/supabase/client"
 import { useAuth } from "@/hooks/use-auth"
 import { cn } from "@/lib/utils"
 import { defaultWebhookTriggerConfig } from "@/lib/automations/webhook-config"
-import { generateWebhookToken } from "@/lib/automations/webhook-token"
 import { flattenPayloadKeys } from "@/lib/automations/webhook-payload"
 import { SendTemplateFields } from "@/components/shared/send-template-fields"
 import { templateVariableGroupsForAutomation } from "@/lib/flows/template-variables"
@@ -692,7 +690,6 @@ function WebhookTriggerConfigPanel({
   const [checking, setChecking] = useState(false)
   const [samplePayload, setSamplePayload] = useState<unknown>(config.last_received_payload)
   const [sampleAt, setSampleAt] = useState<string | null>(config.last_received_at ?? null)
-  const [regenerating, setRegenerating] = useState(false)
 
   useEffect(() => {
     setOrigin(window.location.origin)
@@ -741,29 +738,6 @@ function WebhookTriggerConfigPanel({
     }
   }
 
-  async function regenerateToken() {
-    if (!automationId) {
-      onChange({ ...config, webhook_token: generateWebhookToken() })
-      toast.success("New webhook token generated — save to apply")
-      return
-    }
-    setRegenerating(true)
-    try {
-      const res = await fetch(`/api/automations/${automationId}/webhook-sample`, {
-        method: "POST",
-      })
-      const body = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        toast.error(body?.error ?? "Could not regenerate token")
-        return
-      }
-      onChange({ ...config, webhook_token: body.webhook_token })
-      toast.success("Webhook URL regenerated")
-    } finally {
-      setRegenerating(false)
-    }
-  }
-
   const mappings = config.variable_mappings ?? {}
 
   function setMapping(varName: string, path: string) {
@@ -809,16 +783,6 @@ function WebhookTriggerConfigPanel({
             aria-label="Copy webhook URL"
           >
             <Copy className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={regenerateToken}
-            disabled={regenerating}
-            aria-label="Regenerate webhook URL"
-          >
-            <RefreshCw className={cn("h-4 w-4", regenerating && "animate-spin")} />
           </Button>
         </div>
         <p className="mt-1 text-[11px] text-muted-foreground">

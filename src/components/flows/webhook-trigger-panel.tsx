@@ -1,14 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Copy, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 import { flattenPayloadKeys } from "@/lib/automations/webhook-payload";
-import { generateWebhookToken } from "@/lib/automations/webhook-token";
 import type { FlowWebhookTriggerConfig } from "@/lib/flows/webhook-config";
 
 export function FlowWebhookTriggerPanel({
@@ -28,8 +26,6 @@ export function FlowWebhookTriggerPanel({
   const [sampleAt, setSampleAt] = useState<string | null>(
     config.last_received_at ?? null,
   );
-  const [regenerating, setRegenerating] = useState(false);
-
   useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
@@ -75,29 +71,6 @@ export function FlowWebhookTriggerPanel({
       }
     } finally {
       setChecking(false);
-    }
-  }
-
-  async function regenerateToken() {
-    if (!flowId) {
-      onChange({ ...config, webhook_token: generateWebhookToken() });
-      toast.success("New webhook token generated — save to apply");
-      return;
-    }
-    setRegenerating(true);
-    try {
-      const res = await fetch(`/api/flows/${flowId}/webhook-sample`, {
-        method: "POST",
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(body?.error ?? "Could not regenerate token");
-        return;
-      }
-      onChange({ ...config, webhook_token: body.webhook_token });
-      toast.success("Webhook URL regenerated");
-    } finally {
-      setRegenerating(false);
     }
   }
 
@@ -152,16 +125,6 @@ export function FlowWebhookTriggerPanel({
             aria-label="Copy webhook URL"
           >
             <Copy className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={regenerateToken}
-            disabled={regenerating}
-            aria-label="Regenerate webhook URL"
-          >
-            <RefreshCw className={cn("h-4 w-4", regenerating && "animate-spin")} />
           </Button>
         </div>
       </div>
