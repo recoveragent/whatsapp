@@ -36,6 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { resolveContactFieldLabel } from "@/lib/contact-fields";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import type { CustomField } from "@/types";
@@ -145,8 +146,9 @@ export function NodeKeySelect({
   );
 }
 
-function useCustomFields(): CustomField[] {
+export function useCustomFields(): { customFields: CustomField[]; loading: boolean } {
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,6 +162,8 @@ function useCustomFields(): CustomField[] {
         if (!cancelled) setCustomFields((data as CustomField[] | null) ?? []);
       } catch {
         // Custom fields unavailable — built-in columns still work.
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => {
@@ -167,7 +171,7 @@ function useCustomFields(): CustomField[] {
     };
   }, []);
 
-  return customFields;
+  return { customFields, loading };
 }
 
 export function ContactFieldSelect({
@@ -177,19 +181,22 @@ export function ContactFieldSelect({
   value: string;
   onChange: (v: string) => void;
 }) {
-  const customFields = useCustomFields();
+  const { customFields, loading } = useCustomFields();
   const customValue = value.startsWith("custom:") ? value : "";
   const knownCustom =
     customValue &&
     customFields.some((field) => `custom:${field.id}` === customValue);
+  const displayLabel = resolveContactFieldLabel(value, customFields, {
+    loading,
+  });
 
   return (
     <Select
       value={value || "name"}
       onValueChange={(v) => onChange(v ?? "name")}
     >
-      <SelectTrigger className="bg-muted">
-        <SelectValue placeholder="Pick a field…" />
+      <SelectTrigger className="bg-muted w-full">
+        <SelectValue placeholder="Pick a field…">{displayLabel}</SelectValue>
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="name">Name</SelectItem>
@@ -205,8 +212,11 @@ export function ContactFieldSelect({
             ))}
           </SelectGroup>
         )}
-        {customValue && !knownCustom && (
-          <SelectItem value={customValue}>{customValue} (unknown field)</SelectItem>
+        {customValue && !knownCustom && loading && (
+          <SelectItem value={customValue}>Loading…</SelectItem>
+        )}
+        {customValue && !knownCustom && !loading && (
+          <SelectItem value={customValue}>Unknown field</SelectItem>
         )}
       </SelectContent>
     </Select>

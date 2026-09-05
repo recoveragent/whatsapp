@@ -20,6 +20,10 @@ import {
   type FlowExitConditionType,
   type FlowExitConfig,
 } from "@/lib/flows/exit-conditions";
+import {
+  resolvePipelineLabel,
+  resolveStageLabel,
+} from "@/lib/pipelines";
 import { cn } from "@/lib/utils";
 import type { ValidationIssue } from "@/lib/flows/validate";
 import { IssueLine } from "./validation-panel";
@@ -291,8 +295,12 @@ function ConditionRow({
                 if (v) onPatch({ pipeline_id: v, stage_id: "" });
               }}
             >
-              <SelectTrigger className="bg-background">
-                <SelectValue placeholder="Select a pipeline…" />
+              <SelectTrigger className="bg-background w-full">
+                <SelectValue placeholder="Select a pipeline…">
+                  {condition.pipeline_id
+                    ? resolvePipelineLabel(condition.pipeline_id, pipelines)
+                    : undefined}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {pipelines.map((p) => (
@@ -300,6 +308,12 @@ function ConditionRow({
                     {p.name}
                   </SelectItem>
                 ))}
+                {condition.pipeline_id &&
+                  !pipelines.some((p) => p.id === condition.pipeline_id) && (
+                    <SelectItem value={condition.pipeline_id}>
+                      Unknown pipeline
+                    </SelectItem>
+                  )}
               </SelectContent>
             </Select>
           </div>
@@ -313,8 +327,12 @@ function ConditionRow({
                 if (v) onPatch({ stage_id: v });
               }}
             >
-              <SelectTrigger className="bg-background">
-                <SelectValue placeholder="Select a stage…" />
+              <SelectTrigger className="bg-background w-full">
+                <SelectValue placeholder="Select a stage…">
+                  {condition.stage_id
+                    ? resolveStageLabel(condition.stage_id, stagesForPipeline)
+                    : undefined}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {stagesForPipeline.map((s) => (

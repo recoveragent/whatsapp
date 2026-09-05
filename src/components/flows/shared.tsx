@@ -38,7 +38,15 @@ import {
   CircleSlash,
   ClipboardList,
 } from "lucide-react";
+import { resolveContactFieldLabel } from "@/lib/contact-fields";
+import {
+  resolvePipelineLabel,
+  resolveStageLabel,
+  type PipelineOption,
+  type StageOption,
+} from "@/lib/pipelines";
 import { SHOPIFY_PAYMENT_STATUS_LABELS } from "@/lib/flows/trigger-types";
+import type { CustomField } from "@/types";
 
 // ============================================================
 // Node-type union — single source of truth for every place the UI
@@ -221,7 +229,17 @@ export function truncate(s: string, max = 80): string {
   return clean.slice(0, max - 1) + "…";
 }
 
-export function summarizeNode(node: BuilderNode): string | null {
+export function summarizeNode(
+  node: BuilderNode,
+  options?: {
+    customFields?: CustomField[];
+    pipelines?: PipelineOption[];
+    stages?: StageOption[];
+  },
+): string | null {
+  const customFields = options?.customFields ?? [];
+  const pipelines = options?.pipelines ?? [];
+  const stages = options?.stages ?? [];
   const cfg = node.config;
   switch (node.node_type) {
     case "start":
@@ -395,22 +413,39 @@ export function summarizeNode(node: BuilderNode): string | null {
         const labels = fields
           .map((entry) => {
             const row = entry as { field?: string };
-            return typeof row.field === "string" ? row.field : "";
+            return typeof row.field === "string"
+              ? resolveContactFieldLabel(row.field, customFields)
+              : "";
           })
           .filter(Boolean);
         if (labels.length === 1) return `Set ${labels[0]}`;
         if (labels.length > 1) return `Set ${labels.length} fields`;
       }
       const field = typeof cfg.field === "string" ? cfg.field : "";
-      return field ? `Set ${field}` : null;
+      return field
+        ? `Set ${resolveContactFieldLabel(field, customFields)}`
+        : null;
     }
     case "assign_conversation":
       return "Assign conversation";
     case "create_deal": {
       const title = typeof cfg.title === "string" ? cfg.title.trim() : "";
+      const pipelineId =
+        typeof cfg.pipeline_id === "string" ? cfg.pipeline_id : "";
       const stageId = typeof cfg.stage_id === "string" ? cfg.stage_id : "";
       if (title) return truncate(title, 50);
-      if (stageId) return `Stage ${stageId.slice(0, 8)}…`;
+      if (stageId) {
+        const stageName = resolveStageLabel(stageId, stages);
+        if (stageName && stageName !== "Unknown stage") {
+          return `Stage: ${stageName}`;
+        }
+      }
+      if (pipelineId) {
+        const pipelineName = resolvePipelineLabel(pipelineId, pipelines);
+        if (pipelineName && pipelineName !== "Unknown pipeline") {
+          return `Pipeline: ${pipelineName}`;
+        }
+      }
       return "Pick pipeline & stage";
     }
     case "close_conversation":

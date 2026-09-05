@@ -59,9 +59,13 @@ import {
 import { NextNodeRow, NodeKeySelect, TextRow, UpdateContactFieldsForm } from "./fields";
 import { SendTemplateFields } from "@/components/shared/send-template-fields";
 import { templateVariableGroupsForFlow } from "@/lib/flows/template-variables";
+import {
+  resolvePipelineLabel,
+  resolveStageLabel,
+} from "@/lib/pipelines";
 import type { TemplateQuickReplyButton } from "@/lib/flows/template-buttons";
 import type { FlowTriggerType } from "@/lib/flows/trigger-types";
-import { createClient } from "@/lib/supabase/client";
+import { useAccountPipelines } from "./use-account-pipelines";
 
 interface NodeConfigFormProps {
   node: BuilderNode;
@@ -1600,17 +1604,6 @@ function SwitchForm({
 // create_deal
 // ============================================================
 
-interface PipelineRow {
-  id: string;
-  name: string;
-}
-
-interface StageRow {
-  id: string;
-  pipeline_id: string;
-  name: string;
-}
-
 interface CreateDealCfg {
   pipeline_id?: string;
   stage_id?: string;
@@ -1636,6 +1629,12 @@ function CreateDealForm({
   const stagesForPipeline = pipelineId
     ? stages.filter((s) => s.pipeline_id === pipelineId)
     : [];
+  const pipelineLabel = resolvePipelineLabel(pipelineId, pipelines, {
+    loading: !loaded,
+  });
+  const stageLabel = resolveStageLabel(stageId, stagesForPipeline, {
+    loading: !loaded,
+  });
 
   return (
     <>
@@ -1664,8 +1663,10 @@ function CreateDealForm({
               });
             }}
           >
-            <SelectTrigger className="bg-muted">
-              <SelectValue placeholder="Pick a pipeline…" />
+            <SelectTrigger className="bg-muted w-full">
+              <SelectValue placeholder="Pick a pipeline…">
+                {pipelineId ? pipelineLabel : undefined}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {pipelines.map((p) => (
@@ -1702,8 +1703,10 @@ function CreateDealForm({
               if (v) onUpdateConfig({ stage_id: v });
             }}
           >
-            <SelectTrigger className="bg-muted">
-              <SelectValue placeholder="Pick a lead stage…" />
+            <SelectTrigger className="bg-muted w-full">
+              <SelectValue placeholder="Pick a lead stage…">
+                {stageId ? stageLabel : undefined}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {stagesForPipeline.map((s) => (
@@ -1760,37 +1763,6 @@ function CreateDealForm({
       />
     </>
   );
-}
-
-function useAccountPipelines(): {
-  pipelines: PipelineRow[];
-  stages: StageRow[];
-  loaded: boolean;
-} {
-  const [pipelines, setPipelines] = useState<PipelineRow[]>([]);
-  const [stages, setStages] = useState<StageRow[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    const supabase = createClient();
-    void (async () => {
-      const [pipesRes, stagesRes] = await Promise.all([
-        supabase.from("pipelines").select("id, name").order("name"),
-        supabase
-          .from("pipeline_stages")
-          .select("id, pipeline_id, name")
-          .order("position"),
-      ]);
-      if (cancelled) return;
-      setPipelines((pipesRes.data as PipelineRow[] | null) ?? []);
-      setStages((stagesRes.data as StageRow[] | null) ?? []);
-      setLoaded(true);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return { pipelines, stages, loaded };
 }
 
 // ============================================================

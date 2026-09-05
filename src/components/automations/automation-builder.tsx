@@ -55,6 +55,7 @@ import type {
   WebhookTriggerConfig,
 } from "@/types"
 import { createClient } from "@/lib/supabase/client"
+import { resolveContactFieldLabel } from "@/lib/contact-fields"
 import { useAuth } from "@/hooks/use-auth"
 import { cn } from "@/lib/utils"
 import { defaultWebhookTriggerConfig } from "@/lib/automations/webhook-config"
@@ -194,6 +195,7 @@ interface AutomationResources {
   members: AccountMember[]
   templates: MessageTemplate[]
   customFields: CustomField[]
+  customFieldsLoaded: boolean
 }
 
 const ResourcesContext = createContext<AutomationResources>({
@@ -201,6 +203,7 @@ const ResourcesContext = createContext<AutomationResources>({
   members: [],
   templates: [],
   customFields: [],
+  customFieldsLoaded: false,
 })
 
 function useResources(): AutomationResources {
@@ -213,6 +216,7 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
   const [members, setMembers] = useState<AccountMember[]>([])
   const [templates, setTemplates] = useState<MessageTemplate[]>([])
   const [customFields, setCustomFields] = useState<CustomField[]>([])
+  const [customFieldsLoaded, setCustomFieldsLoaded] = useState(false)
 
   useEffect(() => {
     if (!accountId) return
@@ -238,6 +242,7 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
       setTags((tagsRes.data as TagRecord[] | null) ?? [])
       setTemplates((templatesRes.data as MessageTemplate[] | null) ?? [])
       setCustomFields((customFieldsRes.data as CustomField[] | null) ?? [])
+      setCustomFieldsLoaded(true)
     })()
 
     // Members go through the API so we inherit its email-visibility
@@ -260,7 +265,9 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
   }, [accountId])
 
   return (
-    <ResourcesContext.Provider value={{ tags, members, templates, customFields }}>
+    <ResourcesContext.Provider
+      value={{ tags, members, templates, customFields, customFieldsLoaded }}
+    >
       {children}
     </ResourcesContext.Provider>
   )
@@ -329,15 +336,19 @@ function ContactFieldSelect({
   value: string
   onChange: (v: string) => void
 }) {
-  const { customFields } = useResources()
+  const { customFields, customFieldsLoaded } = useResources()
   const customValue = value.startsWith("custom:") ? value : ""
   const knownCustom =
     customValue && customFields.some((f) => `custom:${f.id}` === customValue)
+  const displayLabel = resolveContactFieldLabel(value, customFields, {
+    loading: !customFieldsLoaded,
+  })
   return (
     <select
       value={value || "name"}
       onChange={(e) => onChange(e.target.value)}
       className={SELECT_CLASS}
+      aria-label={displayLabel}
     >
       <option value="name">Name</option>
       <option value="email">Email</option>
@@ -351,8 +362,11 @@ function ContactFieldSelect({
           ))}
         </optgroup>
       )}
-      {customValue && !knownCustom && (
-        <option value={customValue}>{customValue} (unknown field)</option>
+      {customValue && !knownCustom && !customFieldsLoaded && (
+        <option value={customValue}>Loading…</option>
+      )}
+      {customValue && !knownCustom && customFieldsLoaded && (
+        <option value={customValue}>Unknown field</option>
       )}
     </select>
   )

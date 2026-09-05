@@ -98,6 +98,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useFlowEditor } from "./flow-editor-state";
 import { NodeConfigForm } from "./forms/node-config-form";
+import { useCustomFields } from "./forms/fields";
+import { useAccountPipelines } from "./forms/use-account-pipelines";
 import { NodeKeyField } from "./node-key-field";
 import {
   TRIGGER_NODE_ID,
@@ -110,6 +112,8 @@ import {
   shipmentRoutesFromConfig,
   shipmentStatusFromHandle,
 } from "@/lib/flows/trigger-types";
+import type { CustomField } from "@/types";
+import type { PipelineOption, StageOption } from "@/lib/pipelines";
 import { parseExitConfig, summarizeExitConfig } from "@/lib/flows/exit-conditions";
 
 // React-Flow node `data` payload — the bits our custom renderer needs.
@@ -119,6 +123,9 @@ interface NodeData extends Record<string, unknown> {
   /** Validator's "look here" pulse — flashes the card border for
    *  ~1.6s. Drives a CSS animation, doesn't change layout. */
   isFlashed: boolean;
+  customFields: CustomField[];
+  pipelines: PipelineOption[];
+  stages: StageOption[];
 }
 
 const NODE_WIDTH = 260;
@@ -179,9 +186,10 @@ function triggerConnections(
 // ============================================================
 
 function FlowNodeCard({ data, selected }: NodeProps) {
-  const { node, isFlashed } = data as NodeData;
+  const { node, isFlashed, customFields = [], pipelines = [], stages = [] } =
+    data as NodeData;
   const meta = NODE_META[node.node_type];
-  const summary = summarizeNode(node);
+  const summary = summarizeNode(node, { customFields, pipelines, stages });
   const Icon = meta.icon;
   const slots = outgoingSlots(node);
   // Start nodes are entry-only; nothing ever targets them, so they
@@ -337,6 +345,8 @@ function FlowCanvasInner() {
     renameNode,
     flashKey,
   } = useFlowEditor();
+  const { customFields } = useCustomFields();
+  const { pipelines, stages } = useAccountPipelines();
   const reactFlow = useReactFlow();
   const builderNodes = state.nodes;
   const entryNodeId = state.entry_node_id;
@@ -470,6 +480,9 @@ function FlowCanvasInner() {
           node: n,
           isEntry: false,
           isFlashed: n.node_key === flashKey,
+          customFields,
+          pipelines,
+          stages,
         },
       };
     });
@@ -491,6 +504,9 @@ function FlowCanvasInner() {
     return [triggerNode, ...flowNodes];
   }, [
     builderNodes,
+    customFields,
+    pipelines,
+    stages,
     flashKey,
     autoLayoutPositions,
     triggerPosition,
