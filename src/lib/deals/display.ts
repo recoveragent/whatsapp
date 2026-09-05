@@ -19,6 +19,24 @@ export function titleMatchesStageName(
   return stages.some((s) => normalizeLabel(s.name) === normalized);
 }
 
+export function resolveDealCardContactFields(
+  deal: Pick<Deal, "title"> & { contact?: Contact | null },
+): { name: string; phone: string | null; company: string | null } {
+  const phone = deal.contact?.phone?.trim() || null;
+  const nameFromContact = deal.contact?.name?.trim() || null;
+  const title = deal.title?.trim() || null;
+  const name =
+    nameFromContact ||
+    (title && title !== phone ? title : null) ||
+    "Unknown";
+
+  return {
+    name,
+    phone,
+    company: deal.contact?.company?.trim() || null,
+  };
+}
+
 export function resolveDealCardLabel(
   deal: Pick<Deal, "title"> & { contact?: Contact | null },
 ): string {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  resolveDealCardContactFields,
   resolveDealCardLabel,
   resolveDealCardSubtitle,
   resolveDealInsertTitle,
@@ -63,5 +64,22 @@ describe("deals/display", () => {
         stageName: "New Lead",
       }),
     ).toBe("Anuj Yadav");
+  });
+
+  it("maps contact fields for pipeline cards", () => {
+    expect(
+      resolveDealCardContactFields({
+        title: "Ignored title",
+        contact: {
+          name: "Imtiaz khan",
+          phone: "+919876543210",
+          company: "Acme Corp",
+        } as never,
+      }),
+    ).toEqual({
+      name: "Imtiaz khan",
+      phone: "+919876543210",
+      company: "Acme Corp",
+    });
   });
 });
