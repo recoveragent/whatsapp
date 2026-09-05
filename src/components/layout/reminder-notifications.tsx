@@ -21,7 +21,7 @@ type ReminderRow = InboxReminder & {
   completer?: { user_id: string; full_name?: string | null } | null
 }
 
-type PanelTab = 'due' | 'history'
+type PanelTab = 'due' | 'upcoming' | 'history'
 
 function contactLabel(reminder: ReminderRow): string {
   return (
@@ -121,22 +121,79 @@ export function ReminderNotifications() {
     return () => window.clearTimeout(timer)
   }, [upcoming])
 
-  const count = due.length
+  const dueCount = due.length
+  const upcomingCount = upcoming.length
+
+  function renderPendingReminder(reminder: ReminderRow) {
+    const name = contactLabel(reminder)
+    const phone = reminder.contact?.phone ?? '—'
+
+    return (
+      <li key={reminder.id} className="px-3 py-3">
+        <Link
+          href={`/inbox?c=${reminder.conversation_id}`}
+          className="block text-sm font-medium text-foreground hover:underline"
+          onClick={() => setOpen(false)}
+        >
+          {name}
+        </Link>
+        <p className="mt-0.5 text-xs text-muted-foreground">{phone}</p>
+        <p className="mt-1 text-sm text-foreground/90">{reminder.note}</p>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Follow up: {assigneeLabel(reminder)}
+        </p>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Due {format(new Date(reminder.due_at), 'PPp')}
+        </p>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Open chat → Complete in the contact panel
+        </p>
+
+        {snoozeId === reminder.id ? (
+          <div className="mt-2">
+            <ReminderSnoozeControls
+              reminderId={reminder.id}
+              onSnoozed={() => {
+                setPending((prev) => prev.filter((r) => r.id !== reminder.id))
+                setSnoozeId(null)
+                void load()
+              }}
+            />
+            <button
+              type="button"
+              className="mt-2 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => setSnoozeId(null)}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="mt-2 text-xs font-medium text-primary hover:underline"
+            onClick={() => setSnoozeId(reminder.id)}
+          >
+            Snooze…
+          </button>
+        )}
+      </li>
+    )
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         className="relative flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         aria-label={
-          count > 0
-            ? `Follow-up reminders, ${count} due`
+          dueCount > 0
+            ? `Follow-up reminders, ${dueCount} due`
             : 'Follow-up reminders'
         }
       >
         <Bell className="h-[18px] w-[18px]" />
-        {count > 0 ? (
+        {dueCount > 0 ? (
           <span className="absolute -top-0.5 -right-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
-            {count > 9 ? '9+' : count}
+            {dueCount > 9 ? '9+' : dueCount}
           </span>
         ) : null}
       </PopoverTrigger>
@@ -163,7 +220,19 @@ export function ReminderNotifications() {
             )}
             onClick={() => setTab('due')}
           >
-            Due{count > 0 ? ` (${count})` : ''}
+            Due{dueCount > 0 ? ` (${dueCount})` : ''}
+          </button>
+          <button
+            type="button"
+            className={cn(
+              'flex-1 px-3 py-2 text-xs font-medium transition-colors',
+              tab === 'upcoming'
+                ? 'border-b-2 border-primary text-primary'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+            onClick={() => setTab('upcoming')}
+          >
+            Upcoming{upcomingCount > 0 ? ` (${upcomingCount})` : ''}
           </button>
           <button
             type="button"
@@ -192,63 +261,19 @@ export function ReminderNotifications() {
               </p>
             ) : (
               <ul className="divide-y divide-border">
-                {due.map((reminder) => {
-                  const name = contactLabel(reminder)
-                  const phone = reminder.contact?.phone ?? '—'
-
-                  return (
-                    <li key={reminder.id} className="px-3 py-3">
-                      <Link
-                        href={`/inbox?c=${reminder.conversation_id}`}
-                        className="block text-sm font-medium text-foreground hover:underline"
-                        onClick={() => setOpen(false)}
-                      >
-                        {name}
-                      </Link>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{phone}</p>
-                      <p className="mt-1 text-sm text-foreground/90">{reminder.note}</p>
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        Follow up: {assigneeLabel(reminder)}
-                      </p>
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        Due {format(new Date(reminder.due_at), 'PPp')}
-                      </p>
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        Open chat → Complete in the contact panel
-                      </p>
-
-                      {snoozeId === reminder.id ? (
-                        <div className="mt-2">
-                          <ReminderSnoozeControls
-                            reminderId={reminder.id}
-                            onSnoozed={() => {
-                              setPending((prev) =>
-                                prev.filter((r) => r.id !== reminder.id),
-                              )
-                              setSnoozeId(null)
-                              void load()
-                            }}
-                          />
-                          <button
-                            type="button"
-                            className="mt-2 text-xs text-muted-foreground hover:text-foreground"
-                            onClick={() => setSnoozeId(null)}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          className="mt-2 text-xs font-medium text-primary hover:underline"
-                          onClick={() => setSnoozeId(reminder.id)}
-                        >
-                          Snooze…
-                        </button>
-                      )}
-                    </li>
-                  )
-                })}
+                {due.map(renderPendingReminder)}
+              </ul>
+            )}
+          </div>
+        ) : tab === 'upcoming' ? (
+          <div className="max-h-[min(24rem,calc(100dvh-10rem))] overflow-y-auto overscroll-contain">
+            {upcoming.length === 0 ? (
+              <p className="px-3 py-8 text-center text-sm text-muted-foreground">
+                No upcoming reminders
+              </p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {upcoming.map(renderPendingReminder)}
               </ul>
             )}
           </div>
