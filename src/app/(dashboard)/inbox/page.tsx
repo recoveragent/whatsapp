@@ -6,7 +6,10 @@ import { createClient } from "@/lib/supabase/client";
 import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
 import { useRealtime } from "@/hooks/use-realtime";
 import { usePhoneDeepLink } from "@/hooks/use-phone-deep-link";
-import { isEmbedMode, withEmbedQuery } from "@/lib/embed/query";
+import { useRecoverAgentEmbed } from "@/hooks/use-recover-agent-embed";
+import { isEmbedMode } from "@/lib/embed/query";
+import { notifyRecoverAgentEmbedClose } from "@/lib/embed/recover-agent";
+import { pickValidE164Phone } from "@/lib/whatsapp/phone-utils";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
@@ -33,7 +36,11 @@ export default function InboxPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const embedded = isEmbedMode(searchParams);
+  const lockedPhone = embedded
+    ? pickValidE164Phone(searchParams.getAll("phone"))
+    : null;
   const { phoneDeepLinkPending } = usePhoneDeepLink();
+  useRecoverAgentEmbed(embedded);
   /**
    * `?c=<id>` deep-link support. Used when landing here from the
    * dashboard's recent-conversations list so the right thread opens
@@ -160,6 +167,32 @@ export default function InboxPage() {
   const lastSeenDeepLinkOnLoadRef = useRef<string | null>(null);
   const conversationsForDeepLinkRef = useRef<Conversation[]>([]);
   const activeConversationForDeepLinkRef = useRef<Conversation | null>(null);
+  /** Embed mode: only allow ?c= matching the phone-locked conversation. */
+  const lockedConversationIdRef = useRef<string | null>(null);
+  const prevLockedPhoneRef = useRef<string | null>(lockedPhone);
+
+  const embedDeepLinkAllowed = useCallback(
+    (conversationId: string | null | undefined) => {
+      if (!embedded) return true;
+      if (!conversationId) return false;
+      if (!lockedConversationIdRef.current) return true;
+      return conversationId === lockedConversationIdRef.current;
+    },
+    [embedded],
+  );
+
+  useEffect(() => {
+    if (!embedded) return;
+    if (lockedPhone !== prevLockedPhoneRef.current) {
+      lockedConversationIdRef.current = null;
+      prevLockedPhoneRef.current = lockedPhone;
+    }
+  }, [embedded, lockedPhone]);
+
+  useEffect(() => {
+    if (!embedded || !deepLinkConvId || phoneDeepLinkPending) return;
+    lockedConversationIdRef.current = deepLinkConvId;
+  }, [embedded, deepLinkConvId, phoneDeepLinkPending]);
 
   const applyDeepLinkConversation = useCallback(
     (match: Conversation) => {
@@ -520,6 +553,11 @@ export default function InboxPage() {
         return;
       }
 
+      if (!embedDeepLinkAllowed(deepLinkConvId)) {
+        lastSeenDeepLinkOnLoadRef.current = deepLinkConvId;
+        return;
+      }
+
       if (autoSelectedForDeepLinkRef.current === deepLinkConvId) {
         lastSeenDeepLinkOnLoadRef.current = deepLinkConvId;
         return;
@@ -560,7 +598,7 @@ export default function InboxPage() {
         applyDeepLinkConversation(match);
       }
     },
-    [deepLinkConvId, activeConversation, applyDeepLinkConversation]
+    [deepLinkConvId, activeConversation, applyDeepLinkConversation, embedDeepLinkAllowed]
   );
 
   // Reminder bell / external links change `?c=` while the inbox is
@@ -571,6 +609,7 @@ export default function InboxPage() {
   // while the URL is still catching up.
   useEffect(() => {
     if (!deepLinkConvId) return;
+    if (!embedDeepLinkAllowed(deepLinkConvId)) return;
     if (autoSelectedForDeepLinkRef.current === deepLinkConvId) return;
 
     const activeId = activeConversationForDeepLinkRef.current?.id;
@@ -586,13 +625,14 @@ export default function InboxPage() {
     if (!match) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- deep-link handoff from URL while inbox stays mounted
     applyDeepLinkConversation(match);
-  }, [deepLinkConvId, applyDeepLinkConversation]);
+  }, [deepLinkConvId, applyDeepLinkConversation, embedDeepLinkAllowed]);
 
   // Fallback: `?c=` targets a conversation missing from the in-memory
   // list — fetch that single row so reminder clicks still open it.
   const deepLinkFetchRef = useRef<string | null>(null);
   useEffect(() => {
     if (!deepLinkConvId) return;
+    if (!embedDeepLinkAllowed(deepLinkConvId)) return;
     if (autoSelectedForDeepLinkRef.current === deepLinkConvId) return;
     if (activeConversation?.id === deepLinkConvId) return;
     if (conversations.some((c) => c.id === deepLinkConvId)) return;
@@ -631,10 +671,12 @@ export default function InboxPage() {
     conversations,
     activeConversation?.id,
     applyDeepLinkConversation,
+    embedDeepLinkAllowed,
   ]);
 
   const handleSelectConversation = useCallback(
     (conv: Conversation) => {
+      if (embedded) return;
       if (activeConversation?.id === conv.id) return;
       if (blockIfOutboundInFlight()) {
         return;
@@ -669,7 +711,7 @@ export default function InboxPage() {
       // Reflect the selection in the URL so a refresh lands the user
       // back in the same thread, and so copy-paste links work. Use
       // replace() to avoid polluting browser history with every click.
-      router.replace(withEmbedQuery(`/inbox?c=${conv.id}`, embedded), { scroll: false });
+      router.replace(`/inbox?c=${conv.id}`, { scroll: false });
     },
     [activeConversation?.id, router, blockIfOutboundInFlight, embedded],
   );
@@ -691,13 +733,14 @@ export default function InboxPage() {
   );
 
   const clearActiveConversation = useCallback(() => {
+    if (embedded) return;
     setActiveConversation(null);
     setActiveContact(null);
     setMessages([]);
     // Clearing the ref lets the deep-link auto-selector fire again if
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
-    router.replace(withEmbedQuery("/inbox", embedded), { scroll: false });
+    router.replace("/inbox", { scroll: false });
   }, [router, embedded]);
 
   // Mobile "back" — deselect the conversation so the list pane comes
@@ -707,8 +750,12 @@ export default function InboxPage() {
     if (blockIfOutboundInFlight()) {
       return;
     }
+    if (embedded) {
+      notifyRecoverAgentEmbedClose();
+      return;
+    }
     clearActiveConversation();
-  }, [blockIfOutboundInFlight, clearActiveConversation]);
+  }, [blockIfOutboundInFlight, clearActiveConversation, embedded]);
 
   const handleContactUpdated = useCallback(async () => {
     if (!activeContact) return;
@@ -780,6 +827,11 @@ export default function InboxPage() {
       );
       if (activeConversation?.id === conversationId) {
         if (status === "closed") {
+          if (embedded) {
+            notifyRecoverAgentEmbedClose();
+            setActiveConversation((prev) => (prev ? { ...prev, status } : prev));
+            return;
+          }
           if (nextConv) {
             handleSelectConversation(nextConv);
           } else {
@@ -795,7 +847,8 @@ export default function InboxPage() {
       conversations,
       clearActiveConversation,
       handleSelectConversation,
-    ]
+      embedded,
+    ],
   );
 
   const patchConversationStatus = useCallback(
@@ -907,9 +960,8 @@ export default function InboxPage() {
       )}
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left panel: Conversation list.
-            Hidden on mobile when a conversation is selected so the
-            thread can occupy the full width. Always visible on lg+. */}
+        {/* Left panel: Conversation list — hidden in Recover Agent embed. */}
+        {!embedded && (
         <div
           className={cn(
             "flex h-full flex-1 lg:flex-none",
@@ -926,21 +978,13 @@ export default function InboxPage() {
             resyncToken={resyncToken}
           />
         </div>
+        )}
 
-        {/* Center panel: Message thread.
-            Hidden on mobile when no conversation is selected so the
-            list can occupy the full width. Always visible on lg+
-            (shows its own empty-state if no thread is picked yet).
-
-            `min-w-0` is load-bearing: without it, a single wide piece
-            of content inside the thread (long quote preview, very
-            long URL in a message body) forces the flex child past
-            its share and pushes the contact-sidebar panel off-screen
-            on the right. Issue #165. */}
+        {/* Center panel: Message thread. */}
         <div
           className={cn(
             "flex h-full min-w-0 flex-1 lg:flex",
-            hasActiveConv ? "flex" : "hidden lg:flex",
+            embedded || hasActiveConv ? "flex" : "hidden lg:flex",
           )}
         >
           <MessageThread
@@ -952,7 +996,7 @@ export default function InboxPage() {
             onUpdateMessage={handleUpdateMessage}
             onPatchStatus={handlePatchActiveStatus}
             onAssignChange={handleAssignChange}
-            onBack={handleCloseConversation}
+            onBack={embedded ? undefined : handleCloseConversation}
             resyncToken={resyncToken}
             onRefresh={handleManualRefresh}
             contactPanelOpen={contactPanelOpen}
@@ -967,7 +1011,7 @@ export default function InboxPage() {
             agent hasn't collapsed it via the thread-header toggle (#258).
             On mobile it's always hidden (the `lg:block` below), so the
             toggle — which is itself desktop-only — never affects it. */}
-        {contactPanelOpen && (
+        {contactPanelOpen && !embedded && (
           <div
             ref={contactSidebarRef}
             className={cn(

@@ -16,3 +16,15 @@ export function withEmbedQuery(path: string, embed: boolean): string {
   const qs = params.toString();
   return qs ? `${pathname}?${qs}` : `${pathname}?embed=1`;
 }
+
+/** Build `/inbox` URL for Recover Agent iframe embed mode. */
+export function buildEmbedInboxUrl(options: {
+  phone?: string | null;
+  conversationId?: string | null;
+}): string {
+  const params = new URLSearchParams();
+  params.set("embed", "1");
+  if (options.phone) params.set("phone", options.phone);
+  if (options.conversationId) params.set("c", options.conversationId);
+  return `/inbox?${params.toString()}`;
+}
