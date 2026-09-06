@@ -8,7 +8,7 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { usePhoneDeepLink } from "@/hooks/use-phone-deep-link";
 import { useRecoverAgentEmbed } from "@/hooks/use-recover-agent-embed";
 import { isEmbedMode } from "@/lib/embed/query";
-import { notifyRecoverAgentEmbedClose } from "@/lib/embed/recover-agent";
+import { notifyRecoverAgentConversationChanged, notifyRecoverAgentEmbedClose } from "@/lib/embed/recover-agent";
 import { pickValidE164Phone } from "@/lib/whatsapp/phone-utils";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
@@ -170,6 +170,7 @@ export default function InboxPage() {
   /** Embed mode: only allow ?c= matching the phone-locked conversation. */
   const lockedConversationIdRef = useRef<string | null>(null);
   const prevLockedPhoneRef = useRef<string | null>(lockedPhone);
+  const embedNotifiedConvRef = useRef<string | null>(null);
 
   const embedDeepLinkAllowed = useCallback(
     (conversationId: string | null | undefined) => {
@@ -185,9 +186,17 @@ export default function InboxPage() {
     if (!embedded) return;
     if (lockedPhone !== prevLockedPhoneRef.current) {
       lockedConversationIdRef.current = null;
+      embedNotifiedConvRef.current = null;
       prevLockedPhoneRef.current = lockedPhone;
     }
   }, [embedded, lockedPhone]);
+
+  useEffect(() => {
+    if (!embedded || !activeConversation?.contact?.phone) return;
+    if (embedNotifiedConvRef.current === activeConversation.id) return;
+    embedNotifiedConvRef.current = activeConversation.id;
+    notifyRecoverAgentConversationChanged(activeConversation.contact.phone);
+  }, [embedded, activeConversation?.id, activeConversation?.contact?.phone]);
 
   useEffect(() => {
     if (!embedded || !deepLinkConvId || phoneDeepLinkPending) return;

@@ -42,13 +42,16 @@ export function canonicalContactPhone(phone: string): string {
   return shortest[0]!
 }
 
-/** Last-8 suffixes used to pre-filter contacts in SQL lookups. */
+/** Last-8 (and Indian last-10) suffixes used to pre-filter contacts in SQL. */
 export function contactLookupSuffixes(phone: string): string[] {
   const seen = new Set<string>()
   const add = (raw: string) => {
     const n = normalizePhone(raw)
     if (!n) return
     seen.add(n.length >= 8 ? n.slice(-8) : n)
+    if (n.startsWith('91') && n.length >= 12) {
+      seen.add(n.slice(-10))
+    }
   }
 
   add(phone)

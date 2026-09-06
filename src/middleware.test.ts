@@ -122,6 +122,9 @@ describe("middleware — iframe embed headers", () => {
 
     expect(res.headers.get("X-Frame-Options")).toBeNull();
     expect(res.headers.get("Content-Security-Policy")).toContain(
+      "frame-ancestors",
+    );
+    expect(res.headers.get("Content-Security-Policy")).toContain(
       "https://dashboard.recoveragent.ai",
     );
   });
@@ -135,6 +138,9 @@ describe("middleware — iframe embed headers", () => {
 
     expect(res.headers.get("X-Frame-Options")).toBeNull();
     expect(res.headers.get("Content-Security-Policy")).toContain("frame-ancestors");
+    expect(res.headers.get("Content-Security-Policy")).toContain(
+      "https://dashboard.recoveragent.ai",
+    );
   });
 
   it("denies iframe embed on /inbox without embed=1", async () => {

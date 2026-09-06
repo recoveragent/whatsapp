@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { getServerRedirectOrigin } from "@/lib/auth/site-url";
 import { resolveSsoPostLoginPath } from "@/lib/auth/sso-redirect";
+import { finalizeFrameHeaders } from "@/lib/security/embed-headers";
 import {
   completeSsoLogin,
   recoverAgentDashboardUrl,
@@ -40,10 +41,12 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const postLoginPath = resolveSsoPostLoginPath(
-    searchParams.get("redirect"),
-    searchParams.getAll("phone"),
-  );
+  const postLoginPath = resolveSsoPostLoginPath({
+    redirectParam: searchParams.get("redirect"),
+    phoneCandidates: searchParams.getAll("phone"),
+    embedTopLevel: searchParams.get("embed") === "1",
+    hasSplitEmbedParam: searchParams.has("embed%3D1"),
+  });
 
   const origin =
     getServerRedirectOrigin(request) || new URL(request.url).origin;
@@ -76,7 +79,7 @@ export async function GET(request: NextRequest) {
 
   try {
     await completeSsoLogin(ticket, supabase);
-    return redirectResponse;
+    return finalizeFrameHeaders(request, redirectResponse);
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error("[sso]", detail);
