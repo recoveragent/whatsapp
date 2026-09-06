@@ -534,6 +534,7 @@ export async function executeExtendedNode(
 export async function enqueueFlowWait(
   db: AdminClient,
   run: FlowRunRow,
+  waitNodeKey: string,
   nextNodeKey: string,
   runAt: string,
 ): Promise<void> {
@@ -552,6 +553,10 @@ export async function enqueueFlowWait(
   })
   await db
     .from('flow_runs')
-    .update({ status: 'waiting', last_advanced_at: new Date().toISOString() })
+    .update({
+      status: 'waiting',
+      current_node_key: waitNodeKey,
+      last_advanced_at: new Date().toISOString(),
+    })
     .eq('id', run.id)
 }

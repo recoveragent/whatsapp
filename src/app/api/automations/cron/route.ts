@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { resumePendingExecution } from '@/lib/automations/engine'
 import type { AutomationContext } from '@/lib/automations/engine'
 import { pollGoogleSheetFlows } from '@/lib/google-sheets/poll'
+import { resumeFlowPendingExecutions } from '@/lib/flows/engine'
 import { processDueCadences } from '@/lib/leads/engine'
 import { pollLeadSources } from '@/lib/leads/poll-sources'
 
@@ -74,5 +75,6 @@ export async function GET(request: Request) {
   const google_sheets = await pollGoogleSheetFlows(admin)
   const lead_sheets = await pollLeadSources(admin)
   const cadences = await processDueCadences(admin)
-  return NextResponse.json({ processed, google_sheets, lead_sheets, cadences })
+  const flow_waits = await resumeFlowPendingExecutions()
+  return NextResponse.json({ processed, google_sheets, lead_sheets, cadences, flow_waits })
 }

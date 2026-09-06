@@ -1148,7 +1148,7 @@ async function advanceFromNodeKey(
         return finish("completed");
       }
       if (ext.kind === "wait") {
-        await enqueueFlowWait(db, run, ext.nextKey, ext.runAt);
+        await enqueueFlowWait(db, run, node.node_key, ext.nextKey, ext.runAt);
         await logEvent(db, run.id, "node_entered", node.node_key, {
           waiting_until: ext.runAt,
         });
