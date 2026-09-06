@@ -20,8 +20,17 @@ export function usePhoneDeepLink() {
   const prevPhoneRef = useRef<string | null>(null);
 
   const phone = pickValidE164Phone(searchParams.getAll('phone'));
+  const conversationId = searchParams.get('c');
   const embedded = isEmbedMode(searchParams);
-  const [pending, setPending] = useState(() => Boolean(phone));
+  const [pending, setPending] = useState(
+    () => Boolean(phone) && !searchParams.get('c'),
+  );
+
+  useEffect(() => {
+    if (conversationId) {
+      setPending(false);
+    }
+  }, [conversationId]);
 
   useEffect(() => {
     if (phone !== prevPhoneRef.current) {
@@ -70,6 +79,7 @@ export function usePhoneDeepLink() {
             : `/inbox?c=${data.id}`,
           { scroll: false },
         );
+        setPending(false);
       } catch {
         if (cancelled) return;
         toast.error('Could not open chat');
@@ -88,5 +98,7 @@ export function usePhoneDeepLink() {
     };
   }, [phone, pathname, router, embedded]);
 
-  return { phoneDeepLinkPending: pending && Boolean(phone) };
+  return {
+    phoneDeepLinkPending: pending && Boolean(phone) && !conversationId,
+  };
 }
