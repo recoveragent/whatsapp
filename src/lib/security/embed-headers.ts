@@ -46,10 +46,10 @@ export function applyDefaultFrameHeaders(response: NextResponse): void {
   response.headers.set("X-Frame-Options", "DENY");
 }
 
-export function finalizeFrameHeaders(
+export function finalizeFrameHeaders<T extends NextResponse>(
   request: NextRequest,
-  response: NextResponse,
-): NextResponse {
+  response: T,
+): T {
   if (shouldAllowIframeEmbed(request)) {
     applyEmbedFrameHeaders(response);
   } else {
