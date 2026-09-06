@@ -101,6 +101,28 @@ export function isValidE164(phone: string): boolean {
   return /^\+?[1-9]\d{6,14}$/.test(phone)
 }
 
+/** Normalize a trimmed phone to E.164 with a leading `+`, or null if invalid. */
+export function formatE164Phone(phone: string): string | null {
+  const trimmed = phone.trim()
+  if (!trimmed) return null
+
+  const withPlus = trimmed.startsWith('+') ? trimmed : `+${trimmed}`
+  if (isValidE164(withPlus)) return withPlus
+  if (isValidE164(trimmed)) {
+    return trimmed.startsWith('+') ? trimmed : `+${trimmed}`
+  }
+  return null
+}
+
+/** Return the first valid E.164 phone from a list (e.g. duplicate query params). */
+export function pickValidE164Phone(candidates: Iterable<string>): string | null {
+  for (const raw of candidates) {
+    const formatted = formatE164Phone(raw)
+    if (formatted) return formatted
+  }
+  return null
+}
+
 /**
  * Generate plausible phone number variants for retry when Meta's
  * sandbox rejects a number with error #131030 ("not in allowed list").

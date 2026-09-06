@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatE164Phone,
   isRecipientNotAllowedError,
   isValidE164,
   normalizePhone,
   phoneVariants,
   phonesMatch,
+  pickValidE164Phone,
   sanitizePhoneForMeta,
   canonicalContactPhone,
   contactPhoneAfterSuccessfulSend,
@@ -121,6 +123,31 @@ describe("isValidE164", () => {
 
   it("rejects the empty string", () => {
     expect(isValidE164("")).toBe(false);
+  });
+});
+
+describe("formatE164Phone", () => {
+  it("normalizes valid numbers to a leading plus", () => {
+    expect(formatE164Phone("+919876543210")).toBe("+919876543210");
+    expect(formatE164Phone("919876543210")).toBe("+919876543210");
+  });
+
+  it("returns null for invalid numbers", () => {
+    expect(formatE164Phone("")).toBe(null);
+    expect(formatE164Phone("abc")).toBe(null);
+    expect(formatE164Phone("+0123")).toBe(null);
+  });
+});
+
+describe("pickValidE164Phone", () => {
+  it("returns the first valid candidate", () => {
+    expect(pickValidE164Phone(["bad", "+919876543210", "+911111111111"])).toBe(
+      "+919876543210",
+    );
+  });
+
+  it("returns null when no candidate is valid", () => {
+    expect(pickValidE164Phone(["", "not-a-phone"])).toBe(null);
   });
 });
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { usePhoneDeepLink } from '@/hooks/use-phone-deep-link'
 import { formatCurrency } from '@/lib/currency'
 import {
   MessageSquare,
@@ -38,6 +39,7 @@ type RangeDays = 7 | 30 | 90
 
 export default function DashboardPage() {
   const { defaultCurrency, isLeadGenBrand } = useAuth()
+  const { phoneDeepLinkPending } = usePhoneDeepLink()
   const [metrics, setMetrics] = useState<MetricsBundle | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(true)
 
@@ -122,6 +124,14 @@ export default function DashboardPage() {
     },
     [series],
   )
+
+  if (phoneDeepLinkPending) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <p className="text-sm text-muted-foreground">Opening conversation…</p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">

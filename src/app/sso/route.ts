@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { getServerRedirectOrigin } from "@/lib/auth/site-url";
+import { resolveSsoPostLoginPath } from "@/lib/auth/sso-redirect";
 import {
   completeSsoLogin,
   recoverAgentDashboardUrl,
@@ -28,19 +29,25 @@ function publicSsoMessage(err: unknown): string {
 
 /**
  * Recover Agent dashboard SSO landing.
- * Public URL: GET /sso?ticket=<jwt>
+ * Public URL: GET /sso?ticket=<jwt>&redirect=/dashboard?phone=…&phone=…
  */
 export async function GET(request: NextRequest) {
-  const ticket = request.nextUrl.searchParams.get("ticket")?.trim() ?? "";
+  const { searchParams } = request.nextUrl;
+  const ticket = searchParams.get("ticket")?.trim() ?? "";
   if (!ticket) {
     return errorResponse(
       "This sign-in link is missing a ticket. Go back to the dashboard and open WhatsApp CRM again.",
     );
   }
 
+  const postLoginPath = resolveSsoPostLoginPath(
+    searchParams.get("redirect"),
+    searchParams.getAll("phone"),
+  );
+
   const origin =
     getServerRedirectOrigin(request) || new URL(request.url).origin;
-  const redirectTo = `${origin}/`;
+  const redirectTo = `${origin}${postLoginPath}`;
 
   let redirectResponse = NextResponse.redirect(redirectTo);
   redirectResponse.headers.set("Cache-Control", "no-store");
