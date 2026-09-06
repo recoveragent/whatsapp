@@ -29,7 +29,8 @@ const SECURITY_HEADERS = [
     value: "max-age=63072000; includeSubDomains; preload",
   },
   { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "DENY" },
+  // X-Frame-Options is set per-request in middleware so ?embed=1 can allow
+  // dashboard.recoveragent.ai to iframe /inbox, /sso, and /login.
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
     // Microphone is allowed for same-origin (`self`) so the inbox

@@ -29,7 +29,7 @@ function publicSsoMessage(err: unknown): string {
 
 /**
  * Recover Agent dashboard SSO landing.
- * Public URL: GET /sso?ticket=<jwt>&redirect=/dashboard?phone=…&phone=…
+ * Public URL: GET /sso?ticket=<jwt>&redirect=/inbox?phone=…&embed=1&phone=…
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;

@@ -29,18 +29,18 @@ describe("resolveSsoPostLoginPath", () => {
     ).toBe("/dashboard?phone=%2B919876543210");
   });
 
-  it("falls back to dashboard with phone when redirect is unsafe", () => {
+  it("falls back to inbox with phone when redirect is unsafe", () => {
     expect(resolveSsoPostLoginPath("//evil.com", ["+919876543210"])).toBe(
-      "/dashboard?phone=%2B919876543210",
+      "/inbox?phone=%2B919876543210",
     );
   });
 
-  it("builds dashboard phone link from standalone phone params", () => {
+  it("builds inbox phone link from standalone phone params", () => {
     expect(resolveSsoPostLoginPath(null, ["+919876543210"])).toBe(
-      "/dashboard?phone=%2B919876543210",
+      "/inbox?phone=%2B919876543210",
     );
     expect(resolveSsoPostLoginPath("", ["919876543210"])).toBe(
-      "/dashboard?phone=%2B919876543210",
+      "/inbox?phone=%2B919876543210",
     );
   });
 

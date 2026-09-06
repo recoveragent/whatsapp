@@ -111,3 +111,40 @@ describe("middleware — refreshed auth cookies survive redirects", () => {
     expect(res.cookies.get(ROTATED.name)?.value).toBe(ROTATED.value);
   });
 });
+
+describe("middleware — iframe embed headers", () => {
+  it("allows dashboard.recoveragent.ai to embed /inbox?embed=1", async () => {
+    mockUser = { id: "user-1" };
+
+    const res = await middleware(
+      new NextRequest("https://app.test/inbox?embed=1&phone=%2B919876543210"),
+    );
+
+    expect(res.headers.get("X-Frame-Options")).toBeNull();
+    expect(res.headers.get("Content-Security-Policy")).toContain(
+      "https://dashboard.recoveragent.ai",
+    );
+  });
+
+  it("allows /sso when embed=1 is nested in redirect", async () => {
+    const res = await middleware(
+      new NextRequest(
+        "https://app.test/sso?ticket=abc&redirect=/inbox?phone=%2B919876543210&embed%3D1",
+      ),
+    );
+
+    expect(res.headers.get("X-Frame-Options")).toBeNull();
+    expect(res.headers.get("Content-Security-Policy")).toContain("frame-ancestors");
+  });
+
+  it("denies iframe embed on /inbox without embed=1", async () => {
+    mockUser = { id: "user-1" };
+
+    const res = await middleware(
+      new NextRequest("https://app.test/inbox?c=abc"),
+    );
+
+    expect(res.headers.get("X-Frame-Options")).toBe("DENY");
+    expect(res.headers.get("Content-Security-Policy")).toBeNull();
+  });
+});

@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
+import { isEmbedMode } from "@/lib/embed/query";
 import { cn } from "@/lib/utils";
 
 const SIDEBAR_COLLAPSED_KEY = "wacrm.sidebar.collapsed";
@@ -27,6 +28,8 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const embedded = isEmbedMode(searchParams);
 
   // Sidebar drawer state — only used on mobile. On lg+ the sidebar is
   // always visible and this stays at `false` (ignored by the component).
@@ -56,12 +59,14 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (embedded) return;
     if (!loading && !user) {
       router.push("/login");
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, embedded]);
 
   useEffect(() => {
+    if (embedded) return;
     if (loading || profileLoading || !user) return;
     const onAdmin = pathname.startsWith("/admin");
     if (isSuperAdmin && !isSuperAdminActing) {
@@ -81,6 +86,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
     canClaimSuperAdmin,
     pathname,
     router,
+    embedded,
   ]);
 
   // Full-screen gate only for the initial session/profile load.
@@ -102,6 +108,15 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
   const isFullHeightEditor =
     pathname !== null && /^\/flows\/[^/]+$/.test(pathname);
+
+  if (embedded) {
+    return (
+      <div className="h-screen overflow-hidden bg-background">
+        <PresenceHeartbeat />
+        <main className="h-full overflow-hidden">{children}</main>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen overflow-hidden bg-background">
@@ -137,7 +152,9 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
-      <DashboardShellInner>{children}</DashboardShellInner>
+      <Suspense fallback={null}>
+        <DashboardShellInner>{children}</DashboardShellInner>
+      </Suspense>
     </AuthProvider>
   );
 }

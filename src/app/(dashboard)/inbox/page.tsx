@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
 import { useRealtime } from "@/hooks/use-realtime";
+import { usePhoneDeepLink } from "@/hooks/use-phone-deep-link";
+import { isEmbedMode, withEmbedQuery } from "@/lib/embed/query";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
@@ -30,6 +32,8 @@ const CONTACT_PANEL_STORAGE_KEY = "wacrm:inbox:contact-panel-open";
 export default function InboxPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const embedded = isEmbedMode(searchParams);
+  const { phoneDeepLinkPending } = usePhoneDeepLink();
   /**
    * `?c=<id>` deep-link support. Used when landing here from the
    * dashboard's recent-conversations list so the right thread opens
@@ -665,9 +669,9 @@ export default function InboxPage() {
       // Reflect the selection in the URL so a refresh lands the user
       // back in the same thread, and so copy-paste links work. Use
       // replace() to avoid polluting browser history with every click.
-      router.replace(`/inbox?c=${conv.id}`, { scroll: false });
+      router.replace(withEmbedQuery(`/inbox?c=${conv.id}`, embedded), { scroll: false });
     },
-    [activeConversation?.id, router, blockIfOutboundInFlight],
+    [activeConversation?.id, router, blockIfOutboundInFlight, embedded],
   );
 
   const handleConversationCreated = useCallback(
@@ -693,8 +697,8 @@ export default function InboxPage() {
     // Clearing the ref lets the deep-link auto-selector fire again if
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
-    router.replace("/inbox", { scroll: false });
-  }, [router]);
+    router.replace(withEmbedQuery("/inbox", embedded), { scroll: false });
+  }, [router, embedded]);
 
   // Mobile "back" — deselect the conversation so the list pane comes
   // back. Also clears the ?c= param so a refresh lands on the list
@@ -874,8 +878,23 @@ export default function InboxPage() {
   // before, unchanged.
   const hasActiveConv = !!activeConversation;
 
+  if (phoneDeepLinkPending) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <p className="text-sm text-muted-foreground">Opening conversation…</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="-mx-4 -my-5 flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden lg:-mx-9 lg:-my-7">
+    <div
+      className={cn(
+        "flex flex-col overflow-hidden",
+        embedded
+          ? "h-full"
+          : "-mx-4 -my-5 h-[calc(100vh-3.5rem)] lg:-mx-9 lg:-my-7",
+      )}
+    >
       {/* WhatsApp connection banner — in the flex column, not absolute,
           so it pushes the panels down instead of overlapping them. */}
       {whatsappConnected === false && (

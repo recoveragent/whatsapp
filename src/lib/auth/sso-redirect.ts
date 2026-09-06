@@ -11,7 +11,7 @@ export function isSafeRelativePath(path: string): boolean {
  *
  * Priority:
  * 1. Safe `redirect` query param (may include its own query string, e.g. phone)
- * 2. `/dashboard?phone=<E.164>` when a standalone `phone` param is valid
+ * 2. `/inbox?phone=<E.164>` when a standalone `phone` param is valid
  * 3. `/dashboard`
  */
 export function resolveSsoPostLoginPath(
@@ -25,7 +25,7 @@ export function resolveSsoPostLoginPath(
 
   const phone = pickValidE164Phone(phoneCandidates);
   if (phone) {
-    return `/dashboard?phone=${encodeURIComponent(phone)}`;
+    return `/inbox?phone=${encodeURIComponent(phone)}`;
   }
 
   return "/dashboard";

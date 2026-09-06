@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 
+import { isEmbedMode, withEmbedQuery } from '@/lib/embed/query';
 import { pickValidE164Phone } from '@/lib/whatsapp/phone-utils';
 import type { Conversation } from '@/types';
 
@@ -18,6 +19,7 @@ export function usePhoneDeepLink() {
   const handledPhoneRef = useRef<string | null>(null);
 
   const phone = pickValidE164Phone(searchParams.getAll('phone'));
+  const embedded = isEmbedMode(searchParams);
   const [pending, setPending] = useState(() => Boolean(phone));
 
   useEffect(() => {
@@ -44,16 +46,19 @@ export function usePhoneDeepLink() {
 
         if (!res.ok) {
           toast.error(data.error ?? 'Could not open chat');
-          router.replace(pathname, { scroll: false });
+          router.replace(withEmbedQuery(pathname, embedded), { scroll: false });
           setPending(false);
           return;
         }
 
-        router.replace(`/inbox?c=${data.id}`, { scroll: false });
+        router.replace(
+          withEmbedQuery(`/inbox?c=${data.id}`, embedded),
+          { scroll: false },
+        );
       } catch {
         if (cancelled) return;
         toast.error('Could not open chat');
-        router.replace(pathname, { scroll: false });
+        router.replace(withEmbedQuery(pathname, embedded), { scroll: false });
         setPending(false);
       }
     })();
@@ -61,7 +66,7 @@ export function usePhoneDeepLink() {
     return () => {
       cancelled = true;
     };
-  }, [phone, pathname, router]);
+  }, [phone, pathname, router, embedded]);
 
   return { phoneDeepLinkPending: pending && Boolean(phone) };
 }
