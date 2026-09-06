@@ -34,6 +34,7 @@ interface RunRow {
   id: string;
   status:
     | "active"
+    | "waiting"
     | "completed"
     | "handed_off"
     | "timed_out"
@@ -65,6 +66,11 @@ const STATUS_META: Record<
     label: "Active",
     classes: "border-emerald-600/40 bg-emerald-500/10 text-emerald-300",
     icon: PlayCircle,
+  },
+  waiting: {
+    label: "Waiting",
+    classes: "border-sky-600/40 bg-sky-500/10 text-sky-300",
+    icon: Clock,
   },
   completed: {
     label: "Completed",
@@ -219,8 +225,9 @@ function RunCard({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const meta = STATUS_META[run.status];
+  const meta = STATUS_META[run.status] ?? STATUS_META.failed;
   const StatusIcon = meta.icon;
+  const vars = run.vars ?? {};
   const contactLabel =
     run.contact?.name?.trim() || run.contact?.phone || "Unknown contact";
   const duration = run.ended_at
@@ -249,7 +256,8 @@ function RunCard({
               <StatusIcon className="h-3 w-3" />
               {meta.label}
             </Badge>
-            {run.status === "active" && run.current_node_key && (
+            {(run.status === "active" || run.status === "waiting") &&
+              run.current_node_key && (
               <code className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                 at {run.current_node_key}
               </code>
@@ -266,13 +274,13 @@ function RunCard({
       </button>
       {expanded && (
         <div className="border-t border-border px-4 py-3">
-          {Object.keys(run.vars).length > 0 && (
+          {Object.keys(vars).length > 0 && (
             <details className="mb-3">
               <summary className="cursor-pointer text-xs text-muted-foreground">
-                Captured vars ({Object.keys(run.vars).length})
+                Captured vars ({Object.keys(vars).length})
               </summary>
               <pre className="mt-2 overflow-x-auto rounded-md bg-background p-2 text-[11px] text-muted-foreground">
-                {JSON.stringify(run.vars, null, 2)}
+                {JSON.stringify(vars, null, 2)}
               </pre>
             </details>
           )}
@@ -318,9 +326,9 @@ function EventLine({ ev }: { ev: EventRow }) {
           {ev.node_key}
         </code>
       )}
-      {Object.keys(ev.payload).length > 0 && (
+      {Object.keys(ev.payload ?? {}).length > 0 && (
         <span className="min-w-0 truncate text-[10px] text-muted-foreground">
-          {summarizePayload(ev.payload)}
+          {summarizePayload(ev.payload ?? {})}
         </span>
       )}
     </div>
