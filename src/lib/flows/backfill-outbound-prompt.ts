@@ -487,7 +487,6 @@ export async function repairMissingFlowPromptForConversation(args: {
     .in('sender_type', ['bot', 'agent'])
     .limit(1)
     .maybeSingle()
-  if (existingBot?.id) return null
 
   const { data: customerMsgs } = await args.db
     .from('messages')
@@ -496,15 +495,14 @@ export async function repairMissingFlowPromptForConversation(args: {
     .eq('sender_type', 'customer')
     .order('created_at', { ascending: true })
     .limit(1)
-  if (!customerMsgs?.length) return null
 
-  const firstCustomerAt = customerMsgs[0]?.created_at as string | undefined
-  const promptCreatedAt = firstCustomerAt
+  const firstCustomerAt = customerMsgs?.[0]?.created_at as string | undefined
+  const promptCreatedAtBeforeReply = firstCustomerAt
     ? new Date(new Date(firstCustomerAt).getTime() - 1000).toISOString()
     : undefined
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-  const { data: runs } = await args.db
+  let runsQuery = args.db
     .from('flow_runs')
     .select('*')
     .eq('account_id', args.accountId)
@@ -513,10 +511,31 @@ export async function repairMissingFlowPromptForConversation(args: {
     .order('started_at', { ascending: false })
     .limit(8)
 
-  for (const run of (runs as FlowRunRow[] | null) ?? []) {
+  const { data: runsForConv } = await runsQuery.eq(
+    'conversation_id',
+    args.conversationId,
+  )
+  let runs = (runsForConv as FlowRunRow[] | null) ?? []
+
+  // Runs whose conversation shell was deleted (ON DELETE SET NULL) still
+  // hold message_sent events we need to backfill onto the canonical thread.
+  if (runs.length === 0) {
+    const { data: orphaned } = await args.db
+      .from('flow_runs')
+      .select('*')
+      .eq('account_id', args.accountId)
+      .eq('contact_id', args.contactId)
+      .is('conversation_id', null)
+      .gte('started_at', since)
+      .order('started_at', { ascending: false })
+      .limit(8)
+    runs = (orphaned as FlowRunRow[] | null) ?? []
+  }
+
+  for (const run of runs) {
     const { data: events } = await args.db
       .from('flow_run_events')
-      .select('payload')
+      .select('payload, created_at')
       .eq('flow_run_id', run.id)
       .eq('event_type', 'message_sent')
       .order('created_at', { ascending: false })
@@ -529,16 +548,24 @@ export async function repairMissingFlowPromptForConversation(args: {
           : null
       if (!metaMessageId) continue
 
+      const eventCreatedAt = (row as { created_at?: string }).created_at
+      const createdAt =
+        promptCreatedAtBeforeReply ??
+        eventCreatedAt ??
+        (run.started_at as string | undefined)
+
       const id = await backfillMissingOutboundPrompt({
         db: args.db,
         accountId: args.accountId,
         contactId: args.contactId,
         conversationId: args.conversationId,
         metaMessageId,
-        createdAt: promptCreatedAt,
+        createdAt,
       })
       if (id) return id
     }
+
+    if (existingBot?.id) continue
 
     const snapshot = await snapshotFromFlowRun(
       args.db,
@@ -557,7 +584,7 @@ export async function repairMissingFlowPromptForConversation(args: {
         template_name: snapshot.template_name ?? null,
         content_payload: snapshot.content_payload ?? null,
         status: 'sent',
-        ...(promptCreatedAt ? { created_at: promptCreatedAt } : {}),
+        ...(promptCreatedAtBeforeReply ? { created_at: promptCreatedAtBeforeReply } : {}),
       })
     } catch (err) {
       console.error('[flows] repair outbound prompt failed:', err)
@@ -575,11 +602,226 @@ export async function repairMissingFlowPromptForConversation(args: {
     if (inserted?.id) return inserted.id
   }
 
+  if (existingBot?.id || !customerMsgs?.length) return null
+
   return repairMissingAutomationOutbound({
     db: args.db,
     accountId: args.accountId,
     conversationId: args.conversationId,
     contactId: args.contactId,
-    promptCreatedAt,
+    promptCreatedAt: promptCreatedAtBeforeReply,
   })
+}
+
+interface FlowRunJoinRow {
+  id: string
+  account_id: string
+  contact_id: string | null
+  conversation_id: string | null
+  flow_id: string
+  user_id: string
+}
+
+export interface BulkFlowOutboundRepairResult {
+  scanned_events: number
+  missing_wamids: number
+  backfilled: number
+  relinked_runs: number
+  skipped_existing: number
+  skipped_no_contact: number
+  failed: number
+  details: Array<{
+    flow_run_id: string
+    wamid: string
+    contact_id: string | null
+    outcome: 'backfilled' | 'skipped_existing' | 'skipped_no_contact' | 'failed'
+    message_id?: string
+    error?: string
+  }>
+}
+
+/**
+ * One-shot repair for every flow `message_sent` whose WAMID never
+ * landed in `messages` (Meta accepted send, DB persist failed).
+ */
+export async function bulkRepairMissingFlowOutboundMessages(args: {
+  db: AdminClient
+  /** How far back to scan flow_run_events. Default 90 days. */
+  lookbackDays?: number
+  dryRun?: boolean
+}): Promise<BulkFlowOutboundRepairResult> {
+  const lookbackDays = args.lookbackDays ?? 90
+  const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString()
+  const result: BulkFlowOutboundRepairResult = {
+    scanned_events: 0,
+    missing_wamids: 0,
+    backfilled: 0,
+    relinked_runs: 0,
+    skipped_existing: 0,
+    skipped_no_contact: 0,
+    failed: 0,
+    details: [],
+  }
+
+  const { ensureConversationForContact } = await import('@/lib/inbox/ensure-conversation')
+
+  const pageSize = 500
+  let offset = 0
+  const seenWamids = new Set<string>()
+
+  for (;;) {
+    const { data: events, error } = await args.db
+      .from('flow_run_events')
+      .select('payload, created_at, flow_run_id')
+      .eq('event_type', 'message_sent')
+      .gte('created_at', since)
+      .order('created_at', { ascending: true })
+      .range(offset, offset + pageSize - 1)
+
+    if (error) throw new Error(error.message)
+    if (!events?.length) break
+
+    result.scanned_events += events.length
+
+    type PendingEvent = {
+      wamid: string
+      flow_run_id: string
+      created_at: string | undefined
+    }
+    const pending: PendingEvent[] = []
+
+    for (const event of events) {
+      const payload = (event.payload ?? {}) as Record<string, unknown>
+      const wamid =
+        typeof payload.whatsapp_message_id === 'string'
+          ? payload.whatsapp_message_id.trim()
+          : ''
+      if (!wamid || seenWamids.has(wamid)) continue
+      seenWamids.add(wamid)
+      pending.push({
+        wamid,
+        flow_run_id: event.flow_run_id as string,
+        created_at: event.created_at as string | undefined,
+      })
+    }
+
+    if (pending.length > 0) {
+      const wamids = pending.map((p) => p.wamid)
+      const { data: existingRows } = await args.db
+        .from('messages')
+        .select('message_id')
+        .in('message_id', wamids)
+
+      const existingSet = new Set(
+        (existingRows ?? [])
+          .map((r) => (r as { message_id?: string }).message_id)
+          .filter(Boolean) as string[],
+      )
+
+      const runIds = [...new Set(pending.map((p) => p.flow_run_id))]
+      const runById = new Map<string, FlowRunJoinRow>()
+      for (let i = 0; i < runIds.length; i += 100) {
+        const chunk = runIds.slice(i, i + 100)
+        const { data: runs } = await args.db
+          .from('flow_runs')
+          .select('id, account_id, contact_id, conversation_id, flow_id, user_id')
+          .in('id', chunk)
+        for (const r of (runs as FlowRunJoinRow[] | null) ?? []) {
+          runById.set(r.id, r)
+        }
+      }
+
+      for (const item of pending) {
+        if (existingSet.has(item.wamid)) {
+          result.skipped_existing += 1
+          continue
+        }
+
+        result.missing_wamids += 1
+        const run = runById.get(item.flow_run_id)
+        if (!run?.contact_id) {
+          result.skipped_no_contact += 1
+          result.details.push({
+            flow_run_id: item.flow_run_id,
+            wamid: item.wamid,
+            contact_id: run?.contact_id ?? null,
+            outcome: 'skipped_no_contact',
+          })
+          continue
+        }
+
+        if (args.dryRun) {
+          result.details.push({
+            flow_run_id: run.id,
+            wamid: item.wamid,
+            contact_id: run.contact_id,
+            outcome: 'backfilled',
+          })
+          continue
+        }
+
+        try {
+          const conv = await ensureConversationForContact(
+            args.db,
+            run.account_id,
+            run.user_id,
+            run.contact_id,
+          )
+          if (!conv?.id) throw new Error('could not resolve conversation')
+
+          if (run.conversation_id !== conv.id) {
+            await args.db
+              .from('flow_runs')
+              .update({ conversation_id: conv.id })
+              .eq('id', run.id)
+            run.conversation_id = conv.id
+            result.relinked_runs += 1
+          }
+
+          const messageId = await backfillMissingOutboundPrompt({
+            db: args.db,
+            accountId: run.account_id,
+            contactId: run.contact_id,
+            conversationId: conv.id,
+            metaMessageId: item.wamid,
+            createdAt: item.created_at,
+          })
+
+          if (messageId) {
+            result.backfilled += 1
+            result.details.push({
+              flow_run_id: run.id,
+              wamid: item.wamid,
+              contact_id: run.contact_id,
+              outcome: 'backfilled',
+              message_id: messageId,
+            })
+          } else {
+            result.failed += 1
+            result.details.push({
+              flow_run_id: run.id,
+              wamid: item.wamid,
+              contact_id: run.contact_id,
+              outcome: 'failed',
+              error: 'backfill returned null',
+            })
+          }
+        } catch (err) {
+          result.failed += 1
+          result.details.push({
+            flow_run_id: run.id,
+            wamid: item.wamid,
+            contact_id: run.contact_id,
+            outcome: 'failed',
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+    }
+
+    if (events.length < pageSize) break
+    offset += pageSize
+  }
+
+  return result
 }

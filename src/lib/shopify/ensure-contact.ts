@@ -177,6 +177,18 @@ export async function deleteConversationIfEmpty(
     }
   }
 
+  const { count: activeRunOnConv, error: runOnConvErr } = await db
+    .from('flow_runs')
+    .select('id', { count: 'exact', head: true })
+    .eq('conversation_id', conversationId)
+    .in('status', [...OPEN_FLOW_RUN_STATUSES]);
+
+  if (runOnConvErr) {
+    console.error('[shopify] deleteConversationIfEmpty run lookup failed:', runOnConvErr);
+    return;
+  }
+  if ((activeRunOnConv ?? 0) > 0) return;
+
   const { count: msgCount, error: msgErr } = await db
     .from('messages')
     .select('id', { count: 'exact', head: true })

@@ -18,6 +18,18 @@ describe('repairMissingFlowPromptForConversation', () => {
             insert,
           }
         }
+        if (table === 'flow_runs') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            is: vi.fn().mockReturnThis(),
+            gte: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
+            limit: vi.fn().mockReturnValue({
+              eq: vi.fn().mockResolvedValue({ data: [] }),
+            }),
+          }
+        }
         throw new Error(`unexpected ${table}`)
       },
     }
