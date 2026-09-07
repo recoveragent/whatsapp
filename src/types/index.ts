@@ -496,6 +496,22 @@ export interface Deal {
   assignee?: Profile;
 }
 
+export type DealStageEventType = "received" | "stage_move";
+
+export interface DealStageEvent {
+  id: string;
+  deal_id: string;
+  account_id: string;
+  event_type: DealStageEventType;
+  from_stage_id?: string | null;
+  to_stage_id?: string | null;
+  from_stage_name?: string | null;
+  to_stage_name?: string | null;
+  reason?: string | null;
+  user_id?: string | null;
+  created_at: string;
+}
+
 export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
 export type RecipientStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed';
 

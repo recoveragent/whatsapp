@@ -39,6 +39,7 @@ import {
   type PipelineDealDateField,
 } from "@/lib/deals/filter";
 import { appendStageMoveNote } from "@/lib/deals/display";
+import { recordDealStageMoveEvent } from "@/lib/deals/stage-events";
 
 // Pipeline creation is admin-class (settings-tier write under
 // the new RLS); deal creation is operational and only requires
@@ -319,6 +320,21 @@ export default function PipelinesPage() {
       toast.error("Failed to move deal");
       refreshDeals();
     } else {
+      if (accountId) {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        await recordDealStageMoveEvent(supabase, {
+          dealId,
+          accountId,
+          fromStageId,
+          toStageId,
+          fromStageName: fromStage?.name ?? "Unknown",
+          toStageName: toStage?.name ?? "Unknown",
+          reason,
+          userId: session?.user?.id ?? null,
+        });
+      }
       if (accountId && moved.contact_id) {
         void fetch("/api/crm/triggers", {
           method: "POST",

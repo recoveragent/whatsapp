@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -30,6 +30,13 @@ import {
   appendStageMoveNote,
   resolveDealInsertTitle,
 } from "@/lib/deals/display";
+import {
+  recordDealReceivedEvent,
+  recordDealStageMoveEvent,
+} from "@/lib/deals/stage-events";
+import { buildDealTimeline } from "@/lib/deals/timeline";
+import { DealTimeline } from "@/components/pipelines/deal-timeline";
+import type { DealStageEvent } from "@/types";
 
 interface DealFormProps {
   open: boolean;
@@ -68,6 +75,8 @@ export function DealForm({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [stageMoveDialogOpen, setStageMoveDialogOpen] = useState(false);
   const [moveReason, setMoveReason] = useState("");
+  const [stageEvents, setStageEvents] = useState<DealStageEvent[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
 
   // Reset the form fields every time the sheet opens or its input
   // props change. This is a legitimate prop-driven sync; the rule is
@@ -140,6 +149,42 @@ export function DealForm({
     };
   }, [open, contactId, supabase]);
 
+  useEffect(() => {
+    if (!open || !deal?.id) {
+      setStageEvents([]);
+      setTimelineLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setTimelineLoading(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from("deal_stage_events")
+        .select("*")
+        .eq("deal_id", deal.id)
+        .order("created_at", { ascending: true });
+
+      if (cancelled) return;
+      if (error) {
+        console.error("[deal timeline] load failed:", error.message);
+        setStageEvents([]);
+      } else {
+        setStageEvents((data ?? []) as DealStageEvent[]);
+      }
+      setTimelineLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, deal?.id, supabase]);
+
+  const timelineItems = useMemo(() => {
+    if (!deal) return [];
+    return buildDealTimeline(stageEvents, deal, stages);
+  }, [deal, stageEvents, stages]);
+
   async function performSave(finalNotes: string | null) {
     const effectiveStageId = stageId || stages[0]?.id || "";
     const contact = contacts.find((c) => c.id === contactId);
@@ -202,7 +247,7 @@ export function DealForm({
         setSaving(false);
         return;
       }
-      const { error } = await supabase
+      const { data: createdDeal, error } = await supabase
         .from("deals")
         .insert({
           ...payload,
@@ -212,11 +257,23 @@ export function DealForm({
           user_id: user.id,
           account_id: accountId,
           status: "open",
-        });
+        })
+        .select("id, created_at")
+        .single();
       if (error) {
         toast.error("Failed to create deal");
         setSaving(false);
         return;
+      }
+      if (createdDeal) {
+        await recordDealReceivedEvent(supabase, {
+          dealId: createdDeal.id,
+          accountId,
+          stageId: effectiveStageId,
+          stageName: stage?.name ?? "Unknown",
+          userId: user.id,
+          createdAt: createdDeal.created_at,
+        });
       }
       if (accountId && contactId && effectiveStageId) {
         void fetch("/api/crm/triggers", {
@@ -277,6 +334,23 @@ export function DealForm({
 
     setStageMoveDialogOpen(false);
     setMoveReason("");
+
+    if (accountId) {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      await recordDealStageMoveEvent(supabase, {
+        dealId: deal.id,
+        accountId,
+        fromStageId: deal.stage_id,
+        toStageId: effectiveStageId,
+        fromStageName: fromStage?.name ?? "Unknown",
+        toStageName: toStage?.name ?? "Unknown",
+        reason,
+        userId: session?.user?.id ?? null,
+      });
+    }
+
     await performSave(updatedNotes);
   }
 
@@ -366,6 +440,10 @@ export function DealForm({
                 ))}
               </select>
             </div>
+
+            {deal && (
+              <DealTimeline items={timelineItems} loading={timelineLoading} />
+            )}
 
             <div className="grid gap-2">
               <Label className="text-muted-foreground">Notes</Label>

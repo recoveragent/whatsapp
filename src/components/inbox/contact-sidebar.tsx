@@ -59,6 +59,10 @@ import {
 } from "@/components/ui/dialog";
 import { StageMoveReasonDialog } from "@/components/pipelines/stage-move-reason-dialog";
 import { appendStageMoveNote } from "@/lib/deals/display";
+import {
+  recordDealReceivedEvent,
+  recordDealStageMoveEvent,
+} from "@/lib/deals/stage-events";
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -518,6 +522,14 @@ export function ContactSidebar({
       if (error) {
         toast.error("Failed to create deal");
       } else if (data) {
+        await recordDealReceivedEvent(supabase, {
+          dealId: data.id,
+          accountId,
+          stageId: newStageId,
+          stageName: stage.name,
+          userId: user.id,
+          createdAt: data.created_at,
+        });
         setDeals((prev) => [data as Deal, ...prev]);
         void fetch("/api/crm/triggers", {
           method: "POST",
@@ -611,6 +623,19 @@ export function ContactSidebar({
       toast.error("Failed to update lead stage");
       void fetchContactData();
     } else {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      await recordDealStageMoveEvent(supabase, {
+        dealId,
+        accountId,
+        fromStageId,
+        toStageId,
+        fromStageName: fromStage?.name ?? deal.stage?.name ?? "Unknown",
+        toStageName: toStage.name,
+        reason,
+        userId: session?.user?.id ?? null,
+      });
       void fetch("/api/crm/triggers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
