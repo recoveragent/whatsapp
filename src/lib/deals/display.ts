@@ -1,5 +1,7 @@
 import type { Contact, Deal, PipelineStage } from "@/types";
 
+import { parseStageMoveNoteLine } from "@/lib/deals/stage-events";
+
 export function contactDisplayName(
   contact?: Pick<Contact, "name" | "phone"> | null,
 ): string | null {
@@ -84,6 +86,7 @@ export function suggestDealTitle(
   return null;
 }
 
+/** Last note line for pipeline cards — stage-move metadata is stripped. */
 export function resolveDealCardLastNoteLine(notes?: string | null): string | null {
   if (!notes?.trim()) return null;
   const lines = notes
@@ -91,7 +94,15 @@ export function resolveDealCardLastNoteLine(notes?: string | null): string | nul
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
-  return lines.at(-1) ?? null;
+  const lastLine = lines.at(-1);
+  if (!lastLine) return null;
+
+  const stageMove = parseStageMoveNoteLine(lastLine);
+  if (stageMove) {
+    return stageMove.reason.trim() || null;
+  }
+
+  return lastLine;
 }
 
 export function appendStageMoveNote(

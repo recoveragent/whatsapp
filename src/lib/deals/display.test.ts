@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveDealCardContactFields,
   resolveDealCardLabel,
+  resolveDealCardLastNoteLine,
   resolveDealCardSubtitle,
   resolveDealInsertTitle,
   suggestDealTitle,
@@ -64,6 +65,25 @@ describe("deals/display", () => {
         stageName: "New Lead",
       }),
     ).toBe("Anuj Yadav");
+  });
+
+  it("shows only the reason on cards for stage-move notes", () => {
+    expect(
+      resolveDealCardLastNoteLine(
+        "Moved Demo booked → Junk: in showroom, not interested",
+      ),
+    ).toBe("in showroom, not interested");
+    expect(
+      resolveDealCardLastNoteLine(
+        "Moved New Lead → Pre followup 1: 2nd attempt scheduled",
+      ),
+    ).toBe("2nd attempt scheduled");
+  });
+
+  it("shows freeform note lines as-is on cards", () => {
+    expect(resolveDealCardLastNoteLine("Called customer, no answer")).toBe(
+      "Called customer, no answer",
+    );
   });
 
   it("maps contact fields for pipeline cards", () => {

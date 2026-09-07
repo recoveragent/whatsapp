@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { DealStageEvent } from "@/types";
 
-export const STAGE_MOVE_NOTE_PATTERN = /^Moved (.+) → (.+): (.+)$/;
+export const STAGE_MOVE_NOTE_PATTERN = /^Moved (.+) (?:→|->) (.+): (.+)$/;
 
 export function parseStageMoveNoteLine(
   line: string,
