@@ -543,47 +543,33 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'create_deal': {
       const cfg = step.step_config as CreateDealStepConfig
       if (!cfg.pipeline_id || !cfg.stage_id) throw new Error('create_deal needs pipeline + stage')
-      // Match the account's configured default currency rather than
-      // the static `deals.currency` DB default — keeps automation-
-      // created deals consistent with the one-currency-per-account
-      // rule (issue #218). Fall back to USD if the row is somehow
-      // missing the value (pre-021 forks).
       const { data: acct } = await db
         .from('accounts')
         .select('default_currency')
         .eq('id', args.automation.account_id)
         .maybeSingle()
-      const [{ data: contact }, { data: stage }] = await Promise.all([
-        db
-          .from('contacts')
-          .select('name, phone')
-          .eq('id', args.contactId)
-          .maybeSingle(),
-        db
-          .from('pipeline_stages')
-          .select('name')
-          .eq('id', cfg.stage_id)
-          .maybeSingle(),
-      ])
-      const { resolveDealInsertTitle } = await import('@/lib/deals/display')
-      const title = resolveDealInsertTitle({
+      const {
+        createOrMoveDealForContact,
+        resolveCreateDealTitle,
+      } = await import('@/lib/deals/create-or-move-deal')
+      const title = await resolveCreateDealTitle(db, {
         configuredTitle: interpolate(cfg.title, args),
-        contact,
-        stageName: stage?.name,
+        contactId: args.contactId,
+        stageId: cfg.stage_id,
       })
-      await db.from('deals').insert({
-        // Tenancy + audit, same split as automation_logs above.
-        account_id: args.automation.account_id,
-        user_id: args.automation.user_id,
-        pipeline_id: cfg.pipeline_id,
-        stage_id: cfg.stage_id,
-        contact_id: args.contactId,
+      const outcome = await createOrMoveDealForContact(db, {
+        accountId: args.automation.account_id,
+        userId: args.automation.user_id,
+        contactId: args.contactId,
+        pipelineId: cfg.pipeline_id,
+        stageId: cfg.stage_id,
         title,
         value: cfg.value ?? 0,
         currency: acct?.default_currency ?? 'USD',
-        status: 'open',
       })
-      return 'deal created'
+      if (outcome.moved) return 'deal moved to lead stage'
+      if (outcome.created) return 'deal created'
+      return 'deal unchanged'
     }
 
     case 'send_webhook': {

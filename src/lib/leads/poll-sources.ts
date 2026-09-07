@@ -15,6 +15,7 @@ import { emitLeadQualityEvent } from '@/lib/meta/lead-quality-events'
 import { extractSheetMetaAttribution } from '@/lib/meta/sheet-attribution'
 import { ensureShopifyContact } from '@/lib/shopify/ensure-contact'
 
+import { recordDuplicateLeadEntryIfExists } from './duplicate-count'
 import { enrollContact, patchContactLead } from './enroll'
 import { inferLeadLanguage } from './language'
 import type { CadenceStep, LeadLanguage, LeadSource } from './types'
@@ -197,6 +198,8 @@ async function processSource(
       langCol ? rowObj[langCol] : '',
       source.default_language,
     )
+
+    await recordDuplicateLeadEntryIfExists(db, source.account_id, phoneRaw)
 
     const contact = await ensureShopifyContact(
       db,

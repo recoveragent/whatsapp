@@ -120,6 +120,8 @@ export interface Contact {
   last_touch_at?: string | null;
   next_action_at?: string | null;
   next_action_type?: string | null;
+  /** Times this phone re-entered via lead ingest after the first row (migration 077). */
+  lead_duplicate_count?: number;
   created_at: string;
   updated_at: string;
   /** CTWA ad attribution from first inbound message (migration 055). */

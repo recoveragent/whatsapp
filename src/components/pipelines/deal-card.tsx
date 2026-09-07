@@ -1,7 +1,7 @@
 "use client";
 
 import type { Deal, PipelineStage } from "@/types";
-import { Calendar, Check, X } from "lucide-react";
+import { Calendar, Check, Flag, X } from "lucide-react";
 import {
   resolveDealCardContactFields,
   resolveDealCardLastNoteLine,
@@ -32,6 +32,7 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
   const { name, phone, company } = resolveDealCardContactFields(deal);
   const assigneeLabel = deal.assignee?.full_name || null;
   const lastNote = resolveDealCardLastNoteLine(deal.notes);
+  const duplicateCount = deal.contact?.lead_duplicate_count ?? 0;
 
   return (
     <button
@@ -49,6 +50,15 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
           : "hover:-translate-y-0.5 hover:border-border hover:bg-muted hover:shadow-lg"
       }`}
     >
+      {duplicateCount > 0 && (
+        <span
+          className="absolute right-2 top-2 inline-flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 ring-1 ring-amber-500/25 dark:text-amber-400"
+          title={`${duplicateCount} duplicate lead submission${duplicateCount !== 1 ? "s" : ""}`}
+        >
+          <Flag className="h-3 w-3" aria-hidden />
+          {duplicateCount}
+        </span>
+      )}
       {/* 4px left accent bar using stage color */}
       <span
         aria-hidden

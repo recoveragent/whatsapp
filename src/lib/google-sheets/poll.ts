@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { leadGenAccountIds } from '@/lib/auth/brand-accounts'
+import { recordDuplicateLeadEntryIfExists } from '@/lib/leads/duplicate-count'
 import { ensureConversation, ensureShopifyContact } from '@/lib/shopify/ensure-contact'
 import { runFlowsForTrigger } from '@/lib/flows/dispatch-external'
 import type { FlowRow } from '@/lib/flows/types'
@@ -270,6 +271,8 @@ async function processOneSource(
     const name = nameCol ? (rowObj[nameCol] ?? '').trim() : ''
     const emailCol = source.email_column?.trim()
     const email = emailCol ? (rowObj[emailCol] ?? '').trim() : ''
+
+    await recordDuplicateLeadEntryIfExists(db, flow.account_id, phoneRaw)
 
     const contact = await ensureShopifyContact(
       db,

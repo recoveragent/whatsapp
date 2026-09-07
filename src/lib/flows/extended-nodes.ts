@@ -443,34 +443,24 @@ export async function executeExtendedNode(
           .select('default_currency')
           .eq('id', run.account_id)
           .maybeSingle()
-        const [{ data: contact }, { data: stage }] = await Promise.all([
-          db
-            .from('contacts')
-            .select('name, phone')
-            .eq('id', run.contact_id)
-            .maybeSingle(),
-          db
-            .from('pipeline_stages')
-            .select('name')
-            .eq('id', c.stage_id)
-            .maybeSingle(),
-        ])
-        const { resolveDealInsertTitle } = await import('@/lib/deals/display')
-        const title = resolveDealInsertTitle({
+        const {
+          createOrMoveDealForContact,
+          resolveCreateDealTitle,
+        } = await import('@/lib/deals/create-or-move-deal')
+        const title = await resolveCreateDealTitle(db, {
           configuredTitle: interpolateFlowVars(c.title, vars, messageText),
-          contact,
-          stageName: stage?.name,
+          contactId: run.contact_id,
+          stageId: c.stage_id,
         })
-        await db.from('deals').insert({
-          account_id: run.account_id,
-          user_id: run.user_id,
-          pipeline_id: c.pipeline_id,
-          stage_id: c.stage_id,
-          contact_id: run.contact_id,
+        await createOrMoveDealForContact(db, {
+          accountId: run.account_id,
+          userId: run.user_id,
+          contactId: run.contact_id,
+          pipelineId: c.pipeline_id,
+          stageId: c.stage_id,
           title,
           value: c.value ?? 0,
           currency: acct?.default_currency ?? 'USD',
-          status: 'open',
         })
         if (run.contact_id && c.stage_id) {
           const { dispatchDealStageChanged } = await import(
