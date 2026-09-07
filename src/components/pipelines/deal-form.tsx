@@ -1,12 +1,10 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import type {
   Contact,
-  Conversation,
   Deal,
   PipelineStage,
   Profile,
@@ -21,11 +19,13 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Trash2,
+  ArrowLeft,
   MessageSquare,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { StageMoveReasonDialog } from "@/components/pipelines/stage-move-reason-dialog";
+import { DealConversationPanel } from "@/components/pipelines/deal-conversation-panel";
 import {
   appendStageMoveNote,
   resolveDealInsertTitle,
@@ -67,8 +67,6 @@ export function DealForm({
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [linkedConversation, setLinkedConversation] =
-    useState<Conversation | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -77,6 +75,8 @@ export function DealForm({
   const [moveReason, setMoveReason] = useState("");
   const [stageEvents, setStageEvents] = useState<DealStageEvent[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const [sheetView, setSheetView] = useState<"deal" | "conversation">("deal");
+  const [hasConversation, setHasConversation] = useState(false);
 
   // Reset the form fields every time the sheet opens or its input
   // props change. This is a legitimate prop-driven sync; the rule is
@@ -86,6 +86,7 @@ export function DealForm({
     if (!open) {
       setStageMoveDialogOpen(false);
       setMoveReason("");
+      setSheetView("deal");
       return;
     }
     setConfirmDelete(false);
@@ -110,44 +111,52 @@ export function DealForm({
     if (!open) return;
     let cancelled = false;
     (async () => {
-      const [c, p] = await Promise.all([
-        supabase.from("contacts").select("*").order("name"),
-        supabase.from("profiles").select("*").order("full_name"),
-      ]);
-      if (cancelled) return;
-      setContacts((c.data ?? []) as Contact[]);
-      setProfiles((p.data ?? []) as Profile[]);
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("*")
+        .order("full_name");
+      if (!cancelled) {
+        setProfiles((profileData ?? []) as Profile[]);
+      }
+
+      if (!deal) {
+        const { data: contactData } = await supabase
+          .from("contacts")
+          .select("*")
+          .order("name");
+        if (!cancelled) {
+          setContacts((contactData ?? []) as Contact[]);
+        }
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [open, supabase]);
+  }, [open, deal, supabase]);
 
-  // Fetch linked conversation for the selected contact (newest open one).
-  // Clearing on no-selection is sync with prop state; the populated
-  // case runs setLinkedConversation inside the async fetch callback.
+  // Check whether this contact has a conversation (edit flow only).
   useEffect(() => {
-    if (!open || !contactId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLinkedConversation(null);
+    const effectiveContactId = deal?.contact_id ?? contactId;
+    if (!open || !deal || !effectiveContactId) {
+      setHasConversation(false);
       return;
     }
+
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
+      const { count } = await supabase
         .from("conversations")
-        .select("*")
-        .eq("contact_id", contactId)
-        .order("last_message_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (cancelled) return;
-      setLinkedConversation((data as Conversation | null) ?? null);
+        .select("id", { count: "exact", head: true })
+        .eq("contact_id", effectiveContactId);
+      if (!cancelled) {
+        setHasConversation((count ?? 0) > 0);
+      }
     })();
+
     return () => {
       cancelled = true;
     };
-  }, [open, contactId, supabase]);
+  }, [open, deal, contactId, supabase]);
 
   useEffect(() => {
     if (!open || !deal?.id) {
@@ -187,7 +196,8 @@ export function DealForm({
 
   async function performSave(finalNotes: string | null) {
     const effectiveStageId = stageId || stages[0]?.id || "";
-    const contact = contacts.find((c) => c.id === contactId);
+    const contact =
+      deal?.contact ?? contacts.find((c) => c.id === contactId) ?? null;
     const stage = stages.find((s) => s.id === effectiveStageId);
     const resolvedTitle = resolveDealInsertTitle({
       configuredTitle: "",
@@ -369,46 +379,97 @@ export function DealForm({
     onSaved();
   }
 
+  const editingContact = deal?.contact ?? null;
+  const editingContactLabel =
+    editingContact?.name?.trim() ||
+    editingContact?.phone ||
+    deal?.title?.trim() ||
+    "Unknown contact";
+
   return (
     <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="bg-popover border-border text-popover-foreground sm:max-w-lg w-full p-0"
+        className={`bg-popover border-border text-popover-foreground w-full p-0 ${
+          sheetView === "conversation" ? "sm:max-w-xl" : "sm:max-w-lg"
+        }`}
       >
         <div className="flex h-full flex-col">
           <SheetHeader className="border-b border-border/50 p-4">
-            <SheetTitle className="text-popover-foreground">
-              {deal ? "Edit Deal" : "New Deal"}
-            </SheetTitle>
+            {sheetView === "conversation" && deal?.contact_id ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSheetView("deal")}
+                  className="inline-flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  aria-label="Back to deal"
+                >
+                  <ArrowLeft className="size-4" />
+                </button>
+                <SheetTitle className="text-popover-foreground">
+                  Conversation
+                </SheetTitle>
+              </div>
+            ) : (
+              <SheetTitle className="text-popover-foreground">
+                {deal ? "Edit Deal" : "New Deal"}
+              </SheetTitle>
+            )}
           </SheetHeader>
 
+          {sheetView === "conversation" && deal?.contact_id ? (
+            <DealConversationPanel
+              contactId={deal.contact_id}
+              initialContact={deal.contact ?? null}
+              onBack={() => setSheetView("deal")}
+            />
+          ) : (
+            <>
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            <div className="grid gap-2">
-              <Label className="text-muted-foreground">Contact</Label>
-              <select
-                value={contactId}
-                onChange={(e) => setContactId(e.target.value)}
-                className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-              >
-                <option value="">Select a contact</option>
-                {contacts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name || c.phone}
-                  </option>
-                ))}
-              </select>
-
-              {linkedConversation && (
-                <Link
-                  href="/inbox"
-                  className="mt-1 inline-flex items-center gap-1.5 self-start rounded-md bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20"
+            {deal ? (
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">Contact</Label>
+                <div className="rounded-xl border border-border/70 bg-muted/40 px-3 py-2.5">
+                  <p className="text-sm font-medium tracking-tight text-foreground">
+                    {editingContactLabel}
+                  </p>
+                  {editingContact?.phone && editingContact?.name && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {editingContact.phone}
+                    </p>
+                  )}
+                </div>
+                {hasConversation && deal.contact_id && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSheetView("conversation")}
+                    className="border-border bg-card/80 text-foreground hover:bg-muted"
+                  >
+                    <MessageSquare className="size-3.5" />
+                    Open Conversation
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                <Label className="text-muted-foreground">Contact</Label>
+                <select
+                  value={contactId}
+                  onChange={(e) => setContactId(e.target.value)}
+                  className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 >
-                  <MessageSquare className="h-3 w-3" />
-                  Link to Conversation
-                </Link>
-              )}
-            </div>
+                  <option value="">Select a contact</option>
+                  {contacts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name || c.phone}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="grid gap-2">
               <Label className="text-muted-foreground">Stage</Label>
@@ -508,6 +569,8 @@ export function DealForm({
                 </button>
               ))}
           </div>
+            </>
+          )}
         </div>
       </SheetContent>
     </Sheet>
