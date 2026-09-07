@@ -25,7 +25,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { GitBranch, Plus, ChevronDown, Settings, Search, Calendar } from "lucide-react";
+import { GitBranch, Plus, ChevronDown, Settings, Search } from "lucide-react";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { toast } from "sonner";
 import { useCan } from "@/hooks/use-can";
 import { useAuth } from "@/hooks/use-auth";
@@ -530,7 +531,7 @@ export default function PipelinesPage() {
 
             <div className="flex flex-wrap items-center gap-2">
               <div
-                className="flex rounded-lg border border-border bg-card p-0.5"
+                className="flex rounded-xl border border-border/80 bg-card/80 p-0.5 shadow-sm backdrop-blur-sm"
                 role="group"
                 aria-label="Date filter type"
               >
@@ -544,9 +545,9 @@ export default function PipelinesPage() {
                     key={value}
                     type="button"
                     onClick={() => setDateField(value)}
-                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                    className={`rounded-[0.65rem] px-2.5 py-1 text-xs font-medium tracking-wide transition-[transform,background-color,color] duration-100 active:scale-[0.97] motion-reduce:active:scale-100 ${
                       dateField === value
-                        ? "bg-primary text-primary-foreground"
+                        ? "bg-primary text-primary-foreground shadow-sm"
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
@@ -554,21 +555,12 @@ export default function PipelinesPage() {
                   </button>
                 ))}
               </div>
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="h-9 w-36 border-border bg-card text-foreground"
-                aria-label={`From date (${dateField})`}
-              />
-              <span className="text-muted-foreground">–</span>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="h-9 w-36 border-border bg-card text-foreground"
-                aria-label={`To date (${dateField})`}
+              <DateRangePicker
+                from={dateFrom}
+                to={dateTo}
+                onFromChange={setDateFrom}
+                onToChange={setDateTo}
+                aria-label={`Date range (${dateField})`}
               />
               {filtersActive && (
                 <Button

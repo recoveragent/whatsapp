@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  Calendar,
   Download,
   Eye,
   History,
@@ -13,8 +12,8 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/use-auth';
 import { formatDateInr, formatInrFromPaise } from '@/lib/wallet/format';
@@ -178,24 +177,12 @@ export function WalletPanel() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2">
-              <Calendar className="size-4 text-muted-foreground" />
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="h-8 w-36"
-                aria-label="From date"
-              />
-              <span className="text-muted-foreground">–</span>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="h-8 w-36"
-                aria-label="To date"
-              />
-            </div>
+            <DateRangePicker
+              from={dateFrom}
+              to={dateTo}
+              onFromChange={setDateFrom}
+              onToChange={setDateTo}
+            />
             <Button variant="outline" size="sm" onClick={() => void loadData()}>
               <RefreshCw className="size-4" />
               Refresh
