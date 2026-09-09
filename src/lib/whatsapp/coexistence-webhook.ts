@@ -219,9 +219,13 @@ async function ingestSyncedMessage(
 function collectSyncMessages(value: Record<string, unknown>): SyncMessage[] {
   const collected: SyncMessage[] = [];
 
-  const topLevel = value.messages;
-  if (Array.isArray(topLevel)) {
-    collected.push(...(topLevel as SyncMessage[]));
+  // Real-time echoes from the WhatsApp Business app use message_echoes,
+  // not messages — see Meta smb_message_echoes webhook reference.
+  for (const key of ['messages', 'message_echoes'] as const) {
+    const batch = value[key];
+    if (Array.isArray(batch)) {
+      collected.push(...(batch as SyncMessage[]));
+    }
   }
 
   const history = value.history;
