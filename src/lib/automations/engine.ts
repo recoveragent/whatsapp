@@ -542,6 +542,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
 
     case 'create_deal': {
       const cfg = step.step_config as CreateDealStepConfig
+      if (!args.contactId) throw new Error('create_deal needs a contact')
       if (!cfg.pipeline_id || !cfg.stage_id) throw new Error('create_deal needs pipeline + stage')
       const { data: acct } = await db
         .from('accounts')

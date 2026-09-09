@@ -432,12 +432,16 @@ export async function executeExtendedNode(
       }
       case 'create_deal': {
         const c = cfg as unknown as CreateDealNodeConfig
+        if (!run.contact_id) {
+          return { kind: 'error', message: 'create_deal needs a contact on this flow run' }
+        }
         if (!c.pipeline_id?.trim() || !c.stage_id?.trim()) {
           return { kind: 'error', message: 'create_deal needs a sales pipeline and lead stage' }
         }
         if (!c.title?.trim()) {
           return { kind: 'error', message: 'create_deal needs a title' }
         }
+        const contactId = run.contact_id
         const { data: acct } = await db
           .from('accounts')
           .select('default_currency')
@@ -449,13 +453,13 @@ export async function executeExtendedNode(
         } = await import('@/lib/deals/create-or-move-deal')
         const title = await resolveCreateDealTitle(db, {
           configuredTitle: interpolateFlowVars(c.title, vars, messageText),
-          contactId: run.contact_id,
+          contactId,
           stageId: c.stage_id,
         })
         await createOrMoveDealForContact(db, {
           accountId: run.account_id,
           userId: run.user_id,
-          contactId: run.contact_id,
+          contactId,
           pipelineId: c.pipeline_id,
           stageId: c.stage_id,
           title,
