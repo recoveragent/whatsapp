@@ -129,7 +129,7 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType; label: string; hint: stri
   {
     value: "first_inbound_message",
     label: "First Message from Contact",
-    hint: "First time this contact ever messages you (works for manually-added contacts too)",
+    hint: "First inbound from a contact you've never messaged (includes manually-added contacts)",
   },
   { value: "keyword_match", label: "Keyword Match", hint: "Message contains specific keyword(s)" },
   { value: "new_contact_created", label: "New Contact Created", hint: "When a contact is auto-created from an incoming message" },

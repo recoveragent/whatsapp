@@ -701,16 +701,16 @@ async function processMessage(
       ? 'image'   // stickers are images
       : 'text'    // reaction, unknown → text fallback
 
-  // Determine whether this is the contact's very first inbound message
-  // BEFORE we insert, so the count is accurate. Covers the case where
-  // the contact row already exists (manual add / CSV import) but they've
-  // never messaged us before — which new_contact_created wouldn't catch.
-  const { count: priorCustomerMsgCount } = await supabaseAdmin()
-    .from('messages')
-    .select('id', { count: 'exact', head: true })
-    .eq('conversation_id', conversation.id)
-    .eq('sender_type', 'customer')
-  const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0
+  // Cold inbound: first customer message ever AND no prior outbound from us.
+  // Count BEFORE insert so the inbound we're about to write isn't included.
+  // Outbound replies (templates, cadence, agent sends) mean the customer
+  // is responding to us — first_inbound_message flows must not run.
+  const { isFirstColdInboundMessage } = await import('@/lib/inbox/first-inbound')
+  const isFirstInboundMessage = await isFirstColdInboundMessage(
+    supabaseAdmin(),
+    accountId,
+    contactRecord.id,
+  )
 
   const { error: msgError } = await supabaseAdmin().from('messages').insert({
     conversation_id: conversation.id,
@@ -841,11 +841,10 @@ async function processMessage(
     automationTriggers.push('new_message_received', 'keyword_match')
   }
   // new_contact_created fires only when the webhook just auto-created the
-  // contact row. first_inbound_message fires whenever this is the contact's
-  // first-ever customer-sent message — a superset that also catches
-  // manually-imported contacts sending for the first time. We dispatch both
-  // so users can pick whichever semantic they want; an automation that
-  // listens to only one trigger runs only when that trigger matches.
+  // contact row. first_inbound_message fires on a cold inbound — first
+  // customer message with no prior outbound from us (also catches
+  // manually-imported contacts). We dispatch both so users can pick
+  // whichever semantic they want.
   if (contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
   if (isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
   for (const triggerType of automationTriggers) {

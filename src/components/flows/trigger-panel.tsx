@@ -106,7 +106,7 @@ export function summarizeTrigger(
         ? `Daily at ${triggerConfig.schedule}`
         : "Set schedule";
     case "first_inbound_message":
-      return "Customer's first message";
+      return "First inbound (never contacted them)";
     case "new_message_received":
       return "Any new message";
     case "manual":

@@ -459,7 +459,7 @@ function describeTrigger(flow: FlowRow): string {
     return `Triggers on: ${keywords.join(", ")}`;
   }
   if (flow.trigger_type === "first_inbound_message") {
-    return "Triggers on a contact's first-ever inbound message";
+    return "Triggers when a contact messages you first and you've never contacted them";
   }
   return "Manual trigger";
 }

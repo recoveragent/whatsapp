@@ -60,7 +60,7 @@ export const EXTERNAL_FLOW_TRIGGERS: FlowTriggerType[] = [
 
 export const FLOW_TRIGGER_LABELS: Record<FlowTriggerType, string> = {
   keyword: 'Keyword match',
-  first_inbound_message: "Customer's first inbound message",
+  first_inbound_message: "First inbound (never contacted them)",
   manual: 'Manual only',
   new_message_received: 'Any new message received',
   webhook_received: 'Webhook (external POST)',

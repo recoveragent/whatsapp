@@ -42,7 +42,7 @@ function describeTrigger(flow: ManualFlowOption): string {
     return `Keyword: ${keywords.slice(0, 3).join(", ")}${keywords.length > 3 ? "…" : ""}`;
   }
   if (flow.trigger_type === "first_inbound_message") {
-    return "First inbound message";
+    return "First inbound (never contacted them)";
   }
   if (flow.trigger_type === "manual") {
     return "Manual trigger";

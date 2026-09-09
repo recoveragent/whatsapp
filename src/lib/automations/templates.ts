@@ -33,11 +33,9 @@ export const AUTOMATION_TEMPLATES: Record<TemplateSlug, AutomationTemplateDefini
     slug: 'welcome_message',
     name: 'Welcome Message',
     description: 'Auto-reply to first-time contacts with a greeting.',
-    // first_inbound_message (added in PR #33) catches both brand-new
-    // contacts AND manually-added/imported contacts on their first-ever
-    // reply, which is what a user setting up a "welcome" automation
-    // almost always wants. new_contact_created would miss the
-    // manually-imported case.
+    // first_inbound_message catches cold inbound — brand-new contacts,
+    // manually-added contacts, and anyone we've never outbound-messaged.
+    // Replies to templates/cadence outbound are excluded.
     trigger_type: 'first_inbound_message',
     trigger_config: {},
     steps: [
