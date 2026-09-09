@@ -25,6 +25,7 @@ import {
 import { extractVariableIndices } from "@/lib/whatsapp/template-validators";
 import { normalizeTemplateButtons } from "@/lib/flows/template-buttons";
 import { TemplateMobilePreview } from "@/components/shared/template-mobile-preview";
+import { cn } from "@/lib/utils";
 
 export interface TemplateSendValues {
   body: string[];
@@ -183,7 +184,14 @@ export function TemplatePicker({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="border-border bg-popover sm:max-w-lg">
+      <DialogContent
+        className={cn(
+          "border-border bg-popover",
+          selected
+            ? "flex max-h-[min(90vh,820px)] flex-col sm:max-w-3xl"
+            : "sm:max-w-lg",
+        )}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-popover-foreground">
             <LayoutTemplate className="h-4 w-4 text-primary" />
@@ -244,8 +252,59 @@ export function TemplatePicker({
             )}
           </div>
         ) : (
-          <div className="space-y-3">
-            <div className="rounded-md border border-border bg-background/50 p-3">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden md:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="min-h-0 space-y-3 overflow-y-auto pr-1">
+              {slots && slots.headerVarCount > 0 && (
+                <div className="space-y-1">
+                  <Label className="text-xs text-popover-foreground">
+                    {`Header {{1}}`}
+                  </Label>
+                  <Input
+                    value={headerText}
+                    onChange={(e) => setHeaderText(e.target.value)}
+                    placeholder="Value for the header variable"
+                    className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
+                  />
+                </div>
+              )}
+              {slots?.bodyVars.map((v, i) => (
+                <div key={v} className="space-y-1">
+                  <Label className="text-xs text-popover-foreground">{`Body {{${v}}}`}</Label>
+                  <Input
+                    value={params[i] ?? ""}
+                    onChange={(e) => {
+                      const next = [...params];
+                      next[i] = e.target.value;
+                      setParams(next);
+                    }}
+                    placeholder={`Value for {{${v}}}`}
+                    className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
+                  />
+                </div>
+              ))}
+              {slots?.urlButtonSlots.map((slot) => (
+                <div key={slot.index} className="space-y-1">
+                  <Label className="text-xs text-popover-foreground">
+                    {`URL button "${slot.text}" — value for `}{`{{1}}`}
+                  </Label>
+                  <Input
+                    value={buttonParams[slot.index] ?? ""}
+                    onChange={(e) =>
+                      setButtonParams((prev) => ({
+                        ...prev,
+                        [slot.index]: e.target.value,
+                      }))
+                    }
+                    placeholder="URL suffix value"
+                    className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
+                  />
+                  <p className="text-[10px] text-muted-foreground break-all">
+                    Final URL: {slot.url.replace(/\{\{1\}\}/g, buttonParams[slot.index] || "{{1}}")}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="shrink-0 rounded-md border border-border bg-background/50 p-3 md:max-w-[300px]">
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <p className="text-xs font-medium text-popover-foreground">Preview</p>
                 <Badge className="border border-primary/30 bg-primary/20 text-[10px] text-primary">
@@ -272,55 +331,6 @@ export function TemplatePicker({
                 buttons={normalizeTemplateButtons(selected.buttons)}
               />
             </div>
-            {slots && slots.headerVarCount > 0 && (
-              <div className="space-y-1">
-                <Label className="text-xs text-popover-foreground">
-                  {`Header {{1}}`}
-                </Label>
-                <Input
-                  value={headerText}
-                  onChange={(e) => setHeaderText(e.target.value)}
-                  placeholder="Value for the header variable"
-                  className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
-                />
-              </div>
-            )}
-            {slots?.bodyVars.map((v, i) => (
-              <div key={v} className="space-y-1">
-                <Label className="text-xs text-popover-foreground">{`Body {{${v}}}`}</Label>
-                <Input
-                  value={params[i] ?? ""}
-                  onChange={(e) => {
-                    const next = [...params];
-                    next[i] = e.target.value;
-                    setParams(next);
-                  }}
-                  placeholder={`Value for {{${v}}}`}
-                  className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
-                />
-              </div>
-            ))}
-            {slots?.urlButtonSlots.map((slot) => (
-              <div key={slot.index} className="space-y-1">
-                <Label className="text-xs text-popover-foreground">
-                  {`URL button "${slot.text}" — value for `}{`{{1}}`}
-                </Label>
-                <Input
-                  value={buttonParams[slot.index] ?? ""}
-                  onChange={(e) =>
-                    setButtonParams((prev) => ({
-                      ...prev,
-                      [slot.index]: e.target.value,
-                    }))
-                  }
-                  placeholder="URL suffix value"
-                  className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
-                />
-                <p className="text-[10px] text-muted-foreground break-all">
-                  Final URL: {slot.url.replace(/\{\{1\}\}/g, buttonParams[slot.index] || "{{1}}")}
-                </p>
-              </div>
-            ))}
           </div>
         )}
 
