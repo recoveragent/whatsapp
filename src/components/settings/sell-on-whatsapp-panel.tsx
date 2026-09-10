@@ -197,6 +197,18 @@ export function SellOnWhatsAppPanel({
               </p>
             )}
 
+            {settings?.enabled ? (
+              <p className="text-xs text-muted-foreground">
+                The shopping bag icon appears in the inbox composer when you
+                open a customer chat (self-assign the chat to send).
+              </p>
+            ) : settings?.connected ? (
+              <p className="text-xs text-muted-foreground">
+                Enable product sends above to show the shopping bag icon in the
+                inbox composer.
+              </p>
+            ) : null}
+
             {canEdit && settings?.enabled && (
               <Button
                 type="button"

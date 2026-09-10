@@ -12,9 +12,21 @@ export interface ShopifyProductSyncResult {
   error_message?: string;
 }
 
-type ShopifyProductUpsertRow = NonNullable<
-  ReturnType<typeof mapShopifyProductRow>
->;
+export type ShopifyProductUpsertRow = {
+  account_id: string;
+  shopify_product_id: number;
+  shopify_variant_id: number;
+  title: string;
+  variant_title: string | null;
+  handle: string | null;
+  price: string;
+  compare_at_price: string | null;
+  currency: string | null;
+  image_url: string | null;
+  inventory_quantity: number | null;
+  status: 'active' | 'archived' | 'draft';
+  synced_at: string;
+};
 
 function productImageUrl(product: ShopifyProductPayload): string | null {
   const src =
@@ -30,28 +42,30 @@ export function pickDefaultVariant(
 ): ShopifyProductVariantPayload | null {
   if (!variants.length) return null;
 
-  const inStock = variants.filter((variant) => {
-    if (variant.available === false) return false;
-    if (
-      variant.inventory_management &&
-      variant.inventory_quantity != null &&
-      variant.inventory_quantity <= 0
-    ) {
-      return false;
-    }
-    return true;
-  });
-
+  const inStock = variants.filter((variant) => isShopifyVariantInStock(variant));
   return inStock[0] ?? variants[0] ?? null;
 }
 
-export function mapShopifyProductRow(args: {
+export function isShopifyVariantInStock(
+  variant: ShopifyProductVariantPayload,
+): boolean {
+  if (variant.available === false) return false;
+  if (
+    variant.inventory_management &&
+    variant.inventory_quantity != null &&
+    variant.inventory_quantity <= 0
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export function mapShopifyProductRows(args: {
   accountId: string;
   product: ShopifyProductPayload;
   currency: string | null;
-}) {
-  const variant = pickDefaultVariant(args.product.variants ?? []);
-  if (!variant?.id) return null;
+}): ShopifyProductUpsertRow[] {
+  if (!args.product.id) return [];
 
   const status =
     args.product.status === 'active' ||
@@ -60,24 +74,45 @@ export function mapShopifyProductRow(args: {
       ? args.product.status
       : 'active';
 
-  return {
-    account_id: args.accountId,
-    shopify_product_id: args.product.id,
-    shopify_variant_id: variant.id,
-    title: args.product.title?.trim() || 'Untitled product',
-    variant_title: variant.title?.trim() || null,
-    handle: args.product.handle?.trim() || null,
-    price: variant.price?.trim() || '0.00',
-    compare_at_price: variant.compare_at_price?.trim() || null,
-    currency: args.currency,
-    image_url: productImageUrl(args.product),
-    inventory_quantity:
-      typeof variant.inventory_quantity === 'number'
-        ? variant.inventory_quantity
-        : null,
-    status,
-    synced_at: new Date().toISOString(),
-  };
+  const title = args.product.title?.trim() || 'Untitled product';
+  const imageUrl = productImageUrl(args.product);
+  const syncedAt = new Date().toISOString();
+
+  return (args.product.variants ?? [])
+    .filter((variant) => variant.id != null)
+    .map((variant) => ({
+      account_id: args.accountId,
+      shopify_product_id: args.product.id!,
+      shopify_variant_id: variant.id,
+      title,
+      variant_title: variant.title?.trim() || null,
+      handle: args.product.handle?.trim() || null,
+      price: variant.price?.trim() || '0.00',
+      compare_at_price: variant.compare_at_price?.trim() || null,
+      currency: args.currency,
+      image_url: imageUrl,
+      inventory_quantity:
+        typeof variant.inventory_quantity === 'number'
+          ? variant.inventory_quantity
+          : null,
+      status,
+      synced_at: syncedAt,
+    }));
+}
+
+/** @deprecated Use mapShopifyProductRows — kept for tests expecting one default row. */
+export function mapShopifyProductRow(args: {
+  accountId: string;
+  product: ShopifyProductPayload;
+  currency: string | null;
+}) {
+  const variant = pickDefaultVariant(args.product.variants ?? []);
+  if (!variant?.id || !args.product.id) return null;
+
+  const [row] = mapShopifyProductRows(args).filter(
+    (item) => item.shopify_variant_id === variant.id,
+  );
+  return row ?? null;
 }
 
 async function loadConnectedShopifyConfig(
@@ -148,6 +183,7 @@ export async function syncShopifyProductsForAccount(
 
   try {
     const syncedProductIds = new Set<number>();
+    const syncedVariantIds = new Set<number>();
     const rows: ShopifyProductUpsertRow[] = [];
     let currency: string | null = null;
 
@@ -167,8 +203,10 @@ export async function syncShopifyProductsForAccount(
       for (const product of page.products) {
         if (!product.id) continue;
         syncedProductIds.add(product.id);
-        const row = mapShopifyProductRow({ accountId, product, currency });
-        if (row) rows.push(row);
+        for (const row of mapShopifyProductRows({ accountId, product, currency })) {
+          syncedVariantIds.add(row.shopify_variant_id);
+          rows.push(row);
+        }
       }
 
       pageInfo = page.nextPageInfo;
@@ -179,7 +217,7 @@ export async function syncShopifyProductsForAccount(
     for (let i = 0; i < rows.length; i += chunkSize) {
       const chunk = rows.slice(i, i + chunkSize);
       const { error } = await db.from('shopify_products').upsert(chunk, {
-        onConflict: 'account_id,shopify_product_id',
+        onConflict: 'account_id,shopify_variant_id',
       });
       if (error) throw new Error(error.message);
       upserted += chunk.length;
@@ -189,18 +227,27 @@ export async function syncShopifyProductsForAccount(
     if (syncedProductIds.size > 0) {
       const { data: staleRows, error: staleError } = await db
         .from('shopify_products')
-        .select('id, shopify_product_id, status')
+        .select('id, shopify_product_id, shopify_variant_id, status')
         .eq('account_id', accountId)
         .eq('status', 'active');
 
       if (staleError) throw new Error(staleError.message);
 
       const staleIds = (staleRows ?? [])
-        .filter(
-          (row) =>
-            typeof row.shopify_product_id === 'number' &&
-            !syncedProductIds.has(row.shopify_product_id),
-        )
+        .filter((row) => {
+          const productId =
+            typeof row.shopify_product_id === 'number'
+              ? row.shopify_product_id
+              : null;
+          const variantId =
+            typeof row.shopify_variant_id === 'number'
+              ? row.shopify_variant_id
+              : null;
+          if (productId == null || variantId == null) return false;
+          return (
+            !syncedProductIds.has(productId) || !syncedVariantIds.has(variantId)
+          );
+        })
         .map((row) => row.id as string);
 
       if (staleIds.length > 0) {
@@ -307,22 +354,37 @@ export async function upsertShopifyProductFromWebhook(
     .select('currency')
     .eq('account_id', accountId)
     .eq('shopify_product_id', product.id)
+    .limit(1)
     .maybeSingle();
 
-  const row = mapShopifyProductRow({
+  const rows = mapShopifyProductRows({
     accountId,
     product,
     currency: (existing?.currency as string | null) ?? null,
   });
-  if (!row) {
+  if (!rows.length) {
     await archiveShopifyProductFromWebhook(db, accountId, product.id);
     return true;
   }
 
-  const { error } = await db.from('shopify_products').upsert(row, {
-    onConflict: 'account_id,shopify_product_id',
+  const { error } = await db.from('shopify_products').upsert(rows, {
+    onConflict: 'account_id,shopify_variant_id',
   });
   if (error) throw new Error(error.message);
+
+  const variantIds = rows.map((row) => row.shopify_variant_id);
+  const { error: archiveError } = await db
+    .from('shopify_products')
+    .update({
+      status: 'archived',
+      synced_at: new Date().toISOString(),
+    })
+    .eq('account_id', accountId)
+    .eq('shopify_product_id', product.id)
+    .eq('status', 'active')
+    .not('shopify_variant_id', 'in', `(${variantIds.join(',')})`);
+
+  if (archiveError) throw new Error(archiveError.message);
 
   await db
     .from('shopify_config')

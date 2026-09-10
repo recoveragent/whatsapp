@@ -50,11 +50,15 @@ export async function searchShopifyProducts(args: {
     .eq('account_id', args.accountId)
     .eq('status', 'active')
     .order('title', { ascending: true })
+    .order('variant_title', { ascending: true })
     .limit(limit);
 
   const query = args.query?.trim();
   if (query) {
-    request = request.ilike('title', `%${query}%`);
+    const escaped = query.replace(/[%_,]/g, '');
+    request = request.or(
+      `title.ilike.%${escaped}%,variant_title.ilike.%${escaped}%`,
+    );
   }
 
   const { data, error } = await request;

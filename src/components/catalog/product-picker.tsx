@@ -39,6 +39,12 @@ function formatPrice(price: string, currency: string | null): string {
   return normalized;
 }
 
+function formatVariantLabel(variantTitle: string | null): string | null {
+  const trimmed = variantTitle?.trim();
+  if (!trimmed || trimmed.toLowerCase() === "default title") return null;
+  return trimmed;
+}
+
 export function ProductPicker({
   open,
   onOpenChange,
@@ -53,7 +59,7 @@ export function ProductPicker({
     try {
       const params = new URLSearchParams();
       if (search.trim()) params.set("q", search.trim());
-      params.set("limit", "20");
+      params.set("limit", "50");
 
       const res = await fetch(`/api/shopify/products?${params.toString()}`, {
         cache: "no-store",
@@ -112,7 +118,7 @@ export function ProductPicker({
           />
         </div>
 
-        <div className="max-h-80 overflow-y-auto rounded-lg border border-border">
+        <div className="max-h-[28rem] overflow-y-auto rounded-lg border border-border">
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
@@ -126,7 +132,9 @@ export function ProductPicker({
             </div>
           ) : (
             <ul className="divide-y divide-border">
-              {products.map((product) => (
+              {products.map((product) => {
+                const variantLabel = formatVariantLabel(product.variant_title);
+                return (
                 <li key={product.shopify_variant_id}>
                   <button
                     type="button"
@@ -156,12 +164,11 @@ export function ProductPicker({
                       <p className="truncate text-sm font-medium text-foreground">
                         {product.title}
                       </p>
-                      {product.variant_title &&
-                        product.variant_title.toLowerCase() !== "default title" && (
-                          <p className="truncate text-xs text-muted-foreground">
-                            {product.variant_title}
-                          </p>
-                        )}
+                      {variantLabel ? (
+                        <p className="truncate text-xs font-medium text-foreground/80">
+                          {variantLabel}
+                        </p>
+                      ) : null}
                       <p className="text-xs text-muted-foreground">
                         {formatPrice(product.price, product.currency)}
                         {!product.in_stock ? " · Out of stock" : ""}
@@ -169,7 +176,8 @@ export function ProductPicker({
                     </div>
                   </button>
                 </li>
-              ))}
+              );
+              })}
             </ul>
           )}
         </div>

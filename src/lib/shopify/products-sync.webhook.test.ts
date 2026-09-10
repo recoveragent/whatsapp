@@ -1,7 +1,47 @@
 import { describe, expect, it } from 'vitest';
 
-import { mapShopifyProductRow, pickDefaultVariant } from './products-sync';
+import {
+  mapShopifyProductRow,
+  mapShopifyProductRows,
+  pickDefaultVariant,
+} from './products-sync';
 import type { ShopifyProductPayload } from './types';
+
+describe('mapShopifyProductRows', () => {
+  it('maps every variant on a product', () => {
+    const rows = mapShopifyProductRows({
+      accountId: 'acct-1',
+      product: {
+        id: 100,
+        title: 'Baby Birth Frame',
+        status: 'active',
+        variants: [
+          {
+            id: 1001,
+            title: 'Design 1 / A4 size (8x12 Inch)',
+            price: '799.00',
+            inventory_quantity: 4,
+            inventory_management: 'shopify',
+            available: true,
+          },
+          {
+            id: 1002,
+            title: 'Design 2 / A4 size (8x12 Inch)',
+            price: '799.00',
+            inventory_quantity: 2,
+            inventory_management: 'shopify',
+            available: true,
+          },
+        ],
+      },
+      currency: 'INR',
+    });
+
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.shopify_variant_id)).toEqual([1001, 1002]);
+    expect(rows[1]?.variant_title).toBe('Design 2 / A4 size (8x12 Inch)');
+  });
+});
 
 describe('mapShopifyProductRow', () => {
   it('maps an active product to a catalog row', () => {

@@ -93,7 +93,7 @@ function mockDb() {
               const existing = products.find(
                 (item) =>
                   item.account_id === row.account_id &&
-                  item.shopify_product_id === row.shopify_product_id,
+                  item.shopify_variant_id === row.shopify_variant_id,
               );
               if (existing) Object.assign(existing, row);
               else products.push({ ...row });
@@ -155,6 +155,44 @@ describe('pickDefaultVariant', () => {
 describe('syncShopifyProductsForAccount', () => {
   beforeEach(() => {
     vi.mocked(adminApi.fetchProductsPage).mockReset();
+  });
+
+  it('upserts every variant for each active product', async () => {
+    vi.mocked(adminApi.fetchProductsPage)
+      .mockResolvedValueOnce({
+        products: [
+          product({
+            variants: [
+              {
+                id: 1001,
+                title: 'Design 1',
+                price: '799.00',
+                inventory_quantity: 5,
+                inventory_management: 'shopify',
+                available: true,
+              },
+              {
+                id: 1002,
+                title: 'Design 2',
+                price: '849.00',
+                inventory_quantity: 2,
+                inventory_management: 'shopify',
+                available: true,
+              },
+            ],
+          }),
+        ],
+        nextPageInfo: null,
+        shopCurrency: 'INR',
+      });
+
+    const db = mockDb();
+    const result = await syncShopifyProductsForAccount(db as never, 'acct-1');
+
+    expect(result.status).toBe('success');
+    expect(result.upserted).toBe(2);
+    expect(db.products).toHaveLength(2);
+    expect(db.products.map((row) => row.shopify_variant_id)).toEqual([1001, 1002]);
   });
 
   it('upserts active products from Shopify', async () => {

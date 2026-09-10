@@ -2112,6 +2112,7 @@ function SendProductForm({
     Array<{
       shopify_variant_id: number;
       title: string;
+      variant_title: string | null;
       price: string;
       currency: string | null;
     }>
@@ -2126,7 +2127,7 @@ function SendProductForm({
       setLoading(true);
       const params = new URLSearchParams();
       if (query.trim()) params.set("q", query.trim());
-      params.set("limit", "20");
+      params.set("limit", "50");
       void fetch(`/api/shopify/products?${params.toString()}`, {
         cache: "no-store",
       })
@@ -2137,6 +2138,7 @@ function SendProductForm({
             (payload.products ?? []) as Array<{
               shopify_variant_id: number;
               title: string;
+              variant_title: string | null;
               price: string;
               currency: string | null;
             }>,
@@ -2219,19 +2221,28 @@ function SendProductForm({
                   <SelectValue placeholder="Select a product" />
                 </SelectTrigger>
                 <SelectContent>
-                  {products.map((product) => (
+                  {products.map((product) => {
+                    const variantLabel =
+                      product.variant_title &&
+                      product.variant_title.toLowerCase() !== "default title"
+                        ? product.variant_title
+                        : null;
+                    return (
                     <SelectItem
                       key={product.shopify_variant_id}
                       value={String(product.shopify_variant_id)}
                     >
-                      {product.title}
+                      {variantLabel
+                        ? `${product.title} · ${variantLabel}`
+                        : product.title}
                       {product.currency === "INR"
                         ? ` · ₹${product.price}`
                         : product.currency
                           ? ` · ${product.currency} ${product.price}`
                           : ` · ${product.price}`}
                     </SelectItem>
-                  ))}
+                  );
+                  })}
                 </SelectContent>
               </Select>
             )}
