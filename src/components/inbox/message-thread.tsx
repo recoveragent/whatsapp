@@ -34,11 +34,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
-import { format, isToday, isYesterday } from "date-fns";
-import {
-  getServiceWindow,
-  lastCustomerMessageAtFromMessages,
-} from "@/lib/inbox/service-window";
+import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -227,11 +223,6 @@ export function MessageThread({
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [flowModalOpen, setFlowModalOpen] = useState(false);
   const [productModalOpen, setProductModalOpen] = useState(false);
-  const [magicMessageConfig, setMagicMessageConfig] = useState<{
-    enabled: boolean;
-    template_ready: boolean;
-    template_name: string;
-  } | null>(null);
   const [sellOnWhatsAppConfig, setSellOnWhatsAppConfig] = useState<{
     enabled: boolean;
     connected: boolean;
@@ -359,77 +350,32 @@ export function MessageThread({
     };
   }, [accountId]);
 
-  const [sessionNow, setSessionNow] = useState(() => new Date());
-
-  useEffect(() => {
-    const id = window.setInterval(() => setSessionNow(new Date()), 60_000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  const lastCustomerAt = useMemo(
-    () =>
-      conversation?.last_customer_message_at ??
-      lastCustomerMessageAtFromMessages(messages),
-    [conversation?.last_customer_message_at, messages],
-  );
-
-  // 24-hour session timer — exact deadline from last customer message.
+  // 24-hour session timer
   const sessionInfo = useMemo(() => {
-    if (!lastCustomerAt) {
-      return { expired: true, remaining: "No customer messages" };
+    if (!messages.length) return { expired: false, remaining: "" };
+
+    // Find last customer message
+    const lastCustomerMsg = [...messages]
+      .reverse()
+      .find((m) => m.sender_type === "customer");
+
+    if (!lastCustomerMsg) return { expired: true, remaining: "No customer messages" };
+
+    const hoursSince = differenceInHours(new Date(), new Date(lastCustomerMsg.created_at));
+    const expired = hoursSince >= 24;
+
+    if (expired) {
+      return { expired: true, remaining: "Expired" };
     }
 
-    const window = getServiceWindow(lastCustomerAt, sessionNow);
-    return { expired: window.expired, remaining: window.remaining };
-  }, [lastCustomerAt, sessionNow]);
+    const hoursLeft = 24 - hoursSince;
+    const remaining =
+      hoursLeft >= 1
+        ? `${Math.floor(hoursLeft)}h remaining`
+        : `${Math.floor(hoursLeft * 60)}m remaining`;
 
-  const magicMessageActive = useMemo(
-    () =>
-      Boolean(
-        sessionInfo.expired &&
-          lastCustomerAt &&
-          magicMessageConfig?.enabled &&
-          magicMessageConfig.template_ready,
-      ),
-    [sessionInfo.expired, lastCustomerAt, magicMessageConfig],
-  );
-
-  useEffect(() => {
-    if (!accountId) {
-      setMagicMessageConfig(null);
-      return;
-    }
-
-    let cancelled = false;
-    void fetch("/api/inbox/magic-message-settings", { cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) return null;
-        return (await res.json()) as {
-          enabled: boolean;
-          template_ready: boolean;
-          template_name: string;
-        };
-      })
-      .then((data) => {
-        if (cancelled) return;
-        if (!data) {
-          setMagicMessageConfig(null);
-          return;
-        }
-        setMagicMessageConfig({
-          enabled: data.enabled,
-          template_ready: data.template_ready,
-          template_name: data.template_name,
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setMagicMessageConfig(null);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [accountId]);
+    return { expired, remaining };
+  }, [messages]);
 
   // Store latest callback in a ref so fetchMessages doesn't need to
   // depend on `onMessagesLoaded` — otherwise parent re-renders cause
@@ -1035,76 +981,6 @@ export function MessageThread({
     [conversation, onNewMessage, onUpdateMessage, user?.id],
   );
 
-  const handleSendMagicMessage = useCallback(
-    async (text: string, replyToId?: string) => {
-      if (!conversation) return;
-
-      const templateName =
-        magicMessageConfig?.template_name ?? "magic_message";
-      const template = templatesByName.get(templateName);
-      const tempId = `temp-${Date.now()}`;
-      const templateSnapshot = template
-        ? buildTemplateMessageSnapshot(template)
-        : {
-            header_type: "image" as const,
-            header_media_url: null,
-          };
-
-      const optimisticMsg: Message = {
-        id: tempId,
-        conversation_id: conversation.id,
-        sender_type: "agent",
-        sender_id: user?.id,
-        content_type: "template",
-        content_text: text,
-        template_name: templateName,
-        content_payload: templateDisplayPayload(templateSnapshot),
-        status: "sending",
-        created_at: new Date().toISOString(),
-        reply_to_message_id: replyToId,
-      };
-      onNewMessage(optimisticMsg);
-      setReplyTo(null);
-
-      try {
-        const res = await fetch("/api/inbox/magic-message/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            conversation_id: conversation.id,
-            content_text: text,
-            reply_to_message_id: replyToId,
-          }),
-        });
-
-        const payload = await res.json().catch(() => ({}));
-
-        if (!res.ok) {
-          const reason = payload?.error || `HTTP ${res.status}`;
-          console.error("Failed to send Magic Message:", reason);
-          toast.error(`Failed to send Magic Message: ${reason}`);
-          onUpdateMessage(tempId, { status: "failed", error_message: reason });
-          return;
-        }
-
-        onUpdateMessage(tempId, { status: "sent" });
-      } catch (err) {
-        console.error("Failed to send Magic Message:", err);
-        const reason = err instanceof Error ? err.message : "network error";
-        toast.error(`Failed to send Magic Message: ${reason}`);
-        onUpdateMessage(tempId, { status: "failed", error_message: reason });
-      }
-    },
-    [
-      conversation,
-      magicMessageConfig?.template_name,
-      onNewMessage,
-      onUpdateMessage,
-      templatesByName,
-      user?.id,
-    ],
-  );
-
   // Build a quick id → Message map so reply quotes can be rendered without
   // an extra fetch — the thread already holds the full conversation.
   const messagesById = useMemo(() => {
@@ -1645,9 +1521,7 @@ export function MessageThread({
       <MessageComposer
         conversationId={conversation.id}
         sessionExpired={sessionInfo.expired}
-        magicMessageActive={magicMessageActive}
         onSend={handleSend}
-        onSendMagicMessage={handleSendMagicMessage}
         onSendMedia={handleSendMedia}
         onOpenTemplates={handleOpenTemplates}
         onOpenFlows={handleOpenFlows}

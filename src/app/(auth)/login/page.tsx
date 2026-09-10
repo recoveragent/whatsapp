@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -45,27 +45,51 @@ function LoginPageInner() {
   const router = useRouter();
   const supabase = createClient();
 
+  useEffect(() => {
+    const urlError = searchParams.get("error");
+    if (urlError) setError(urlError);
+  }, [searchParams]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (error) {
-      setError(error.message);
+    if (signInError) {
+      setError(signInError.message);
       setLoading(false);
       return;
     }
 
-    if (inviteToken) {
-      router.push(`/join/${encodeURIComponent(inviteToken)}`);
-    } else {
-      router.push("/dashboard");
+    // Confirm the browser client persisted the session before we
+    // navigate — otherwise middleware can miss the cookies on the
+    // first /dashboard request and bounce back to /login.
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session) {
+      setError(
+        sessionError?.message ??
+          "Sign-in succeeded but the session could not be established. Try again.",
+      );
+      setLoading(false);
+      return;
     }
+
+    router.refresh();
+
+    const target = inviteToken
+      ? `/join/${encodeURIComponent(inviteToken)}`
+      : "/dashboard";
+    // Full navigation so proxy/middleware reads the fresh auth cookies.
+    window.location.assign(target);
   };
 
   return (

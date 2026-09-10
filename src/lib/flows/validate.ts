@@ -304,7 +304,7 @@ function validateTrigger(
       });
     }
   }
-  if (trigger_type === "webhook_received") {
+  if (trigger_type === "webhook_received" || trigger_type === "shopify_checkout_app_abandoned") {
     if (!nonEmpty(trigger_config.webhook_token)) {
       issues.push({
         severity: "error",

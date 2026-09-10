@@ -14,20 +14,6 @@ export interface ShopifyCatalogProduct {
   in_stock: boolean;
 }
 
-export interface ShopifyProductGroup {
-  shopify_product_id: number;
-  title: string;
-  image_url: string | null;
-  currency: string | null;
-  variants: ShopifyCatalogProduct[];
-}
-
-const FLAT_SEARCH_DEFAULT = 50;
-const FLAT_SEARCH_MAX = 200;
-const GROUPED_VARIANT_FETCH_CAP = 2000;
-const GROUPED_PRODUCT_DEFAULT = 100;
-const GROUPED_PRODUCT_MAX = 200;
-
 function rowToCatalogProduct(row: Record<string, unknown>): ShopifyCatalogProduct {
   const inventoryQuantity =
     typeof row.inventory_quantity === 'number' ? row.inventory_quantity : null;
@@ -47,54 +33,14 @@ function rowToCatalogProduct(row: Record<string, unknown>): ShopifyCatalogProduc
   };
 }
 
-export function groupShopifyCatalogProducts(
-  rows: ShopifyCatalogProduct[],
-): ShopifyProductGroup[] {
-  const byProduct = new Map<number, ShopifyProductGroup>();
-
-  for (const row of rows) {
-    const existing = byProduct.get(row.shopify_product_id);
-    if (existing) {
-      existing.variants.push(row);
-      if (!existing.image_url && row.image_url) {
-        existing.image_url = row.image_url;
-      }
-      if (!existing.currency && row.currency) {
-        existing.currency = row.currency;
-      }
-      continue;
-    }
-
-    byProduct.set(row.shopify_product_id, {
-      shopify_product_id: row.shopify_product_id,
-      title: row.title,
-      image_url: row.image_url,
-      currency: row.currency,
-      variants: [row],
-    });
-  }
-
-  return Array.from(byProduct.values()).sort((a, b) =>
-    a.title.localeCompare(b.title),
-  );
-}
-
-function matchesCatalogQuery(
-  row: ShopifyCatalogProduct,
-  query: string,
-): boolean {
-  const needle = query.toLowerCase();
-  if (row.title.toLowerCase().includes(needle)) return true;
-  if (row.variant_title?.toLowerCase().includes(needle)) return true;
-  return false;
-}
-
-async function fetchShopifyCatalogRows(args: {
+export async function searchShopifyProducts(args: {
   db: SupabaseClient;
   accountId: string;
   query?: string;
-  limit: number;
+  limit?: number;
+  inStockOnly?: boolean;
 }): Promise<ShopifyCatalogProduct[]> {
+  const limit = Math.min(Math.max(args.limit ?? 20, 1), 50);
 
   let request = args.db
     .from('shopify_products')
@@ -105,7 +51,7 @@ async function fetchShopifyCatalogRows(args: {
     .eq('status', 'active')
     .order('title', { ascending: true })
     .order('variant_title', { ascending: true })
-    .limit(args.limit);
+    .limit(limit);
 
   const query = args.query?.trim();
   if (query) {
@@ -118,74 +64,12 @@ async function fetchShopifyCatalogRows(args: {
   const { data, error } = await request;
   if (error) throw new Error(error.message);
 
-  return (data ?? []).map((row) =>
+  const products = (data ?? []).map((row) =>
     rowToCatalogProduct(row as Record<string, unknown>),
   );
-}
-
-export async function searchShopifyProducts(args: {
-  db: SupabaseClient;
-  accountId: string;
-  query?: string;
-  limit?: number;
-  inStockOnly?: boolean;
-}): Promise<ShopifyCatalogProduct[]> {
-  const limit = Math.min(
-    Math.max(args.limit ?? FLAT_SEARCH_DEFAULT, 1),
-    FLAT_SEARCH_MAX,
-  );
-
-  const products = await fetchShopifyCatalogRows({
-    db: args.db,
-    accountId: args.accountId,
-    query: args.query,
-    limit,
-  });
 
   if (args.inStockOnly === false) return products;
   return products.filter((product) => product.in_stock);
-}
-
-export async function searchShopifyProductGroups(args: {
-  db: SupabaseClient;
-  accountId: string;
-  query?: string;
-  limit?: number;
-  inStockOnly?: boolean;
-}): Promise<ShopifyProductGroup[]> {
-  const productLimit = Math.min(
-    Math.max(args.limit ?? GROUPED_PRODUCT_DEFAULT, 1),
-    GROUPED_PRODUCT_MAX,
-  );
-
-  const rows = await fetchShopifyCatalogRows({
-    db: args.db,
-    accountId: args.accountId,
-    query: args.query,
-    limit: GROUPED_VARIANT_FETCH_CAP,
-  });
-
-  const inStockOnly = args.inStockOnly !== false;
-  const filtered = inStockOnly ? rows.filter((row) => row.in_stock) : rows;
-  const groups = groupShopifyCatalogProducts(filtered).map((group) => ({
-    ...group,
-    variants: inStockOnly
-      ? group.variants.filter((variant) => variant.in_stock)
-      : group.variants,
-  }));
-
-  const query = args.query?.trim();
-  const matchedGroups = query
-    ? groups.filter(
-        (group) =>
-          group.title.toLowerCase().includes(query.toLowerCase()) ||
-          group.variants.some((variant) => matchesCatalogQuery(variant, query)),
-      )
-    : groups;
-
-  return matchedGroups
-    .filter((group) => group.variants.length > 0)
-    .slice(0, productLimit);
 }
 
 export async function getShopifyCatalogProduct(args: {
