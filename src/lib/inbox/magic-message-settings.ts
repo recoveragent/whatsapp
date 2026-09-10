@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { InboxMagicMessageSettings, MessageTemplate } from '@/types';
+import type {
+  InboxMagicMessageSettings,
+  MessageTemplate,
+  MessageTemplateStatus,
+} from '@/types';
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard';
 
 export const DEFAULT_MAGIC_MESSAGE_TEMPLATE_NAME = 'magic_message';
@@ -8,7 +12,7 @@ export const DEFAULT_MAGIC_MESSAGE_TEMPLATE_LANGUAGE = 'en_US';
 
 export type MagicMessageSettingsResponse = InboxMagicMessageSettings & {
   template_ready: boolean;
-  template_status: MessageTemplate['status'] | null;
+  template_status: MessageTemplateStatus | null;
 };
 
 export async function getMagicMessageSettings(
@@ -48,8 +52,7 @@ export async function getMagicMessageSettings(
   return {
     ...settings,
     template_ready: Boolean(templateReady),
-    template_status:
-      (templateRow?.status as MessageTemplate['status'] | undefined) ?? null,
+    template_status: templateRow?.status ?? null,
   };
 }
 
@@ -121,8 +124,9 @@ export async function loadMagicMessageTemplate(
     );
   }
   if (data.status !== 'APPROVED') {
+    const statusLabel = (data.status ?? 'unknown').toLowerCase();
     throw new Error(
-      `Magic Message template is ${data.status.toLowerCase()} — it must be APPROVED before use.`,
+      `Magic Message template is ${statusLabel} — it must be APPROVED before use.`,
     );
   }
   if (data.category !== 'Utility') {

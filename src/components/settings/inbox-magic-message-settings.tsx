@@ -15,7 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import type { InboxMagicMessageSettings } from '@/types';
+import type { InboxMagicMessageSettings, MessageTemplateStatus } from '@/types';
 import type { MagicMessageSettingsResponse } from '@/lib/inbox/magic-message-settings';
 
 export function InboxMagicMessageSettings() {
@@ -26,7 +26,9 @@ export function InboxMagicMessageSettings() {
   const [templateName, setTemplateName] = useState('magic_message');
   const [templateLanguage, setTemplateLanguage] = useState('en_US');
   const [templateReady, setTemplateReady] = useState(false);
-  const [templateStatus, setTemplateStatus] = useState<string | null>(null);
+  const [templateStatus, setTemplateStatus] = useState<MessageTemplateStatus | null>(
+    null,
+  );
   const [initial, setInitial] = useState<InboxMagicMessageSettings | null>(null);
 
   useEffect(() => {
