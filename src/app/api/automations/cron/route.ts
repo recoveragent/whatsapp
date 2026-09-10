@@ -6,6 +6,7 @@ import { pollGoogleSheetFlows } from '@/lib/google-sheets/poll'
 import { resumeFlowPendingExecutions } from '@/lib/flows/engine'
 import { processDueCadences } from '@/lib/leads/engine'
 import { pollLeadSources } from '@/lib/leads/poll-sources'
+import { processDueAbandonedCheckouts } from '@/lib/shopify/handle-webhook'
 
 /**
  * Drain due `automation_pending_executions` rows, then poll Google Sheet
@@ -17,6 +18,10 @@ import { pollLeadSources } from '@/lib/leads/poll-sources'
  * Hostinger's documented job hits this automations URL, so sheet-backed
  * flows never fired unless a second cron was added. This endpoint is
  * the one operators actually schedule.
+ *
+ * Recover Agent ABC mirrors queue into `shopify_pending_checkouts` and
+ * were only drained by `/api/shopify/cron`, which operators rarely
+ * schedule separately — they are processed here too.
  *
  * The claim step (status = 'running') serves as a simple lock so
  * overlapping invocations don't double-process rows. Best-effort
@@ -72,9 +77,20 @@ export async function GET(request: Request) {
     processed++
   }
 
-  const google_sheets = await pollGoogleSheetFlows(admin)
-  const lead_sheets = await pollLeadSources(admin)
-  const cadences = await processDueCadences(admin)
-  const flow_waits = await resumeFlowPendingExecutions()
-  return NextResponse.json({ processed, google_sheets, lead_sheets, cadences, flow_waits })
+  const [google_sheets, lead_sheets, cadences, flow_waits, abandoned_checkouts] =
+    await Promise.all([
+      pollGoogleSheetFlows(admin),
+      pollLeadSources(admin),
+      processDueCadences(admin),
+      resumeFlowPendingExecutions(),
+      processDueAbandonedCheckouts(admin),
+    ])
+  return NextResponse.json({
+    processed,
+    google_sheets,
+    lead_sheets,
+    cadences,
+    flow_waits,
+    abandoned_checkouts,
+  })
 }
