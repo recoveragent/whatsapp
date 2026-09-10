@@ -37,6 +37,7 @@ import {
   Briefcase,
   CircleSlash,
   ClipboardList,
+  ShoppingBag,
 } from "lucide-react";
 import { resolveContactFieldLabel } from "@/lib/contact-fields";
 import {
@@ -62,6 +63,7 @@ export type NodeType =
   | "send_buttons"
   | "send_list"
   | "send_media"
+  | "send_product"
   | "send_template"
   | "collect_input"
   | "send_address"
@@ -118,6 +120,11 @@ export const NODE_META: Record<
     label: "Send media",
     icon: Paperclip,
     color: "text-cyan-400",
+  },
+  send_product: {
+    label: "Send product",
+    icon: ShoppingBag,
+    color: "text-emerald-400",
   },
   collect_input: {
     label: "Collect input",
@@ -280,6 +287,26 @@ export function summarizeNode(
       return rowCount > 0
         ? `${rowCount} option${rowCount === 1 ? "" : "s"} across ${sections.length} section${sections.length === 1 ? "" : "s"}`
         : null;
+    }
+    case "send_product": {
+      const source =
+        cfg.product_source === "variable" ? "variable" : "fixed";
+      const title =
+        typeof cfg.product_title === "string" ? cfg.product_title : "";
+      const variantId =
+        cfg.shopify_variant_id != null ? String(cfg.shopify_variant_id) : "";
+      const varKey =
+        typeof cfg.variant_id_var === "string" ? cfg.variant_id_var : "";
+      if (source === "variable") {
+        return varKey
+          ? `Product from vars.${varKey}`
+          : "Product from vars.shopify_variant_id";
+      }
+      return title
+        ? truncate(title, 60)
+        : variantId
+          ? `Variant ${truncate(variantId, 24)}`
+          : "No product selected";
     }
     case "send_media": {
       const mediaType =

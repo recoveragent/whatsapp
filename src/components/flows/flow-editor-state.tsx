@@ -201,6 +201,15 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
         filename: "",
         next_node_key: "",
       };
+    case "send_product":
+      return {
+        product_source: "fixed",
+        shopify_variant_id: "",
+        product_title: "",
+        variant_id_var: "shopify_variant_id",
+        quantity: 1,
+        next_node_key: "",
+      };
     case "collect_input":
       return {
         prompt_text: "",

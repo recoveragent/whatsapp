@@ -54,6 +54,10 @@ import {
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
 import { FlowPicker, type ManualFlowOption } from "./flow-picker";
+import {
+  ProductPicker,
+  type ShopifyProductOption,
+} from "@/components/catalog/product-picker";
 import { PrivateNoteBubble } from "./private-note-bubble";
 import { buildReplyPreview } from "./reply-quote";
 import {
@@ -212,12 +216,14 @@ export function MessageThread({
   onOpenContact,
   onComposerPendingChange,
 }: MessageThreadProps) {
-  const { user, accountId } = useAuth();
+  const { user, accountId, isEcommerceBrand } = useAuth();
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [flowModalOpen, setFlowModalOpen] = useState(false);
+  const [productModalOpen, setProductModalOpen] = useState(false);
+  const [sellOnWhatsAppEnabled, setSellOnWhatsAppEnabled] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
   // Purely visual spin state for the manual-refresh button. The actual
@@ -746,6 +752,101 @@ export function MessageThread({
   const handleOpenFlows = useCallback(() => {
     setFlowModalOpen(true);
   }, []);
+
+  const handleOpenProducts = useCallback(() => {
+    setProductModalOpen(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isEcommerceBrand) {
+      setSellOnWhatsAppEnabled(false);
+      return;
+    }
+
+    let cancelled = false;
+    void fetch("/api/shopify/sell-on-whatsapp", { cache: "no-store" })
+      .then(async (res) => {
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        setSellOnWhatsAppEnabled(Boolean(payload.enabled));
+      })
+      .catch(() => {
+        if (!cancelled) setSellOnWhatsAppEnabled(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isEcommerceBrand, accountId]);
+
+  const handleSendProduct = useCallback(
+    async (product: ShopifyProductOption) => {
+      if (!conversation) return;
+
+      const tempId = `temp-${Date.now()}`;
+      const optimisticMsg: Message = {
+        id: tempId,
+        conversation_id: conversation.id,
+        sender_type: "agent",
+        content_type: "interactive",
+        content_text: product.title,
+        media_url: product.image_url ?? undefined,
+        status: "sending",
+        created_at: new Date().toISOString(),
+        content_payload: {
+          type: "product_card",
+          product_title: product.title,
+          shopify_variant_id: product.shopify_variant_id,
+          price: product.price,
+          currency: product.currency,
+          image_url: product.image_url,
+          button_label: "Buy now",
+        },
+      };
+      onNewMessage(optimisticMsg);
+
+      try {
+        const res = await fetch(
+          `/api/inbox/conversations/${conversation.id}/send-product`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              shopify_variant_id: product.shopify_variant_id,
+            }),
+          },
+        );
+
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const reason = payload?.error || `HTTP ${res.status}`;
+          toast.error(`Failed to send product: ${reason}`);
+          onUpdateMessage(tempId, { status: "failed", error_message: reason });
+          return;
+        }
+
+        onUpdateMessage(tempId, {
+          status: "sent",
+          content_text: payload.product_title ?? product.title,
+          content_payload: {
+            type: "product_card",
+            product_title: payload.product_title ?? product.title,
+            shopify_variant_id: product.shopify_variant_id,
+            checkout_url: payload.checkout_url,
+            price: product.price,
+            currency: product.currency,
+            image_url: product.image_url,
+            button_label: "Buy now",
+          },
+        });
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : "network error";
+        toast.error(`Failed to send product: ${reason}`);
+        onUpdateMessage(tempId, { status: "failed", error_message: reason });
+      }
+    },
+    [conversation, onNewMessage, onUpdateMessage],
+  );
 
   const handleStartFlow = useCallback(
     async (flow: ManualFlowOption) => {
@@ -1398,6 +1499,8 @@ export function MessageThread({
         onSendMedia={handleSendMedia}
         onOpenTemplates={handleOpenTemplates}
         onOpenFlows={handleOpenFlows}
+        onOpenProducts={handleOpenProducts}
+        showProductPicker={sellOnWhatsAppEnabled}
         onPrivateNoteSaved={handlePrivateNoteSaved}
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
@@ -1419,6 +1522,12 @@ export function MessageThread({
         open={flowModalOpen}
         onOpenChange={setFlowModalOpen}
         onSelect={handleStartFlow}
+      />
+
+      <ProductPicker
+        open={productModalOpen}
+        onOpenChange={setProductModalOpen}
+        onSelect={(product) => void handleSendProduct(product)}
       />
 
       {/* Mobile contact details — desktop uses the permanent sidebar. */}

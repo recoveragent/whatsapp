@@ -27,6 +27,7 @@ import type {
   SendButtonsNodeConfig,
   SendListNodeConfig,
   SendMessageNodeConfig,
+  SendProductNodeConfig,
   StartNodeConfig,
 } from "./types";
 
@@ -35,6 +36,7 @@ export type FlowTemplateNodeType =
   | "send_message"
   | "send_buttons"
   | "send_list"
+  | "send_product"
   | "collect_input"
   | "condition"
   | "set_tag"
@@ -286,6 +288,80 @@ const LEAD_CAPTURE: FlowTemplate = {
 };
 
 // ============================================================
+// 4. Product recommendation — Sell on WhatsApp
+// ============================================================
+const PRODUCT_RECOMMENDATION: FlowTemplate = {
+  slug: "product_recommendation",
+  name: "Product recommendation",
+  description:
+    "When a customer asks about products, send a Shopify product card with a checkout link, then offer help from an agent.",
+  icon: "MessageSquare",
+  trigger_type: "keyword",
+  trigger_config: {
+    keywords: ["catalog", "product", "buy", "shop"],
+    match_type: "contains",
+  },
+  entry_node_id: "start",
+  nodes: [
+    {
+      node_key: "start",
+      node_type: "start",
+      config: { next_node_key: "greet" } as StartNodeConfig,
+    },
+    {
+      node_key: "greet",
+      node_type: "send_message",
+      config: {
+        text: "Here's a product you might like 👇",
+        next_node_key: "send_product",
+      } as SendMessageNodeConfig,
+    },
+    {
+      node_key: "send_product",
+      node_type: "send_product",
+      config: {
+        product_source: "fixed",
+        shopify_variant_id: "",
+        product_title: "",
+        quantity: 1,
+        next_node_key: "follow_up",
+      } as SendProductNodeConfig,
+    },
+    {
+      node_key: "follow_up",
+      node_type: "send_buttons",
+      config: {
+        text: "Need anything else?",
+        buttons: [
+          {
+            reply_id: "talk_to_agent",
+            title: "Talk to agent",
+            next_node_key: "handoff",
+          },
+          {
+            reply_id: "thanks",
+            title: "All good",
+            next_node_key: "end",
+          },
+        ],
+      },
+    },
+    {
+      node_key: "handoff",
+      node_type: "handoff",
+      config: {
+        note: "Customer asked about a product after receiving a recommendation.",
+      },
+    },
+    {
+      node_key: "end",
+      node_type: "end",
+      config: {},
+    },
+  ],
+};
+
+// ============================================================
 // Registry
 // ============================================================
 
@@ -293,6 +369,7 @@ const TEMPLATES: Record<string, FlowTemplate> = {
   welcome_menu: WELCOME_MENU,
   faq_bot: FAQ_BOT,
   lead_capture: LEAD_CAPTURE,
+  product_recommendation: PRODUCT_RECOMMENDATION,
 };
 
 export function getFlowTemplate(slug: string): FlowTemplate | null {

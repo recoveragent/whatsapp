@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import {
+  getBuiltinAdminFlowPresetSnapshot,
+  listBuiltinAdminFlowPresets,
+} from './admin-flow-presets';
+import {
   loadFlowSnapshot,
   slugifyFlowPresetName,
   type FlowSnapshot,
@@ -89,9 +93,16 @@ export async function listAdminFlowPresets(
 
   if (error) throw error;
 
-  return (data ?? [])
+  const saved = (data ?? [])
     .map((row) => rowToView(row as Record<string, unknown>))
     .filter((row): row is AdminFlowPresetView => row !== null);
+
+  const savedSlugs = new Set(saved.map((row) => row.slug));
+  const builtins = listBuiltinAdminFlowPresets()
+    .filter((row) => !savedSlugs.has(row.slug))
+    .map(({ builtin: _builtin, ...view }) => view);
+
+  return [...builtins, ...saved].sort((a, b) => a.title.localeCompare(b.title));
 }
 
 export async function getAdminFlowPresetSnapshot(
@@ -99,6 +110,9 @@ export async function getAdminFlowPresetSnapshot(
   organizationId: string,
   slug: string,
 ): Promise<FlowSnapshot | null> {
+  const builtin = getBuiltinAdminFlowPresetSnapshot(slug);
+  if (builtin) return builtin;
+
   const { data, error } = await supabase
     .from('admin_flow_presets')
     .select('payload')

@@ -669,6 +669,77 @@ function validateNode(
       break;
     }
 
+    case "send_product": {
+      const cfg = node.config as {
+        product_source?: "fixed" | "variable";
+        shopify_variant_id?: string | number;
+        variant_id_var?: string;
+        quantity?: number;
+        next_node_key?: string;
+      };
+      if (cfg.product_source !== "fixed" && cfg.product_source !== "variable") {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "product_source",
+          message: "Send-product node needs a product source (fixed or variable).",
+        });
+      } else if (cfg.product_source === "fixed") {
+        if (
+          cfg.shopify_variant_id == null ||
+          String(cfg.shopify_variant_id).trim() === ""
+        ) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: "shopify_variant_id",
+            message: "Pick a Shopify product for this send-product node.",
+          });
+        }
+      } else if (!cfg.variant_id_var?.trim()) {
+        issues.push({
+          severity: "warning",
+          scope: "node",
+          node_key: node.node_key,
+          field: "variant_id_var",
+          message:
+            'Variable source uses vars.shopify_variant_id by default — set variant_id_var if your flow uses a different key.',
+        });
+      }
+      if (
+        cfg.quantity != null &&
+        (!Number.isFinite(cfg.quantity) || cfg.quantity < 1)
+      ) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "quantity",
+          message: "Quantity must be at least 1.",
+        });
+      }
+      if (!cfg.next_node_key) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "next_node_key",
+          message: "Send-product node must point to a next node.",
+        });
+      } else if (!knownKeys.has(cfg.next_node_key)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "next_node_key",
+          message: `Send-product points to non-existent node "${cfg.next_node_key}".`,
+        });
+      }
+      break;
+    }
+
     case "send_buttons": {
       const cfg = node.config as {
         text?: string;
@@ -1577,6 +1648,7 @@ function outgoingEdges(node: NodeInput): string[] {
     case "start":
     case "send_message":
     case "send_media":
+    case "send_product":
     case "wait":
     case "send_webhook":
     case "http_fetch":

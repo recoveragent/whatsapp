@@ -63,6 +63,10 @@ export interface ShopifyConfigRow {
   scopes: string[];
   status: 'connected' | 'disconnected';
   connected_at: string | null;
+  sell_on_whatsapp_enabled?: boolean;
+  products_last_synced_at?: string | null;
+  product_link_recovery_enabled?: boolean;
+  product_link_recovery_delay_minutes?: number;
   created_at: string;
   updated_at: string;
 }
@@ -177,4 +181,43 @@ export interface ShopifyFulfillmentPayload {
   tracking_company?: string;
   /** Carrier scan status: in_transit, out_for_delivery, delivered, … */
   shipment_status?: string | null;
+}
+
+export interface ShopifyProductVariantPayload {
+  id: number;
+  title?: string;
+  price?: string;
+  compare_at_price?: string | null;
+  inventory_quantity?: number | null;
+  inventory_management?: string | null;
+  available?: boolean;
+}
+
+export interface ShopifyProductPayload {
+  id: number;
+  title?: string;
+  handle?: string;
+  status?: 'active' | 'archived' | 'draft' | string;
+  image?: { src?: string } | null;
+  images?: Array<{ src?: string }>;
+  variants?: ShopifyProductVariantPayload[];
+}
+
+export interface ShopifyCatalogProductRow {
+  id: string;
+  account_id: string;
+  shopify_product_id: number;
+  shopify_variant_id: number;
+  title: string;
+  variant_title: string | null;
+  handle: string | null;
+  price: string;
+  compare_at_price: string | null;
+  currency: string | null;
+  image_url: string | null;
+  inventory_quantity: number | null;
+  status: 'active' | 'archived' | 'draft';
+  synced_at: string;
+  created_at: string;
+  updated_at: string;
 }

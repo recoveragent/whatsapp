@@ -66,6 +66,18 @@ const SHOPIFY_OPTIONS: TemplateVariableOption[] = [
   },
   { label: 'Checkout URL', token: '{{ vars.checkout_url }}', type: 'text' },
   { label: 'Shop name', token: '{{ vars.shop_name }}', type: 'text' },
+  { label: 'Product title', token: '{{ vars.product_title }}', type: 'text' },
+  { label: 'Product price', token: '{{ vars.product_price }}', type: 'text' },
+  {
+    label: 'Product checkout URL',
+    token: '{{ vars.product_checkout_url }}',
+    type: 'text',
+  },
+  {
+    label: 'Shopify variant id',
+    token: '{{ vars.shopify_variant_id }}',
+    type: 'text',
+  },
 ]
 
 const SHOPIFY_FULFILLMENT_OPTIONS: TemplateVariableOption[] = [

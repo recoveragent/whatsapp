@@ -178,6 +178,7 @@ describe("node classification helpers", () => {
     expect(isAutoAdvancing("start")).toBe(true);
     expect(isAutoAdvancing("send_message")).toBe(true);
     expect(isAutoAdvancing("send_media")).toBe(true);
+    expect(isAutoAdvancing("send_product")).toBe(true);
     expect(isAutoAdvancing("condition")).toBe(true);
     expect(isAutoAdvancing("switch")).toBe(true);
     expect(isAutoAdvancing("set_tag")).toBe(true);
@@ -216,6 +217,7 @@ describe("node classification helpers", () => {
       "send_buttons",
       "send_list",
       "send_media",
+      "send_product",
       "collect_input",
       "send_address",
       "condition",

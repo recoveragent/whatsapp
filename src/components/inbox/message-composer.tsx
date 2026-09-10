@@ -11,6 +11,7 @@ import {
   Send,
   LayoutTemplate,
   Workflow,
+  ShoppingBag,
   Paperclip,
   Image as ImageIcon,
   Video,
@@ -138,6 +139,8 @@ interface MessageComposerProps {
   onSendMedia: (payload: SendMediaPayload) => void;
   onOpenTemplates: () => void;
   onOpenFlows: () => void;
+  onOpenProducts?: () => void;
+  showProductPicker?: boolean;
   onPrivateNoteSaved?: (note: ConversationPrivateNote) => void;
   replyTo?: ReplyDraft | null;
   onClearReply?: () => void;
@@ -173,6 +176,8 @@ export function MessageComposer({
   onSendMedia,
   onOpenTemplates,
   onOpenFlows,
+  onOpenProducts,
+  showProductPicker = false,
   onPrivateNoteSaved,
   replyTo,
   onClearReply,
@@ -867,6 +872,20 @@ export function MessageComposer({
           >
             <LayoutTemplate className="h-4 w-4" />
           </GatedButton>
+
+          {showProductPicker && onOpenProducts ? (
+            <GatedButton
+              variant="ghost"
+              size="sm"
+              canAct={!readOnly}
+              gateReason="send messages"
+              title={readOnly ? undefined : "Send product"}
+              className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+              onClick={onOpenProducts}
+            >
+              <ShoppingBag className="h-4 w-4" />
+            </GatedButton>
+          ) : null}
 
           <textarea
             ref={textareaRef}

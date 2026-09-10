@@ -8,13 +8,20 @@ import {
   shopifyPhoneE164Variants,
   shopifyPhoneSearchVariants,
 } from './phone-search';
-import type { ShopifyAddressFields, ShopifyOrderPayload } from './types';
+import type {
+  ShopifyAddressFields,
+  ShopifyOrderPayload,
+  ShopifyProductPayload,
+} from './types';
+
+export type { ShopifyProductPayload };
 export interface ShopifyShopInfo {
   id: number;
   name: string;
   domain: string;
   myshopify_domain: string;
   email?: string;
+  currency?: string;
 }
 
 export interface ShopifyTokenResponse {
@@ -109,6 +116,9 @@ const WEBHOOK_TOPICS = [
   'fulfillments/update',
   'checkouts/create',
   'checkouts/update',
+  'products/create',
+  'products/update',
+  'products/delete',
 ] as const;
 
 export async function registerShopifyWebhooks(args: {
@@ -526,4 +536,84 @@ export async function fetchCustomerAddressesByPhone(
   }
 
   return collected.slice(0, MAX_RECENT_ADDRESSES);
+}
+
+function parseNextPageInfo(linkHeader: string | null): string | null {
+  if (!linkHeader) return null;
+  const match = linkHeader.match(/<[^>]*[?&]page_info=([^>&]+)[^>]*>;\s*rel="next"/i);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+async function shopifyFetchWithHeaders<T>(
+  shopDomain: string,
+  accessToken: string,
+  path: string,
+): Promise<{ body: T; linkHeader: string | null }> {
+  const url = `${shopAdminBase(shopDomain)}${path}`;
+  const response = await fetch(url, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Shopify-Access-Token': accessToken,
+    },
+  });
+
+  if (!response.ok) {
+    let message = `Shopify API error: ${response.status}`;
+    try {
+      const errorBody = await response.json();
+      message = formatShopifyApiError(errorBody, message);
+    } catch {
+      // keep fallback
+    }
+    throw new Error(message);
+  }
+
+  const body = (await response.json()) as T;
+  return { body, linkHeader: response.headers.get('link') };
+}
+
+export interface FetchProductsPageArgs {
+  shopDomain: string;
+  accessToken: string;
+  pageInfo?: string | null;
+  status?: 'active' | 'archived' | 'draft';
+  limit?: number;
+}
+
+export interface FetchProductsPageResult {
+  products: ShopifyProductPayload[];
+  nextPageInfo: string | null;
+  shopCurrency: string | null;
+}
+
+/**
+ * Paginated active products for catalog sync.
+ * Uses Shopify cursor pagination via the Link response header.
+ */
+export async function fetchProductsPage(
+  args: FetchProductsPageArgs,
+): Promise<FetchProductsPageResult> {
+  const limit = Math.min(Math.max(args.limit ?? 250, 1), 250);
+  const status = args.status ?? 'active';
+
+  const path = args.pageInfo
+    ? `/products.json?limit=${limit}&page_info=${encodeURIComponent(args.pageInfo)}`
+    : `/products.json?limit=${limit}&status=${status}`;
+
+  const [{ body, linkHeader }, shopInfo] = await Promise.all([
+    shopifyFetchWithHeaders<{ products?: ShopifyProductPayload[] }>(
+      args.shopDomain,
+      args.accessToken,
+      path,
+    ),
+    args.pageInfo
+      ? Promise.resolve(null)
+      : fetchShopInfo(args.shopDomain, args.accessToken).catch(() => null),
+  ]);
+
+  return {
+    products: body.products ?? [],
+    nextPageInfo: parseNextPageInfo(linkHeader),
+    shopCurrency: shopInfo?.currency ?? null,
+  };
 }

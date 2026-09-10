@@ -83,6 +83,17 @@ export interface SendListNodeConfig {
  * the builder forms, engine cases, and add-menu entries for no
  * meaningful behavioural difference.
  */
+export interface SendProductNodeConfig {
+  /** Pick a catalog product at design time, or resolve variant id from flow vars. */
+  product_source: "fixed" | "variable";
+  /** Shopify variant id when product_source is fixed. */
+  shopify_variant_id?: string | number;
+  /** Flow var key when product_source is variable. Defaults to shopify_variant_id. */
+  variant_id_var?: string;
+  quantity?: number;
+  next_node_key: string;
+}
+
 export interface SendMediaNodeConfig {
   media_type: "image" | "video" | "document";
   /** Public URL Meta will fetch. Uploaded via the builder's file picker. */
@@ -344,6 +355,7 @@ export type FlowNodeConfig =
   | { node_type: "send_buttons"; config: SendButtonsNodeConfig }
   | { node_type: "send_list"; config: SendListNodeConfig }
   | { node_type: "send_media"; config: SendMediaNodeConfig }
+  | { node_type: "send_product"; config: SendProductNodeConfig }
   | { node_type: "collect_input"; config: CollectInputNodeConfig }
   | { node_type: "send_address"; config: SendAddressNodeConfig }
   | { node_type: "send_flow"; config: SendFlowNodeConfig }

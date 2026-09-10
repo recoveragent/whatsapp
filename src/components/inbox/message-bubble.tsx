@@ -487,9 +487,57 @@ function MessageContent({
 
     case "interactive": {
       const payload = message.content_payload as
-        | { type?: string; flow_cta?: string }
+        | {
+            type?: string;
+            flow_cta?: string;
+            product_title?: string;
+            checkout_url?: string;
+            button_label?: string;
+            price?: string;
+            currency?: string | null;
+            image_url?: string | null;
+          }
         | null
         | undefined;
+
+      if (payload?.type === "product_card") {
+        const priceLabel =
+          payload.price && payload.currency === "INR"
+            ? `₹${payload.price}`
+            : payload.price && payload.currency
+              ? `${payload.currency} ${payload.price}`
+              : payload.price ?? null;
+
+        return (
+          <div className="flex max-w-xs flex-col gap-2">
+            {payload.image_url || message.media_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={payload.image_url || message.media_url || ""}
+                alt=""
+                className="max-h-40 w-full rounded-md object-cover"
+              />
+            ) : null}
+            {message.content_text ? (
+              <p className="whitespace-pre-wrap break-words text-sm text-foreground">
+                {message.content_text}
+              </p>
+            ) : (
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">
+                  {payload.product_title || "Product"}
+                </p>
+                {priceLabel ? (
+                  <p className="text-xs text-muted-foreground">{priceLabel}</p>
+                ) : null}
+              </div>
+            )}
+            <span className="inline-flex w-fit rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+              {payload.button_label || "Buy now"}
+            </span>
+          </div>
+        );
+      }
 
       const isFlowRequest =
         payload?.type === "whatsapp_flow_request";

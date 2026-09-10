@@ -172,6 +172,16 @@ function renderNodeConfigBody({
         />
       );
 
+    case "send_product":
+      return (
+        <SendProductForm
+          cfg={cfg as SendProductCfg}
+          allNodes={allNodes}
+          currentKey={node.node_key}
+          onUpdateConfig={onUpdateConfig}
+        />
+      );
+
     case "collect_input":
       return (
         <>
@@ -2060,6 +2070,212 @@ function SendMediaForm({
           />
         </div>
       )}
+
+      <NextNodeRow
+        value={cfg.next_node_key ?? ""}
+        allNodes={allNodes}
+        currentKey={currentKey}
+        onChange={(v) => onUpdateConfig({ next_node_key: v })}
+        label="After sending, advance to"
+      />
+    </>
+  );
+}
+
+// ============================================================
+// send_product
+// ============================================================
+
+interface SendProductCfg {
+  product_source?: "fixed" | "variable";
+  shopify_variant_id?: string | number;
+  product_title?: string;
+  variant_id_var?: string;
+  quantity?: number;
+  next_node_key?: string;
+}
+
+function SendProductForm({
+  cfg,
+  allNodes,
+  currentKey,
+  onUpdateConfig,
+}: {
+  cfg: SendProductCfg;
+  allNodes: BuilderNode[];
+  currentKey: string;
+  onUpdateConfig: (patch: Record<string, unknown>) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [products, setProducts] = useState<
+    Array<{
+      shopify_variant_id: number;
+      title: string;
+      price: string;
+      currency: string | null;
+    }>
+  >([]);
+
+  const source = cfg.product_source === "variable" ? "variable" : "fixed";
+
+  useEffect(() => {
+    if (source !== "fixed") return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (query.trim()) params.set("q", query.trim());
+      params.set("limit", "20");
+      void fetch(`/api/shopify/products?${params.toString()}`, {
+        cache: "no-store",
+      })
+        .then(async (res) => {
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok || cancelled) return;
+          setProducts(
+            (payload.products ?? []) as Array<{
+              shopify_variant_id: number;
+              title: string;
+              price: string;
+              currency: string | null;
+            }>,
+          );
+        })
+        .catch(() => {
+          if (!cancelled) setProducts([]);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, query ? 250 : 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [source, query]);
+
+  return (
+    <>
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">
+          Product source
+        </label>
+        <Select
+          value={source}
+          onValueChange={(v) =>
+            onUpdateConfig({
+              product_source: v as "fixed" | "variable",
+            })
+          }
+        >
+          <SelectTrigger className="bg-muted">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="fixed">Pick from Shopify catalog</SelectItem>
+            <SelectItem value="variable">From flow variable</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {source === "fixed" ? (
+        <>
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              Search products
+            </label>
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search synced catalog..."
+              className="bg-muted text-xs"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              Product
+            </label>
+            {loading ? (
+              <p className="text-xs text-muted-foreground">Loading products…</p>
+            ) : (
+              <Select
+                value={
+                  cfg.shopify_variant_id != null
+                    ? String(cfg.shopify_variant_id)
+                    : ""
+                }
+                onValueChange={(value) => {
+                  const product = products.find(
+                    (item) => String(item.shopify_variant_id) === value,
+                  );
+                  onUpdateConfig({
+                    shopify_variant_id: value,
+                    product_title: product?.title ?? "",
+                  });
+                }}
+              >
+                <SelectTrigger className="bg-muted">
+                  <SelectValue placeholder="Select a product" />
+                </SelectTrigger>
+                <SelectContent>
+                  {products.map((product) => (
+                    <SelectItem
+                      key={product.shopify_variant_id}
+                      value={String(product.shopify_variant_id)}
+                    >
+                      {product.title}
+                      {product.currency === "INR"
+                        ? ` · ₹${product.price}`
+                        : product.currency
+                          ? ` · ${product.currency} ${product.price}`
+                          : ` · ${product.price}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {cfg.product_title ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Selected: {cfg.product_title}
+              </p>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <div>
+          <label className="mb-1 block text-xs text-muted-foreground">
+            Variant id variable key
+          </label>
+          <Input
+            value={cfg.variant_id_var ?? "shopify_variant_id"}
+            onChange={(e) => onUpdateConfig({ variant_id_var: e.target.value })}
+            placeholder="shopify_variant_id"
+            className="bg-muted text-xs"
+          />
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Reads <code className="text-foreground">vars.shopify_variant_id</code>{" "}
+            unless you set another key.
+          </p>
+        </div>
+      )}
+
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">
+          Quantity
+        </label>
+        <Input
+          type="number"
+          min={1}
+          value={cfg.quantity ?? 1}
+          onChange={(e) =>
+            onUpdateConfig({
+              quantity: Math.max(1, Number.parseInt(e.target.value || "1", 10)),
+            })
+          }
+          className="bg-muted text-xs"
+        />
+      </div>
 
       <NextNodeRow
         value={cfg.next_node_key ?? ""}

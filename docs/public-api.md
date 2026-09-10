@@ -5,8 +5,8 @@ scripts and automations — send messages, manage contacts, launch
 broadcasts — without going through the dashboard UI.
 
 > **Status:** `GET /api/v1/me`, `GET /api/v1/templates`,
-> `POST /api/v1/send`, and `POST /api/v1/events/abandoned-checkout`
-> ship for Recover Agent integration.
+> `POST /api/v1/send`, `POST /api/v1/events/abandoned-checkout`, and
+> `POST /api/v1/events/product-link-sent` ship for Recover Agent integration.
 > Contacts/conversations endpoints and outbound webhooks land in
 > follow-up releases — see [Roadmap](#roadmap).
 
@@ -295,6 +295,37 @@ with Recover Agent's voice/call delay — WA waits until that timestamp
 before sending.
 
 Errors use the standard envelope (`{ "error": { "code", "message" } }`).
+
+### `POST /api/v1/events/product-link-sent`
+
+Send a Sell on WhatsApp product card (Shopify checkout link) from an
+external integration. Optionally schedules product link recovery when
+enabled on the brand.
+
+**Scope:** `messages:send`
+
+```bash
+curl https://wa.recoveragent.ai/api/v1/events/product-link-sent \
+  -H "Authorization: Bearer wacrm_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "conversation_id": "uuid",
+    "shopify_variant_id": "40123456789",
+    "quantity": 1,
+    "schedule_recovery": true
+  }'
+```
+
+**Success (`202`):**
+
+```json
+{
+  "data": {
+    "product_send_id": "uuid",
+    "checkout_url": "https://store.myshopify.com/cart/40123456789:1"
+  }
+}
+```
 
 ## Recover Agent integration
 

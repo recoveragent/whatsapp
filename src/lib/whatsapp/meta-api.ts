@@ -1160,6 +1160,114 @@ function validateInteractiveHeaderFooter(
 }
 
 // ============================================================
+// CTA URL interactive (external link button)
+// ============================================================
+
+export interface SendInteractiveCtaUrlArgs {
+  phoneNumberId: string
+  accessToken: string
+  to: string
+  bodyText: string
+  /** Visible CTA label (≤ 20 chars per Meta). */
+  buttonLabel: string
+  /** HTTPS destination opened when the customer taps the button. */
+  url: string
+  headerImageUrl?: string
+  headerText?: string
+  footerText?: string
+  contextMessageId?: string
+}
+
+/**
+ * Send an interactive message with a single URL button (cta_url).
+ * Used for Sell on WhatsApp product cards linking to Shopify checkout.
+ */
+export async function sendInteractiveCtaUrl(
+  args: SendInteractiveCtaUrlArgs,
+): Promise<MetaSendResult> {
+  const {
+    phoneNumberId,
+    accessToken,
+    to,
+    bodyText,
+    buttonLabel,
+    url,
+    headerImageUrl,
+    headerText,
+    footerText,
+    contextMessageId,
+  } = args
+
+  validateInteractiveBody(bodyText)
+  validateInteractiveHeaderFooter(headerText, footerText)
+
+  if (!buttonLabel.trim()) {
+    throw new Error('Interactive CTA URL message requires a buttonLabel.')
+  }
+  if (buttonLabel.length > INTERACTIVE_LIMITS.buttonTitleMaxLength) {
+    throw new Error(
+      `Interactive CTA buttonLabel "${buttonLabel}" exceeds ${INTERACTIVE_LIMITS.buttonTitleMaxLength} chars.`,
+    )
+  }
+
+  const trimmedUrl = url.trim()
+  if (!trimmedUrl.startsWith('https://')) {
+    throw new Error('Interactive CTA URL must be an https:// link.')
+  }
+
+  const interactive: Record<string, unknown> = {
+    type: 'cta_url',
+    body: { text: bodyText },
+    action: {
+      name: 'cta_url',
+      parameters: {
+        display_text: buttonLabel,
+        url: trimmedUrl,
+      },
+    },
+  }
+
+  if (headerImageUrl?.trim()) {
+    interactive.header = {
+      type: 'image',
+      image: { link: headerImageUrl.trim() },
+    }
+  } else if (headerText?.trim()) {
+    if (headerText.length > INTERACTIVE_LIMITS.headerTextMaxLength) {
+      throw new Error(
+        `Interactive headerText exceeds ${INTERACTIVE_LIMITS.headerTextMaxLength} chars.`,
+      )
+    }
+    interactive.header = { type: 'text', text: headerText.trim() }
+  }
+
+  if (footerText) interactive.footer = { text: footerText }
+
+  const body: Record<string, unknown> = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive,
+  }
+  if (contextMessageId) body.context = { message_id: contextMessageId }
+
+  const response = await fetch(`${META_API_BASE}/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+  const data = await response.json()
+  return { messageId: data.messages[0].id }
+}
+
+// ============================================================
 // Address Messages (India + Singapore)
 // ============================================================
 //

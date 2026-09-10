@@ -118,6 +118,16 @@ export function ContactSidebar({
   const [notes, setNotes] = useState<ContactNote[]>([]);
   const [storeOrders, setStoreOrders] = useState<InboxStoreOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
+  const [sharedProducts, setSharedProducts] = useState<
+    Array<{
+      id: string;
+      product_title: string;
+      checkout_url: string;
+      created_at: string;
+      flow_run_id: string | null;
+    }>
+  >([]);
+  const [sharedProductsLoading, setSharedProductsLoading] = useState(false);
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [savingTags, setSavingTags] = useState(false);
@@ -138,6 +148,36 @@ export function ContactSidebar({
   >([]);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
+
+  const fetchSharedProducts = useCallback(async () => {
+    if (!conversationId || !isEcommerceBrand || isWooCommerceBrand) {
+      setSharedProducts([]);
+      return;
+    }
+
+    setSharedProductsLoading(true);
+    try {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("whatsapp_product_sends")
+        .select("id, product_title, checkout_url, created_at, flow_run_id")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      setSharedProducts(
+        (data ?? []) as Array<{
+          id: string;
+          product_title: string;
+          checkout_url: string;
+          created_at: string;
+          flow_run_id: string | null;
+        }>,
+      );
+    } finally {
+      setSharedProductsLoading(false);
+    }
+  }, [conversationId, isEcommerceBrand, isWooCommerceBrand]);
 
   const fetchFormSubmissions = useCallback(async () => {
     if (!conversationId) {
@@ -377,6 +417,11 @@ export function ContactSidebar({
     setCompletedReminders([]);
     setCompletedDialogOpen(false);
   }, [conversationId]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchSharedProducts();
+  }, [fetchSharedProducts]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -945,6 +990,51 @@ export function ContactSidebar({
                           </div>
                         )}
                       </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {isEcommerceBrand && !isWooCommerceBrand && conversationId && (
+            <div className="mt-4">
+              <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <ShoppingBag className="h-3 w-3" />
+                Products shared
+              </div>
+              <div className="mt-2 space-y-2">
+                {sharedProductsLoading ? (
+                  <div className="flex items-center gap-2 px-1 py-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Loading products…
+                  </div>
+                ) : sharedProducts.length === 0 ? (
+                  <p className="px-1 text-xs text-muted-foreground">
+                    No product cards sent in this chat yet.
+                  </p>
+                ) : (
+                  sharedProducts.map((item) => (
+                    <div key={item.id} className="rounded-lg bg-muted px-3 py-2 text-xs">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-foreground">{item.product_title}</p>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">
+                            {item.flow_run_id ? "Sent by flow" : "Sent by agent"}
+                            {" · "}
+                            {format(new Date(item.created_at), "MMM d, h:mm a")}
+                          </p>
+                        </div>
+                      </div>
+                      <a
+                        href={item.checkout_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 inline-flex items-center gap-1 text-primary hover:underline"
+                      >
+                        Checkout link
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
                     </div>
                   ))
                 )}

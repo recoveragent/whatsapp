@@ -24,10 +24,18 @@ import {
   dispatchShopifyFlows,
   shopifyTopicToFlowTrigger,
 } from '@/lib/flows/shopify-dispatch';
+import {
+  archiveShopifyProductFromWebhook,
+  upsertShopifyProductFromWebhook,
+} from './products-sync';
+import { findExistingContact } from '@/lib/contacts/dedupe';
+import { cancelProductLinkRecoveryForContact } from './product-link-recovery';
+import { extractOrderPhone } from './extract-context';
 import type {
   ShopifyCheckoutPayload,
   ShopifyFulfillmentPayload,
   ShopifyOrderPayload,
+  ShopifyProductPayload,
 } from './types';
 import type { ShopifyFlowDispatchOutcome } from '@/lib/flows/shopify-dispatch';
 
@@ -130,6 +138,25 @@ export async function handleShopifyWebhook(args: {
     case 'checkouts/update':
       await handleCheckoutUpdate(args.db, config, args.payload as ShopifyCheckoutPayload);
       break;
+    case 'products/create':
+    case 'products/update':
+      await upsertShopifyProductFromWebhook(
+        args.db,
+        config.account_id,
+        args.payload as ShopifyProductPayload,
+      );
+      break;
+    case 'products/delete': {
+      const product = args.payload as ShopifyProductPayload;
+      if (product.id) {
+        await archiveShopifyProductFromWebhook(
+          args.db,
+          config.account_id,
+          product.id,
+        );
+      }
+      break;
+    }
     default:
       break;
   }
@@ -142,6 +169,22 @@ async function handleOrderCreate(
   shopName: string,
 ) {
   await syncShopifyOrder(db, config.account_id, order, shopName);
+
+  const customerPhone = extractOrderPhone(order);
+  if (customerPhone) {
+    const contact = await findExistingContact(
+      db,
+      config.account_id,
+      customerPhone,
+    );
+    if (contact?.id) {
+      await cancelProductLinkRecoveryForContact(
+        db,
+        config.account_id,
+        contact.id,
+      );
+    }
+  }
 
   let context = contextFromOrder(order, shopName);
   context = await enrichOrderContextImage({

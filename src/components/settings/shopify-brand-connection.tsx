@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SettingsPanelHead } from './settings-panel-head';
+import { SellOnWhatsAppPanel } from './sell-on-whatsapp-panel';
 
 interface AccountContextPayload {
   linked?: boolean;
@@ -400,6 +401,10 @@ export function ShopifyBrandConnection() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {configured && connected && (
+          <SellOnWhatsAppPanel connected={connected} canEdit={canEdit} />
         )}
 
         {configured && (

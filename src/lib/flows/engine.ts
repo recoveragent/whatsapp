@@ -34,6 +34,10 @@
  *     are routed to the run whose current node matches the message.
  */
 
+import {
+  resolveSendProductVariantId,
+  sendShopifyProductCard,
+} from "@/lib/shopify/send-product-card";
 import { supabaseAdmin } from "./admin-client";
 import {
   engineSendInteractiveButtons,
@@ -58,6 +62,7 @@ import {
   type SendButtonsNodeConfig,
   type SendListNodeConfig,
   type SendMediaNodeConfig,
+  type SendProductNodeConfig,
   type SendMessageNodeConfig,
   type SetTagNodeConfig,
   type StartNodeConfig,
@@ -193,6 +198,7 @@ export function isAutoAdvancing(node_type: string): boolean {
     node_type === "start" ||
     node_type === "send_message" ||
     node_type === "send_media" ||
+    node_type === "send_product" ||
     node_type === "condition" ||
     node_type === "switch" ||
     node_type === "set_tag" ||
@@ -785,6 +791,39 @@ async function advanceFromNodeKey(
           detail: err instanceof Error ? err.message : String(err),
         });
         await endRun(db, run.id, "failed", "send_media_failed");
+        return finish("completed");
+      }
+      currentKey = cfg.next_node_key;
+      continue;
+    }
+    if (node.node_type === "send_product") {
+      const cfg = node.config as unknown as SendProductNodeConfig;
+      try {
+        const variantId = resolveSendProductVariantId({
+          cfg,
+          vars: run.vars as Record<string, unknown>,
+        });
+        const result = await sendShopifyProductCard({
+          db,
+          accountId: run.account_id,
+          userId: run.user_id,
+          conversationId: run.conversation_id!,
+          shopifyVariantId: variantId,
+          quantity: cfg.quantity,
+          flowRunId: run.id,
+        });
+        await logEvent(db, run.id, "message_sent", node.node_key, {
+          node_type: "send_product",
+          whatsapp_message_id: result.whatsapp_message_id,
+          shopify_variant_id: variantId,
+          checkout_url: result.checkout_url,
+        });
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "send_product_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+        await endRun(db, run.id, "failed", "send_product_failed");
         return finish("completed");
       }
       currentKey = cfg.next_node_key;
