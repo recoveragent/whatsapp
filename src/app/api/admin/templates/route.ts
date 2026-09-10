@@ -7,6 +7,8 @@ import { NextResponse } from 'next/server'
 import { toErrorResponse } from '@/lib/auth/account'
 import { listOrganizationBrands } from '@/lib/auth/brand-accounts'
 import { requireSuperAdmin } from '@/lib/auth/super-admin'
+import { listAdminTemplatePresets } from '@/lib/whatsapp/admin-template-presets'
+import { listMergedAdminTemplatePresets } from '@/lib/whatsapp/admin-template-preset-store'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 /**
@@ -50,7 +52,19 @@ export async function GET() {
       }
     }
 
+    let presets
+    try {
+      presets = await listMergedAdminTemplatePresets(supabase, organizationId)
+    } catch (presetErr) {
+      console.error('[GET /api/admin/templates] presets fallback:', presetErr)
+      presets = listAdminTemplatePresets().map((preset) => ({
+        ...preset,
+        has_override: false,
+      }))
+    }
+
     return NextResponse.json({
+      presets,
       brands: brands.map((brand) => {
         const config = configByAccount.get(brand.id)
         const whatsappReady = Boolean(

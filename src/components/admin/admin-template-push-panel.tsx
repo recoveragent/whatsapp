@@ -1,14 +1,29 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+} from 'react';
 import { toast } from 'sonner';
 import {
   AlertCircle,
   CheckCircle2,
   FileText,
   Loader2,
+  Package,
+  PenLine,
+  Phone,
   Plus,
+  RotateCcw,
+  Save,
+  ShoppingBag,
+  ShoppingCart,
   Trash2,
+  Truck,
   XCircle,
 } from 'lucide-react';
 
@@ -30,6 +45,14 @@ import {
   extractVariableIndices,
   TEMPLATE_LIMITS,
 } from '@/lib/whatsapp/template-validators';
+import type { AdminTemplatePresetIcon } from '@/lib/whatsapp/admin-template-presets';
+import {
+  formsEqual,
+  presetViewToFormData,
+  type AdminTemplatePresetPayload,
+  type AdminTemplatePresetView,
+} from '@/lib/whatsapp/admin-template-preset-store';
+import { cn } from '@/lib/utils';
 import type { MessageTemplate, TemplateButton, TemplateSampleValues } from '@/types';
 
 const CATEGORIES = ['Marketing', 'Utility'] as const;
@@ -41,6 +64,17 @@ const HEADER_FORMATS: HeaderFormat[] = [
   'video',
   'document',
 ];
+
+const PRESET_ICONS: Record<
+  AdminTemplatePresetIcon,
+  ComponentType<{ className?: string }>
+> = {
+  shopping: ShoppingBag,
+  package: Package,
+  truck: Truck,
+  cart: ShoppingCart,
+  phone: Phone,
+};
 
 const COMMON_LANGUAGE_CODES = [
   'en_US',
@@ -72,19 +106,7 @@ interface PushResultRow {
   templateStatus?: string;
 }
 
-interface TemplateFormData {
-  name: string;
-  category: MessageTemplate['category'];
-  language: string;
-  header_format: HeaderFormat;
-  header_content: string;
-  header_media_url: string;
-  header_sample: string;
-  body_text: string;
-  body_samples: string[];
-  footer_text: string;
-  buttons: TemplateButton[];
-}
+type TemplateFormData = AdminTemplatePresetPayload;
 
 const emptyForm: TemplateFormData = {
   name: '',
@@ -130,9 +152,16 @@ export function AdminTemplatePushPanel() {
   const { isSuperAdmin, refreshProfile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [brands, setBrands] = useState<BrandOption[]>([]);
+  const [presets, setPresets] = useState<AdminTemplatePresetView[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [form, setForm] = useState<TemplateFormData>(emptyForm);
+  const [selectedPresetSlug, setSelectedPresetSlug] = useState<string | null>(
+    null,
+  );
+  const [savedFormSnapshot, setSavedFormSnapshot] =
+    useState<TemplateFormData | null>(null);
   const [pushing, setPushing] = useState(false);
+  const [savingPreset, setSavingPreset] = useState(false);
   const [results, setResults] = useState<PushResultRow[] | null>(null);
   const didClearContext = useRef(false);
 
@@ -172,10 +201,10 @@ export function AdminTemplatePushPanel() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? 'Failed to load brands');
       const rows = (body.brands ?? []) as BrandOption[];
+      const presetRows = (body.presets ?? []) as AdminTemplatePresetView[];
       setBrands(rows);
-      setSelected(
-        new Set(rows.filter((b) => b.whatsapp_ready).map((b) => b.id)),
-      );
+      setPresets(presetRows);
+      setSelected(new Set());
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load brands');
     } finally {
@@ -207,6 +236,92 @@ export function AdminTemplatePushPanel() {
       return;
     }
     setSelected(new Set(readyBrands.map((b) => b.id)));
+  };
+
+  const applyPreset = (preset: AdminTemplatePresetView) => {
+    const nextForm = presetViewToFormData(preset);
+    setSelectedPresetSlug(preset.slug);
+    setForm(nextForm);
+    setSavedFormSnapshot(nextForm);
+    setResults(null);
+  };
+
+  const startCustomTemplate = () => {
+    setSelectedPresetSlug(null);
+    setForm(emptyForm);
+    setSavedFormSnapshot(null);
+    setResults(null);
+  };
+
+  const activePreset = selectedPresetSlug
+    ? presets.find((p) => p.slug === selectedPresetSlug) ?? null
+    : null;
+
+  const isPresetDirty =
+    activePreset !== null &&
+    savedFormSnapshot !== null &&
+    !formsEqual(form, savedFormSnapshot);
+
+  const handleSavePreset = async () => {
+    if (!activePreset) return;
+    setSavingPreset(true);
+    try {
+      const res = await fetch(
+        `/api/admin/templates/presets/${activePreset.slug}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: activePreset.title,
+            description: activePreset.description,
+            payload: form,
+          }),
+        },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'Failed to save template');
+
+      const saved = body.preset as AdminTemplatePresetView;
+      setPresets((prev) =>
+        prev.map((p) => (p.slug === saved.slug ? saved : p)),
+      );
+      const nextForm = presetViewToFormData(saved);
+      setForm(nextForm);
+      setSavedFormSnapshot(nextForm);
+      toast.success('Template saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save template');
+    } finally {
+      setSavingPreset(false);
+    }
+  };
+
+  const handleResetPreset = async () => {
+    if (!activePreset) return;
+    setSavingPreset(true);
+    try {
+      const res = await fetch(
+        `/api/admin/templates/presets/${activePreset.slug}`,
+        { method: 'DELETE' },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'Failed to reset template');
+
+      const restored = body.preset as AdminTemplatePresetView;
+      setPresets((prev) =>
+        prev.map((p) => (p.slug === restored.slug ? restored : p)),
+      );
+      const nextForm = presetViewToFormData(restored);
+      setForm(nextForm);
+      setSavedFormSnapshot(nextForm);
+      toast.success('Template reset to default');
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to reset template',
+      );
+    } finally {
+      setSavingPreset(false);
+    }
   };
 
   function buildPayload() {
@@ -347,15 +462,126 @@ export function AdminTemplatePushPanel() {
 
   return (
     <form onSubmit={handlePush} className="space-y-6">
+      <Card className="border-border">
+        <CardHeader>
+          <CardTitle className="text-base">Predefined templates</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Pick a template to load its content, select brands on the right,
+            then push to Meta.
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {presets.map((preset) => {
+              const Icon = PRESET_ICONS[preset.icon] ?? FileText;
+              const isActive = selectedPresetSlug === preset.slug;
+              return (
+                <button
+                  key={preset.slug}
+                  type="button"
+                  onClick={() => applyPreset(preset)}
+                  className={cn(
+                    'flex flex-col gap-2 rounded-lg border p-4 text-left transition-colors',
+                    isActive
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border bg-background hover:border-primary/40 hover:bg-muted/50',
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <Icon className="size-5 shrink-0 text-primary" />
+                    {preset.has_override ? (
+                      <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                        Saved
+                      </span>
+                    ) : null}
+                  </div>
+                  <span className="text-sm font-semibold text-foreground">
+                    {preset.title}
+                  </span>
+                  <span className="text-xs leading-relaxed text-muted-foreground">
+                    {preset.description}
+                  </span>
+                  <span className="mt-auto pt-2 font-mono text-[11px] text-muted-foreground">
+                    {preset.name}
+                  </span>
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={startCustomTemplate}
+              className={cn(
+                'flex flex-col gap-2 rounded-lg border border-dashed p-4 text-left transition-colors',
+                selectedPresetSlug === null && form.name === '' && form.body_text === ''
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border bg-background hover:border-primary/40 hover:bg-muted/50',
+              )}
+            >
+              <PenLine className="size-5 text-primary" />
+              <span className="text-sm font-semibold text-foreground">
+                Custom template
+              </span>
+              <span className="text-xs leading-relaxed text-muted-foreground">
+                Start from scratch with your own name, body, and buttons.
+              </span>
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <Card className="border-border">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
             <CardTitle className="flex items-center gap-2 text-base">
               <FileText className="size-4" />
-              Template
+              {activePreset ? activePreset.title : 'Template details'}
             </CardTitle>
+            {activePreset ? (
+              <div className="flex shrink-0 items-center gap-2">
+                {activePreset.has_override ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetPreset}
+                    disabled={savingPreset}
+                  >
+                    {savingPreset ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="size-3.5" />
+                    )}
+                    Reset
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSavePreset}
+                  disabled={savingPreset || !isPresetDirty}
+                >
+                  {savingPreset ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Save className="size-3.5" />
+                  )}
+                  Save
+                </Button>
+              </div>
+            ) : null}
           </CardHeader>
           <CardContent className="space-y-4">
+            {activePreset && isPresetDirty ? (
+              <p className="text-xs text-muted-foreground">
+                You have unsaved changes to this template.
+              </p>
+            ) : null}
+            {activePreset?.media_note ? (
+              <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                {activePreset.media_note}
+              </p>
+            ) : null}
             <div className="space-y-2">
               <Label>Template name</Label>
               <Input

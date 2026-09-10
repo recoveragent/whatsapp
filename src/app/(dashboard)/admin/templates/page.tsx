@@ -10,7 +10,7 @@ export default function AdminTemplatesPage() {
         size="admin"
         eyebrow="Admin"
         title="Templates"
-        subtitle="Create a WhatsApp message template once and submit it to Meta for selected brands in one click. Each brand needs WhatsApp connected."
+        subtitle="Pick a predefined template or build a custom one, select the brands to push to, and submit to Meta in one click. Each brand needs WhatsApp connected."
       />
       <div className="mt-6">
         <AdminTemplatePushPanel />
