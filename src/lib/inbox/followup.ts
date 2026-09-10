@@ -10,6 +10,7 @@ import {
   contactPhoneAfterSuccessfulSend,
 } from '@/lib/whatsapp/phone-utils'
 import type { InboxFollowupSettings } from '@/types'
+import { isServiceWindowOpen } from '@/lib/inbox/service-window'
 
 export const DEFAULT_FOLLOWUP_DELAY_HOURS = 4
 export const DEFAULT_FOLLOWUP_MESSAGE =
@@ -78,6 +79,7 @@ type ConversationRow = {
   status: string
   followup_scheduled_at: string | null
   followup_sent_at: string | null
+  last_customer_message_at: string | null
   contact: { id: string; phone: string } | { id: string; phone: string }[] | null
 }
 
@@ -96,6 +98,13 @@ export async function sendScheduledFollowup(
   const contact = resolveContact(conversation.contact)
   if (!contact?.phone) {
     return { ok: false, error: 'Contact phone not found' }
+  }
+
+  if (!isServiceWindowOpen(conversation.last_customer_message_at)) {
+    return {
+      ok: false,
+      error: 'WhatsApp 24-hour session expired — follow-up text cannot be sent',
+    }
   }
 
   const sanitizedPhone = sanitizePhoneForMeta(contact.phone)
@@ -195,7 +204,7 @@ export async function processDueFollowups(
   const { data: due, error } = await admin
     .from('conversations')
     .select(
-      'id, account_id, user_id, contact_id, status, followup_scheduled_at, followup_sent_at, contact:contacts(id, phone)',
+      'id, account_id, user_id, contact_id, status, followup_scheduled_at, followup_sent_at, last_customer_message_at, contact:contacts(id, phone)',
     )
     .eq('status', 'followup')
     .is('followup_sent_at', null)

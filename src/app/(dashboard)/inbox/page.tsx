@@ -361,6 +361,19 @@ export default function InboxPage() {
           // Customer replied but the automation bubble may be missing
           // (Meta accepted the send while DB persist or realtime failed).
           if (newMsg.sender_type === "customer") {
+            setActiveConversation((prev) =>
+              prev?.id === newMsg.conversation_id
+                ? { ...prev, last_customer_message_at: newMsg.created_at }
+                : prev,
+            );
+            setConversations((prev) =>
+              prev.map((c) =>
+                c.id === newMsg.conversation_id
+                  ? { ...c, last_customer_message_at: newMsg.created_at }
+                  : c,
+              ),
+            );
+
             void fetch(
               `/api/inbox/conversations/${newMsg.conversation_id}/repair-flow-prompt`,
               { method: "POST" },

@@ -263,6 +263,7 @@ export interface Conversation {
   assigned_agent_id?: string;
   last_message_text?: string;
   last_message_at?: string;
+  last_customer_message_at?: string | null;
   unread_count: number;
   followup_scheduled_at?: string | null;
   followup_sent_at?: string | null;

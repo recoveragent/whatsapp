@@ -34,7 +34,11 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
-import { format, isToday, isYesterday, differenceInHours } from "date-fns";
+import { format, isToday, isYesterday } from "date-fns";
+import {
+  getServiceWindow,
+  lastCustomerMessageAtFromMessages,
+} from "@/lib/inbox/service-window";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -216,14 +220,17 @@ export function MessageThread({
   onOpenContact,
   onComposerPendingChange,
 }: MessageThreadProps) {
-  const { user, accountId, isEcommerceBrand } = useAuth();
+  const { user, accountId, isShopifyBrand } = useAuth();
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [flowModalOpen, setFlowModalOpen] = useState(false);
   const [productModalOpen, setProductModalOpen] = useState(false);
-  const [sellOnWhatsAppEnabled, setSellOnWhatsAppEnabled] = useState(false);
+  const [sellOnWhatsAppConfig, setSellOnWhatsAppConfig] = useState<{
+    enabled: boolean;
+    connected: boolean;
+  } | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
   // Purely visual spin state for the manual-refresh button. The actual
@@ -347,32 +354,26 @@ export function MessageThread({
     };
   }, [accountId]);
 
-  // 24-hour session timer
+  const [sessionNow, setSessionNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setSessionNow(new Date()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // 24-hour session timer — exact deadline from last customer message.
   const sessionInfo = useMemo(() => {
-    if (!messages.length) return { expired: false, remaining: "" };
+    const lastCustomerAt =
+      conversation?.last_customer_message_at ??
+      lastCustomerMessageAtFromMessages(messages);
 
-    // Find last customer message
-    const lastCustomerMsg = [...messages]
-      .reverse()
-      .find((m) => m.sender_type === "customer");
-
-    if (!lastCustomerMsg) return { expired: true, remaining: "No customer messages" };
-
-    const hoursSince = differenceInHours(new Date(), new Date(lastCustomerMsg.created_at));
-    const expired = hoursSince >= 24;
-
-    if (expired) {
-      return { expired: true, remaining: "Expired" };
+    if (!lastCustomerAt) {
+      return { expired: true, remaining: "No customer messages" };
     }
 
-    const hoursLeft = 24 - hoursSince;
-    const remaining =
-      hoursLeft >= 1
-        ? `${Math.floor(hoursLeft)}h remaining`
-        : `${Math.floor(hoursLeft * 60)}m remaining`;
-
-    return { expired, remaining };
-  }, [messages]);
+    const window = getServiceWindow(lastCustomerAt, sessionNow);
+    return { expired: window.expired, remaining: window.remaining };
+  }, [conversation?.last_customer_message_at, messages, sessionNow]);
 
   // Store latest callback in a ref so fetchMessages doesn't need to
   // depend on `onMessagesLoaded` — otherwise parent re-renders cause
@@ -754,30 +755,53 @@ export function MessageThread({
   }, []);
 
   const handleOpenProducts = useCallback(() => {
+    if (!sellOnWhatsAppConfig?.enabled) {
+      toast.info(
+        'Turn on "Enable product sends" in Settings → Shopify → Sell on WhatsApp.',
+      );
+      return;
+    }
     setProductModalOpen(true);
-  }, []);
+  }, [sellOnWhatsAppConfig?.enabled]);
 
   useEffect(() => {
-    if (!isEcommerceBrand) {
-      setSellOnWhatsAppEnabled(false);
+    if (!isShopifyBrand) {
+      setSellOnWhatsAppConfig(null);
       return;
     }
 
     let cancelled = false;
     void fetch("/api/shopify/sell-on-whatsapp", { cache: "no-store" })
       .then(async (res) => {
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok || cancelled) return;
-        setSellOnWhatsAppEnabled(Boolean(payload.enabled));
+        const payload = (await res.json().catch(() => ({}))) as {
+          enabled?: boolean;
+          connected?: boolean;
+          error?: string;
+        };
+        if (cancelled) return;
+        if (!res.ok) {
+          setSellOnWhatsAppConfig(null);
+          toast.error(
+            payload.error ?? "Could not load Sell on WhatsApp settings",
+          );
+          return;
+        }
+        setSellOnWhatsAppConfig({
+          enabled: Boolean(payload.enabled),
+          connected: Boolean(payload.connected),
+        });
       })
       .catch(() => {
-        if (!cancelled) setSellOnWhatsAppEnabled(false);
+        if (!cancelled) {
+          setSellOnWhatsAppConfig(null);
+          toast.error("Could not load Sell on WhatsApp settings");
+        }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [isEcommerceBrand, accountId]);
+  }, [isShopifyBrand, accountId]);
 
   const handleSendProduct = useCallback(
     async (product: ShopifyProductOption) => {
@@ -1500,7 +1524,7 @@ export function MessageThread({
         onOpenTemplates={handleOpenTemplates}
         onOpenFlows={handleOpenFlows}
         onOpenProducts={handleOpenProducts}
-        showProductPicker={sellOnWhatsAppEnabled}
+        showProductPicker={Boolean(sellOnWhatsAppConfig?.connected)}
         onPrivateNoteSaved={handlePrivateNoteSaved}
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}

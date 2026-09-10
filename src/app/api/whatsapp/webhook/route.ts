@@ -712,6 +712,8 @@ async function processMessage(
     contactRecord.id,
   )
 
+  const customerMessageAt = new Date(parseInt(message.timestamp) * 1000).toISOString()
+
   const { error: msgError } = await supabaseAdmin().from('messages').insert({
     conversation_id: conversation.id,
     sender_type: 'customer',
@@ -720,7 +722,7 @@ async function processMessage(
     media_url: mediaUrl,
     message_id: message.id,
     status: 'delivered',
-    created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+    created_at: customerMessageAt,
     reply_to_message_id: replyToInternalId,
     // Only populated for content_type='interactive'. Migration 010 added
     // the column; null for every other content_type so existing inserts
@@ -786,6 +788,7 @@ async function processMessage(
   const convUpdate: Record<string, unknown> = {
     last_message_text: contentText || `[${message.type}]`,
     last_message_at: new Date().toISOString(),
+    last_customer_message_at: customerMessageAt,
     unread_count: (conversation.unread_count || 0) + 1,
     updated_at: new Date().toISOString(),
   }

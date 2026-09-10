@@ -36,6 +36,7 @@ import {
   buildTemplateMessageSnapshot,
   templateDisplayPayload,
 } from '@/lib/inbox/template-message-display'
+import { isServiceWindowOpen } from '@/lib/inbox/service-window'
 
 export async function POST(request: Request) {
   try {
@@ -149,6 +150,22 @@ export async function POST(request: Request) {
             : 'Self-assign this chat before replying',
         },
         { status: 403 },
+      )
+    }
+
+    if (
+      message_type !== 'template' &&
+      !isServiceWindowOpen(
+        conversation.last_customer_message_at as string | null | undefined,
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'The 24-hour messaging window has closed. Send an approved template to re-engage.',
+          code: 'SERVICE_WINDOW_EXPIRED',
+        },
+        { status: 422 },
       )
     }
 

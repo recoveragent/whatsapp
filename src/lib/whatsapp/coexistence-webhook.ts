@@ -211,6 +211,9 @@ async function ingestSyncedMessage(
     .update({
       last_message_at: createdAt,
       last_message_text: preview || '(message)',
+      ...(senderType === 'customer'
+        ? { last_customer_message_at: createdAt }
+        : {}),
       updated_at: new Date().toISOString(),
     })
     .eq('id', conversationId);
