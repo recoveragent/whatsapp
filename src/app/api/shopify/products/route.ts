@@ -2,10 +2,13 @@ import { NextResponse } from 'next/server';
 
 import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account';
 import { assertEcommercePlatform } from '@/lib/ecommerce/assert-platform';
-import { searchShopifyProducts } from '@/lib/shopify/product-store';
+import {
+  searchShopifyProductGroups,
+  searchShopifyProducts,
+} from '@/lib/shopify/product-store';
 
 /**
- * GET /api/shopify/products?q=&limit=
+ * GET /api/shopify/products?q=&limit=&grouped=
  * Search cached Shopify products for inbox picker and flows.
  */
 export async function GET(request: Request) {
@@ -22,6 +25,19 @@ export async function GET(request: Request) {
     const limitRaw = url.searchParams.get('limit');
     const limit = limitRaw ? Number.parseInt(limitRaw, 10) : undefined;
     const inStockOnly = url.searchParams.get('in_stock_only') !== 'false';
+    const grouped = url.searchParams.get('grouped') === 'true';
+
+    if (grouped) {
+      const products = await searchShopifyProductGroups({
+        db: ctx.supabase,
+        accountId: ctx.accountId,
+        query,
+        limit: Number.isFinite(limit) ? limit : undefined,
+        inStockOnly,
+      });
+
+      return NextResponse.json({ products });
+    }
 
     const products = await searchShopifyProducts({
       db: ctx.supabase,
