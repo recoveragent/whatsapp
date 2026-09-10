@@ -4,8 +4,9 @@ The public API lets you drive your wacrm instance from your own
 scripts and automations — send messages, manage contacts, launch
 broadcasts — without going through the dashboard UI.
 
-> **Status:** `GET /api/v1/me`, `GET /api/v1/templates`, and
-> `POST /api/v1/send` ship for Recover Agent integration.
+> **Status:** `GET /api/v1/me`, `GET /api/v1/templates`,
+> `POST /api/v1/send`, and `POST /api/v1/events/abandoned-checkout`
+> ship for Recover Agent integration.
 > Contacts/conversations endpoints and outbound webhooks land in
 > follow-up releases — see [Roadmap](#roadmap).
 
@@ -234,6 +235,67 @@ curl https://wa.recoveragent.ai/api/v1/send \
 not affect routing. Recover Agent's `company_id` is opaque to wacrm —
 the API key already identifies the brand (`account_id` → WABA).
 
+### `POST /api/v1/events/abandoned-checkout`
+
+Recover Agent mirrors each accepted abandoned-checkout webhook here
+when a brand enables **Also forward to WhatsApp API**. The endpoint
+responds quickly (`202`) and queues work for `fire_after`.
+
+**Scope:** `messages:send` **or** `contacts:write`
+
+```bash
+curl https://wa.recoveragent.ai/api/v1/events/abandoned-checkout \
+  -H "Authorization: Bearer wacrm_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event": "abandoned_checkout",
+    "checkout_id": "abc123",
+    "token": "abc123",
+    "phone": "+919876543210",
+    "customer_name": "Asha",
+    "product": "Men'\''s Cotton Boxer - XL",
+    "amount": 999,
+    "checkout_url": "https://store.com/checkouts/abc123",
+    "address1": "12 MG Road",
+    "city": "Bengaluru",
+    "state": "KA",
+    "zip": "560001",
+    "fire_after": "2026-09-10T12:00:00.000Z",
+    "flat": {},
+    "raw": {},
+    "metadata": {
+      "company_id": "uuid",
+      "workflow_slug": "shopify_webhook_abc_ingest",
+      "queue_id": "uuid",
+      "source": "abc_webhook_intake"
+    }
+  }'
+```
+
+**Success (`202`):**
+
+```json
+{ "ok": true }
+```
+
+**Behavior:**
+
+1. **Ingest on receipt** — upserts the contact (phone + name) so the
+   cart appears in the WA CRM immediately.
+2. **Send at `fire_after`** — queues the event and, when due, starts
+   active **Shopify: abandoned checkout (checkout app)** flows and/or
+   the legacy **abandoned_checkout** campaign if enabled.
+3. **Dedupe** — one pending row per `(account_id, checkout_id)`; later
+   mirrors for the same checkout update the payload and reschedule
+   `fire_after`.
+
+`flat` carries Flows payload-map fields; `raw` is the original
+provider webhook body (Shopify, GoKwik, etc.). `fire_after` aligns
+with Recover Agent's voice/call delay — WA waits until that timestamp
+before sending.
+
+Errors use the standard envelope (`{ "error": { "code", "message" } }`).
+
 ## Recover Agent integration
 
 Per brand, Recover Agent stores:
@@ -247,6 +309,11 @@ Per brand, Recover Agent stores:
 per Recover Agent company. Mint keys in **Settings → API keys** with
 scopes `messages:send` and `templates:read`. Revoke and re-create to
 rotate; only the hash is stored server-side.
+
+**Abandoned checkout mirror:** when enabled in Recover Agent, each
+accepted ABC webhook is POSTed to
+`/api/v1/events/abandoned-checkout` with the same bearer token.
+Recover Agent logs mirror attempts as `abc-whatsapp-mirror`.
 
 **WABA mapping:** API key → `account_id` → `whatsapp_config` row
 (`phone_number_id`, `waba_id`, encrypted `access_token`). Recover

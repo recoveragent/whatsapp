@@ -92,7 +92,7 @@ async function loadApprovedTemplate(
   return row;
 }
 
-async function resolveOwnerUserId(
+export async function resolveOwnerUserId(
   db: SupabaseClient,
   accountId: string,
   fallbackUserId: string | null,

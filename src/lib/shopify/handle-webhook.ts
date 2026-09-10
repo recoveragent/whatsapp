@@ -17,6 +17,10 @@ import { enrichContextWithTrackingRedirect } from './tracking-redirect';
 import { syncShopifyOrder } from './sync-order';
 import { resolveAbandonedCheckoutDelayMinutes } from './abandoned-checkout-delay';
 import {
+  isRecoverAgentMirrorPayload,
+  processRecoverAgentAbandonedCheckout,
+} from '@/lib/api/v1/abandoned-checkout-event';
+import {
   dispatchShopifyFlows,
   shopifyTopicToFlowTrigger,
 } from '@/lib/flows/shopify-dispatch';
@@ -338,7 +342,30 @@ export async function processDueAbandonedCheckouts(db: SupabaseClient): Promise<
     if (!claim) continue;
 
     const accountId = row.account_id as string;
-    const checkout = row.payload as ShopifyCheckoutPayload;
+    const payload = row.payload;
+
+    if (isRecoverAgentMirrorPayload(payload)) {
+      const result = await processRecoverAgentAbandonedCheckout({
+        db,
+        accountId,
+        event: payload.event,
+        contactId: (row.contact_id as string | null) ?? null,
+      });
+
+      await db
+        .from('shopify_pending_checkouts')
+        .update({
+          status: result.ok ? 'sent' : 'cancelled',
+          error_message: result.ok ? null : result.reason ?? 'not handled',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id);
+
+      if (result.ok) processed++;
+      continue;
+    }
+
+    const checkout = payload as ShopifyCheckoutPayload;
 
     if (checkout.completed_at) {
       await db
