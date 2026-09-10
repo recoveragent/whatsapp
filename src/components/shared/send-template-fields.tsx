@@ -9,12 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  TemplateSelectPicker,
+  fromTemplateOptionValue,
+  toTemplateOptionValue,
+} from "@/components/shared/template-select-picker";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { extractVariableIndices } from "@/lib/whatsapp/template-validators";
@@ -58,15 +56,6 @@ interface SendTemplateFieldsProps {
   variableHint?: string;
   /** Grouped variables for the picker sidebar. */
   variableGroups?: TemplateVariableGroup[];
-}
-
-function toOptionValue(name: string, lang: string) {
-  return `${name}::${lang}`;
-}
-
-function fromOptionValue(value: string): { name: string; lang: string } {
-  const [name, lang] = value.split("::");
-  return { name: name ?? "", lang: lang ?? "en_US" };
 }
 
 function bodyPlaceholders(body: string): string[] {
@@ -511,18 +500,6 @@ export function SendTemplateFields({
     }
   };
 
-  const templateOptionLabel = (t: MessageTemplate) => {
-    const tLang = t.language ?? "en_US";
-    const qrCount = quickReplyButtonsFromTemplate(t).length;
-    const suffix =
-      qrCount > 0
-        ? ` · ${qrCount} quick repl${qrCount === 1 ? "y" : "ies"}`
-        : normalizeTemplateButtons(t.buttons).length > 0
-          ? " · URL/CTA buttons only"
-          : "";
-    return `${t.name} (${tLang})${suffix}`;
-  };
-
   const insertToken = (token: string) => {
     const field =
       activeField ??
@@ -538,9 +515,12 @@ export function SendTemplateFields({
     });
   };
 
-  const currentValue = templateName ? toOptionValue(templateName, lang) : "";
+  const currentValue = templateName
+    ? toTemplateOptionValue(templateName, lang)
+    : "";
   const hasMatch = templates.some(
-    (t) => toOptionValue(t.name, t.language ?? "en_US") === currentValue,
+    (t) =>
+      toTemplateOptionValue(t.name, t.language ?? "en_US") === currentValue,
   );
 
   if (loading) {
@@ -595,11 +575,15 @@ export function SendTemplateFields({
     <div className="space-y-3">
       <div>
         <label className="mb-1 block text-xs text-muted-foreground">Template</label>
-        <Select
-          value={currentValue || undefined}
+        <TemplateSelectPicker
+          templates={templates}
+          value={currentValue}
+          orphanLabel={
+            currentValue && !hasMatch ? { name: templateName, lang } : undefined
+          }
           onValueChange={(v) => {
             if (!v) return;
-            const { name, lang: nextLang } = fromOptionValue(v);
+            const { name, lang: nextLang } = fromTemplateOptionValue(v);
             const tpl = templates.find(
               (t) => t.name === name && (t.language ?? "en_US") === nextLang,
             );
@@ -611,23 +595,7 @@ export function SendTemplateFields({
               next_node_key: nextNodeKey,
             });
           }}
-        >
-          <SelectTrigger className="bg-muted">
-            <SelectValue placeholder="Select a template…" />
-          </SelectTrigger>
-          <SelectContent>
-            {templates.map((t) => (
-              <SelectItem key={t.id} value={toOptionValue(t.name, t.language ?? "en_US")}>
-                {templateOptionLabel(t)}
-              </SelectItem>
-            ))}
-            {currentValue && !hasMatch && (
-              <SelectItem value={currentValue}>
-                {templateName} ({lang}) — not in list
-              </SelectItem>
-            )}
-          </SelectContent>
-        </Select>
+        />
       </div>
 
       {selectedTemplate && (
