@@ -30,6 +30,14 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -47,10 +55,12 @@ import {
 } from '@/lib/whatsapp/template-validators';
 import type { AdminTemplatePresetIcon } from '@/lib/whatsapp/admin-template-presets';
 import {
-  formsEqual,
+  editorSnapshotsEqual,
+  presetToEditorSnapshot,
   presetViewToFormData,
   type AdminTemplatePresetPayload,
   type AdminTemplatePresetView,
+  type PresetEditorSnapshot,
 } from '@/lib/whatsapp/admin-template-preset-store';
 import { cn } from '@/lib/utils';
 import type { MessageTemplate, TemplateButton, TemplateSampleValues } from '@/types';
@@ -74,6 +84,7 @@ const PRESET_ICONS: Record<
   truck: Truck,
   cart: ShoppingCart,
   phone: Phone,
+  custom: PenLine,
 };
 
 const COMMON_LANGUAGE_CODES = [
@@ -158,8 +169,13 @@ export function AdminTemplatePushPanel() {
   const [selectedPresetSlug, setSelectedPresetSlug] = useState<string | null>(
     null,
   );
-  const [savedFormSnapshot, setSavedFormSnapshot] =
-    useState<TemplateFormData | null>(null);
+  const [editorSnapshot, setEditorSnapshot] =
+    useState<PresetEditorSnapshot | null>(null);
+  const [galleryTitle, setGalleryTitle] = useState('');
+  const [galleryDescription, setGalleryDescription] = useState('');
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [newGalleryTitle, setNewGalleryTitle] = useState('');
+  const [newGalleryDescription, setNewGalleryDescription] = useState('');
   const [pushing, setPushing] = useState(false);
   const [savingPreset, setSavingPreset] = useState(false);
   const [results, setResults] = useState<PushResultRow[] | null>(null);
@@ -239,17 +255,21 @@ export function AdminTemplatePushPanel() {
   };
 
   const applyPreset = (preset: AdminTemplatePresetView) => {
-    const nextForm = presetViewToFormData(preset);
+    const snapshot = presetToEditorSnapshot(preset);
     setSelectedPresetSlug(preset.slug);
-    setForm(nextForm);
-    setSavedFormSnapshot(nextForm);
+    setForm(snapshot.form);
+    setGalleryTitle(snapshot.title);
+    setGalleryDescription(snapshot.description);
+    setEditorSnapshot(snapshot);
     setResults(null);
   };
 
   const startCustomTemplate = () => {
     setSelectedPresetSlug(null);
     setForm(emptyForm);
-    setSavedFormSnapshot(null);
+    setGalleryTitle('');
+    setGalleryDescription('');
+    setEditorSnapshot(null);
     setResults(null);
   };
 
@@ -257,10 +277,37 @@ export function AdminTemplatePushPanel() {
     ? presets.find((p) => p.slug === selectedPresetSlug) ?? null
     : null;
 
+  const currentEditorSnapshot = useMemo((): PresetEditorSnapshot => ({
+    form,
+    title: galleryTitle,
+    description: galleryDescription,
+  }), [form, galleryTitle, galleryDescription]);
+
   const isPresetDirty =
     activePreset !== null &&
-    savedFormSnapshot !== null &&
-    !formsEqual(form, savedFormSnapshot);
+    editorSnapshot !== null &&
+    !editorSnapshotsEqual(currentEditorSnapshot, editorSnapshot);
+
+  const canSaveAsNew =
+    !activePreset &&
+    form.name.trim().length > 0 &&
+    form.body_text.trim().length > 0;
+
+  const syncSavedPreset = (saved: AdminTemplatePresetView) => {
+    const snapshot = presetToEditorSnapshot(saved);
+    setPresets((prev) => {
+      const exists = prev.some((p) => p.slug === saved.slug);
+      if (exists) {
+        return prev.map((p) => (p.slug === saved.slug ? saved : p));
+      }
+      return [...prev, saved];
+    });
+    setSelectedPresetSlug(saved.slug);
+    setForm(snapshot.form);
+    setGalleryTitle(snapshot.title);
+    setGalleryDescription(snapshot.description);
+    setEditorSnapshot(snapshot);
+  };
 
   const handleSavePreset = async () => {
     if (!activePreset) return;
@@ -272,22 +319,17 @@ export function AdminTemplatePushPanel() {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            title: activePreset.title,
-            description: activePreset.description,
+            title: galleryTitle,
+            description: galleryDescription,
             payload: form,
+            is_custom: activePreset.is_custom,
           }),
         },
       );
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? 'Failed to save template');
 
-      const saved = body.preset as AdminTemplatePresetView;
-      setPresets((prev) =>
-        prev.map((p) => (p.slug === saved.slug ? saved : p)),
-      );
-      const nextForm = presetViewToFormData(saved);
-      setForm(nextForm);
-      setSavedFormSnapshot(nextForm);
+      syncSavedPreset(body.preset as AdminTemplatePresetView);
       toast.success('Template saved');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save template');
@@ -296,8 +338,49 @@ export function AdminTemplatePushPanel() {
     }
   };
 
+  const openSaveAsNewDialog = () => {
+    setNewGalleryTitle(
+      form.name.trim().replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+    );
+    setNewGalleryDescription('');
+    setSaveDialogOpen(true);
+  };
+
+  const handleCreateCustomPreset = async () => {
+    const slug = form.name.trim();
+    const title = newGalleryTitle.trim();
+    if (!slug || !title) {
+      toast.error('Template name and gallery title are required');
+      return;
+    }
+
+    setSavingPreset(true);
+    try {
+      const res = await fetch('/api/admin/templates/presets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug,
+          title,
+          description: newGalleryDescription.trim() || undefined,
+          payload: form,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'Failed to save template');
+
+      syncSavedPreset(body.preset as AdminTemplatePresetView);
+      setSaveDialogOpen(false);
+      toast.success('Template saved to gallery');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save template');
+    } finally {
+      setSavingPreset(false);
+    }
+  };
+
   const handleResetPreset = async () => {
-    if (!activePreset) return;
+    if (!activePreset || activePreset.is_custom) return;
     setSavingPreset(true);
     try {
       const res = await fetch(
@@ -307,17 +390,39 @@ export function AdminTemplatePushPanel() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? 'Failed to reset template');
 
-      const restored = body.preset as AdminTemplatePresetView;
-      setPresets((prev) =>
-        prev.map((p) => (p.slug === restored.slug ? restored : p)),
-      );
-      const nextForm = presetViewToFormData(restored);
-      setForm(nextForm);
-      setSavedFormSnapshot(nextForm);
+      syncSavedPreset(body.preset as AdminTemplatePresetView);
       toast.success('Template reset to default');
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : 'Failed to reset template',
+      );
+    } finally {
+      setSavingPreset(false);
+    }
+  };
+
+  const handleDeleteCustomPreset = async () => {
+    if (!activePreset?.is_custom) return;
+    const yes = window.confirm(
+      `Delete "${activePreset.title}" from the gallery? This cannot be undone.`,
+    );
+    if (!yes) return;
+
+    setSavingPreset(true);
+    try {
+      const res = await fetch(
+        `/api/admin/templates/presets/${activePreset.slug}`,
+        { method: 'DELETE' },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'Failed to delete template');
+
+      setPresets((prev) => prev.filter((p) => p.slug !== activePreset.slug));
+      startCustomTemplate();
+      toast.success('Template deleted');
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to delete template',
       );
     } finally {
       setSavingPreset(false);
@@ -464,11 +569,11 @@ export function AdminTemplatePushPanel() {
     <form onSubmit={handlePush} className="space-y-6">
       <Card className="border-border">
         <CardHeader>
-          <CardTitle className="text-base">Predefined templates</CardTitle>
+          <CardTitle className="text-base">Template library</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Pick a template to load its content, select brands on the right,
+            Pick a built-in or saved template, edit if needed, select brands,
             then push to Meta.
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -489,9 +594,13 @@ export function AdminTemplatePushPanel() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <Icon className="size-5 shrink-0 text-primary" />
-                    {preset.has_override ? (
+                    {preset.is_custom ? (
+                      <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400">
+                        Custom
+                      </span>
+                    ) : preset.has_override ? (
                       <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                        Saved
+                        Edited
                       </span>
                     ) : null}
                   </div>
@@ -538,7 +647,19 @@ export function AdminTemplatePushPanel() {
             </CardTitle>
             {activePreset ? (
               <div className="flex shrink-0 items-center gap-2">
-                {activePreset.has_override ? (
+                {activePreset.is_custom ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDeleteCustomPreset}
+                    disabled={savingPreset}
+                    className="text-red-500 hover:text-red-400"
+                  >
+                    <Trash2 className="size-3.5" />
+                    Delete
+                  </Button>
+                ) : activePreset.has_override ? (
                   <Button
                     type="button"
                     variant="outline"
@@ -569,6 +690,21 @@ export function AdminTemplatePushPanel() {
                   Save
                 </Button>
               </div>
+            ) : canSaveAsNew ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={openSaveAsNewDialog}
+                disabled={savingPreset}
+              >
+                {savingPreset ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Save className="size-3.5" />
+                )}
+                Save as template
+              </Button>
             ) : null}
           </CardHeader>
           <CardContent className="space-y-4">
@@ -582,6 +718,26 @@ export function AdminTemplatePushPanel() {
                 {activePreset.media_note}
               </p>
             ) : null}
+            {activePreset?.is_custom ? (
+              <>
+                <div className="space-y-2">
+                  <Label>Gallery title</Label>
+                  <Input
+                    value={galleryTitle}
+                    onChange={(e) => setGalleryTitle(e.target.value)}
+                    placeholder="e.g. Weekend promo"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Gallery description (optional)</Label>
+                  <Input
+                    value={galleryDescription}
+                    onChange={(e) => setGalleryDescription(e.target.value)}
+                    placeholder="Short note for your team"
+                  />
+                </div>
+              </>
+            ) : null}
             <div className="space-y-2">
               <Label>Template name</Label>
               <Input
@@ -589,6 +745,7 @@ export function AdminTemplatePushPanel() {
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="e.g. order_confirmation"
                 required
+                readOnly={Boolean(activePreset?.is_custom)}
               />
               <p className="text-[11px] text-muted-foreground">
                 Lowercase letters, digits, and underscores only.
@@ -971,6 +1128,62 @@ export function AdminTemplatePushPanel() {
           ) : null}
         </div>
       </div>
+
+      <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save as template</DialogTitle>
+            <DialogDescription>
+              Add this template to your gallery so you can reuse it later. The
+              template name ({form.name.trim() || '…'}) becomes the Meta template
+              ID.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label>Gallery title</Label>
+              <Input
+                value={newGalleryTitle}
+                onChange={(e) => setNewGalleryTitle(e.target.value)}
+                placeholder="e.g. Weekend promo"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description (optional)</Label>
+              <Input
+                value={newGalleryDescription}
+                onChange={(e) => setNewGalleryDescription(e.target.value)}
+                placeholder="Short note for your team"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setSaveDialogOpen(false)}
+              disabled={savingPreset}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleCreateCustomPreset}
+              disabled={
+                savingPreset ||
+                !newGalleryTitle.trim() ||
+                !form.name.trim()
+              }
+            >
+              {savingPreset ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                'Save template'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </form>
   );
 }

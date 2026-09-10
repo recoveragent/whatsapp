@@ -1,5 +1,5 @@
 // ============================================================
-// /api/admin/templates/presets/[slug] — save or reset preset edits.
+// /api/admin/templates/presets/[slug] — save, update, or delete.
 // ============================================================
 
 import { NextResponse } from 'next/server';
@@ -9,49 +9,12 @@ import { requireSuperAdmin } from '@/lib/auth/super-admin';
 import {
   deleteAdminTemplatePresetOverride,
   listMergedAdminTemplatePresets,
+  parsePresetPayload,
   saveAdminTemplatePresetOverride,
-  type AdminTemplatePresetPayload,
+  updateAdminTemplateCustomPreset,
 } from '@/lib/whatsapp/admin-template-preset-store';
 
-function parsePayload(raw: unknown): AdminTemplatePresetPayload | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const body = raw as Record<string, unknown>;
-  const headerFormat = body.header_format;
-  if (
-    headerFormat !== 'none' &&
-    headerFormat !== 'text' &&
-    headerFormat !== 'image' &&
-    headerFormat !== 'video' &&
-    headerFormat !== 'document'
-  ) {
-    return null;
-  }
-  const category = body.category;
-  if (category !== 'Marketing' && category !== 'Utility') return null;
-  if (typeof body.name !== 'string' || typeof body.body_text !== 'string') {
-    return null;
-  }
-  return {
-    name: body.name,
-    category,
-    language: typeof body.language === 'string' ? body.language : 'en_US',
-    header_format: headerFormat,
-    header_content:
-      typeof body.header_content === 'string' ? body.header_content : '',
-    header_media_url:
-      typeof body.header_media_url === 'string' ? body.header_media_url : '',
-    header_sample:
-      typeof body.header_sample === 'string' ? body.header_sample : '',
-    body_text: body.body_text,
-    body_samples: Array.isArray(body.body_samples)
-      ? body.body_samples.filter((v): v is string => typeof v === 'string')
-      : [],
-    footer_text: typeof body.footer_text === 'string' ? body.footer_text : '',
-    buttons: Array.isArray(body.buttons) ? body.buttons : [],
-  };
-}
-
-/** PUT — save org override for a built-in preset. */
+/** PUT — save built-in override or update a custom template. */
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ slug: string }> },
@@ -63,9 +26,10 @@ export async function PUT(
       title?: unknown;
       description?: unknown;
       payload?: unknown;
+      is_custom?: unknown;
     } | null;
 
-    const payload = parsePayload(body?.payload);
+    const payload = parsePresetPayload(body?.payload);
     if (!payload) {
       return NextResponse.json(
         { error: 'Valid template payload is required.' },
@@ -73,12 +37,40 @@ export async function PUT(
       );
     }
 
-    await saveAdminTemplatePresetOverride(supabase, organizationId, userId, slug, {
-      title: typeof body?.title === 'string' ? body.title : undefined,
-      description:
-        typeof body?.description === 'string' ? body.description : undefined,
-      payload,
-    });
+    if (body?.is_custom === true) {
+      const title = typeof body?.title === 'string' ? body.title.trim() : '';
+      if (!title) {
+        return NextResponse.json(
+          { error: 'Gallery title is required.' },
+          { status: 400 },
+        );
+      }
+      await updateAdminTemplateCustomPreset(
+        supabase,
+        organizationId,
+        userId,
+        slug,
+        {
+          title,
+          description:
+            typeof body?.description === 'string' ? body.description : undefined,
+          payload,
+        },
+      );
+    } else {
+      await saveAdminTemplatePresetOverride(
+        supabase,
+        organizationId,
+        userId,
+        slug,
+        {
+          title: typeof body?.title === 'string' ? body.title : undefined,
+          description:
+            typeof body?.description === 'string' ? body.description : undefined,
+          payload,
+        },
+      );
+    }
 
     const presets = await listMergedAdminTemplatePresets(
       supabase,
@@ -88,15 +80,26 @@ export async function PUT(
 
     return NextResponse.json({ preset });
   } catch (err) {
-    if (err instanceof Error && err.message === 'Unknown template preset.') {
-      return NextResponse.json({ error: err.message }, { status: 404 });
+    if (err instanceof Error) {
+      if (
+        err.message === 'Unknown template preset.' ||
+        err.message === 'Custom template not found.'
+      ) {
+        return NextResponse.json({ error: err.message }, { status: 404 });
+      }
+      if (
+        err.message.includes('required') ||
+        err.message.includes('must stay')
+      ) {
+        return NextResponse.json({ error: err.message }, { status: 400 });
+      }
     }
     console.error('[PUT /api/admin/templates/presets/[slug]]', err);
     return toErrorResponse(err);
   }
 }
 
-/** DELETE — revert preset to built-in default. */
+/** DELETE — reset built-in override or remove a custom template. */
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ slug: string }> },
@@ -105,7 +108,15 @@ export async function DELETE(
     const { slug } = await params;
     const { supabase, organizationId } = await requireSuperAdmin();
 
-    await deleteAdminTemplatePresetOverride(supabase, organizationId, slug);
+    const result = await deleteAdminTemplatePresetOverride(
+      supabase,
+      organizationId,
+      slug,
+    );
+
+    if (result === 'custom_deleted') {
+      return NextResponse.json({ deleted: true, slug });
+    }
 
     const presets = await listMergedAdminTemplatePresets(
       supabase,
@@ -113,9 +124,9 @@ export async function DELETE(
     );
     const preset = presets.find((p) => p.slug === slug) ?? null;
 
-    return NextResponse.json({ preset });
+    return NextResponse.json({ preset, deleted: false });
   } catch (err) {
-    if (err instanceof Error && err.message === 'Unknown template preset.') {
+    if (err instanceof Error && err.message === 'Template not found.') {
       return NextResponse.json({ error: err.message }, { status: 404 });
     }
     console.error('[DELETE /api/admin/templates/presets/[slug]]', err);

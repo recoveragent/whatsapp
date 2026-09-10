@@ -13,7 +13,21 @@ export type AdminTemplatePresetIcon =
   | 'package'
   | 'truck'
   | 'cart'
-  | 'phone';
+  | 'phone'
+  | 'custom';
+
+export const BUILTIN_PRESET_SLUGS = [
+  'order_confirmation',
+  'order_placed_cod',
+  'fulfillment_update',
+  'abandoned_checkout',
+  'cod_call_not_connected_v1',
+  'cod_not_picked_up',
+] as const;
+
+export function isBuiltinPresetSlug(slug: string): boolean {
+  return (BUILTIN_PRESET_SLUGS as readonly string[]).includes(slug);
+}
 
 export interface AdminTemplatePreset {
   slug: string;

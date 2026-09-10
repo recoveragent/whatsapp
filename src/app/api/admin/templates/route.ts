@@ -60,6 +60,7 @@ export async function GET() {
       presets = listAdminTemplatePresets().map((preset) => ({
         ...preset,
         has_override: false,
+        is_custom: false,
       }))
     }
 
