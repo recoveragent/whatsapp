@@ -23,6 +23,7 @@ export const BUILTIN_PRESET_SLUGS = [
   'abandoned_checkout',
   'cod_call_not_connected_v1',
   'cod_not_picked_up',
+  'magic_message',
 ] as const;
 
 export function isBuiltinPresetSlug(slug: string): boolean {
@@ -155,6 +156,27 @@ const COD_CALL_NOT_CONNECTED: AdminTemplatePreset = {
   ],
 };
 
+const MAGIC_MESSAGE: AdminTemplatePreset = {
+  slug: 'magic_message',
+  title: 'Magic Message',
+  description:
+    'Utility template with an image header for inbox Magic Message — free-form agent text rendered as an image when the 24-hour window is closed.',
+  icon: 'custom',
+  media_note:
+    'Upload a plain white sample image (e.g. 800×200 PNG) in the Header field before pushing. Per-send message images are injected at send time.',
+  name: 'magic_message',
+  category: 'Utility',
+  language: 'en_US',
+  header_format: 'image',
+  header_content: '',
+  header_media_url: '',
+  header_sample: '',
+  body_text: 'Reply to continue the conversation.',
+  body_samples: [],
+  footer_text: '',
+  buttons: [],
+};
+
 const COD_NOT_PICKED_UP: AdminTemplatePreset = {
   slug: 'cod_not_picked_up',
   title: 'COD not picked up',
@@ -182,6 +204,7 @@ const PRESETS: Record<string, AdminTemplatePreset> = {
   abandoned_checkout: ABANDONED_CHECKOUT,
   cod_call_not_connected_v1: COD_CALL_NOT_CONNECTED,
   cod_not_picked_up: COD_NOT_PICKED_UP,
+  magic_message: MAGIC_MESSAGE,
 };
 
 export function listAdminTemplatePresets(): AdminTemplatePreset[] {

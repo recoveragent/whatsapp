@@ -135,7 +135,10 @@ interface MediaDraft {
 interface MessageComposerProps {
   conversationId: string;
   sessionExpired: boolean;
+  /** Warm expired chats can send via Magic Message instead of blocking compose. */
+  magicMessageActive?: boolean;
   onSend: (text: string, replyToId?: string) => void;
+  onSendMagicMessage?: (text: string, replyToId?: string) => void;
   onSendMedia: (payload: SendMediaPayload) => void;
   onOpenTemplates: () => void;
   onOpenFlows: () => void;
@@ -172,7 +175,9 @@ const OPUS_ENCODER_PATH = "/opus/encoderWorker.min.js";
 export function MessageComposer({
   conversationId,
   sessionExpired,
+  magicMessageActive = false,
   onSend,
+  onSendMagicMessage,
   onSendMedia,
   onOpenTemplates,
   onOpenFlows,
@@ -241,8 +246,9 @@ export function MessageComposer({
   const unassigned = !assignedAgentId;
   /** Reply (WhatsApp) requires claiming the chat; private notes do not. */
   const replyLocked = canSend && !assignedToMe;
-  // Media (like free-form text) is only allowed inside the 24h window.
-  const inputsDisabled = readOnly || sessionExpired || replyLocked;
+  const composeLocked = sessionExpired && !magicMessageActive;
+  // Media stays blocked outside the 24h window — Magic Message is text-only.
+  const inputsDisabled = readOnly || composeLocked || replyLocked;
   const canAttachImage = !inputsDisabled && !busy && !recording;
 
   useEffect(() => {
@@ -336,11 +342,16 @@ export function MessageComposer({
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed || sending || sessionExpired) return;
+    if (!trimmed || sending) return;
+    if (sessionExpired && !magicMessageActive) return;
 
     setSending(true);
     try {
-      onSend(trimmed, replyTo?.id);
+      if (sessionExpired && magicMessageActive) {
+        onSendMagicMessage?.(trimmed, replyTo?.id);
+      } else {
+        onSend(trimmed, replyTo?.id);
+      }
       setText("");
       clearComposerDraft(conversationId);
       if (textareaRef.current) {
@@ -349,7 +360,16 @@ export function MessageComposer({
     } finally {
       setSending(false);
     }
-  }, [text, sending, sessionExpired, onSend, replyTo?.id, conversationId]);
+  }, [
+    text,
+    sending,
+    sessionExpired,
+    magicMessageActive,
+    onSend,
+    onSendMagicMessage,
+    replyTo?.id,
+    conversationId,
+  ]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -726,7 +746,23 @@ export function MessageComposer({
           />
         </div>
       )}
-      {sessionExpired && (
+      {magicMessageActive ? (
+        <div className="mb-2 flex items-center justify-between rounded-lg bg-emerald-500/10 px-3 py-2">
+          <p className="text-xs text-emerald-400">
+            Message will be delivered via Magic Message (utility template outside
+            the 24-hour window).
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-emerald-400 hover:text-emerald-300"
+            onClick={onOpenTemplates}
+          >
+            <LayoutTemplate className="mr-1 h-3 w-3" />
+            Templates
+          </Button>
+        </div>
+      ) : sessionExpired ? (
         <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
           <p className="text-xs text-amber-400">
             24-hour session expired. Use a template to re-engage.
@@ -741,7 +777,7 @@ export function MessageComposer({
             Templates
           </Button>
         </div>
-      )}
+      ) : null}
 
       {/* Hidden file inputs driven by the attach menu. */}
       <input
@@ -896,11 +932,13 @@ export function MessageComposer({
             placeholder={
               readOnly
                 ? "Read-only — viewers can browse but not reply"
-                : sessionExpired
-                  ? "Session expired - use a template"
-                  : "Type a message... (Shift+Enter for new line)"
+                : magicMessageActive
+                  ? "Type your message… (delivered via Magic Message)"
+                  : composeLocked
+                    ? "Session expired - use a template"
+                    : "Type a message... (Shift+Enter for new line)"
             }
-            disabled={sessionExpired || readOnly}
+            disabled={composeLocked || readOnly}
             rows={1}
             // Textarea keeps its own inline title — the GatedButton
             // wrapping pattern doesn't apply to non-button inputs.
@@ -908,7 +946,7 @@ export function MessageComposer({
             title={readOnly ? "Read-only — your role can't send messages" : undefined}
             className={cn(
               "flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
-              (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
+              (composeLocked || readOnly) && "cursor-not-allowed opacity-50"
             )}
           />
 
@@ -916,7 +954,7 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
-            disabled={!text.trim() || sessionExpired || sending}
+            disabled={!text.trim() || composeLocked || sending}
             onClick={handleSend}
             className="h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40"
           >

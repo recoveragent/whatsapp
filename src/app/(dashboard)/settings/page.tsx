@@ -19,6 +19,7 @@ import { LeadCadencesSettings } from '@/components/settings/lead-cadences-settin
 import { TemplateManager } from '@/components/settings/template-manager';
 import { FieldsAndTagsPanel } from '@/components/settings/fields-and-tags-panel';
 import { InboxFollowupSettings } from '@/components/settings/inbox-followup-settings';
+import { InboxMagicMessageSettings } from '@/components/settings/inbox-magic-message-settings';
 import { DealsSettings } from '@/components/settings/deals-settings';
 import { MembersTab } from '@/components/settings/members-tab';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
@@ -71,7 +72,12 @@ export default function SettingsPage() {
     cadences: <LeadCadencesSettings />,
     templates: <TemplateManager />,
     fields: <FieldsAndTagsPanel />,
-    inbox: <InboxFollowupSettings />,
+    inbox: (
+      <>
+        <InboxMagicMessageSettings />
+        <InboxFollowupSettings />
+      </>
+    ),
     deals: <DealsSettings />,
     members: <MembersTab />,
     api: <ApiKeysSettings />,

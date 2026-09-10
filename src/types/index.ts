@@ -280,6 +280,15 @@ export interface InboxFollowupSettings {
   updated_at: string;
 }
 
+export interface InboxMagicMessageSettings {
+  account_id: string;
+  enabled: boolean;
+  template_name: string;
+  template_language: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export type InboxReminderStatus = 'pending' | 'completed';
 
 export interface InboxReminder {
