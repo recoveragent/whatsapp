@@ -338,20 +338,20 @@ export function TriggerPanel({
           />
         )}
         {state.trigger_type === "shopify_checkout_app_abandoned" && (
-          <div className="md:col-span-2 space-y-2">
-            <p className="text-[11px] text-muted-foreground">
-              For third-party Shopify checkouts — GoKwik, Fastrr, Shopflo,
-              Breeze, and similar apps. Paste this webhook URL into your
-              checkout app&apos;s abandoned-cart webhook settings (often under
-              Integrations or Webhooks). Each app sends a different payload
-              shape — send a test webhook, then map phone and checkout fields
-              below.
+          <div className="md:col-span-2 rounded-md border border-border bg-muted/40 px-3 py-2.5">
+            <p className="text-xs font-medium text-foreground">
+              Recover Agent mirror
             </p>
-            <FlowWebhookTriggerPanel
-              flowId={flowId}
-              config={state.trigger_config as unknown as FlowWebhookTriggerConfig}
-              onChange={(c) => setState((s) => ({ ...s, trigger_config: c }))}
-            />
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              Abandoned checkouts from GoKwik and similar apps should post to
+              Recover Agent first. When{" "}
+              <span className="text-foreground">Also forward to WhatsApp API</span>{" "}
+              is enabled, Recover Agent mirrors each accepted checkout to{" "}
+              <code className="text-[10px]">POST /api/v1/events/abandoned-checkout</code>.
+              This flow starts automatically at{" "}
+              <code className="text-[10px]">fire_after</code> — no per-flow
+              webhook URL is required.
+            </p>
           </div>
         )}
         {isShopifyCheckoutAbandonmentFlowTrigger(state.trigger_type) && (
