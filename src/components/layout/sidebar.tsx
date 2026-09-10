@@ -298,6 +298,13 @@ export function Sidebar({
                   active={templatesActive}
                   collapsed={collapsed}
                 />
+                <NavRow
+                  href="/admin/flows"
+                  label="Flows"
+                  icon={Workflow}
+                  active={pathname.startsWith('/admin/flows')}
+                  collapsed={collapsed}
+                />
               </>
             ) : null}
             {!opsOnlyNav &&
