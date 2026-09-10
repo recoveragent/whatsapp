@@ -12,6 +12,10 @@ export interface ShopifyProductSyncResult {
   error_message?: string;
 }
 
+type ShopifyProductUpsertRow = NonNullable<
+  ReturnType<typeof mapShopifyProductRow>
+>;
+
 function productImageUrl(product: ShopifyProductPayload): string | null {
   const src =
     product.image?.src?.trim() ||
@@ -144,7 +148,7 @@ export async function syncShopifyProductsForAccount(
 
   try {
     const syncedProductIds = new Set<number>();
-    const rows: ReturnType<typeof mapShopifyProductRow>[] = [];
+    const rows: ShopifyProductUpsertRow[] = [];
     let currency: string | null = null;
 
     let pageInfo: string | null = null;

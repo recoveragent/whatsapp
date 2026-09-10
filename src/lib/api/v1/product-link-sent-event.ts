@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { badRequest } from '@/lib/api/v1/respond';
+import { resolveOwnerUserId } from '@/lib/api/v1/external-send';
 import { sendShopifyProductCard } from '@/lib/shopify/send-product-card';
 
 export interface ProductLinkSentEvent {
@@ -13,7 +14,7 @@ export interface ProductLinkSentEvent {
 export async function ingestProductLinkSentEvent(args: {
   db: SupabaseClient;
   accountId: string;
-  ownerUserId: string;
+  ownerUserId: string | null;
   body: ProductLinkSentEvent;
 }): Promise<{ product_send_id?: string; checkout_url?: string }> {
   const conversationId = args.body.conversation_id?.trim();
@@ -26,10 +27,16 @@ export async function ingestProductLinkSentEvent(args: {
     throw badRequest('shopify_variant_id is required');
   }
 
+  const ownerUserId = await resolveOwnerUserId(
+    args.db,
+    args.accountId,
+    args.ownerUserId,
+  );
+
   const result = await sendShopifyProductCard({
     db: args.db,
     accountId: args.accountId,
-    userId: args.ownerUserId,
+    userId: ownerUserId,
     conversationId,
     shopifyVariantId: variantId,
     quantity: args.body.quantity,

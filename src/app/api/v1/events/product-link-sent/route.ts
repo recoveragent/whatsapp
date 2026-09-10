@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 
-import { ingestProductLinkSentEvent } from '@/lib/api/v1/product-link-sent-event';
+import {
+  ingestProductLinkSentEvent,
+  type ProductLinkSentEvent,
+} from '@/lib/api/v1/product-link-sent-event';
 import { badRequest, forbidden, toApiErrorResponse } from '@/lib/api/v1/respond';
 import { requireApiKey } from '@/lib/auth/api-context';
 import { hasAnyScope } from '@/lib/api-keys/scopes';
@@ -16,9 +19,9 @@ export async function POST(request: Request) {
       throw forbidden("This API key needs the messages:send scope");
     }
 
-    let body: Record<string, unknown>;
+    let body: ProductLinkSentEvent;
     try {
-      body = (await request.json()) as Record<string, unknown>;
+      body = (await request.json()) as ProductLinkSentEvent;
     } catch {
       throw badRequest('Request body must be valid JSON');
     }
@@ -27,7 +30,7 @@ export async function POST(request: Request) {
       db: ctx.supabase,
       accountId: ctx.accountId,
       ownerUserId: ctx.createdBy,
-      body: body as Parameters<typeof ingestProductLinkSentEvent>[0]['body'],
+      body,
     });
 
     return NextResponse.json({ data: result }, { status: 202 });
