@@ -14,6 +14,7 @@ import {
   validateHeader,
   validateSampleValues,
   validateTemplateName,
+  type TemplatePayload,
 } from './template-validators';
 
 export interface AdminTemplatePresetPayload {
@@ -131,7 +132,7 @@ export async function listMergedAdminTemplatePresets(
 
 export function payloadToTemplatePayload(
   payload: AdminTemplatePresetPayload,
-): Parameters<typeof validateTemplatePayload>[0] {
+): TemplatePayload {
   const sample_values: { body?: string[]; header?: string[] } = {};
   if (payload.body_samples.some((v) => v.trim())) {
     sample_values.body = payload.body_samples.map((v) => v.trim());
