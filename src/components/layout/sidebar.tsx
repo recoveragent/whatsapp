@@ -125,6 +125,7 @@ export function Sidebar({
     isSuperAdmin,
     isSuperAdminActing,
     isLeadGenBrand,
+    isAiAgentsEnabled,
   } = useAuth();
   const opsOnlyNav = isSuperAdmin && !isSuperAdminActing;
   const brandAdminId = pathname.match(/^\/admin\/brands\/([^/]+)\//)?.[1] ?? null;
@@ -166,6 +167,9 @@ export function Sidebar({
 
   const filterWorkspace = (items: NavItem[]) =>
     items.filter((item) => item.href !== "/pipelines" || isLeadGenBrand);
+
+  const filterAutomation = (items: NavItem[]) =>
+    items.filter((item) => item.href !== "/agents" || isAiAgentsEnabled);
 
   return (
     <TooltipProvider delay={0}>
@@ -254,7 +258,7 @@ export function Sidebar({
               <NavSection
                 label="Automation"
                 collapsed={collapsed}
-                items={automationItems}
+                items={filterAutomation(automationItems)}
                 pathname={pathname}
                 totalUnread={totalUnread}
                 openInboxCount={openInboxCount}

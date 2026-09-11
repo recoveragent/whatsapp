@@ -240,3 +240,15 @@ export async function requireLeadGenAccount(
   }
   return ctx;
 }
+
+/** AI Agents UI and /api/ai/* — super admin must enable per brand. */
+export async function requireAiAgentsAccount(
+  min?: AccountRole,
+): Promise<AccountContext> {
+  const ctx = min ? await requireRole(min) : await getCurrentAccount();
+  const account = await fetchAccountWithCategory(ctx.supabase, ctx.accountId);
+  if (!account?.ai_agents_enabled) {
+    throw new ForbiddenError("AI agents are not enabled for this brand");
+  }
+  return ctx;
+}

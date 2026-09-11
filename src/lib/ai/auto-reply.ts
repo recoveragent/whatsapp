@@ -1,3 +1,4 @@
+import { fetchAccountWithCategory } from '@/lib/auth/brand-accounts'
 import { supabaseAdmin } from './admin-client'
 import { loadAiConfig } from './config'
 import { buildConversationContext } from './context'
@@ -54,6 +55,9 @@ export async function dispatchInboundToAiReply(
 
   try {
     const db = supabaseAdmin()
+
+    const account = await fetchAccountWithCategory(db, accountId)
+    if (!account?.ai_agents_enabled) return
 
     const config = await loadAiConfig(db, accountId)
     if (!config || !config.autoReplyEnabled) return

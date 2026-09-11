@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Bot, Sparkles, Settings2, BarChart3 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AiPlayground } from '@/components/agents/ai-playground';
@@ -12,13 +13,21 @@ import { canEditSettings } from '@/lib/auth/roles';
 type Tab = 'playground' | 'setup' | 'usage';
 
 export default function AgentsPage() {
-  const { accountRole } = useAuth();
+  const router = useRouter();
+  const { accountRole, isAiAgentsEnabled, profileLoading } = useAuth();
   const canViewUsage = accountRole ? canEditSettings(accountRole) : false;
   const [tab, setTab] = useState<Tab>('playground');
   const [decided, setDecided] = useState(false);
 
+  useEffect(() => {
+    if (!profileLoading && !isAiAgentsEnabled) {
+      router.replace('/dashboard');
+    }
+  }, [profileLoading, isAiAgentsEnabled, router]);
+
   // Land first-time users on Setup, returning users on the Playground.
   useEffect(() => {
+    if (!isAiAgentsEnabled) return;
     let cancelled = false;
     (async () => {
       try {
@@ -34,7 +43,11 @@ export default function AgentsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isAiAgentsEnabled]);
+
+  if (profileLoading || !isAiAgentsEnabled) {
+    return null;
+  }
 
   return (
     <div>

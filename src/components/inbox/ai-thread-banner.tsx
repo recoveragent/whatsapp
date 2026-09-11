@@ -79,7 +79,7 @@ export function AiThreadBanner({
   onChange,
 }: AiThreadBannerProps) {
   const t = useTranslations("Inbox.aiBanner");
-  const { accountId } = useAuth();
+  const { accountId, isAiAgentsEnabled } = useAuth();
   const [autoReplyOn, setAutoReplyOn] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   // Optimistic local mirror of the pause flag so the banner flips
@@ -89,13 +89,13 @@ export function AiThreadBanner({
   useEffect(() => setPaused(disabled), [conversationId, disabled]);
 
   useEffect(() => {
-    if (!accountId) return;
+    if (!accountId || !isAiAgentsEnabled) return;
     let alive = true;
     fetchAiAccountStatus(accountId).then((s) => alive && setAutoReplyOn(s.autoReplyOn));
     return () => {
       alive = false;
     };
-  }, [accountId]);
+  }, [accountId, isAiAgentsEnabled]);
 
   const toggle = useCallback(
     async (paused: boolean) => {
@@ -134,8 +134,7 @@ export function AiThreadBanner({
     [conversationId, currentUserId, onChange, t],
   );
 
-  // Account has no auto-reply → nothing to show. (Still loading → nothing.)
-  if (!autoReplyOn) return null;
+  if (!isAiAgentsEnabled || !autoReplyOn) return null;
 
   // Paused here (a human took over, or the model handed off).
   if (paused) {

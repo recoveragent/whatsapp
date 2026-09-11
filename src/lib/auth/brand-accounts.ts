@@ -14,7 +14,10 @@ import {
 } from '@/lib/ecommerce/platform';
 
 export const BRAND_LIST_COLUMNS =
-  'id, name, owner_user_id, created_at, brand_category, ecommerce_platform';
+  'id, name, owner_user_id, created_at, brand_category, ecommerce_platform, ai_agents_enabled';
+
+export const AI_AGENTS_MIGRATION_HINT =
+  'Run supabase/migrations/102_ai_agents_enabled.sql in the Supabase SQL editor.';
 
 export interface BrandListRow {
   id: string;
@@ -23,6 +26,7 @@ export interface BrandListRow {
   created_at: string;
   brand_category: BrandCategory;
   ecommerce_platform: EcommercePlatform | null;
+  ai_agents_enabled: boolean;
 }
 
 export function isMissingColumnError(
@@ -78,13 +82,15 @@ export async function listOrganizationBrands(
         : row.brand_category === 'ecommerce'
           ? DEFAULT_ECOMMERCE_PLATFORM
           : null,
+      ai_agents_enabled: row.ai_agents_enabled === true,
     }));
     return { brands, categoryColumnMissing: false };
   }
 
   if (
     !isMissingColumnError(withCategory.error, 'brand_category') &&
-    !isMissingColumnError(withCategory.error, 'ecommerce_platform')
+    !isMissingColumnError(withCategory.error, 'ecommerce_platform') &&
+    !isMissingColumnError(withCategory.error, 'ai_agents_enabled')
   ) {
     throw withCategory.error;
   }
@@ -101,6 +107,7 @@ export async function listOrganizationBrands(
     ...row,
     brand_category: DEFAULT_BRAND_CATEGORY,
     ecommerce_platform: null,
+    ai_agents_enabled: false,
   }));
 
   return { brands, categoryColumnMissing: true };
@@ -112,6 +119,7 @@ export interface AccountWithCategory {
   default_currency: string | null;
   brand_category: BrandCategory;
   ecommerce_platform: EcommercePlatform | null;
+  ai_agents_enabled: boolean;
 }
 
 /** Fetch one account; falls back when optional columns are not migrated yet. */
@@ -121,7 +129,9 @@ export async function fetchAccountWithCategory(
 ): Promise<AccountWithCategory | null> {
   const withCategory = await supabase
     .from('accounts')
-    .select('id, name, default_currency, brand_category, ecommerce_platform')
+    .select(
+      'id, name, default_currency, brand_category, ecommerce_platform, ai_agents_enabled',
+    )
     .eq('id', accountId)
     .maybeSingle();
 
@@ -139,12 +149,14 @@ export async function fetchAccountWithCategory(
         : category === 'ecommerce'
           ? DEFAULT_ECOMMERCE_PLATFORM
           : null,
+      ai_agents_enabled: withCategory.data.ai_agents_enabled === true,
     };
   }
 
   if (
     !isMissingColumnError(withCategory.error, 'brand_category') &&
-    !isMissingColumnError(withCategory.error, 'ecommerce_platform')
+    !isMissingColumnError(withCategory.error, 'ecommerce_platform') &&
+    !isMissingColumnError(withCategory.error, 'ai_agents_enabled')
   ) {
     return null;
   }
@@ -161,6 +173,7 @@ export async function fetchAccountWithCategory(
     ...fallback.data,
     brand_category: DEFAULT_BRAND_CATEGORY,
     ecommerce_platform: null,
+    ai_agents_enabled: false,
   };
 }
 

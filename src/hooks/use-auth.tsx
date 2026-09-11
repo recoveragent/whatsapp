@@ -57,6 +57,8 @@ interface AccountSummary {
   default_currency: string;
   brand_category: BrandCategory;
   ecommerce_platform: EcommercePlatform | null;
+  /** Super-admin gate — AI Agents UI and APIs when true. */
+  ai_agents_enabled: boolean;
 }
 
 /**
@@ -138,6 +140,8 @@ interface AuthContextValue {
   isLeadGenBrand: boolean;
   /** True when store / order features apply. */
   isEcommerceBrand: boolean;
+  /** True when super admin has enabled AI Agents for this brand. */
+  isAiAgentsEnabled: boolean;
   /** True when this brand uses Shopify. */
   isShopifyBrand: boolean;
   /** True when this brand uses WooCommerce. */
@@ -316,6 +320,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 default_currency: acting.default_currency ?? DEFAULT_CURRENCY,
                 brand_category: acting.brand_category,
                 ecommerce_platform: acting.ecommerce_platform,
+                ai_agents_enabled: acting.ai_agents_enabled,
               };
               role = SUPER_ADMIN_ACTING_ROLE;
               resolvedAccountId = acting.id;
@@ -337,6 +342,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               default_currency: account.default_currency ?? DEFAULT_CURRENCY,
               brand_category: account.brand_category,
               ecommerce_platform: account.ecommerce_platform,
+              ai_agents_enabled: account.ai_agents_enabled,
             };
           }
         } else {
@@ -507,6 +513,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ecommercePlatform,
       isLeadGenBrand: isLeadGenBrand(brandCategory),
       isEcommerceBrand: isEcommerceBrand(brandCategory),
+      isAiAgentsEnabled: account?.ai_agents_enabled === true,
       isShopifyBrand: ecommercePlatform === 'shopify',
       isWooCommerceBrand: ecommercePlatform === 'woocommerce',
       isOwner: role === "owner",
@@ -517,7 +524,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canEditSettings: role ? canEditSettingsFor(role) : false,
       canSendMessages: role ? canSendMessagesFor(role) : false,
     };
-  }, [effectiveRole, effectiveAccountId, account?.brand_category, account?.ecommerce_platform]);
+  }, [
+    effectiveRole,
+    effectiveAccountId,
+    account?.brand_category,
+    account?.ecommerce_platform,
+    account?.ai_agents_enabled,
+  ]);
 
   // Signed out is not a broken account — the shell redirects to /login
   // before anything reads this.
@@ -583,6 +596,7 @@ export function useAuth(): AuthContextValue {
       ecommercePlatform: null,
       isLeadGenBrand: true,
       isEcommerceBrand: false,
+      isAiAgentsEnabled: false,
       isShopifyBrand: false,
       isWooCommerceBrand: false,
       // Outside the provider there is nothing to resolve yet — 'loading'

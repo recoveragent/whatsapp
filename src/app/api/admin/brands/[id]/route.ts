@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { isBrandCategory } from '@/lib/auth/brand-category';
 import {
+  AI_AGENTS_MIGRATION_HINT,
   BRAND_CATEGORY_MIGRATION_HINT,
   isMissingColumnError,
 } from '@/lib/auth/brand-accounts';
@@ -34,18 +35,39 @@ export async function PATCH(request: Request, context: RouteContext) {
   try {
     const { supabase, organizationId } = await requireSuperAdmin();
     const { id } = await context.params;
-    const body = (await request.json().catch(() => null)) as { category?: unknown } | null;
+    const body = (await request.json().catch(() => null)) as {
+      category?: unknown;
+      ai_agents_enabled?: unknown;
+    } | null;
 
-    if (!isBrandCategory(body?.category)) {
-      return NextResponse.json({ error: 'Invalid brand category' }, { status: 400 });
+    const updates: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (body?.category !== undefined) {
+      if (!isBrandCategory(body.category)) {
+        return NextResponse.json({ error: 'Invalid brand category' }, { status: 400 });
+      }
+      updates.brand_category = body.category;
+    }
+
+    if (body?.ai_agents_enabled !== undefined) {
+      if (typeof body.ai_agents_enabled !== 'boolean') {
+        return NextResponse.json({ error: 'Invalid AI agents flag' }, { status: 400 });
+      }
+      updates.ai_agents_enabled = body.ai_agents_enabled;
+    }
+
+    if (Object.keys(updates).length === 1) {
+      return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
     const { data, error } = await supabase
       .from('accounts')
-      .update({ brand_category: body.category, updated_at: new Date().toISOString() })
+      .update(updates)
       .eq('id', id)
       .eq('organization_id', organizationId)
-      .select('id, name, brand_category')
+      .select('id, name, brand_category, ai_agents_enabled')
       .maybeSingle();
 
     if (error) {
@@ -53,6 +75,12 @@ export async function PATCH(request: Request, context: RouteContext) {
       if (isMissingColumnError(error, 'brand_category')) {
         return NextResponse.json(
           { error: `Brand category is not available yet. ${BRAND_CATEGORY_MIGRATION_HINT}` },
+          { status: 503 },
+        );
+      }
+      if (isMissingColumnError(error, 'ai_agents_enabled')) {
+        return NextResponse.json(
+          { error: `AI agents toggle is not available yet. ${AI_AGENTS_MIGRATION_HINT}` },
           { status: 503 },
         );
       }

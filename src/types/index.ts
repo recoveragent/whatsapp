@@ -66,6 +66,8 @@ export interface Account {
    * own Meta portfolio (Embedded Signup cannot select that portfolio).
    */
   whatsapp_connect_mode?: 'embedded_signup' | 'system_user_token';
+  /** Super-admin gate for AI Agents UI and APIs. Defaults to false. */
+  ai_agents_enabled?: boolean;
   created_at: string;
   updated_at: string;
 }

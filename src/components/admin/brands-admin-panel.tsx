@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import {
+  Bot,
   Building2,
   IndianRupee,
   Loader2,
@@ -20,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/hooks/use-auth';
 import {
   BRAND_CATEGORY_LABELS,
@@ -37,6 +39,7 @@ interface BrandRow {
   created_at: string;
   brand_category: BrandCategory;
   ecommerce_platform?: EcommercePlatform | null;
+  ai_agents_enabled?: boolean;
   admin_email: string | null;
   invite_pending: boolean;
   invite_expired?: boolean;
@@ -60,6 +63,7 @@ export function BrandsAdminPanel() {
   const [completingInviteId, setCompletingInviteId] = useState<string | null>(null);
   const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
   const [updatingCategoryId, setUpdatingCategoryId] = useState<string | null>(null);
+  const [updatingAiAgentsId, setUpdatingAiAgentsId] = useState<string | null>(null);
   const [categoryMigrationNeeded, setCategoryMigrationNeeded] = useState(false);
   const didClearContext = useRef(false);
 
@@ -238,6 +242,29 @@ export function BrandsAdminPanel() {
       toast.error(err instanceof Error ? err.message : 'Could not resend invitation');
     } finally {
       setResendingInviteId(null);
+    }
+  };
+
+  const handleAiAgentsToggle = async (brandId: string, enabled: boolean) => {
+    setUpdatingAiAgentsId(brandId);
+    try {
+      const res = await fetch(`/api/admin/brands/${brandId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ai_agents_enabled: enabled }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'Failed to update AI agents');
+      setBrands((prev) =>
+        prev.map((b) =>
+          b.id === brandId ? { ...b, ai_agents_enabled: enabled } : b,
+        ),
+      );
+      toast.success(enabled ? 'AI Agents enabled' : 'AI Agents disabled');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setUpdatingAiAgentsId(null);
     }
   };
 
@@ -423,6 +450,17 @@ export function BrandsAdminPanel() {
                         <option value="lead_gen">{BRAND_CATEGORY_LABELS.lead_gen}</option>
                         <option value="ecommerce">{BRAND_CATEGORY_LABELS.ecommerce}</option>
                       </select>
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Bot className="size-3.5 shrink-0" aria-hidden />
+                        <span>AI Agents</span>
+                        <Switch
+                          checked={b.ai_agents_enabled === true}
+                          disabled={updatingAiAgentsId === b.id}
+                          onCheckedChange={(checked) =>
+                            void handleAiAgentsToggle(b.id, checked)
+                          }
+                        />
+                      </label>
                     </div>
                     {b.admin_email ? (
                       <p className="text-sm text-muted-foreground">{b.admin_email}</p>
