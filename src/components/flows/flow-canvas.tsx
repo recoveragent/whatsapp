@@ -396,6 +396,16 @@ function TriggerNodeCard({ data, selected }: NodeProps) {
 
 const NODE_TYPES = { flow: FlowNodeCard, trigger: TriggerNodeCard };
 
+/** MiniMap runs this for every RF node — trigger tiles use TriggerNodeData. */
+function minimapNodeColor(n: RfNode): string {
+  if (n.id === TRIGGER_NODE_ID || n.type === "trigger") {
+    return "oklch(0.62 0.16 254)";
+  }
+  const node = (n.data as NodeData | undefined)?.node;
+  if (!node) return "var(--border)";
+  return nodeColorsFor(node.node_type).solid;
+}
+
 // ============================================================
 // Root canvas
 // ============================================================
@@ -909,9 +919,7 @@ function FlowCanvasInner() {
           <MiniMap
             pannable
             zoomable
-            nodeColor={(n) =>
-              nodeColorsFor((n.data as NodeData).node.node_type).solid
-            }
+            nodeColor={minimapNodeColor}
             nodeStrokeWidth={0}
             nodeBorderRadius={3}
             maskColor="color-mix(in oklch, var(--background) 70%, transparent)"
