@@ -6,6 +6,14 @@ import { retrieveKnowledge } from '@/lib/ai/knowledge'
 import { generateReply } from '@/lib/ai/generate'
 import { buildSystemPrompt } from '@/lib/ai/defaults'
 import { latestUserMessage } from '@/lib/ai/query'
+import { retrieveShopifyContext } from '@/lib/ai/shopify-context'
+import { buildPlaygroundProductCarousel } from '@/lib/ai/playground-carousel'
+import {
+  buildProductSearchQuery,
+  formatProductRecommendationsForAi,
+  resolveRecommendedProducts,
+  shouldOfferProductCarousel,
+} from '@/lib/ai/product-recommendations'
 import { AiError, type ChatMessage } from '@/lib/ai/types'
 
 // Keep the tested transcript bounded, mirroring the live context window.
@@ -53,15 +61,21 @@ export async function POST(request: Request) {
       )
     }
 
-    const config = await loadAiConfig(supabase, accountId, {
-      requireActive: false,
-    }).catch((err) => {
+    let config: Awaited<ReturnType<typeof loadAiConfig>>
+    try {
+      config = await loadAiConfig(supabase, accountId, { requireActive: false })
+    } catch (err) {
       console.error('[ai/playground] loadAiConfig error:', err)
-      throw new AiError('Stored API key could not be decrypted.', {
+      const message =
+        err instanceof Error &&
+        /relation .* does not exist|Could not find the table/i.test(err.message)
+          ? 'AI tables are missing — run pending Supabase migrations (090+), then retry.'
+          : 'Stored API key could not be decrypted — re-enter your key in Setup.'
+      throw new AiError(message, {
         code: 'key_decrypt_failed',
         status: 400,
       })
-    })
+    }
     if (!config) {
       return NextResponse.json(
         {
@@ -72,20 +86,63 @@ export async function POST(request: Request) {
       )
     }
 
-    const knowledge = await retrieveKnowledge(
-      supabase,
-      accountId,
-      config,
-      latestUserMessage(messages),
-    )
+    const contactId =
+      body && typeof body.contact_id === 'string' ? body.contact_id.trim() : ''
+
+    const latestQuestion = latestUserMessage(messages)
+    const wantsProductCarousel = shouldOfferProductCarousel(messages)
+    const productSearchQuery = buildProductSearchQuery(messages)
+
+    const [knowledge, shopifyContext, shopifyConfig] = await Promise.all([
+      retrieveKnowledge(supabase, accountId, config, latestQuestion),
+      contactId
+        ? retrieveShopifyContext(supabase, accountId, contactId)
+        : Promise.resolve(null),
+      wantsProductCarousel
+        ? supabase
+            .from('shopify_config')
+            .select('status, sell_on_whatsapp_enabled')
+            .eq('account_id', accountId)
+            .maybeSingle()
+            .then(({ data }) => data)
+        : Promise.resolve(null),
+    ])
+
+    const recommendedProducts = wantsProductCarousel
+      ? await resolveRecommendedProducts(
+          supabase,
+          accountId,
+          productSearchQuery,
+          knowledge,
+        ).catch(() => [])
+      : []
+
+    const hasCarouselProducts = recommendedProducts.length >= 2
+    const productRecommendations = hasCarouselProducts
+      ? formatProductRecommendationsForAi(recommendedProducts)
+      : null
+
     const systemPrompt = buildSystemPrompt({
       userPrompt: config.systemPrompt,
       mode: 'auto_reply',
       knowledge,
+      shopifyContext,
+      productRecommendations,
+      productBrowseNoMatches: wantsProductCarousel && !hasCarouselProducts,
     })
 
     const { text, handoff } = await generateReply({ config, systemPrompt, messages })
-    return NextResponse.json({ reply: text, handoff })
+
+    const carouselLiveReady =
+      shopifyConfig?.status === 'connected' &&
+      Boolean(shopifyConfig.sell_on_whatsapp_enabled)
+
+    const productCarousel =
+      !handoff && recommendedProducts.length >= 2
+        ? buildPlaygroundProductCarousel(recommendedProducts, carouselLiveReady)
+        : null
+
+    return NextResponse.json({ reply: text, handoff, product_carousel: productCarousel })
   } catch (err) {
     if (err instanceof AiError) {
       return NextResponse.json(

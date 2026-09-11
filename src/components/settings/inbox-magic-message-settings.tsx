@@ -15,7 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import type { InboxMagicMessageSettings, MessageTemplateStatus } from '@/types';
+import type { InboxMagicMessageSettings } from '@/types';
 import type { MagicMessageSettingsResponse } from '@/lib/inbox/magic-message-settings';
 
 export function InboxMagicMessageSettings() {
@@ -26,7 +26,7 @@ export function InboxMagicMessageSettings() {
   const [templateName, setTemplateName] = useState('magic_message');
   const [templateLanguage, setTemplateLanguage] = useState('en_US');
   const [templateReady, setTemplateReady] = useState(false);
-  const [templateStatus, setTemplateStatus] = useState<MessageTemplateStatus | null>(
+  const [templateNotReadyReason, setTemplateNotReadyReason] = useState<string | null>(
     null,
   );
   const [initial, setInitial] = useState<InboxMagicMessageSettings | null>(null);
@@ -46,7 +46,7 @@ export function InboxMagicMessageSettings() {
         setTemplateName(data.template_name);
         setTemplateLanguage(data.template_language);
         setTemplateReady(data.template_ready);
-        setTemplateStatus(data.template_status);
+        setTemplateNotReadyReason(data.template_not_ready_reason);
         setInitial(data);
       } catch {
         if (!cancelled) toast.error('Failed to load Magic Message settings');
@@ -93,7 +93,7 @@ export function InboxMagicMessageSettings() {
       setTemplateName(data.template_name);
       setTemplateLanguage(data.template_language);
       setTemplateReady(data.template_ready);
-      setTemplateStatus(data.template_status);
+      setTemplateNotReadyReason(data.template_not_ready_reason);
       toast.success('Magic Message settings saved');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save');
@@ -171,7 +171,8 @@ export function InboxMagicMessageSettings() {
               >
                 {templateReady
                   ? 'Utility image-header template is approved and ready.'
-                  : `Template not ready${templateStatus ? ` (${templateStatus})` : ''}. Push the magic_message preset from Admin → Templates, add a sample header image, and wait for Meta approval.`}
+                  : (templateNotReadyReason ??
+                    'Template not ready — create an approved Utility template named magic_message with an image header in Settings → Templates.')}
               </div>
 
               {canEditSettings && (

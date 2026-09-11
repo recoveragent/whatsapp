@@ -56,6 +56,16 @@ export function resolveWebhookTimeZone(
   return undefined
 }
 
+/** Some ICU builds render noon as "0:00 pm" instead of "12:00 pm". */
+function normalizeWebhookTimeDisplay(formatted: string): string {
+  return formatted
+    .replace(/, 0:(\d{2}) pm\b/i, ', 12:$1 pm')
+    .replace(/, 0:(\d{2}) am\b/i, ', 12:$1 am')
+}
+
+const DISPLAY_DATETIME_RE =
+  /^\d{1,2} [A-Za-z]{3,} \d{4}, \d{1,2}:\d{2} (am|pm)$/i
+
 /**
  * Turn ISO datetimes into a WhatsApp-friendly string, e.g.
  * `2026-08-14T04:30:00Z` + Asia/Calcutta → `14 Aug 2026, 10:00 am`.
@@ -66,7 +76,12 @@ export function formatWebhookScalar(
 ): unknown {
   if (typeof value !== 'string') return value
   const trimmed = value.trim()
-  if (!ISO_DATETIME_RE.test(trimmed)) return value
+  if (!ISO_DATETIME_RE.test(trimmed)) {
+    if (DISPLAY_DATETIME_RE.test(trimmed)) {
+      return normalizeWebhookTimeDisplay(trimmed)
+    }
+    return value
+  }
   const date = new Date(trimmed)
   if (Number.isNaN(date.getTime())) return value
 
@@ -74,17 +89,21 @@ export function formatWebhookScalar(
     day: 'numeric',
     month: 'short',
     year: 'numeric',
-    hour: 'numeric',
+    hour: '2-digit',
     minute: '2-digit',
     hour12: true,
   }
   try {
-    return new Intl.DateTimeFormat('en-GB', {
-      ...formatOpts,
-      ...(opts?.timeZone ? { timeZone: opts.timeZone } : {}),
-    }).format(date)
+    return normalizeWebhookTimeDisplay(
+      new Intl.DateTimeFormat('en-GB', {
+        ...formatOpts,
+        ...(opts?.timeZone ? { timeZone: opts.timeZone } : {}),
+      }).format(date),
+    )
   } catch {
-    return new Intl.DateTimeFormat('en-GB', formatOpts).format(date)
+    return normalizeWebhookTimeDisplay(
+      new Intl.DateTimeFormat('en-GB', formatOpts).format(date),
+    )
   }
 }
 

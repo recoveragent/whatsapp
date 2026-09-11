@@ -191,6 +191,8 @@ export interface ShopifyProductVariantPayload {
   inventory_quantity?: number | null;
   inventory_management?: string | null;
   available?: boolean;
+  /** Links to an entry in `product.images` when the variant has its own photo. */
+  image_id?: number | null;
 }
 
 export interface ShopifyProductPayload {
@@ -199,7 +201,7 @@ export interface ShopifyProductPayload {
   handle?: string;
   status?: 'active' | 'archived' | 'draft' | string;
   image?: { src?: string } | null;
-  images?: Array<{ src?: string }>;
+  images?: Array<{ id?: number; src?: string }>;
   variants?: ShopifyProductVariantPayload[];
 }
 

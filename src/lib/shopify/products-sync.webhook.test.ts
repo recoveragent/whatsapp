@@ -41,6 +41,40 @@ describe('mapShopifyProductRows', () => {
     expect(rows.map((row) => row.shopify_variant_id)).toEqual([1001, 1002]);
     expect(rows[1]?.variant_title).toBe('Design 2 / A4 size (8x12 Inch)');
   });
+
+  it('uses each variant assigned image when available', () => {
+    const rows = mapShopifyProductRows({
+      accountId: 'acct-1',
+      product: {
+        id: 100,
+        title: 'Baby Birth Frame',
+        status: 'active',
+        image: { src: 'https://cdn.shopify.com/default.jpg' },
+        images: [
+          { id: 10, src: 'https://cdn.shopify.com/design-1.jpg' },
+          { id: 20, src: 'https://cdn.shopify.com/design-2.jpg' },
+        ],
+        variants: [
+          {
+            id: 1001,
+            title: 'Design 1 / A4',
+            price: '799.00',
+            image_id: 10,
+          },
+          {
+            id: 1002,
+            title: 'Design 2 / A4',
+            price: '799.00',
+            image_id: 20,
+          },
+        ],
+      },
+      currency: 'INR',
+    });
+
+    expect(rows[0]?.image_url).toBe('https://cdn.shopify.com/design-1.jpg');
+    expect(rows[1]?.image_url).toBe('https://cdn.shopify.com/design-2.jpg');
+  });
 });
 
 describe('mapShopifyProductRow', () => {

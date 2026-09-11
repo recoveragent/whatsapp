@@ -13,7 +13,44 @@ export const DEFAULT_MAGIC_MESSAGE_TEMPLATE_LANGUAGE = 'en_US';
 export type MagicMessageSettingsResponse = InboxMagicMessageSettings & {
   template_ready: boolean;
   template_status: MessageTemplateStatus | null;
+  template_not_ready_reason: string | null;
 };
+
+function describeMagicTemplateReadiness(templateRow: {
+  status?: MessageTemplateStatus;
+  category?: string;
+  header_type?: string;
+} | null): { ready: boolean; reason: string | null } {
+  if (!templateRow) {
+    return {
+      ready: false,
+      reason: 'Template not found — create magic_message in Settings → Templates.',
+    };
+  }
+
+  if (templateRow.status !== 'APPROVED') {
+    return {
+      ready: false,
+      reason: `Template status is ${templateRow.status ?? 'unknown'} — wait for Meta approval.`,
+    };
+  }
+
+  if (templateRow.category !== 'Utility') {
+    return {
+      ready: false,
+      reason: `Template category is ${templateRow.category ?? 'unknown'} — Magic Message requires Utility (yours may have been reclassified by Meta).`,
+    };
+  }
+
+  if (templateRow.header_type !== 'image') {
+    return {
+      ready: false,
+      reason: `Template header is ${templateRow.header_type ?? 'none'} — Magic Message requires an image header.`,
+    };
+  }
+
+  return { ready: true, reason: null };
+}
 
 export async function getMagicMessageSettings(
   supabase: SupabaseClient,
@@ -44,15 +81,13 @@ export async function getMagicMessageSettings(
     .eq('language', settings.template_language)
     .maybeSingle();
 
-  const templateReady =
-    templateRow?.category === 'Utility' &&
-    templateRow?.header_type === 'image' &&
-    templateRow?.status === 'APPROVED';
+  const readiness = describeMagicTemplateReadiness(templateRow);
 
   return {
     ...settings,
-    template_ready: Boolean(templateReady),
+    template_ready: readiness.ready,
     template_status: templateRow?.status ?? null,
+    template_not_ready_reason: readiness.reason,
   };
 }
 

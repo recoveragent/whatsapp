@@ -68,6 +68,23 @@ describe('formatWebhookScalar', () => {
   it('leaves non-datetime strings unchanged', () => {
     expect(formatWebhookScalar('Recover Agent')).toBe('Recover Agent')
   })
+
+  it('formats noon IST without showing 0:00 pm', () => {
+    expect(
+      formatWebhookScalar('2026-09-11T06:30:00.000Z', {
+        timeZone: 'Asia/Calcutta',
+      }),
+    ).toBe('11 Sept 2026, 12:00 pm')
+  })
+
+  it('normalizes Cal.com-style preformatted noon strings', () => {
+    expect(formatWebhookScalar('11 Sept 2026, 0:00 pm')).toBe(
+      '11 Sept 2026, 12:00 pm',
+    )
+    expect(formatWebhookScalar('11 Sept 2026, 0:30 pm')).toBe(
+      '11 Sept 2026, 12:30 pm',
+    )
+  })
 })
 
 describe('buildVarsFromPayload', () => {

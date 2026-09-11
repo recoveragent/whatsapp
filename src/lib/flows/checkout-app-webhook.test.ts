@@ -32,6 +32,19 @@ describe('enrichCheckoutAppWebhookVars', () => {
     expect(vars.product_image).toBe('https://cdn.shopify.com/boxer.jpg')
   })
 
+  it('reads customer lastname and landing page from GoKwik raw', () => {
+    const vars = enrichCheckoutAppWebhookVars(
+      {
+        customer: { lastname: 'Singh', firstname: 'Gurpreet' },
+        landing_page: '/products/mens-cotton-boxer',
+      },
+      {},
+    )
+    expect(vars.customer_lastname).toBe('Singh')
+    expect(vars.lastname).toBe('Singh')
+    expect(vars.landing_page).toBe('/products/mens-cotton-boxer')
+  })
+
   it('does not overwrite mapped vars', () => {
     const vars = enrichCheckoutAppWebhookVars(
       { checkout_url: 'https://ignored.example' },

@@ -218,5 +218,26 @@ export function enrichCheckoutAppWebhookVars(
     if (phone) next.phone = phone
   }
 
+  if (!next.customer_lastname && !next.lastname) {
+    const lastname = firstStringAtPaths(payload, [
+      'customer.lastname',
+      'data.customer.lastname',
+      'address.lastname',
+      'data.address.lastname',
+    ])
+    if (lastname) {
+      next.customer_lastname = lastname
+      next.lastname = lastname
+    }
+  }
+
+  if (!next.landing_page) {
+    const landingPage = firstStringAtPaths(payload, [
+      'landing_page',
+      'data.landing_page',
+    ])
+    if (landingPage) next.landing_page = landingPage
+  }
+
   return next
 }

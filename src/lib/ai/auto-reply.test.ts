@@ -6,6 +6,9 @@ const h = vi.hoisted(() => ({
   loadAiConfig: vi.fn(),
   buildConversationContext: vi.fn(),
   retrieveKnowledge: vi.fn(),
+  retrieveShopifyContext: vi.fn(),
+  searchRecommendedProducts: vi.fn(),
+  sendShopifyProductCarousel: vi.fn(),
   generateReply: vi.fn(),
   engineSendText: vi.fn(),
   state: {
@@ -20,6 +23,17 @@ const h = vi.hoisted(() => ({
 vi.mock('./config', () => ({ loadAiConfig: h.loadAiConfig }))
 vi.mock('./context', () => ({ buildConversationContext: h.buildConversationContext }))
 vi.mock('./knowledge', () => ({ retrieveKnowledge: h.retrieveKnowledge }))
+vi.mock('./shopify-context', () => ({ retrieveShopifyContext: h.retrieveShopifyContext }))
+vi.mock('./product-recommendations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./product-recommendations')>()
+  return {
+    ...actual,
+    searchRecommendedProducts: h.searchRecommendedProducts,
+  }
+})
+vi.mock('@/lib/shopify/send-product-carousel', () => ({
+  sendShopifyProductCarousel: h.sendShopifyProductCarousel,
+}))
 vi.mock('./generate', () => ({ generateReply: h.generateReply }))
 vi.mock('@/lib/flows/meta-send', () => ({ engineSendText: h.engineSendText }))
 vi.mock('./admin-client', () => ({
@@ -94,6 +108,13 @@ beforeEach(() => {
   h.loadAiConfig.mockResolvedValue(aiConfig())
   h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'hi' }])
   h.retrieveKnowledge.mockResolvedValue([])
+  h.retrieveShopifyContext.mockResolvedValue(null)
+  h.searchRecommendedProducts.mockResolvedValue([])
+  h.sendShopifyProductCarousel.mockResolvedValue({
+    message_id: 'msg-carousel',
+    whatsapp_message_id: 'wamid.carousel',
+    product_count: 2,
+  })
   h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false })
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' })
 })
@@ -118,6 +139,43 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(h.retrieveKnowledge).toHaveBeenCalled()
     const systemPrompt = h.generateReply.mock.calls[0][0].systemPrompt as string
     expect(systemPrompt).toContain('Returns accepted within 30 days.')
+  })
+
+  it('sends a product carousel when catalog matches are found', async () => {
+    h.buildConversationContext.mockResolvedValue([
+      { role: 'user', content: 'show me your best sellers' },
+    ])
+    h.searchRecommendedProducts.mockResolvedValue([
+      { shopify_variant_id: 101, title: 'Shirt' },
+      { shopify_variant_id: 102, title: 'Hoodie' },
+    ])
+    h.generateReply.mockResolvedValue({
+      text: 'Here are a few picks you might like!',
+      handoff: false,
+    })
+
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.sendShopifyProductCarousel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bodyText: 'Here are a few picks you might like!',
+        shopifyVariantIds: [101, 102],
+        aiGenerated: true,
+      }),
+    )
+    expect(h.engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('grounds the reply in synced Shopify orders', async () => {
+    h.retrieveShopifyContext.mockResolvedValue('Order #1042\n- Items: Blue T-Shirt')
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.retrieveShopifyContext).toHaveBeenCalledWith(
+      expect.anything(),
+      'acct-1',
+      'contact-1',
+    )
+    const systemPrompt = h.generateReply.mock.calls[0][0].systemPrompt as string
+    expect(systemPrompt).toContain('Order #1042')
   })
 
   it('stands down when an active message-level automation exists', async () => {

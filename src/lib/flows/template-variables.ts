@@ -48,6 +48,12 @@ const WOOCOMMERCE_OPTIONS: TemplateVariableOption[] = [
 
 const SHOPIFY_OPTIONS: TemplateVariableOption[] = [
   { label: 'Customer name', token: '{{ vars.customer_name }}', type: 'text' },
+  {
+    label: 'Customer last name',
+    token: '{{ vars.customer_lastname }}',
+    type: 'text',
+  },
+  { label: 'Landing page', token: '{{ vars.landing_page }}', type: 'text' },
   { label: 'Order number', token: '{{ vars.order_number }}', type: 'text' },
   { label: 'Order total', token: '{{ vars.order_total }}', type: 'text' },
   { label: 'Order items', token: '{{ vars.order_items }}', type: 'text' },

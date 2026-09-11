@@ -2,6 +2,14 @@ import { supabaseAdmin } from './admin-client'
 import { loadAiConfig } from './config'
 import { buildConversationContext } from './context'
 import { retrieveKnowledge } from './knowledge'
+import { retrieveShopifyContext } from './shopify-context'
+import {
+  buildProductSearchQuery,
+  formatProductRecommendationsForAi,
+  resolveRecommendedProducts,
+  shouldOfferProductCarousel,
+} from './product-recommendations'
+import { sendShopifyProductCarousel } from '@/lib/shopify/send-product-carousel'
 import { generateReply } from './generate'
 import { buildSystemPrompt } from './defaults'
 import { buildHandoffSummary } from './handoff'
@@ -98,18 +106,36 @@ export async function dispatchInboundToAiReply(
       return
     }
 
-    // Ground the reply in the account's knowledge base (best-effort).
-    const knowledge = await retrieveKnowledge(
-      db,
-      accountId,
-      config,
-      latestUserMessage(messages),
-    )
+    const latestQuestion = latestUserMessage(messages)
+    const wantsProductCarousel = shouldOfferProductCarousel(messages)
+    const productSearchQuery = buildProductSearchQuery(messages)
+
+    const [knowledge, shopifyContext] = await Promise.all([
+      retrieveKnowledge(db, accountId, config, latestQuestion),
+      retrieveShopifyContext(db, accountId, contactId),
+    ])
+
+    const recommendedProducts = wantsProductCarousel
+      ? await resolveRecommendedProducts(
+          db,
+          accountId,
+          productSearchQuery,
+          knowledge,
+        ).catch(() => [])
+      : []
+
+    const hasCarouselProducts = recommendedProducts.length >= 2
+    const productRecommendations = hasCarouselProducts
+      ? formatProductRecommendationsForAi(recommendedProducts)
+      : null
 
     const systemPrompt = buildSystemPrompt({
       userPrompt: config.systemPrompt,
       mode: 'auto_reply',
       knowledge,
+      shopifyContext,
+      productRecommendations,
+      productBrowseNoMatches: wantsProductCarousel && !hasCarouselProducts,
     })
 
     const { text, handoff, usage } = await generateReply({
@@ -178,6 +204,30 @@ export async function dispatchInboundToAiReply(
       return
     }
     if (claimed !== true) return // lost the per-conversation cap race
+
+    if (recommendedProducts.length >= 2) {
+      try {
+        await sendShopifyProductCarousel({
+          db,
+          accountId,
+          userId: configOwnerUserId,
+          conversationId,
+          contactId,
+          bodyText: text,
+          shopifyVariantIds: recommendedProducts.map(
+            (product) => product.shopify_variant_id,
+          ),
+          skipAssigneeCheck: true,
+          aiGenerated: true,
+        })
+        return
+      } catch (carouselErr) {
+        console.warn(
+          '[ai auto-reply] product carousel failed, falling back to text:',
+          carouselErr,
+        )
+      }
+    }
 
     await engineSendText({
       accountId,

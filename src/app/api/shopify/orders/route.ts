@@ -3,10 +3,8 @@ import { NextResponse } from 'next/server';
 import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { fetchOrdersByEmail, fetchOrdersByPhone } from '@/lib/shopify/admin-api';
-import {
-  filterCachedOrdersForContact,
-  filterLiveOrdersForContact,
-} from '@/lib/shopify/match-order-contact';
+import { loadCachedOrdersForContact } from '@/lib/shopify/contact-orders';
+import { filterLiveOrdersForContact } from '@/lib/shopify/match-order-contact';
 import { syncShopifyOrder } from '@/lib/shopify/sync-order';
 import { hasShopifyOrdersTable } from '@/lib/inbox/tables';
 import {
@@ -27,7 +25,6 @@ import {
   ordersNeedTrackingRefresh,
 } from '@/lib/shopify/fulfillment-shipment-status';
 import { decrypt } from '@/lib/whatsapp/encryption';
-import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils';
 import type { ShopifyOrder } from '@/types';
 import type { ShopifyOrderPayload } from '@/lib/shopify/types';
 
@@ -109,77 +106,6 @@ async function loadShopDomain(accountId: string): Promise<string | null> {
 
   if (!data || data.status !== 'connected') return null;
   return data.shop_domain as string;
-}
-
-function matchOrdersByPhone(orders: ShopifyOrder[], phone: string): ShopifyOrder[] {
-  return orders.filter(
-    (o) => Boolean(o.customer_phone && phonesMatch(o.customer_phone, phone)),
-  );
-}
-
-async function linkVerifiedOrders(
-  db: ReturnType<typeof supabaseAdmin>,
-  accountId: string,
-  contactId: string,
-  orders: ShopifyOrder[],
-): Promise<void> {
-  const ids = orders
-    .filter((o) => o.contact_id !== contactId)
-    .map((o) => o.id);
-  if (ids.length === 0) return;
-
-  await db
-    .from('shopify_orders')
-    .update({ contact_id: contactId, updated_at: new Date().toISOString() })
-    .eq('account_id', accountId)
-    .in('id', ids);
-}
-
-async function loadCachedOrders(
-  accountId: string,
-  contactId: string,
-  phone: string | null,
-): Promise<ShopifyOrder[]> {
-  const db = supabaseAdmin();
-  const normalizedPhone = phone ? normalizePhone(phone) : null;
-
-  // Phone-first: map Shopify orders to this inbox contact by number.
-  if (normalizedPhone) {
-    const suffix = normalizedPhone.length >= 10
-      ? normalizedPhone.slice(-10)
-      : normalizedPhone.length >= 8
-        ? normalizedPhone.slice(-8)
-        : normalizedPhone;
-
-    const { data: candidates, error: candidateErr } = await db
-      .from('shopify_orders')
-      .select('*')
-      .eq('account_id', accountId)
-      .not('customer_phone', 'is', null)
-      .like('customer_phone', `%${suffix}`)
-      .order('ordered_at', { ascending: false })
-      .limit(100);
-
-    if (candidateErr) throw candidateErr;
-
-    const matched = matchOrdersByPhone((candidates ?? []) as ShopifyOrder[], normalizedPhone);
-    if (matched.length > 0) {
-      await linkVerifiedOrders(db, accountId, contactId, matched);
-      return matched;
-    }
-  }
-
-  const { data: linked, error: linkedErr } = await db
-    .from('shopify_orders')
-    .select('*')
-    .eq('account_id', accountId)
-    .eq('contact_id', contactId)
-    .order('ordered_at', { ascending: false })
-    .limit(50);
-
-  if (linkedErr) throw linkedErr;
-
-  return filterCachedOrdersForContact((linked ?? []) as ShopifyOrder[], phone, contactId);
 }
 
 async function loadShopifyCredentials(accountId: string): Promise<{
@@ -298,7 +224,8 @@ export async function GET(req: Request) {
     ]);
 
     if (hasTable) {
-      let orders = await loadCachedOrders(
+      let orders = await loadCachedOrdersForContact(
+        supabaseAdmin(),
         ctx.accountId,
         contactId,
         contact.phone,
@@ -319,7 +246,8 @@ export async function GET(req: Request) {
             phone: contact.phone,
             email: contact.email ?? null,
           });
-          orders = await loadCachedOrders(
+          orders = await loadCachedOrdersForContact(
+            supabaseAdmin(),
             ctx.accountId,
             contactId,
             contact.phone,

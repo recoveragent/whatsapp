@@ -7,10 +7,8 @@ import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useInboxNavCounts } from "@/hooks/use-total-unread";
-import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import { BRAND_ICON_PATH, BRAND_NAME } from "@/components/brand/brand-logo";
 import {
-  Bell,
   Bot,
   Building2,
   ChevronsLeft,
@@ -21,7 +19,6 @@ import {
   LayoutDashboard,
   LogOut,
   MessageSquare,
-  PhoneCall,
   Radio,
   Settings,
   Shield,
@@ -31,7 +28,6 @@ import {
   UsersRound,
   Workflow,
   X,
-  Zap,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { AccountRole } from "@/lib/auth/roles";
@@ -90,16 +86,13 @@ const homeItems: NavItem[] = [
 
 const workspaceItems: NavItem[] = [
   { href: "/inbox", labelKey: "inbox", icon: MessageSquare },
-  { href: "/notifications", labelKey: "notifications", icon: Bell },
-  { href: "/leads", label: "Leads", icon: PhoneCall },
   { href: "/contacts", labelKey: "contacts", icon: Users },
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
 ];
 
 const automationItems: NavItem[] = [
   { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
-  { href: "/automations", labelKey: "automations", icon: Zap },
-  { href: "/flows", labelKey: "flows", icon: Workflow, beta: true },
+  { href: "/flows", labelKey: "flows", icon: Workflow },
   { href: "/agents", labelKey: "aiAgents", icon: Bot },
 ];
 
@@ -146,7 +139,6 @@ export function Sidebar({
       ? pathname === "/settings" && searchParams.get("tab") === "templates"
       : pathname.startsWith("/admin/templates");
   const { unread: totalUnread, open: openInboxCount } = useInboxNavCounts();
-  const unreadNotifications = useUnreadNotifications();
   const showAccountStrip =
     !opsOnlyNav &&
     !profileLoading &&
@@ -173,10 +165,7 @@ export function Sidebar({
   }, [open, onClose]);
 
   const filterWorkspace = (items: NavItem[]) =>
-    items.filter(
-      (item) =>
-        (item.href !== "/pipelines" && item.href !== "/leads") || isLeadGenBrand,
-    );
+    items.filter((item) => item.href !== "/pipelines" || isLeadGenBrand);
 
   return (
     <TooltipProvider delay={0}>
@@ -251,7 +240,6 @@ export function Sidebar({
                 pathname={pathname}
                 totalUnread={totalUnread}
                 openInboxCount={openInboxCount}
-                unreadNotifications={unreadNotifications}
                 t={t}
               />
               <NavSection
@@ -261,7 +249,6 @@ export function Sidebar({
                 pathname={pathname}
                 totalUnread={totalUnread}
                 openInboxCount={openInboxCount}
-                unreadNotifications={unreadNotifications}
                 t={t}
               />
               <NavSection
@@ -271,7 +258,6 @@ export function Sidebar({
                 pathname={pathname}
                 totalUnread={totalUnread}
                 openInboxCount={openInboxCount}
-                unreadNotifications={unreadNotifications}
                 t={t}
               />
             </>
@@ -469,7 +455,6 @@ function NavSection({
   collapsed,
   totalUnread,
   openInboxCount,
-  unreadNotifications,
   t,
 }: {
   label: string;
@@ -478,7 +463,6 @@ function NavSection({
   collapsed: boolean;
   totalUnread: number;
   openInboxCount: number;
-  unreadNotifications: number;
   t: ReturnType<typeof useTranslations>;
 }) {
   if (items.length === 0) return null;
@@ -498,10 +482,7 @@ function NavSection({
             pathname === item.href ||
             (item.href !== "/dashboard" && pathname.startsWith(item.href));
           const isInbox = item.href === "/inbox";
-          const isNotifications = item.href === "/notifications";
           const showUnreadDot = isInbox && totalUnread > 0 && !isActive;
-          const notificationBadge =
-            isNotifications && unreadNotifications > 0 ? unreadNotifications : 0;
           return (
             <NavRow
               key={item.href}
@@ -512,7 +493,7 @@ function NavSection({
               collapsed={collapsed}
               beta={item.beta}
               unread={showUnreadDot ? totalUnread : 0}
-              badge={isInbox ? openInboxCount : notificationBadge}
+              badge={isInbox ? openInboxCount : 0}
               t={t}
             />
           );
@@ -543,13 +524,8 @@ function NavRow({
   badge?: number;
   t: ReturnType<typeof useTranslations>;
 }) {
-  const isNotifications = href === "/notifications";
   const badgeLabel =
-    badge > 0
-      ? isNotifications
-        ? t("unreadNotifications", { count: badge })
-        : t("activeOpenConversations", { count: badge })
-      : undefined;
+    badge > 0 ? t("activeOpenConversations", { count: badge }) : undefined;
   const badgeText = badge > 99 ? "9+" : String(badge);
 
   return (

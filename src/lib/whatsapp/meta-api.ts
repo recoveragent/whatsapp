@@ -1276,6 +1276,134 @@ export async function sendInteractiveCtaUrl(
 }
 
 // ============================================================
+// Media carousel interactive (2–10 swipeable product cards)
+// ============================================================
+
+export interface MediaCarouselCard {
+  /** Unique index per card, 0–9. */
+  cardIndex: number
+  imageUrl: string
+  /** Optional per-card body. If one card has body text, all must. */
+  bodyText: string
+  buttonLabel: string
+  url: string
+}
+
+export interface SendInteractiveMediaCarouselArgs {
+  phoneNumberId: string
+  accessToken: string
+  to: string
+  bodyText: string
+  cards: MediaCarouselCard[]
+  contextMessageId?: string
+}
+
+/**
+ * Send a horizontally scrollable media carousel (2–10 cards). Each card
+ * shows an image header, optional body text, and a CTA URL button.
+ * @see https://developers.facebook.com/docs/whatsapp/cloud-api/messages/interactive-media-carousel-messages
+ */
+export async function sendInteractiveMediaCarousel(
+  args: SendInteractiveMediaCarouselArgs,
+): Promise<MetaSendResult> {
+  const {
+    phoneNumberId,
+    accessToken,
+    to,
+    bodyText,
+    cards,
+    contextMessageId,
+  } = args
+
+  validateInteractiveBody(bodyText)
+
+  if (cards.length < 2 || cards.length > 10) {
+    throw new Error('Media carousel requires between 2 and 10 cards.')
+  }
+
+  const indices = new Set<number>()
+  const payloadCards = cards.map((card) => {
+    if (indices.has(card.cardIndex)) {
+      throw new Error(`Duplicate carousel card_index: ${card.cardIndex}`)
+    }
+    indices.add(card.cardIndex)
+
+    const imageUrl = card.imageUrl.trim()
+    if (!imageUrl.startsWith('https://')) {
+      throw new Error('Carousel card imageUrl must be an https:// link.')
+    }
+
+    const label = card.buttonLabel.trim()
+    if (!label || label.length > INTERACTIVE_LIMITS.buttonTitleMaxLength) {
+      throw new Error(
+        `Carousel card buttonLabel must be 1–${INTERACTIVE_LIMITS.buttonTitleMaxLength} chars.`,
+      )
+    }
+
+    const url = card.url.trim()
+    if (!url.startsWith('https://')) {
+      throw new Error('Carousel card url must be an https:// link.')
+    }
+
+    const cardBody = card.bodyText.trim()
+    if (!cardBody) {
+      throw new Error('All carousel cards must include body text.')
+    }
+    if (cardBody.length > INTERACTIVE_LIMITS.bodyMaxLength) {
+      throw new Error(
+        `Carousel card body exceeds ${INTERACTIVE_LIMITS.bodyMaxLength} chars.`,
+      )
+    }
+
+    return {
+      card_index: card.cardIndex,
+      type: 'cta_url',
+      header: {
+        type: 'image',
+        image: { link: imageUrl },
+      },
+      body: { text: cardBody },
+      action: {
+        name: 'cta_url',
+        parameters: {
+          display_text: label,
+          url,
+        },
+      },
+    }
+  })
+
+  const interactive: Record<string, unknown> = {
+    type: 'carousel',
+    body: { text: bodyText },
+    action: { cards: payloadCards },
+  }
+
+  const body: Record<string, unknown> = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive,
+  }
+  if (contextMessageId) body.context = { message_id: contextMessageId }
+
+  const response = await fetch(`${META_API_BASE}/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+  const data = await response.json()
+  return { messageId: data.messages[0].id }
+}
+
+// ============================================================
 // Address Messages (India + Singapore)
 // ============================================================
 //

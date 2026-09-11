@@ -7,6 +7,7 @@ import { retrieveKnowledge } from '@/lib/ai/knowledge'
 import { generateReply } from '@/lib/ai/generate'
 import { buildSystemPrompt } from '@/lib/ai/defaults'
 import { latestUserMessage } from '@/lib/ai/query'
+import { retrieveShopifyContext } from '@/lib/ai/shopify-context'
 import { logAiUsage } from '@/lib/ai/usage'
 import { supabaseAdmin } from '@/lib/ai/admin-client'
 import { AiError } from '@/lib/ai/types'
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
     // row means "not yours / not found" either way.
     const { data: conversation, error: convErr } = await supabase
       .from('conversations')
-      .select('id')
+      .select('id, contact_id')
       .eq('id', conversationId)
       .maybeSingle()
     if (convErr) {
@@ -89,19 +90,20 @@ export async function POST(request: Request) {
       )
     }
 
-    // Ground the draft in the account's knowledge base (best-effort —
-    // returns [] when there's no KB or retrieval fails).
-    const knowledge = await retrieveKnowledge(
-      supabase,
-      accountId,
-      config,
-      latestUserMessage(messages),
-    )
+    const latestQuestion = latestUserMessage(messages)
+
+    const [knowledge, shopifyContext] = await Promise.all([
+      retrieveKnowledge(supabase, accountId, config, latestQuestion),
+      conversation.contact_id
+        ? retrieveShopifyContext(supabase, accountId, conversation.contact_id)
+        : Promise.resolve(null),
+    ])
 
     const systemPrompt = buildSystemPrompt({
       userPrompt: config.systemPrompt,
       mode: 'draft',
       knowledge,
+      shopifyContext,
     })
 
     const { text, usage } = await generateReply({ config, systemPrompt, messages })

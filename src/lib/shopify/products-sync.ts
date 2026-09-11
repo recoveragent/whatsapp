@@ -36,6 +36,19 @@ function productImageUrl(product: ShopifyProductPayload): string | null {
   return src || null;
 }
 
+/** Prefer the variant's assigned image; fall back to the product default. */
+export function variantImageUrl(
+  product: ShopifyProductPayload,
+  variant: ShopifyProductVariantPayload,
+): string | null {
+  if (variant.image_id != null && product.images?.length) {
+    const match = product.images.find((img) => img.id === variant.image_id);
+    const src = match?.src?.trim();
+    if (src) return src;
+  }
+  return productImageUrl(product);
+}
+
 /** Prefer first in-stock variant; fall back to the first variant. */
 export function pickDefaultVariant(
   variants: ShopifyProductVariantPayload[],
@@ -75,7 +88,6 @@ export function mapShopifyProductRows(args: {
       : 'active';
 
   const title = args.product.title?.trim() || 'Untitled product';
-  const imageUrl = productImageUrl(args.product);
   const syncedAt = new Date().toISOString();
 
   return (args.product.variants ?? [])
@@ -90,7 +102,7 @@ export function mapShopifyProductRows(args: {
       price: variant.price?.trim() || '0.00',
       compare_at_price: variant.compare_at_price?.trim() || null,
       currency: args.currency,
-      image_url: imageUrl,
+      image_url: variantImageUrl(args.product, variant),
       inventory_quantity:
         typeof variant.inventory_quantity === 'number'
           ? variant.inventory_quantity

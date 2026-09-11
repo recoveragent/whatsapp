@@ -64,8 +64,13 @@ export async function POST(request: Request) {
       .single()
     if (error || !doc) {
       console.error('[ai/knowledge POST] insert error:', error)
+      const hint =
+        error?.message &&
+        /relation .* does not exist|Could not find the table/i.test(error.message)
+          ? ' Run pending Supabase migrations (091+) first.'
+          : ''
       return NextResponse.json(
-        { error: 'Failed to save document' },
+        { error: `Failed to save document.${hint}` },
         { status: 500 },
       )
     }
