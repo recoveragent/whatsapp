@@ -194,12 +194,14 @@ function TemplateMessageContent({
               message={headerMediaMessage}
               onOpen={openHeaderMedia}
               t={t}
+              fullWidth
             />
           ) : display?.header_type === "video" ? (
             <MediaVideoBubble
               message={headerMediaMessage}
               onOpen={openHeaderMedia}
               t={t}
+              fullWidth
             />
           ) : (
             <MediaDocumentBubble message={headerMediaMessage} t={t} />

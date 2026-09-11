@@ -32,6 +32,7 @@ type Translator = ReturnType<typeof useTranslations>;
 
 /** Inline media size cap, shared so the four bubbles can't drift apart. */
 const MEDIA_BOX = "max-h-64 max-w-60";
+const MEDIA_BOX_FULL = "max-h-64 w-full object-cover";
 
 export function MediaUnavailable({
   label,
@@ -103,9 +104,20 @@ function MediaActionButton({
   );
 }
 
-function MediaPlaceholder({ children }: { children: React.ReactNode }) {
+function MediaPlaceholder({
+  children,
+  fullWidth = false,
+}: {
+  children: React.ReactNode;
+  fullWidth?: boolean;
+}) {
   return (
-    <div className="flex h-40 w-60 items-center justify-center rounded-lg bg-muted">
+    <div
+      className={cn(
+        "flex h-40 items-center justify-center bg-muted",
+        fullWidth ? "w-full rounded-none" : "w-60 rounded-lg",
+      )}
+    >
       {children}
     </div>
   );
@@ -115,11 +127,14 @@ export function MediaImageBubble({
   message,
   onOpen,
   t,
+  fullWidth = false,
 }: {
   message: Message;
   /** Opens the thread's lightbox on this message. Omitted ⇒ not clickable. */
   onOpen?: () => void;
   t: Translator;
+  /** Span the bubble width (template header images). */
+  fullWidth?: boolean;
 }) {
   const { src, status } = useMediaBlobUrl(message.media_url);
   // The fetch can succeed and the bytes still not be a decodable image.
@@ -128,7 +143,7 @@ export function MediaImageBubble({
 
   if (status === "error" || broken) {
     return (
-      <MediaPlaceholder>
+      <MediaPlaceholder fullWidth={fullWidth}>
         <ImageOff className="h-8 w-8 text-muted-foreground" />
       </MediaPlaceholder>
     );
@@ -136,7 +151,7 @@ export function MediaImageBubble({
 
   if (status !== "ready" || !src) {
     return (
-      <MediaPlaceholder>
+      <MediaPlaceholder fullWidth={fullWidth}>
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </MediaPlaceholder>
     );
@@ -147,19 +162,26 @@ export function MediaImageBubble({
     <img
       src={src}
       alt={t("imageAlt")}
-      className={cn(MEDIA_BOX, "rounded-lg object-contain")}
+      className={cn(
+        fullWidth
+          ? MEDIA_BOX_FULL
+          : cn(MEDIA_BOX, "rounded-lg object-contain"),
+      )}
       onError={() => setBroken(true)}
     />
   );
 
   return (
-    <div className="group/media relative w-fit">
+    <div className={cn("group/media relative", fullWidth ? "w-full" : "w-fit")}>
       {onOpen ? (
         <button
           type="button"
           onClick={onOpen}
           aria-label={t("viewImage")}
-          className="block cursor-zoom-in rounded-lg outline-none ring-offset-2 ring-offset-transparent focus-visible:ring-2 focus-visible:ring-ring"
+          className={cn(
+            "block cursor-zoom-in outline-none ring-offset-2 ring-offset-transparent focus-visible:ring-2 focus-visible:ring-ring",
+            fullWidth ? "w-full rounded-none" : "rounded-lg",
+          )}
         >
           {image}
         </button>
@@ -184,22 +206,27 @@ export function MediaVideoBubble({
   message,
   onOpen,
   t,
+  fullWidth = false,
 }: {
   message: Message;
   onOpen?: () => void;
   t: Translator;
+  /** Span the bubble width (template header videos). */
+  fullWidth?: boolean;
 }) {
   const { downloading, download } = useMediaDownload(message, t);
 
   return (
-    <div className="relative w-fit">
+    <div className={cn("relative", fullWidth ? "w-full" : "w-fit")}>
       {/* Plain URL, not a blob: the element should stream rather than wait
           for up to 16 MB to land. */}
       <video
         src={message.media_url}
         controls
         preload="metadata"
-        className={cn(MEDIA_BOX, "rounded-lg")}
+        className={cn(
+          fullWidth ? MEDIA_BOX_FULL : cn(MEDIA_BOX, "rounded-lg"),
+        )}
       />
       {/* Top-right, clear of the native controls — and always visible, since
           expanding is the only way to watch a clip capped at 15rem wide and
