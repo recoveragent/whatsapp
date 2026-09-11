@@ -238,6 +238,7 @@ export function DealConversationPanel({
         onPatchStatus={handlePatchStatus}
         onAssignChange={handleAssignChange}
         onBack={onBack}
+        showBackAlways
         resyncToken={resyncToken}
         onRefresh={handleRefresh}
       />

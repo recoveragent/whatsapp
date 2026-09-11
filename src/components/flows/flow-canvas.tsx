@@ -223,6 +223,7 @@ function FlowNodeCard({ data, selected }: NodeProps) {
     stages = [],
   } = data as NodeData;
   const resolvedType = resolveNodeType(node.node_type);
+  const meta = nodeMetaFor(node.node_type);
   const c = nodeColorsFor(node.node_type);
   const tSummary = useTranslations('Flows.summary');
   const summary = summarizeNode(node, {
@@ -286,7 +287,7 @@ function FlowNodeCard({ data, selected }: NodeProps) {
           className="truncate text-[10.5px] font-semibold tracking-wider uppercase"
           style={{ color: c.text }}
         >
-          {t(`nodes.${resolvedType}.label`)}
+          {meta.label}
         </span>
         {isEntry && (
           <span className="border-border text-muted-foreground ml-auto rounded border px-1.5 py-0.5 text-[8.5px] font-bold tracking-[0.1em] uppercase">
@@ -1150,6 +1151,7 @@ function NodeEditSheet({
   }
 
   const resolvedType = resolveNodeType(node.node_type);
+  const meta = nodeMetaFor(node.node_type);
   const c = nodeColorsFor(node.node_type);
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
@@ -1161,7 +1163,7 @@ function NodeEditSheet({
           <NodeIconChip type={resolvedType} size={36} iconSize={18} />
           <div className="min-w-0 flex-1">
             <SheetTitle className="flex items-center gap-2 text-[11px] font-semibold tracking-wider uppercase">
-              <span style={{ color: c.text }}>{t(`nodes.${resolvedType}.label`)}</span>
+              <span style={{ color: c.text }}>{meta.label}</span>
               {isEntry && (
                 <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-emerald-300 uppercase">
                   {t('badgeEntry')}
@@ -1169,7 +1171,7 @@ function NodeEditSheet({
               )}
             </SheetTitle>
             <SheetDescription className="text-muted-foreground mt-0.5 text-xs">
-              {t(`nodes.${node.node_type}.blurb`)}
+              {meta.blurb}
             </SheetDescription>
             <NodeKeyField
               nodeKey={node.node_key}
@@ -1317,10 +1319,10 @@ function CanvasAddNodeButton({ t }: { t: ReturnType<typeof useTranslations> }) {
                     />
                     <span className="flex flex-col">
                       <span className="text-popover-foreground text-[13px] font-semibold">
-                        {t(`nodes.${t_type}.label`)}
+                        {meta.label}
                       </span>
                       <span className="text-muted-foreground text-[11.5px]">
-                        {t(`nodes.${t_type}.blurb`)}
+                        {meta.blurb}
                       </span>
                     </span>
                   </DropdownMenuItem>

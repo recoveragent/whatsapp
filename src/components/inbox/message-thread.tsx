@@ -95,9 +95,12 @@ interface MessageThreadProps {
    * On mobile, the thread is shown full-screen with the conversation list
    * hidden. This callback lets the page deselect the active conversation
    * and reveal the list again. Rendered as a back-arrow in the header on
-   * mobile only.
+   * mobile only (or on all breakpoints when `showBackAlways` is set).
    */
   onBack?: () => void;
+  /** Show the back arrow on desktop too — used when the thread is embedded
+   *  in a sheet/panel without a persistent conversation list. */
+  showBackAlways?: boolean;
   /**
    * Increment to force the messages + reactions fetch effects to refire.
    * Parent bumps this on realtime reconnect / tab visibility → visible
@@ -207,6 +210,7 @@ export function MessageThread({
   onPatchStatus,
   onAssignChange,
   onBack,
+  showBackAlways = false,
   resyncToken = 0,
   onRefresh,
   contactPanelOpen,
@@ -1309,10 +1313,10 @@ export function MessageThread({
     // clipped and the hover toolbar overlaps the Tags panel. Letting the
     // root shrink lets the bubbles' break-words / max-w caps apply.
     // Issue #257.
-    <div className={cn("flex min-w-0 flex-1 flex-col", DOODLE_BG_CLASSES)}>
+    <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", DOODLE_BG_CLASSES)}>
       {/* Header — solid card surface sits on top of the doodle so the
           name/avatar/dropdowns stay legible. */}
-      <div className="flex items-center gap-2 border-b border-border bg-card px-3 py-3 sm:px-4">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-3 py-3 sm:px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           {/* Back-to-list button — mobile only. Hidden on lg+ where the
               conversation list is always visible next to the thread. */}
@@ -1321,7 +1325,10 @@ export function MessageThread({
               type="button"
               onClick={onBack}
               aria-label={t("backToConversations")}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+              className={cn(
+                "flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground",
+                !showBackAlways && "lg:hidden",
+              )}
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
@@ -1504,7 +1511,7 @@ export function MessageThread({
       </div>
 
       {/* Messages Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -1603,6 +1610,7 @@ export function MessageThread({
         )}
       </div>
 
+      <div className="shrink-0">
       {/* AI auto-reply banner — take over an active bot, or resume it
           after a handoff. Renders nothing unless the account has
           auto-reply configured. */}
@@ -1640,6 +1648,7 @@ export function MessageThread({
         onSelfAssign={handleSelfAssign}
         selfAssigning={selfAssigning}
       />
+      </div>
 
       <TemplatePicker
         open={templateModalOpen}

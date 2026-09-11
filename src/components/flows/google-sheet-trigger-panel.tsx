@@ -33,6 +33,7 @@ interface PreviewResponse {
   header_row?: number;
   headerless?: boolean;
   suggested_phone_column?: string;
+  last_occupied_row?: number;
   error?: string;
 }
 
@@ -129,8 +130,12 @@ function SheetSourceCard({
   const [headers, setHeaders] = useState<string[]>([]);
   const [sheetTitle, setSheetTitle] = useState<string | null>(null);
   const [headerless, setHeaderless] = useState(false);
+  const [lastOccupiedRow, setLastOccupiedRow] = useState<number | null>(null);
 
   const mappings = source.variable_mappings ?? {};
+  const watermark = source.last_processed_row;
+  const nextTriggerRow =
+    typeof watermark === "number" ? watermark + 1 : null;
 
   async function loadPreview(sheetName?: string) {
     const id = parseSpreadsheetId(urlDraft);
@@ -159,6 +164,12 @@ function SheetSourceCard({
       setHeaders(data.headers ?? []);
       setSheetTitle(data.title ?? null);
       setHeaderless(Boolean(data.headerless));
+      setLastOccupiedRow(
+        typeof data.last_occupied_row === "number" &&
+          Number.isFinite(data.last_occupied_row)
+          ? Math.max(0, Math.floor(data.last_occupied_row))
+          : null,
+      );
 
       const nextSheet = data.sheetName || tabTitles[0] || "";
       const nextHeaders = data.headers ?? [];
@@ -345,6 +356,118 @@ function SheetSourceCard({
           activate).
         </span>
       </label>
+
+      {(source.sheet_name || lastOccupiedRow != null || watermark != null) && (
+        <div className="space-y-2 rounded-md border border-dashed bg-background/60 p-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-medium text-foreground">
+                Row watermark
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Only rows after this number trigger the flow. Save the flow after
+                changing it.
+              </p>
+            </div>
+            {lastOccupiedRow != null && (
+              <p className="text-[11px] text-muted-foreground">
+                Sheet has data through row{" "}
+                <span className="font-medium text-foreground">
+                  {lastOccupiedRow}
+                </span>
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[8rem] flex-1">
+              <label className="mb-1 block text-xs text-muted-foreground">
+                Last processed row
+              </label>
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                value={watermark ?? ""}
+                placeholder="Not set yet"
+                className="bg-muted"
+                onChange={(e) => {
+                  const raw = e.target.value.trim();
+                  if (!raw) {
+                    onChange({ last_processed_row: undefined });
+                    return;
+                  }
+                  const n = Number.parseInt(raw, 10);
+                  if (Number.isFinite(n) && n >= 0) {
+                    onChange({ last_processed_row: n });
+                  }
+                }}
+              />
+            </div>
+            {lastOccupiedRow != null && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onChange({ last_processed_row: lastOccupiedRow });
+                  toast.success(
+                    `Watermark set to row ${lastOccupiedRow}. Save the flow — only new rows after that will trigger.`,
+                  );
+                }}
+              >
+                Skip existing rows
+              </Button>
+            )}
+            {watermark != null && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onChange({ last_processed_row: undefined });
+                  toast.message(
+                    "Watermark cleared. Save the flow — the next poll will apply your first-run setting.",
+                  );
+                }}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+
+          <p className="text-[11px] text-muted-foreground">
+            {watermark == null ? (
+              <>
+                No watermark saved yet. On the first poll after activate, rows
+                are either all skipped (default) or all imported (checkbox
+                above).
+              </>
+            ) : nextTriggerRow != null &&
+              lastOccupiedRow != null &&
+              nextTriggerRow > lastOccupiedRow ? (
+              <>
+                Next poll will wait for row{" "}
+                <span className="font-medium text-foreground">
+                  {nextTriggerRow}
+                </span>{" "}
+                or higher.
+              </>
+            ) : nextTriggerRow != null ? (
+              <>
+                Next poll starts at row{" "}
+                <span className="font-medium text-foreground">
+                  {nextTriggerRow}
+                </span>
+                {lastOccupiedRow != null && nextTriggerRow <= lastOccupiedRow
+                  ? ` (${lastOccupiedRow - watermark} row(s) still pending)`
+                  : ""}
+                .
+              </>
+            ) : null}
+          </p>
+        </div>
+      )}
 
       <div>
         <div className="mb-1 flex items-center justify-between">

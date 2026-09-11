@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import type {
@@ -19,8 +19,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  ArrowLeft,
   MessageSquare,
+  Pencil,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -38,6 +38,7 @@ import {
 import { buildDealTimeline } from "@/lib/deals/timeline";
 import { DealTimeline } from "@/components/pipelines/deal-timeline";
 import { DealContactSummary } from "@/components/pipelines/deal-contact-summary";
+import { ContactDetailView } from "@/components/contacts/contact-detail-view";
 import type { DealStageEvent } from "@/types";
 
 interface DealFormProps {
@@ -80,6 +81,8 @@ export function DealForm({
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [sheetView, setSheetView] = useState<"deal" | "conversation">("deal");
   const [hasConversation, setHasConversation] = useState(false);
+  const [contactDetailOpen, setContactDetailOpen] = useState(false);
+  const [localContact, setLocalContact] = useState<Contact | null>(null);
 
   // Reset the form fields every time the sheet opens or its input
   // props change. This is a legitimate prop-driven sync; the rule is
@@ -108,6 +111,27 @@ export function DealForm({
     }
   }, [open, deal, defaultStageId, stages]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    if (!open) {
+      setContactDetailOpen(false);
+      return;
+    }
+    setLocalContact(deal?.contact ?? null);
+  }, [open, deal?.id, deal?.contact]);
+
+  const handleContactUpdated = useCallback(async () => {
+    if (!deal?.contact_id) return;
+    const { data } = await supabase
+      .from("contacts")
+      .select("*")
+      .eq("id", deal.contact_id)
+      .maybeSingle();
+    if (data) {
+      setLocalContact(data as Contact);
+    }
+    onSaved();
+  }, [deal?.contact_id, onSaved, supabase]);
 
   // Load supporting data once the sheet is open
   useEffect(() => {
@@ -391,57 +415,56 @@ export function DealForm({
           sheetView === "conversation" ? "sm:max-w-xl" : "sm:max-w-lg"
         }`}
       >
-        <div className="flex h-full flex-col">
-          <SheetHeader className="border-b border-border/50 p-4">
-            {sheetView === "conversation" && deal?.contact_id ? (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSheetView("deal")}
-                  className="inline-flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  aria-label="Back to deal"
-                >
-                  <ArrowLeft className="size-4" />
-                </button>
-                <SheetTitle className="text-popover-foreground">
-                  Conversation
-                </SheetTitle>
-              </div>
-            ) : (
-              <SheetTitle className="text-popover-foreground">
-                {deal ? t("editDeal") : t("newDeal")}
-              </SheetTitle>
-            )}
-          </SheetHeader>
-
+        <div className="flex h-full min-h-0 flex-col overflow-hidden">
           {sheetView === "conversation" && deal?.contact_id ? (
             <DealConversationPanel
               contactId={deal.contact_id}
-              initialContact={deal.contact ?? null}
+              initialContact={localContact ?? deal.contact ?? null}
               onBack={() => setSheetView("deal")}
             />
           ) : (
             <>
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <SheetHeader className="shrink-0 border-b border-border/50 p-4">
+            <SheetTitle className="text-popover-foreground">
+              {deal ? t("editDeal") : t("newDeal")}
+            </SheetTitle>
+          </SheetHeader>
+
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4">
             {deal ? (
               <div className="space-y-2">
                 <Label className="text-muted-foreground">{t("contact")}</Label>
                 <DealContactSummary
-                  contact={deal.contact ?? null}
+                  key={`${deal.contact_id}-${localContact?.updated_at ?? deal.contact?.updated_at ?? ""}`}
+                  contact={localContact ?? deal.contact ?? null}
                   contactId={deal.contact_id ?? null}
                 />
-                {hasConversation && deal.contact_id && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setSheetView("conversation")}
-                    className="border-border bg-card/80 text-foreground hover:bg-muted"
-                  >
-                    <MessageSquare className="size-3.5" />
-                    Open Conversation
-                  </Button>
-                )}
+                {deal.contact_id ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setContactDetailOpen(true)}
+                      className="border-border bg-card/80 text-foreground hover:bg-muted"
+                    >
+                      <Pencil className="size-3.5" />
+                      {t("editContact")}
+                    </Button>
+                    {hasConversation ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSheetView("conversation")}
+                        className="border-border bg-card/80 text-foreground hover:bg-muted"
+                      >
+                        <MessageSquare className="size-3.5" />
+                        Open Conversation
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="grid gap-2">
@@ -564,6 +587,15 @@ export function DealForm({
         </div>
       </SheetContent>
     </Sheet>
+
+    {deal?.contact_id ? (
+      <ContactDetailView
+        open={contactDetailOpen}
+        onOpenChange={setContactDetailOpen}
+        contactId={deal.contact_id}
+        onUpdated={() => void handleContactUpdated()}
+      />
+    ) : null}
 
     {deal && stageMoveDialogOpen && (
       <StageMoveReasonDialog

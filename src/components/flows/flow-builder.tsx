@@ -54,7 +54,6 @@ import {
   groupNodeTypesByCategory,
   nodeColorsFor,
   nodeMetaFor,
-  resolveNodeType,
   slugify,
   summarizeNode,
   type BuilderNode,
@@ -268,7 +267,6 @@ function NodeCard({
   onSetEntry: () => void;
   t: ReturnType<typeof useTranslations>;
 }) {
-  const resolvedType = resolveNodeType(node.node_type);
   const meta = nodeMetaFor(node.node_type);
   const c = nodeColorsFor(node.node_type);
   const hasError = issues.some((i) => i.severity === 'error');
@@ -304,7 +302,7 @@ function NodeCard({
               className="truncate text-[11px] font-semibold tracking-wider uppercase"
               style={{ color: c.text }}
             >
-              {t(`nodes.${resolvedType}.label`)}
+              {meta.label}
             </span>
             <code className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px]">
               {node.node_key}
@@ -503,7 +501,7 @@ function AddNodeButton({ onAdd, t }: { onAdd: (type: NodeType) => void; t: Retur
                 return (
                   <DropdownMenuItem key={t_type} onClick={() => onAdd(t_type)}>
                     <meta.icon className={cn('h-3.5 w-3.5', meta.color)} />
-                    {t(`nodes.${t_type}.label`)}
+                    {meta.label}
                   </DropdownMenuItem>
                 );
               })}

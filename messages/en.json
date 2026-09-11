@@ -538,6 +538,7 @@
       "title": "Title",
       "titlePlaceholder": "Deal title",
       "contact": "Contact",
+      "editContact": "Edit Contact",
       "selectContact": "Select a contact",
       "linkToConversation": "Link to Conversation",
       "value": "Value",

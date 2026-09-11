@@ -37,6 +37,8 @@ export interface SheetPreview {
   header_row: number
   headerless: boolean
   suggested_phone_column: string
+  /** 1-based last row with data (same basis as poll watermark). */
+  last_occupied_row: number
 }
 
 const TOKEN_SKEW_MS = 60_000
@@ -159,6 +161,20 @@ export async function previewSpreadsheet(args: {
   )
   const headers = headerRow > 0 ? namedHeaders : letterHeaders
   const suggestedPhone = guessPhoneColumn(headers, dataRows)
+  const phoneIdx = headers.findIndex((h) => h === suggestedPhone)
+  const phoneCol = phoneIdx >= 0 ? columnLetter(phoneIdx) : 'A'
+  const [fromA, fromPhone] = await Promise.all([
+    getLastRowIndex(args.accessToken, args.spreadsheetId, sheetName, 'A'),
+    phoneCol === 'A'
+      ? Promise.resolve(0)
+      : getLastRowIndex(
+          args.accessToken,
+          args.spreadsheetId,
+          sheetName,
+          phoneCol,
+        ),
+  ])
+  const last_occupied_row = Math.max(fromA, fromPhone)
 
   return {
     spreadsheetId: args.spreadsheetId,
@@ -169,6 +185,7 @@ export async function previewSpreadsheet(args: {
     header_row: headerRow,
     headerless: headerRow === 0,
     suggested_phone_column: suggestedPhone,
+    last_occupied_row,
   }
 }
 
