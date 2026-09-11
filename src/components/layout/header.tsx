@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { LogOut, Menu, Settings as SettingsIcon, User } from "lucide-react";
 import {
@@ -18,7 +20,7 @@ import {
 import { ModeToggle } from "@/components/layout/mode-toggle";
 import { ReminderNotifications } from "@/components/layout/reminder-notifications";
 import { BRAND_ICON_PATH, BRAND_NAME } from "@/components/brand/brand-logo";
-import Image from "next/image";
+import { useTranslations } from "next-intl";
 
 interface HeaderProps {
   /** Wired to the shell's drawer state. Used only on mobile — the
@@ -27,6 +29,8 @@ interface HeaderProps {
 }
 
 export function Header({ onOpenSidebar }: HeaderProps) {
+  const t = useTranslations("Header");
+  const pathname = usePathname();
   const { profile, signOut } = useAuth();
 
   const initial =
@@ -40,7 +44,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         <button
           type="button"
           onClick={onOpenSidebar}
-          aria-label="Open menu"
+          aria-label={t("openMenu")}
           className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
         >
           <Menu className="h-5 w-5" />
@@ -66,13 +70,13 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         <DropdownMenu>
         <DropdownMenuTrigger
           className="flex items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-accent focus:bg-accent focus:outline-none data-popup-open:bg-accent sm:gap-3 sm:pl-1 sm:pr-3"
-          aria-label="Open account menu"
+          aria-label={t("openAccountMenu")}
         >
           <Avatar className="size-8">
             {profile?.avatar_url ? (
               <AvatarImage
                 src={profile.avatar_url}
-                alt={profile.full_name ?? "Avatar"}
+                alt={profile.full_name ?? t("defaultAvatar")}
               />
             ) : null}
             <AvatarFallback className="bg-primary/15 text-sm font-medium text-primary">
@@ -80,7 +84,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             </AvatarFallback>
           </Avatar>
           <span className="hidden text-sm font-medium text-foreground sm:inline">
-            {profile?.full_name ?? "User"}
+            {profile?.full_name ?? t("defaultUser")}
           </span>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -90,7 +94,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         >
           <div className="px-2 py-1.5">
             <p className="truncate text-sm font-medium text-foreground">
-              {profile?.full_name ?? "User"}
+              {profile?.full_name ?? t("defaultUser")}
             </p>
             <p className="truncate text-xs text-muted-foreground">
               {profile?.email ?? ""}
@@ -106,7 +110,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             }
           >
             <User className="size-4" />
-            Profile
+            {t("menuProfile")}
           </DropdownMenuItem>
           <DropdownMenuItem
             render={
@@ -117,7 +121,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             }
           >
             <SettingsIcon className="size-4" />
-            Settings
+            {t("menuSettings")}
           </DropdownMenuItem>
           <DropdownMenuSeparator className="bg-border" />
           <DropdownMenuItem
@@ -125,7 +129,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             className="text-destructive focus:bg-destructive/10 focus:text-destructive"
           >
             <LogOut className="size-4" />
-            Sign out
+            {t("menuSignOut")}
           </DropdownMenuItem>
         </DropdownMenuContent>
         </DropdownMenu>

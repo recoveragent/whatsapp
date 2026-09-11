@@ -1,10 +1,5 @@
 import { NextResponse } from 'next/server';
-import {
-  ForbiddenError,
-  getCurrentAccount,
-  toErrorResponse,
-} from '@/lib/auth/account';
-import { canSendMessages } from '@/lib/auth/roles';
+import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { sendReactionMessage } from '@/lib/whatsapp/meta-api';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { sanitizePhoneForMeta } from '@/lib/whatsapp/phone-utils';
@@ -25,14 +20,11 @@ import {
  */
 export async function POST(request: Request) {
   try {
-    const ctx = await getCurrentAccount();
-    if (!canSendMessages(ctx.role)) {
-      throw new ForbiddenError('Your role cannot send messages');
-    }
-
-    const supabase = ctx.supabase;
-    const accountId = ctx.accountId;
-    const userId = ctx.userId;
+    // Reacting is a write operation (`canSendMessages`), and it pushes the
+    // reaction to Meta before mirroring it locally — so, as on /send, a
+    // missing role check let a read-only viewer put a visible reaction on
+    // the customer's message even though RLS blocked the local mirror.
+    const { supabase, accountId, userId } = await requireRole('agent');
 
     const limit = checkRateLimit(`react:${userId}`, RATE_LIMITS.react);
     if (!limit.success) {
@@ -172,6 +164,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    // requireRole throws Unauthorized/Forbidden; toErrorResponse maps
+    // those to 401/403 and collapses anything else to a generic 500.
     console.error('Error in WhatsApp react POST:', error);
     return toErrorResponse(error);
   }

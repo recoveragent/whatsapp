@@ -26,6 +26,7 @@ import { extractVariableIndices } from "@/lib/whatsapp/template-validators";
 import { normalizeTemplateButtons } from "@/lib/flows/template-buttons";
 import { TemplateMobilePreview } from "@/components/shared/template-mobile-preview";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
 
 export interface TemplateSendValues {
   body: string[];
@@ -83,6 +84,7 @@ export function TemplatePicker({
   onSelect,
 }: TemplatePickerProps) {
   const { accountId } = useAuth();
+  const t = useTranslations("Inbox.templatePicker");
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<MessageTemplate | null>(null);
@@ -195,12 +197,12 @@ export function TemplatePicker({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-popover-foreground">
             <LayoutTemplate className="h-4 w-4 text-primary" />
-            {selected ? selected.name : "Send template"}
+            {selected ? selected.name : t("sendTemplate")}
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
             {selected
-              ? "Fill in the placeholders to render this template. Meta requires every variable to be set."
-              : "Pick an approved WhatsApp template to send to this contact."}
+              ? t("fillPlaceholders")
+              : t("pickTemplate")}
           </DialogDescription>
         </DialogHeader>
 
@@ -212,10 +214,9 @@ export function TemplatePicker({
               </div>
             ) : templates.length === 0 ? (
               <div className="rounded-md border border-border bg-background/50 p-6 text-center">
-                <p className="text-sm text-popover-foreground">No approved templates</p>
+                <p className="text-sm text-popover-foreground">{t("noApprovedTemplates")}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Approve a template in Meta WhatsApp Manager, then sync it
-                  from Settings → Templates.
+                  {t("noApprovedTemplatesHint")}
                 </p>
               </div>
             ) : (
@@ -262,7 +263,7 @@ export function TemplatePicker({
                   <Input
                     value={headerText}
                     onChange={(e) => setHeaderText(e.target.value)}
-                    placeholder="Value for the header variable"
+                    placeholder={t("headerValuePlaceholder")}
                     className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
                   />
                 </div>
@@ -277,7 +278,7 @@ export function TemplatePicker({
                       next[i] = e.target.value;
                       setParams(next);
                     }}
-                    placeholder={`Value for {{${v}}}`}
+                    placeholder={t("bodyValuePlaceholder", { val: `{{${v}}}` })}
                     className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
                   />
                 </div>
@@ -295,18 +296,25 @@ export function TemplatePicker({
                         [slot.index]: e.target.value,
                       }))
                     }
-                    placeholder="URL suffix value"
+                    placeholder={t("urlSuffixValuePlaceholder")}
                     className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
                   />
                   <p className="text-[10px] text-muted-foreground break-all">
-                    Final URL: {slot.url.replace(/\{\{1\}\}/g, buttonParams[slot.index] || "{{1}}")}
+                    {t("finalUrl", {
+                      url: slot.url.replace(
+                        /\{\{1\}\}/g,
+                        buttonParams[slot.index] || "{{1}}",
+                      ),
+                    })}
                   </p>
                 </div>
               ))}
             </div>
             <div className="shrink-0 rounded-md border border-border bg-background/50 p-3 md:max-w-[300px]">
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <p className="text-xs font-medium text-popover-foreground">Preview</p>
+                <p className="text-xs font-medium text-popover-foreground">
+                  {t("preview")}
+                </p>
                 <Badge className="border border-primary/30 bg-primary/20 text-[10px] text-primary">
                   {selected.category}
                 </Badge>
@@ -343,14 +351,14 @@ export function TemplatePicker({
                 className="border-border text-popover-foreground hover:bg-muted"
               >
                 <ArrowLeft className="h-4 w-4" />
-                Back
+                {t("back")}
               </Button>
               <Button
                 disabled={!canConfirm}
                 onClick={confirm}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
-                Send template
+                {t("send")}
               </Button>
             </>
           ) : (
@@ -359,7 +367,7 @@ export function TemplatePicker({
               onClick={() => handleOpenChange(false)}
               className="border-border text-popover-foreground hover:bg-muted"
             >
-              Cancel
+              {t("cancel")}
             </Button>
           )}
         </DialogFooter>

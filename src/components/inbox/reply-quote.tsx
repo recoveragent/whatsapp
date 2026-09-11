@@ -3,6 +3,7 @@
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Message } from "@/types";
+import { useTranslations } from "next-intl";
 
 interface ReplyQuoteProps {
   /** Sender label of the quoted message: "You" for our own messages,
@@ -29,6 +30,7 @@ export function ReplyQuote({
   onClick,
   onPrimary = false,
 }: ReplyQuoteProps) {
+  const t = useTranslations("Inbox.replyQuote");
   const isChip = !!onDismiss;
   const clickable = !!onClick && !isChip;
 
@@ -96,7 +98,7 @@ export function ReplyQuote({
             e.stopPropagation();
             onDismiss();
           }}
-          aria-label="Cancel reply"
+          aria-label={t("cancelReply")}
           className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <X className="h-3.5 w-3.5" />
@@ -120,18 +122,39 @@ function firstTwoLines(text: string): string {
   return lines.slice(0, 2).join("\n");
 }
 
+function mediaPreviewLabel(
+  contentType: Message["content_type"],
+  t: ReturnType<typeof useTranslations>,
+): string {
+  switch (contentType) {
+    case "image":
+      return t("photo");
+    case "video":
+      return t("video");
+    case "audio":
+      return t("audio");
+    case "document":
+      return t("document");
+    default:
+      return t("message");
+  }
+}
+
 /** Build the compact preview text shown inside a reply quote. */
-export function buildReplyPreview(message: Message): string {
+export function buildReplyPreview(
+  message: Message,
+  t: ReturnType<typeof useTranslations>,
+): string {
   if (MEDIA_CONTENT_TYPES.has(message.content_type)) {
-    return "Replied to media";
+    return mediaPreviewLabel(message.content_type, t);
   }
   if (message.content_text) return firstTwoLines(message.content_text);
   switch (message.content_type) {
     case "location":
-      return "[Location]";
+      return t("location");
     case "template":
-      return "[Template]";
+      return t("template");
     default:
-      return "[Message]";
+      return t("message");
   }
 }

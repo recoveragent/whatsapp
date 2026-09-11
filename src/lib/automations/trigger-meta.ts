@@ -39,6 +39,10 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
     label: 'Webhook',
     pillClass: 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300',
   },
+  interactive_reply: {
+    label: 'Button / List Reply',
+    pillClass: 'border-pink-500/30 bg-pink-500/10 text-pink-300',
+  },
 }
 
 export function triggerMeta(t: AutomationTriggerType | string): TriggerMeta {

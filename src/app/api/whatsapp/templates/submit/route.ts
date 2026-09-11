@@ -107,10 +107,13 @@ async function upsertTemplateRow(
  */
 export async function POST(request: Request) {
   try {
-    const ctx = await requireRole('admin')
-    const supabase = ctx.supabase
-    const accountId = ctx.accountId
-    const userId = ctx.userId
+    // Message templates are settings-class data: `canEditSettings` and the
+    // message_templates_insert/update RLS policies (migration 017) both
+    // require 'admin'. Resolving account_id off the profile only proved
+    // membership, so a viewer or agent could push a template to Meta for
+    // approval — an external side effect RLS can't roll back — before the
+    // local upsert was refused.
+    const { supabase, accountId, userId } = await requireRole('admin')
 
     let payload: TemplatePayload
     try {
@@ -249,7 +252,14 @@ export async function POST(request: Request) {
       dry_run: dryRun,
     })
   } catch (error) {
-    if (error instanceof UnauthorizedError || error instanceof ForbiddenError) {
+    // Auth failures map to 401/403. Handled before the generic branch
+    // below, which surfaces `error.message` as a 500 — reporting "you
+    // aren't an admin" as a template submission failure would send the
+    // user chasing the wrong problem.
+    if (
+      error instanceof UnauthorizedError ||
+      error instanceof ForbiddenError
+    ) {
       return toErrorResponse(error)
     }
     console.error('Error submitting template:', error)

@@ -5,6 +5,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { AccountAccessAlert } from "@/components/layout/account-access-alert";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 import { isEmbedMode } from "@/lib/embed/query";
 import { cn } from "@/lib/utils";
@@ -136,12 +137,13 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
         <Header onOpenSidebar={() => setSidebarOpen(true)} />
         <main
           className={cn(
-            "flex-1 px-4 py-5 lg:px-9 lg:py-7",
+            "flex-1 px-4 py-5 sm:p-6 lg:px-9 lg:py-7",
             isFullHeightEditor
               ? "flex min-h-0 flex-col overflow-hidden"
               : "overflow-y-auto",
           )}
         >
+          <AccountAccessAlert />
           {children}
         </main>
       </div>

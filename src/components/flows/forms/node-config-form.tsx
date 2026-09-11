@@ -34,6 +34,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -109,6 +110,7 @@ function renderNodeConfigBody({
   triggerType,
   triggerConfig,
 }: NodeConfigFormProps) {
+  const t = useTranslations("Flows.builder.form");
   const cfg = node.config;
   switch (node.node_type) {
     case "start":
@@ -118,7 +120,7 @@ function renderNodeConfigBody({
           allNodes={allNodes}
           currentKey={node.node_key}
           onChange={(v) => onUpdateConfig({ next_node_key: v })}
-          label="Advances to"
+          label={t("advancesTo")}
         />
       );
 
@@ -126,7 +128,7 @@ function renderNodeConfigBody({
       return (
         <>
           <TextRow
-            label="Text sent to the customer"
+            label={t("textToCustomer")}
             value={(cfg as { text?: string }).text ?? ""}
             onChange={(v) => onUpdateConfig({ text: v })}
           />
@@ -135,7 +137,7 @@ function renderNodeConfigBody({
             allNodes={allNodes}
             currentKey={node.node_key}
             onChange={(v) => onUpdateConfig({ next_node_key: v })}
-            label="Advances to"
+            label={t("advancesTo")}
           />
         </>
       );
@@ -148,6 +150,7 @@ function renderNodeConfigBody({
           currentKey={node.node_key}
           onUpdateConfig={onUpdateConfig}
           showAdvanced={showAdvanced}
+          t={t}
         />
       );
 
@@ -159,6 +162,7 @@ function renderNodeConfigBody({
           currentKey={node.node_key}
           onUpdateConfig={onUpdateConfig}
           showAdvanced={showAdvanced}
+          t={t}
         />
       );
 
@@ -169,6 +173,7 @@ function renderNodeConfigBody({
           allNodes={allNodes}
           currentKey={node.node_key}
           onUpdateConfig={onUpdateConfig}
+          t={t}
         />
       );
 
@@ -186,14 +191,14 @@ function renderNodeConfigBody({
       return (
         <>
           <TextRow
-            label="Prompt sent to the customer"
+            label={t("promptToCustomer")}
             value={(cfg as { prompt_text?: string }).prompt_text ?? ""}
             onChange={(v) => onUpdateConfig({ prompt_text: v })}
             rows={2}
           />
           <div>
             <label className="mb-1 block text-xs text-muted-foreground">
-              Variable key (stored in flow_runs.vars; alphanumeric + underscore)
+              {t("varKeyLabel")}
             </label>
             <Input
               value={(cfg as { var_key?: string }).var_key ?? ""}
@@ -202,11 +207,11 @@ function renderNodeConfigBody({
                   var_key: e.target.value.replace(/[^a-zA-Z0-9_]/g, ""),
                 })
               }
-              placeholder="e.g. name, email, company"
+              placeholder={t("varKeyPlaceholder")}
               className="bg-muted font-mono text-xs"
             />
             <p className="mt-1 text-[10px] text-muted-foreground">
-              Interpolate in downstream prompts and handoff notes with{" "}
+              {t("varKeyHelp")}{" "}
               <code className="rounded bg-muted px-1">
                 {"{{vars."}
                 {(cfg as { var_key?: string }).var_key || "name"}
@@ -220,7 +225,7 @@ function renderNodeConfigBody({
             allNodes={allNodes}
             currentKey={node.node_key}
             onChange={(v) => onUpdateConfig({ next_node_key: v })}
-            label="After capturing, advance to"
+            label={t("advanceAfterCapture")}
           />
         </>
       );
@@ -252,6 +257,7 @@ function renderNodeConfigBody({
           allNodes={allNodes}
           currentKey={node.node_key}
           onUpdateConfig={onUpdateConfig}
+          t={t}
         />
       );
 
@@ -272,13 +278,14 @@ function renderNodeConfigBody({
           allNodes={allNodes}
           currentKey={node.node_key}
           onUpdateConfig={onUpdateConfig}
+          t={t}
         />
       );
 
     case "handoff":
       return (
         <TextRow
-          label="Internal note (for the agent picking up)"
+          label={t("internalNote")}
           value={(cfg as { note?: string }).note ?? ""}
           onChange={(v) => onUpdateConfig({ note: v })}
           rows={2}
@@ -472,8 +479,7 @@ function renderNodeConfigBody({
     case "end":
       return (
         <p className="text-xs text-muted-foreground">
-          Terminal node. When the runner reaches this node the run is marked
-          complete. No config needed.
+          {t("endNodeHelp")}
         </p>
       );
   }
@@ -630,12 +636,14 @@ function SendButtonsForm({
   currentKey,
   onUpdateConfig,
   showAdvanced,
+  t,
 }: {
   cfg: SendButtonsCfg;
   allNodes: BuilderNode[];
   currentKey: string;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
   showAdvanced: boolean;
+  t: ReturnType<typeof useTranslations>;
 }) {
   const buttons = cfg.buttons ?? [];
   const updateButton = (
@@ -663,20 +671,20 @@ function SendButtonsForm({
   return (
     <>
       <TextRow
-        label="Body text"
+        label={t("bodyText")}
         value={cfg.text ?? ""}
         onChange={(v) => onUpdateConfig({ text: v })}
         rows={3}
       />
       <TextRow
-        label="Footer (optional, 60 chars)"
+        label={t("footerText")}
         value={cfg.footer_text ?? ""}
         onChange={(v) => onUpdateConfig({ footer_text: v })}
       />
       <div>
         <div className="mb-2 flex items-center justify-between">
           <label className="text-xs text-muted-foreground">
-            Buttons (1–3) — each one routes to a different next node
+            {t("buttonsHelp")}
           </label>
         </div>
         <div className="flex flex-col gap-3">
@@ -705,7 +713,7 @@ function SendButtonsForm({
               <Input
                 value={b.title}
                 onChange={(e) => updateButton(i, { title: e.target.value })}
-                placeholder="Visible title (≤20 chars)"
+                placeholder={t("optionTitlePlaceholder")}
                 className="bg-muted"
                 maxLength={20}
               />
@@ -714,7 +722,7 @@ function SendButtonsForm({
                 nodes={allNodes}
                 excludeKey={currentKey}
                 onChange={(v) => updateButton(i, { next_node_key: v ?? "" })}
-                placeholder="Next node…"
+                placeholder={t("nextNodePlaceholder")}
               />
               <Button
                 variant="ghost"
@@ -735,7 +743,7 @@ function SendButtonsForm({
             className="mt-2"
           >
             <Plus className="h-3.5 w-3.5" />
-            Add button
+            {t("addButton")}
           </Button>
         )}
       </div>
@@ -768,12 +776,14 @@ function SendListForm({
   currentKey,
   onUpdateConfig,
   showAdvanced,
+  t,
 }: {
   cfg: SendListCfg;
   allNodes: BuilderNode[];
   currentKey: string;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
   showAdvanced: boolean;
+  t: ReturnType<typeof useTranslations>;
 }) {
   const sections = cfg.sections ?? [];
   const totalRows = sections.reduce((sum, s) => sum + s.rows.length, 0);
@@ -859,12 +869,12 @@ function SendListForm({
       />
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <TextRow
-          label="Tap-to-expand button label (≤20 chars)"
+          label={t("buttonLabel")}
           value={cfg.button_label ?? ""}
           onChange={(v) => onUpdateConfig({ button_label: v })}
         />
         <TextRow
-          label="Footer (optional, 60 chars)"
+          label={t("footerText")}
           value={cfg.footer_text ?? ""}
           onChange={(v) => onUpdateConfig({ footer_text: v })}
         />
@@ -872,7 +882,7 @@ function SendListForm({
 
       <div className="mt-2">
         <label className="mb-2 block text-xs text-muted-foreground">
-          Rows (1–10 total across all sections)
+          {t("rowsHelp")}
         </label>
         {sections.map((section, sIdx) => (
           <div
@@ -885,7 +895,7 @@ function SendListForm({
                 onChange={(e) =>
                   updateSection(sIdx, { title: e.target.value })
                 }
-                placeholder={`Section ${sIdx + 1} title (optional)`}
+                placeholder={t("sectionTitlePlaceholder", { count: sIdx + 1 })}
                 className="bg-muted text-xs"
               />
               {sections.length > 1 && (
@@ -930,7 +940,7 @@ function SendListForm({
                   onChange={(e) =>
                     updateRow(sIdx, rIdx, { title: e.target.value })
                   }
-                  placeholder="Row title (≤24)"
+                  placeholder={t("rowTitlePlaceholder")}
                   className="bg-muted"
                   maxLength={24}
                 />
@@ -941,7 +951,7 @@ function SendListForm({
                   onChange={(v) =>
                     updateRow(sIdx, rIdx, { next_node_key: v ?? "" })
                   }
-                  placeholder="Next node…"
+                  placeholder={t("nextNodePlaceholder")}
                 />
                 <Button
                   variant="ghost"
@@ -961,7 +971,7 @@ function SendListForm({
                 className="mt-1"
               >
                 <Plus className="h-3.5 w-3.5" />
-                Add row
+                {t("addRow")}
               </Button>
             )}
           </div>
@@ -972,7 +982,7 @@ function SendListForm({
         {sections.length < 10 && (
           <Button variant="outline" size="sm" onClick={addSection}>
             <Plus className="h-3.5 w-3.5" />
-            Add section
+            {t("addSection")}
           </Button>
         )}
       </div>
@@ -1459,11 +1469,13 @@ function ConditionForm({
   allNodes,
   currentKey,
   onUpdateConfig,
+  t,
 }: {
   cfg: ConditionCfg;
   allNodes: BuilderNode[];
   currentKey: string;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
+  t: ReturnType<typeof useTranslations>;
 }) {
   return (
     <>
@@ -1478,14 +1490,14 @@ function ConditionForm({
           allNodes={allNodes}
           currentKey={currentKey}
           onChange={(v) => onUpdateConfig({ true_next: v })}
-          label="If true → advance to"
+          label={t("ifTrueAdvance")}
         />
         <NextNodeRow
           value={cfg.false_next ?? ""}
           allNodes={allNodes}
           currentKey={currentKey}
           onChange={(v) => onUpdateConfig({ false_next: v })}
-          label="If false → advance to"
+          label={t("ifFalseAdvance")}
         />
       </div>
     </>
@@ -1790,11 +1802,13 @@ function SetTagForm({
   allNodes,
   currentKey,
   onUpdateConfig,
+  t,
 }: {
   cfg: SetTagCfg;
   allNodes: BuilderNode[];
   currentKey: string;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
+  t: ReturnType<typeof useTranslations>;
 }) {
   const tags = useUserTags();
 
@@ -1802,7 +1816,7 @@ function SetTagForm({
     <>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>
-          <label className="mb-1 block text-xs text-muted-foreground">Action</label>
+          <label className="mb-1 block text-xs text-muted-foreground">{t("actionLabel")}</label>
           <Select
             value={cfg.mode ?? "add"}
             onValueChange={(v) =>
@@ -1813,13 +1827,13 @@ function SetTagForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="add">Add tag</SelectItem>
-              <SelectItem value="remove">Remove tag</SelectItem>
+              <SelectItem value="add">{t("addTag")}</SelectItem>
+              <SelectItem value="remove">{t("removeTag")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div>
-          <label className="mb-1 block text-xs text-muted-foreground">Tag</label>
+          <label className="mb-1 block text-xs text-muted-foreground">{t("tagLabel")}</label>
           {tags.length > 0 ? (
             <Select
               value={cfg.tag_id ?? ""}
@@ -1840,7 +1854,7 @@ function SetTagForm({
             <Input
               value={cfg.tag_id ?? ""}
               onChange={(e) => onUpdateConfig({ tag_id: e.target.value })}
-              placeholder="Tag UUID"
+              placeholder={t("tagUuidPlaceholder")}
               className="bg-muted font-mono text-xs"
             />
           )}
@@ -1851,7 +1865,7 @@ function SetTagForm({
         allNodes={allNodes}
         currentKey={currentKey}
         onChange={(v) => onUpdateConfig({ next_node_key: v })}
-        label="Then advance to"
+        label={t("thenAdvanceTo")}
       />
     </>
   );
@@ -1913,11 +1927,13 @@ function SendMediaForm({
   allNodes,
   currentKey,
   onUpdateConfig,
+  t,
 }: {
   cfg: SendMediaCfg;
   allNodes: BuilderNode[];
   currentKey: string;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
+  t: ReturnType<typeof useTranslations>;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -1965,7 +1981,7 @@ function SendMediaForm({
   return (
     <>
       <div>
-        <label className="mb-1 block text-xs text-muted-foreground">Media type</label>
+        <label className="mb-1 block text-xs text-muted-foreground">{t("mediaTypeLabel")}</label>
         <Select
           value={mediaType}
           onValueChange={(v) => {
@@ -1983,17 +1999,17 @@ function SendMediaForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="image">Image (PNG, JPEG, WebP)</SelectItem>
-            <SelectItem value="video">Video (MP4, 3GP)</SelectItem>
+            <SelectItem value="image">{t("imageLabel")}</SelectItem>
+            <SelectItem value="video">{t("videoLabel")}</SelectItem>
             <SelectItem value="document">
-              Document (PDF, Word, Excel, PowerPoint, TXT)
+              {t("documentLabel")}
             </SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       <div>
-        <label className="mb-1 block text-xs text-muted-foreground">File</label>
+        <label className="mb-1 block text-xs text-muted-foreground">{t("fileLabel")}</label>
         {cfg.media_url ? (
           <div className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-xs">
             <Paperclip className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
@@ -2010,7 +2026,7 @@ function SendMediaForm({
               type="button"
               onClick={handleClear}
               className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-              aria-label="Remove file"
+              aria-label={t("removeFile")}
               disabled={uploading}
             >
               <X className="h-3.5 w-3.5" />
@@ -2026,12 +2042,12 @@ function SendMediaForm({
             {uploading ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Uploading…
+                {t("uploading")}
               </>
             ) : (
               <>
                 <Upload className="h-3.5 w-3.5" />
-                Click to upload (max 16 MB)
+                {t("clickToUpload")}
               </>
             )}
           </button>
@@ -2051,7 +2067,7 @@ function SendMediaForm({
       </div>
 
       <TextRow
-        label="Caption (optional, shown under the media)"
+        label={t("captionLabel")}
         value={cfg.caption ?? ""}
         onChange={(v) => onUpdateConfig({ caption: v })}
         rows={2}
@@ -2060,12 +2076,12 @@ function SendMediaForm({
       {isDocument && (
         <div>
           <label className="mb-1 block text-xs text-muted-foreground">
-            Filename shown to the customer (documents only)
+            {t("filenameLabel")}
           </label>
           <Input
             value={cfg.filename ?? ""}
             onChange={(e) => onUpdateConfig({ filename: e.target.value })}
-            placeholder="invoice.pdf"
+            placeholder={t("filenamePlaceholder")}
             className="bg-muted text-xs"
           />
         </div>
@@ -2076,7 +2092,7 @@ function SendMediaForm({
         allNodes={allNodes}
         currentKey={currentKey}
         onChange={(v) => onUpdateConfig({ next_node_key: v })}
-        label="After sending, advance to"
+        label={t("advanceAfterSending")}
       />
     </>
   );

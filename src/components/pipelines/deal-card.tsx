@@ -6,6 +6,7 @@ import {
   resolveDealCardContactFields,
   resolveDealCardLastNoteLine,
 } from "@/lib/deals/display";
+import { useTranslations } from "next-intl";
 
 interface DealCardProps {
   deal: Deal;
@@ -29,6 +30,7 @@ function initials(name?: string, fallback?: string) {
 }
 
 export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
+  const t = useTranslations("Pipelines.card");
   const { name, phone, company } = resolveDealCardContactFields(deal);
   const assigneeLabel = deal.assignee?.full_name || null;
   const lastNote = resolveDealCardLastNoteLine(deal.notes);
@@ -86,13 +88,13 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         {deal.status === "won" && (
           <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
             <Check className="h-3 w-3" />
-            Won
+            {t("won")}
           </span>
         )}
         {deal.status === "lost" && (
           <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-semibold text-red-400">
             <X className="h-3 w-3" />
-            Lost
+            {t("lost")}
           </span>
         )}
       </div>

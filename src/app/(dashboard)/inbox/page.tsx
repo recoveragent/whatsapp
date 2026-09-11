@@ -1,8 +1,13 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { Suspense, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
+import {
+  CONVERSATION_SELECT,
+  normalizeConversation,
+} from "@/lib/inbox/conversations";
 import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
 import { useRealtime } from "@/hooks/use-realtime";
 import { usePhoneDeepLink } from "@/hooks/use-phone-deep-link";
@@ -32,7 +37,19 @@ import {
 // across reloads and sessions (device-scoped, like the theme prefs).
 const CONTACT_PANEL_STORAGE_KEY = "wacrm:inbox:contact-panel-open";
 
+// `useSearchParams` (the `?c=<id>` deep link below) requires a Suspense
+// boundary or the production build bails to CSR and errors out. Thin
+// wrapper supplies it; the inner component holds all the inbox state.
 export default function InboxPage() {
+  return (
+    <Suspense fallback={null}>
+      <InboxPageInner />
+    </Suspense>
+  );
+}
+
+function InboxPageInner() {
+  const t = useTranslations("Inbox.page");
   const router = useRouter();
   const searchParams = useSearchParams();
   const embedded = isEmbedMode(searchParams);
@@ -269,7 +286,7 @@ export default function InboxPage() {
       const supabase = createClient();
       const { data, error } = await supabase
         .from("conversations")
-        .select("*, contact:contacts(*)")
+        .select(CONVERSATION_SELECT)
         .eq("id", convId)
         .maybeSingle();
       if (error) {
@@ -284,7 +301,7 @@ export default function InboxPage() {
         return;
       }
       if (!data) return;
-      const fetched = data as Conversation;
+      const fetched = normalizeConversation(data);
       setConversations((prev) => {
         const existing = prev.find((c) => c.id === fetched.id);
         if (!existing && !shouldShowInInboxList(fetched)) {
@@ -976,7 +993,7 @@ export default function InboxPage() {
         <div className="flex shrink-0 items-center justify-center gap-2 border-b border-warn/40 bg-warn/10 px-4 py-2">
           <WifiOff className="h-4 w-4 text-amber-700" />
           <p className="text-xs text-amber-700">
-            WhatsApp® is not connected. Go to Settings to connect your account.
+            {t("whatsappNotConnected")}
           </p>
         </div>
       )}

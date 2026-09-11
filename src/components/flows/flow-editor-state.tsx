@@ -50,6 +50,7 @@ import {
   validateFlowForActivation,
   type ValidationIssue,
 } from "@/lib/flows/validate";
+import { useTranslations } from "next-intl";
 import { renameNodeReferences, unlinkNodeReferences } from "@/lib/flows/edges";
 import type { FlowNodeRow, FlowRow } from "@/lib/flows/types";
 import type { FlowTriggerType } from "@/lib/flows/trigger-types";
@@ -334,6 +335,7 @@ export function FlowEditorProvider({
   children,
 }: ProviderProps) {
   const router = useRouter();
+  const t = useTranslations("Flows.editorState");
 
   const [state, setStateRaw] = useState<BuilderState>(() => ({
     name: initialFlow.name,
@@ -453,7 +455,7 @@ export function FlowEditorProvider({
         }));
       }
       setDirty(false);
-      toast.success("Saved.");
+      toast.success(t("saved"));
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Save failed";
       toast.error(msg);
@@ -466,7 +468,7 @@ export function FlowEditorProvider({
   const setStatus = useCallback(
     async (next: BuilderState["status"]) => {
       if (next === "active" && !canActivate) {
-        toast.error("Fix the issues below before activating.");
+        toast.error(t("fixIssues"));
         return;
       }
       setActivating(true);
@@ -489,10 +491,10 @@ export function FlowEditorProvider({
         setStateRaw((s) => ({ ...s, status: next }));
         toast.success(
           next === "active"
-            ? "Flow activated."
+            ? t("statusActivated")
             : next === "archived"
-              ? "Archived."
-              : "Saved as draft.",
+              ? t("statusArchived")
+              : t("statusDraft")
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Status update failed";

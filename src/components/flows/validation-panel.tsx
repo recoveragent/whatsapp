@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { ChevronDown, CircleAlert, CircleCheck, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import type { ValidationIssue } from "@/lib/flows/validate";
 import { useFlowEditor } from "./flow-editor-state";
@@ -15,6 +16,7 @@ import { TRIGGER_NODE_ID } from "./trigger-panel";
 
 export function ValidationPanel({ overlay = false }: { overlay?: boolean }) {
   const { issues, requestFlash } = useFlowEditor();
+  const t = useTranslations("Flows.validation");
   const [expanded, setExpanded] = useState(true);
   const [dismissedOk, setDismissedOk] = useState(false);
 
@@ -32,7 +34,7 @@ export function ValidationPanel({ overlay = false }: { overlay?: boolean }) {
       >
         <div className="flex items-center gap-2 rounded-lg border border-emerald-600/50 bg-card/95 p-3 text-sm font-medium text-emerald-300 shadow-lg backdrop-blur">
           <CircleCheck className="h-4 w-4 shrink-0" />
-          <span className="flex-1">Ready to activate</span>
+          <span className="flex-1">{t("noIssues")}</span>
           <button
             type="button"
             onClick={() => setDismissedOk(true)}
@@ -77,8 +79,10 @@ export function ValidationPanel({ overlay = false }: { overlay?: boolean }) {
             )}
           />
           <span className="flex-1 font-medium text-foreground">
-            {errors.length} error{errors.length === 1 ? "" : "s"},{" "}
-            {warnings.length} warning{warnings.length === 1 ? "" : "s"}
+            {t("summary", {
+              errorCount: errors.length,
+              warningCount: warnings.length,
+            })}
           </span>
           <ChevronDown
             className={cn(
@@ -90,7 +94,7 @@ export function ValidationPanel({ overlay = false }: { overlay?: boolean }) {
         {expanded && (
           <div className="max-h-48 overflow-y-auto border-t border-border px-1 py-1">
             {issues.map((i, ix) => (
-              <IssueLine key={ix} issue={i} onJump={requestFlash} />
+              <IssueLine key={ix} issue={i} onJump={requestFlash} t={t} />
             ))}
           </div>
         )}
@@ -108,9 +112,11 @@ export function ValidationPanel({ overlay = false }: { overlay?: boolean }) {
 export function IssueLine({
   issue,
   onJump,
+  t,
 }: {
   issue: ValidationIssue;
   onJump?: (key: string) => void;
+  t?: ReturnType<typeof useTranslations>;
 }) {
   const tone =
     issue.severity === "error" ? "text-red-300" : "text-amber-300";
@@ -144,8 +150,10 @@ export function IssueLine({
         )}
         aria-label={
           issue.scope === "trigger"
-            ? "Jump to trigger"
-            : `Jump to node ${issue.node_key}`
+            ? t?.("jumpToTrigger") ?? "Jump to trigger"
+            : t
+              ? t("jumpToNode", { key: issue.node_key! })
+              : `Jump to node ${issue.node_key}`
         }
       >
         {body}

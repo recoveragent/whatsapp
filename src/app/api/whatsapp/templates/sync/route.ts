@@ -132,10 +132,11 @@ function extractSampleValues(
 
 export async function POST() {
   try {
-    const ctx = await requireRole('admin')
-    const supabase = ctx.supabase
-    const accountId = ctx.accountId
-    const userId = ctx.userId
+    // Syncing rewrites the account-wide template catalog, which is
+    // settings-class data: `canEditSettings` and the message_templates
+    // insert/update RLS policies (migration 017) both require 'admin'.
+    // Resolving account_id off the profile only proved membership.
+    const { supabase, accountId, userId } = await requireRole('admin')
 
     const { data: config, error: configError } = await supabase
       .from('whatsapp_config')
@@ -299,7 +300,12 @@ export async function POST() {
       truncated: pageCount >= PAGE_CAP && nextUrl !== null,
     })
   } catch (error) {
-    if (error instanceof UnauthorizedError || error instanceof ForbiddenError) {
+    // Auth failures map to 401/403 rather than being folded into the
+    // generic 500 below, which surfaces `error.message` as a sync failure.
+    if (
+      error instanceof UnauthorizedError ||
+      error instanceof ForbiddenError
+    ) {
       return toErrorResponse(error)
     }
     console.error('Error syncing WhatsApp templates:', error)

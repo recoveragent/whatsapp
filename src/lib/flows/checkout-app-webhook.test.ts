@@ -22,6 +22,16 @@ describe('enrichCheckoutAppWebhookVars', () => {
     expect(vars.phone).toBe('+919876543210')
   })
 
+  it('reads GoKwik-style items.0.image', () => {
+    const vars = enrichCheckoutAppWebhookVars(
+      {
+        items: [{ image: 'https://cdn.shopify.com/boxer.jpg', title: 'Boxer XL' }],
+      },
+      {},
+    )
+    expect(vars.product_image).toBe('https://cdn.shopify.com/boxer.jpg')
+  })
+
   it('does not overwrite mapped vars', () => {
     const vars = enrichCheckoutAppWebhookVars(
       { checkout_url: 'https://ignored.example' },

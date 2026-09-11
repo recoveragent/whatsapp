@@ -83,7 +83,11 @@ const IMAGE_PATHS = [
   'line_items.0.image',
   'data.line_items.0.image_url',
   'items.0.image_url',
+  'items.0.image',
+  'data.items.0.image_url',
+  'data.items.0.image',
   'products.0.image_url',
+  'products.0.image',
 ]
 
 const NAME_PATHS = [

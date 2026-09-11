@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, type ReactNode } from 'react';
+import { Suspense, useMemo, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
@@ -17,6 +18,7 @@ import { WooCommerceBrandConnection } from '@/components/settings/woocommerce-br
 import { GoogleSheetsBrandConnection } from '@/components/settings/google-sheets-brand-connection';
 import { LeadCadencesSettings } from '@/components/settings/lead-cadences-settings';
 import { TemplateManager } from '@/components/settings/template-manager';
+import { QuickRepliesManager } from '@/components/settings/quick-replies-manager';
 import { FieldsAndTagsPanel } from '@/components/settings/fields-and-tags-panel';
 import { InboxFollowupSettings } from '@/components/settings/inbox-followup-settings';
 import { InboxMagicMessageSettings } from '@/components/settings/inbox-magic-message-settings';
@@ -29,11 +31,28 @@ import {
   type SettingsSection,
 } from '@/components/settings/settings-sections';
 
+// `useSearchParams` opts this page out of static prerendering unless it
+// sits under a Suspense boundary. Without one, the production build hits
+// the "missing Suspense with CSR bailout" error and the whole page bails
+// to client-side rendering — shipping a settings screen whose rail never
+// wires up its click handlers. You land on the section the URL carried
+// (the account-menu Settings link points at `?tab=whatsapp`) and can't
+// navigate away. Mirror the login/signup split: a thin wrapper supplies
+// the boundary; the inner component reads the query string.
 export default function SettingsPage() {
+  return (
+    <Suspense fallback={null}>
+      <SettingsPageInner />
+    </Suspense>
+  );
+}
+
+function SettingsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { defaultCurrency, brandCategory, ecommercePlatform } = useAuth();
   const { mode } = useTheme();
+  const t = useTranslations('Settings');
 
   const section = resolveSection(searchParams.get('tab'));
   const activeSection = useMemo(() => {
@@ -71,6 +90,7 @@ export default function SettingsPage() {
     google_sheets: <GoogleSheetsBrandConnection />,
     cadences: <LeadCadencesSettings />,
     templates: <TemplateManager />,
+    'quick-replies': <QuickRepliesManager />,
     fields: <FieldsAndTagsPanel />,
     inbox: (
       <>
@@ -88,8 +108,8 @@ export default function SettingsPage() {
       <PageHeader
         size="admin"
         eyebrow="Admin"
-        title="Settings"
-        subtitle="Everything in one place — your account and your workspace. Pick a section to manage it."
+        title={t('pageTitle')}
+        subtitle={t('pageDesc')}
       />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[236px_minmax(0,1fr)] lg:items-start">

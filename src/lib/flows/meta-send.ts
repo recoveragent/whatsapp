@@ -12,6 +12,7 @@ import {
   type AddressMessageValues,
   type AddressSavedAddress,
 } from '@/lib/whatsapp/meta-api'
+import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { persistOutboundAfterMetaSend } from '@/lib/whatsapp/persist-outbound-message'
 import {
@@ -50,6 +51,10 @@ interface SendTextEngineArgs {
   conversationId: string
   contactId: string
   text: string
+  /** Marks the persisted message row `ai_generated = true` so the inbox
+   *  badges it as an AI reply. Only the auto-reply bot sets this;
+   *  deterministic Flow/automation sends leave it false. */
+  aiGenerated?: boolean
 }
 
 /**
@@ -136,6 +141,7 @@ export async function engineSendText(
       content_text: args.text,
       message_id: waMessageId,
       status: 'sent',
+      ai_generated: args.aiGenerated ?? false,
     },
     {
       conversationId: args.conversationId,
@@ -405,7 +411,27 @@ async function sendInteractiveViaMeta(
   //
   // We do NOT set interactive_reply_id here — that column is reserved
   // for the customer's tap on this message, populated by the webhook
-  // when their reply arrives.
+  // when their reply arrives. We DO persist the structured payload so
+  // the inbox thread re-renders the buttons/rows the bot sent (round-
+  // trip), matching the composer + automation send paths.
+  const interactivePayload: InteractiveMessagePayload =
+    input.kind === 'buttons'
+      ? {
+          kind: 'buttons',
+          body: input.bodyText,
+          header: input.headerText,
+          footer: input.footerText,
+          buttons: input.buttons,
+        }
+      : {
+          kind: 'list',
+          body: input.bodyText,
+          header: input.headerText,
+          footer: input.footerText,
+          button_label: input.buttonLabel,
+          sections: input.sections,
+        }
+
   await persistOutboundAfterMetaSend(
     db,
     {
@@ -413,6 +439,7 @@ async function sendInteractiveViaMeta(
       sender_type: 'bot',
       content_type: 'interactive',
       content_text: input.bodyText,
+      interactive_payload: interactivePayload,
       message_id: waMessageId,
       status: 'sent',
     },

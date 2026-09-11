@@ -47,6 +47,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { ReminderSnoozeControls } from "@/components/inbox/reminder-snooze-controls";
 import { ScheduleReminderDialog } from "@/components/inbox/schedule-reminder-dialog";
 import { FormSubmissionFields } from "@/components/inbox/form-submission-fields";
@@ -101,6 +102,9 @@ export function ContactSidebar({
   onNameClick,
   onToggleContactPanel,
 }: ContactSidebarProps) {
+  const tSidebar = useTranslations("Inbox.sidebar");
+  const tThread = useTranslations("Inbox.messageThread");
+
   const { accountId, defaultCurrency, isLeadGenBrand, isEcommerceBrand, isWooCommerceBrand } =
     useAuth();
   const [copied, setCopied] = useState(false);
@@ -735,7 +739,7 @@ export function ContactSidebar({
   if (!contact) {
     return (
       <div className="flex h-full min-h-0 w-70 items-center justify-center overflow-hidden border-l border-border bg-card">
-        <p className="text-sm text-muted-foreground">Select a conversation</p>
+        <p className="text-sm text-muted-foreground">{tThread("selectConversation")}</p>
       </div>
     );
   }
@@ -1230,12 +1234,12 @@ export function ContactSidebar({
           <div className="mt-4">
             <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
               <TagIcon className="h-3 w-3" />
-              Tags
+              {tSidebar("tags")}
             </div>
             <div className="mt-2 flex flex-wrap gap-1">
               {allTags.length === 0 ? (
                 <p className="px-1 text-xs text-muted-foreground">
-                  No tags yet. Create tags in Settings → Fields &amp; tags.
+                  {tSidebar("noTags")}
                 </p>
               ) : (
                 allTags.map((tag) => {
@@ -1355,7 +1359,7 @@ export function ContactSidebar({
           <div>
             <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
               <DollarSign className="h-3 w-3" />
-              Active Deals
+              {tSidebar("deals")}
             </div>
             <div className="mt-2 space-y-2">
               {!stagesLoaded ? (
@@ -1365,7 +1369,7 @@ export function ContactSidebar({
                 </div>
               ) : stagesForPipeline.length === 0 ? (
                 <p className="px-1 text-xs text-muted-foreground">
-                  No pipeline stages yet. Create one under Pipelines.
+                  {tSidebar("noDeals")}
                 </p>
               ) : (
                 <div className="px-1">
@@ -1459,14 +1463,14 @@ export function ContactSidebar({
           <div>
             <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
               <StickyNote className="h-3 w-3" />
-              Notes
+              {tSidebar("notes")}
             </div>
             <div className="mt-2">
               <div className="flex gap-2">
                 <textarea
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}
-                  placeholder="Add a note..."
+                  placeholder={tSidebar("addNotePlaceholder")}
                   rows={2}
                   className="flex-1 resize-none rounded-lg border border-border bg-muted px-3 py-2 text-xs text-foreground placeholder-muted-foreground outline-none focus:border-primary/50"
                 />

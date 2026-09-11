@@ -41,6 +41,7 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import type { CustomField } from "@/types";
 import type { ContactFieldMapping } from "@/lib/flows/types";
+import { useTranslations } from "next-intl";
 import { NODE_META, type BuilderNode } from "../shared";
 
 export function TextRow({
@@ -96,7 +97,7 @@ export function NextNodeRow({
         nodes={allNodes}
         excludeKey={currentKey}
         onChange={(v) => onChange(v ?? "")}
-        placeholder="Pick a next node…"
+        placeholder={useTranslations("Flows.builder.form")("pickNextNode")}
       />
     </div>
   );
@@ -117,6 +118,7 @@ export function NodeKeySelect({
   placeholder?: string;
   className?: string;
 }) {
+  const t = useTranslations("Flows.builder.form");
   const options = nodes.filter((n) => n.node_key !== excludeKey);
   return (
     <Select
@@ -127,7 +129,7 @@ export function NodeKeySelect({
         <SelectValue placeholder={placeholder ?? "—"} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="__none__">— None —</SelectItem>
+        <SelectItem value="__none__">{t("none")}</SelectItem>
         {options.map((n) => {
           const Icon = NODE_META[n.node_type].icon;
           return (

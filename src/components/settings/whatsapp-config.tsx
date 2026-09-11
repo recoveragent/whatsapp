@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
@@ -34,7 +34,7 @@ import {
   type WhatsAppConnectMode,
 } from '@/lib/whatsapp/connect-mode';
 
-const MASKED_TOKEN = '••••••••••••••••';
+const MASKED_TOKEN = 'ΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇó';
 
 type ConnectionStatus = 'connected' | 'disconnected' | 'unknown';
 type ResetReason = 'token_corrupted' | 'meta_api_error' | null;
@@ -53,7 +53,7 @@ interface SafeConfigRow {
 interface WhatsAppConfigProps {
   brandId: string;
   brandName?: string;
-  /** Hide admin “back to brands” chrome when embedded in brand Settings. */
+  /** Hide admin ΓÇ£back to brandsΓÇ¥ chrome when embedded in brand Settings. */
   embeddedInSettings?: boolean;
 }
 
@@ -286,14 +286,14 @@ export function WhatsAppConfig({
         );
       } else if (data.registration_skipped) {
         toast.success(
-          'Credentials saved and verified. Inbound registration was skipped (no PIN) — see Registration status below.',
+          'Credentials saved and verified. Inbound registration was skipped (no PIN) ΓÇö see Registration status below.',
           { duration: 10000 },
         );
         setPin('');
       } else {
         toast.success(
           data.phone_info?.verified_name
-            ? `Live — ${data.phone_info.verified_name} can now receive events.`
+            ? `Live ΓÇö ${data.phone_info.verified_name} can now receive events.`
             : 'WhatsApp connected. Events will start flowing within a minute.',
         );
         setPin('');
@@ -353,7 +353,7 @@ export function WhatsAppConfig({
       const data = (await res.json()) as RegistrationProbe;
       setRegistrationProbe(data);
       if (data.live) {
-        toast.success('Number is fully wired — Meta is delivering events.');
+        toast.success('Number is fully wired ΓÇö Meta is delivering events.');
       } else {
         toast.error(
           'Number is not fully registered. See the checks below for which step failed.',
@@ -420,11 +420,11 @@ export function WhatsAppConfig({
           title={
             embeddedInSettings
               ? 'WhatsApp number'
-              : `WhatsApp setup — ${displayName}`
+              : `WhatsApp setup ΓÇö ${displayName}`
           }
           description={
             embeddedInSettings
-              ? 'Loading Meta credentials…'
+              ? 'Loading Meta credentialsΓÇª'
               : 'Recover Agent ops only. API credentials and webhook configuration for this brand.'
           }
         />
@@ -461,7 +461,7 @@ export function WhatsAppConfig({
         title={
           embeddedInSettings
             ? 'WhatsApp number'
-            : `WhatsApp setup — ${displayName}`
+            : `WhatsApp setup ΓÇö ${displayName}`
         }
         description={
           isSystemUserMode
@@ -516,7 +516,7 @@ export function WhatsAppConfig({
                   Meta shows &quot;This business portfolio owns Recover Agent WA.
                   You can only select other business portfolios&quot; during
                   Embedded Signup for assets under our own portfolio. Paste
-                  credentials from Meta Business Suite → System Users instead.
+                  credentials from Meta Business Suite ΓåÆ System Users instead.
                 </p>
               )}
             </CardContent>
@@ -596,8 +596,8 @@ export function WhatsAppConfig({
                     }
                   >
                     {isRegistered
-                      ? 'Registered — Meta will deliver events'
-                      : 'Not registered — Meta will not deliver events'}
+                      ? 'Registered ΓÇö Meta will deliver events'
+                      : 'Not registered ΓÇö Meta will not deliver events'}
                   </AlertTitle>
                 </div>
                 <Button
@@ -644,7 +644,7 @@ export function WhatsAppConfig({
               {registrationProbe && (
                 <div className="mt-3 rounded border border-border bg-card/60 px-3 py-2 space-y-1.5 text-[11px]">
                   <p className="font-medium text-foreground">
-                    Diagnostic — last run:{' '}
+                    Diagnostic ΓÇö last run:{' '}
                     <span
                       className={
                         registrationProbe.live ? 'text-emerald-400' : 'text-amber-400'
@@ -670,7 +670,7 @@ export function WhatsAppConfig({
                   {(registrationProbe.errors ?? []).length > 0 && (
                     <ul className="pt-1 space-y-0.5 text-red-300">
                       {registrationProbe.errors?.map((e, i) => (
-                        <li key={i}>• {e}</li>
+                        <li key={i}>ΓÇó {e}</li>
                       ))}
                     </ul>
                   )}
@@ -744,7 +744,7 @@ export function WhatsAppConfig({
                 )}
                 {isSystemUserMode && (
                   <p className="text-xs text-muted-foreground">
-                    Meta Business Suite → Users → System Users → Generate token with
+                    Meta Business Suite ΓåÆ Users ΓåÆ System Users ΓåÆ Generate token with
                     whatsapp_business_management and whatsapp_business_messaging.
                   </p>
                 )}
@@ -907,11 +907,11 @@ export function WhatsAppConfig({
                   </AccordionTrigger>
                   <AccordionContent className="text-muted-foreground">
                     <ol className="list-decimal list-inside space-y-1 text-sm">
-                      <li>WhatsApp → API Setup (or WhatsApp Manager)</li>
+                      <li>WhatsApp ΓåÆ API Setup (or WhatsApp Manager)</li>
                       <li>Copy Phone Number ID and WABA ID</li>
                       <li>
                         {isSystemUserMode
-                          ? 'Business Settings → System Users → generate a permanent token for the app'
+                          ? 'Business Settings ΓåÆ System Users ΓåÆ generate a permanent token for the app'
                           : 'Generate a permanent access token'}
                       </li>
                     </ol>

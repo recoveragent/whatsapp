@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { ensureWebhookTriggerConfig } from '@/lib/automations/webhook-config'
 import { generateWebhookToken } from '@/lib/automations/webhook-token'
@@ -9,6 +10,16 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
+
+  // Duplicating creates a new automation row — a write. Enforce `agent`
+  // (the service-role client below bypasses the agent-gated
+  // automations_insert RLS).
+  try {
+    await requireRole('agent')
+  } catch (err) {
+    return toErrorResponse(err)
+  }
+
   const supabase = await createClient()
   const {
     data: { user },

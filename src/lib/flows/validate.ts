@@ -42,7 +42,7 @@ import {
   isReplyTimeoutEnabled,
   hasReplyTimeoutTiming,
 } from "./reply-timeout";
-import { resolveUpdateContactFieldEntries } from "./extended-nodes";
+import { resolveUpdateContactFieldEntries } from "./extended-nodes-shared";
 import type { UpdateContactFieldNodeConfig } from "./types";
 
 export interface ValidationIssue {

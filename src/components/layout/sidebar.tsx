@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -7,8 +7,11 @@ import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useInboxNavCounts } from "@/hooks/use-total-unread";
+import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import { BRAND_ICON_PATH, BRAND_NAME } from "@/components/brand/brand-logo";
 import {
+  Bell,
+  Bot,
   Building2,
   ChevronsLeft,
   ChevronsRight,
@@ -28,7 +31,9 @@ import {
   UsersRound,
   Workflow,
   X,
+  Zap,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import type { AccountRole } from "@/lib/auth/roles";
 import {
   Avatar,
@@ -46,55 +51,60 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 const ROLE_CHIP: Record<
   AccountRole,
-  { icon: typeof Crown; label: string; className: string }
+  { icon: typeof Crown; labelKey: string; className: string }
 > = {
   owner: {
     icon: Crown,
-    label: "Owner",
+    labelKey: "roleOwner",
     className: "border-amber-500/40 bg-amber-500/10 text-amber-700",
   },
   admin: {
     icon: Shield,
-    label: "Admin",
+    labelKey: "roleAdmin",
     className: "border-primary/40 bg-primary/10 text-primary",
   },
   agent: {
     icon: UserCog,
-    label: "Agent",
+    labelKey: "roleAgent",
     className: "border-border bg-muted text-foreground",
   },
   viewer: {
     icon: User,
-    label: "Viewer",
+    labelKey: "roleViewer",
     className: "border-border bg-card text-muted-foreground",
   },
 };
 
 interface NavItem {
   href: string;
-  label: string;
+  labelKey?: string;
+  /** Fallback when no i18n key exists (fork-only nav items). */
+  label?: string;
   icon: typeof LayoutDashboard;
   beta?: boolean;
 }
 
 const homeItems: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
 ];
 
 const workspaceItems: NavItem[] = [
-  { href: "/inbox", label: "Inbox", icon: MessageSquare },
+  { href: "/inbox", labelKey: "inbox", icon: MessageSquare },
+  { href: "/notifications", labelKey: "notifications", icon: Bell },
   { href: "/leads", label: "Leads", icon: PhoneCall },
-  { href: "/contacts", label: "Contacts", icon: Users },
-  { href: "/pipelines", label: "Pipelines", icon: GitBranch },
+  { href: "/contacts", labelKey: "contacts", icon: Users },
+  { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
 ];
 
 const automationItems: NavItem[] = [
-  { href: "/broadcasts", label: "Broadcasts", icon: Radio },
-  { href: "/flows", label: "Flows", icon: Workflow },
+  { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
+  { href: "/automations", labelKey: "automations", icon: Zap },
+  { href: "/flows", labelKey: "flows", icon: Workflow, beta: true },
+  { href: "/agents", labelKey: "aiAgents", icon: Bot },
 ];
 
 const bottomNavItems: NavItem[] = [
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/settings", labelKey: "settings", icon: Settings },
 ];
 
 interface SidebarProps {
@@ -110,6 +120,7 @@ export function Sidebar({
   collapsed = false,
   onToggleCollapsed,
 }: SidebarProps) {
+  const t = useTranslations("Sidebar");
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const {
@@ -135,6 +146,7 @@ export function Sidebar({
       ? pathname === "/settings" && searchParams.get("tab") === "templates"
       : pathname.startsWith("/admin/templates");
   const { unread: totalUnread, open: openInboxCount } = useInboxNavCounts();
+  const unreadNotifications = useUnreadNotifications();
   const showAccountStrip =
     !opsOnlyNav &&
     !profileLoading &&
@@ -170,7 +182,7 @@ export function Sidebar({
     <TooltipProvider delay={0}>
       <button
         type="button"
-        aria-label="Close menu"
+        aria-label={t("closeMenu")}
         onClick={onClose}
         className={cn(
           "fixed inset-0 z-30 bg-black/60 transition-opacity lg:hidden",
@@ -222,7 +234,7 @@ export function Sidebar({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close menu"
+            aria-label={t("closeMenu")}
             className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground lg:hidden"
           >
             <X className="h-5 w-5" />
@@ -239,6 +251,8 @@ export function Sidebar({
                 pathname={pathname}
                 totalUnread={totalUnread}
                 openInboxCount={openInboxCount}
+                unreadNotifications={unreadNotifications}
+                t={t}
               />
               <NavSection
                 label="Workspace"
@@ -247,6 +261,8 @@ export function Sidebar({
                 pathname={pathname}
                 totalUnread={totalUnread}
                 openInboxCount={openInboxCount}
+                unreadNotifications={unreadNotifications}
+                t={t}
               />
               <NavSection
                 label="Automation"
@@ -255,6 +271,8 @@ export function Sidebar({
                 pathname={pathname}
                 totalUnread={totalUnread}
                 openInboxCount={openInboxCount}
+                unreadNotifications={unreadNotifications}
+                t={t}
               />
             </>
           ) : (
@@ -290,6 +308,7 @@ export function Sidebar({
                   icon={Building2}
                   active={pathname.startsWith("/admin/brands")}
                   collapsed={collapsed}
+                  t={t}
                 />
                 <NavRow
                   href={templatesHref}
@@ -297,13 +316,15 @@ export function Sidebar({
                   icon={FileText}
                   active={templatesActive}
                   collapsed={collapsed}
+                  t={t}
                 />
                 <NavRow
                   href="/admin/flows"
-                  label="Flows"
+                  label={t("flows")}
                   icon={Workflow}
                   active={pathname.startsWith('/admin/flows')}
                   collapsed={collapsed}
+                  t={t}
                 />
               </>
             ) : null}
@@ -312,10 +333,11 @@ export function Sidebar({
                 <NavRow
                   key={item.href}
                   href={item.href}
-                  label={item.label}
+                  label={item.label ?? t(item.labelKey!)}
                   icon={item.icon}
                   active={pathname.startsWith(item.href)}
                   collapsed={collapsed}
+                  t={t}
                 />
               ))}
           </ul>
@@ -337,7 +359,7 @@ export function Sidebar({
                         className={`ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium tracking-wider uppercase ${meta.className}`}
                       >
                         <Icon className="size-3" />
-                        {meta.label}
+                        {t(meta.labelKey)}
                       </span>
                     );
                   })()
@@ -356,7 +378,7 @@ export function Sidebar({
                 {profile?.avatar_url ? (
                   <AvatarImage
                     src={profile.avatar_url}
-                    alt={profile.full_name ?? "Avatar"}
+                    alt={profile.full_name ?? t("defaultAvatar")}
                   />
                 ) : null}
                 <AvatarFallback className="bg-primary/15 text-sm font-medium text-primary">
@@ -367,7 +389,7 @@ export function Sidebar({
               </Avatar>
               <div className={cn("min-w-0 flex-1", collapsed && "lg:hidden")}>
                 <p className="truncate text-[13px] font-medium text-foreground">
-                  {profile?.full_name ?? "User"}
+                  {profile?.full_name ?? t("defaultUser")}
                 </p>
                 <p className="truncate text-[10px] text-muted-foreground">
                   {profile?.email ?? ""}
@@ -390,7 +412,7 @@ export function Sidebar({
                 }
               >
                 <User className="size-4" />
-                Profile
+                {t("menuProfile")}
               </DropdownMenuItem>
               {!opsOnlyNav ? (
                 <DropdownMenuItem
@@ -403,7 +425,7 @@ export function Sidebar({
                   }
                 >
                   <Settings className="size-4" />
-                  Settings
+                  {t("menuSettings")}
                 </DropdownMenuItem>
               ) : null}
               <DropdownMenuSeparator className="bg-border" />
@@ -412,7 +434,7 @@ export function Sidebar({
                 className="text-destructive focus:bg-destructive/10 focus:text-destructive"
               >
                 <LogOut className="size-4" />
-                Sign out
+                {t("menuSignOut")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -447,6 +469,8 @@ function NavSection({
   collapsed,
   totalUnread,
   openInboxCount,
+  unreadNotifications,
+  t,
 }: {
   label: string;
   items: NavItem[];
@@ -454,6 +478,8 @@ function NavSection({
   collapsed: boolean;
   totalUnread: number;
   openInboxCount: number;
+  unreadNotifications: number;
+  t: ReturnType<typeof useTranslations>;
 }) {
   if (items.length === 0) return null;
   return (
@@ -472,18 +498,22 @@ function NavSection({
             pathname === item.href ||
             (item.href !== "/dashboard" && pathname.startsWith(item.href));
           const isInbox = item.href === "/inbox";
+          const isNotifications = item.href === "/notifications";
           const showUnreadDot = isInbox && totalUnread > 0 && !isActive;
+          const notificationBadge =
+            isNotifications && unreadNotifications > 0 ? unreadNotifications : 0;
           return (
             <NavRow
               key={item.href}
               href={item.href}
-              label={item.label}
+              label={item.label ?? t(item.labelKey!)}
               icon={item.icon}
               active={isActive}
               collapsed={collapsed}
               beta={item.beta}
               unread={showUnreadDot ? totalUnread : 0}
-              badge={isInbox ? openInboxCount : 0}
+              badge={isInbox ? openInboxCount : notificationBadge}
+              t={t}
             />
           );
         })}
@@ -501,6 +531,7 @@ function NavRow({
   beta,
   unread = 0,
   badge = 0,
+  t,
 }: {
   href: string;
   label: string;
@@ -510,12 +541,16 @@ function NavRow({
   beta?: boolean;
   unread?: number;
   badge?: number;
+  t: ReturnType<typeof useTranslations>;
 }) {
+  const isNotifications = href === "/notifications";
   const badgeLabel =
     badge > 0
-      ? `${badge} open conversation${badge === 1 ? "" : "s"}`
+      ? isNotifications
+        ? t("unreadNotifications", { count: badge })
+        : `${badge} open conversation${badge === 1 ? "" : "s"}`
       : undefined;
-  const badgeText = badge > 99 ? "99+" : String(badge);
+  const badgeText = badge > 99 ? "9+" : String(badge);
 
   return (
     <li>
@@ -524,7 +559,7 @@ function NavRow({
         title={
           collapsed
             ? badgeLabel
-              ? `${label} · ${badgeLabel}`
+              ? `${label} ┬╖ ${badgeLabel}`
               : label
             : undefined
         }
@@ -545,13 +580,13 @@ function NavRow({
         </span>
         {beta ? (
           <span
-            aria-label="Beta feature"
+            aria-label={t("beta")}
             className={cn(
               "rounded-full border border-amber-500/30 bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-amber-700 uppercase",
               collapsed && "lg:hidden",
             )}
           >
-            Beta
+            {t("beta")}
           </span>
         ) : null}
         {badge > 0 ? (
@@ -568,7 +603,7 @@ function NavRow({
         ) : null}
         {unread > 0 ? (
           <span
-            aria-label={`${unread} unread conversation${unread === 1 ? "" : "s"}`}
+            aria-label={t("unreadConversations", { count: unread })}
             className={cn("relative flex h-2 w-2", collapsed && "lg:hidden")}
           >
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />

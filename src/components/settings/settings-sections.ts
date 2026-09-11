@@ -14,6 +14,7 @@ import {
   Tags,
   User,
   UsersRound,
+  Zap,
   type LucideIcon,
 } from 'lucide-react';
 import type { BrandCategory } from '@/lib/auth/brand-category';
@@ -42,6 +43,7 @@ export const SETTINGS_SECTIONS = [
   'google_sheets',
   'cadences',
   'templates',
+  'quick-replies',
   'fields',
   'inbox',
   'deals',
@@ -82,6 +84,7 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
     group: 'workspace',
   },
   templates: { id: 'templates', label: 'Templates', icon: FileText, group: 'workspace' },
+  'quick-replies': { id: 'quick-replies', label: 'Quick replies', icon: Zap, group: 'workspace' },
   fields: { id: 'fields', label: 'Fields & tags', icon: Tags, group: 'workspace' },
   inbox: { id: 'inbox', label: 'Inbox', icon: Inbox, group: 'workspace' },
   deals: { id: 'deals', label: 'Deals & currency', icon: Coins, group: 'workspace' },
