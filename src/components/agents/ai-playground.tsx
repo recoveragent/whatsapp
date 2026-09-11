@@ -205,7 +205,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
             <Select
               value={contactId || NO_CONTACT}
               onValueChange={(value) =>
-                setContactId(value === NO_CONTACT ? '' : value)
+                setContactId(!value || value === NO_CONTACT ? '' : value)
               }
               disabled={contactsLoading || sending}
             >
