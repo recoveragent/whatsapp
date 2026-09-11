@@ -174,22 +174,26 @@ export function EditorHeader() {
 }
 
 function StatusChip({ status }: { status: BuilderState["status"] }) {
-  const cfg = {
-    draft: {
-      // Neutral, not amber — amber is reserved for the adjacent
-      // "Edited" dirty signal, so the two don't read as the same alert.
+  const cfg =
+    {
+      draft: {
+        // Neutral, not amber — amber is reserved for the adjacent
+        // "Edited" dirty signal, so the two don't read as the same alert.
+        cls: "border-border bg-muted text-muted-foreground",
+        label: "Draft",
+      },
+      active: {
+        cls: "border-emerald-600/40 bg-emerald-500/10 text-emerald-300",
+        label: "Active",
+      },
+      archived: {
+        cls: "border-border bg-muted/50 text-muted-foreground",
+        label: "Archived",
+      },
+    }[status] ?? {
       cls: "border-border bg-muted text-muted-foreground",
-      label: "Draft",
-    },
-    active: {
-      cls: "border-emerald-600/40 bg-emerald-500/10 text-emerald-300",
-      label: "Active",
-    },
-    archived: {
-      cls: "border-border bg-muted/50 text-muted-foreground",
-      label: "Archived",
-    },
-  }[status];
+      label: status,
+    };
   return (
     <span
       className={cn(

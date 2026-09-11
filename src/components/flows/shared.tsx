@@ -346,6 +346,20 @@ export interface NodeColors {
   text: string;
 }
 
+const FALLBACK_NODE_TYPE: NodeType = "send_message";
+
+/** Coerce DB / legacy node types to a known editor type so render never crashes. */
+export function resolveNodeType(type: string): NodeType {
+  if (Object.prototype.hasOwnProperty.call(NODE_META, type)) {
+    return type as NodeType;
+  }
+  return FALLBACK_NODE_TYPE;
+}
+
+export function nodeMetaFor(type: string) {
+  return NODE_META[resolveNodeType(type)];
+}
+
 export function nodeColors(type: NodeType): NodeColors {
   const t = NODE_HUE[type];
   const solid = `oklch(${t.l} ${t.c} ${t.h})`;
@@ -362,6 +376,10 @@ export function nodeColors(type: NodeType): NodeColors {
   };
 }
 
+export function nodeColorsFor(type: string): NodeColors {
+  return nodeColors(resolveNodeType(type));
+}
+
 // ============================================================
 // Shared node icon chip — the per-type colored glyph badge used in
 // the canvas node card, list-view card, inspector header, and the
@@ -376,15 +394,16 @@ export function NodeIconChip({
   iconSize = 14,
   className,
 }: {
-  type: NodeType;
+  type: NodeType | string;
   /** Chip side length in px. */
   size?: number;
   /** Glyph side length in px. */
   iconSize?: number;
   className?: string;
 }) {
-  const meta = NODE_META[type];
-  const c = nodeColors(type);
+  const resolved = resolveNodeType(type);
+  const meta = NODE_META[resolved];
+  const c = nodeColors(resolved);
   const Icon = meta.icon;
   return (
     <span

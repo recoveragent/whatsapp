@@ -37,6 +37,7 @@ import {
 } from "@/lib/deals/stage-events";
 import { buildDealTimeline } from "@/lib/deals/timeline";
 import { DealTimeline } from "@/components/pipelines/deal-timeline";
+import { DealContactSummary } from "@/components/pipelines/deal-contact-summary";
 import type { DealStageEvent } from "@/types";
 
 interface DealFormProps {
@@ -381,13 +382,6 @@ export function DealForm({
     onSaved();
   }
 
-  const editingContact = deal?.contact ?? null;
-  const editingContactLabel =
-    editingContact?.name?.trim() ||
-    editingContact?.phone ||
-    deal?.title?.trim() ||
-    "Unknown contact";
-
   return (
     <>
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -432,16 +426,10 @@ export function DealForm({
             {deal ? (
               <div className="space-y-2">
                 <Label className="text-muted-foreground">{t("contact")}</Label>
-                <div className="rounded-xl border border-border/70 bg-muted/40 px-3 py-2.5">
-                  <p className="text-sm font-medium tracking-tight text-foreground">
-                    {editingContactLabel}
-                  </p>
-                  {editingContact?.phone && editingContact?.name && (
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {editingContact.phone}
-                    </p>
-                  )}
-                </div>
+                <DealContactSummary
+                  contact={deal.contact ?? null}
+                  contactId={deal.contact_id ?? null}
+                />
                 {hasConversation && deal.contact_id && (
                   <Button
                     type="button"

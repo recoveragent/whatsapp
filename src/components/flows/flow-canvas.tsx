@@ -92,6 +92,9 @@ import {
   NodeIconChip,
   groupNodeTypesByCategory,
   nodeColors,
+  nodeColorsFor,
+  nodeMetaFor,
+  resolveNodeType,
   summarizeNode,
   type BuilderNode,
   type NodeType,
@@ -219,7 +222,8 @@ function FlowNodeCard({ data, selected }: NodeProps) {
     pipelines = [],
     stages = [],
   } = data as NodeData;
-  const c = nodeColors(node.node_type);
+  const resolvedType = resolveNodeType(node.node_type);
+  const c = nodeColorsFor(node.node_type);
   const tSummary = useTranslations('Flows.summary');
   const summary = summarizeNode(node, {
     customFields,
@@ -273,7 +277,7 @@ function FlowNodeCard({ data, selected }: NodeProps) {
 
       <div className="flex items-center gap-2">
         <NodeIconChip
-          type={node.node_type}
+          type={resolvedType}
           size={24}
           iconSize={14}
           className="rounded-md"
@@ -282,7 +286,7 @@ function FlowNodeCard({ data, selected }: NodeProps) {
           className="truncate text-[10.5px] font-semibold tracking-wider uppercase"
           style={{ color: c.text }}
         >
-          {t(`nodes.${node.node_type}.label`)}
+          {t(`nodes.${resolvedType}.label`)}
         </span>
         {isEntry && (
           <span className="border-border text-muted-foreground ml-auto rounded border px-1.5 py-0.5 text-[8.5px] font-bold tracking-[0.1em] uppercase">
@@ -906,7 +910,7 @@ function FlowCanvasInner() {
             pannable
             zoomable
             nodeColor={(n) =>
-              nodeColors((n.data as NodeData).node.node_type).solid
+              nodeColorsFor((n.data as NodeData).node.node_type).solid
             }
             nodeStrokeWidth={0}
             nodeBorderRadius={3}
@@ -1021,7 +1025,7 @@ function NodeEditPanelBody({
   onDuplicate: () => void;
   onDelete: () => void;
 }) {
-  const meta = NODE_META[node.node_type];
+  const meta = nodeMetaFor(node.node_type);
   const Icon = meta.icon;
 
   return (
@@ -1137,7 +1141,8 @@ function NodeEditSheet({
     );
   }
 
-  const c = nodeColors(node.node_type);
+  const resolvedType = resolveNodeType(node.node_type);
+  const c = nodeColorsFor(node.node_type);
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent
@@ -1145,10 +1150,10 @@ function NodeEditSheet({
         className="border-border bg-popover flex w-full flex-col gap-0 border-l p-0 sm:max-w-md"
       >
         <SheetHeader className="border-border flex-row items-center gap-3 space-y-0 border-b px-5 py-4">
-          <NodeIconChip type={node.node_type} size={36} iconSize={18} />
+          <NodeIconChip type={resolvedType} size={36} iconSize={18} />
           <div className="min-w-0 flex-1">
             <SheetTitle className="flex items-center gap-2 text-[11px] font-semibold tracking-wider uppercase">
-              <span style={{ color: c.text }}>{t(`nodes.${node.node_type}.label`)}</span>
+              <span style={{ color: c.text }}>{t(`nodes.${resolvedType}.label`)}</span>
               {isEntry && (
                 <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-emerald-300 uppercase">
                   {t('badgeEntry')}

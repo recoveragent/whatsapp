@@ -52,7 +52,9 @@ import {
   NODE_META,
   NodeIconChip,
   groupNodeTypesByCategory,
-  nodeColors,
+  nodeColorsFor,
+  nodeMetaFor,
+  resolveNodeType,
   slugify,
   summarizeNode,
   type BuilderNode,
@@ -266,8 +268,9 @@ function NodeCard({
   onSetEntry: () => void;
   t: ReturnType<typeof useTranslations>;
 }) {
-  const meta = NODE_META[node.node_type];
-  const c = nodeColors(node.node_type);
+  const resolvedType = resolveNodeType(node.node_type);
+  const meta = nodeMetaFor(node.node_type);
+  const c = nodeColorsFor(node.node_type);
   const hasError = issues.some((i) => i.severity === 'error');
   const tSummary = useTranslations('Flows.summary');
   const preview = summarizeNode(node, tSummary);
@@ -301,7 +304,7 @@ function NodeCard({
               className="truncate text-[11px] font-semibold tracking-wider uppercase"
               style={{ color: c.text }}
             >
-              {t(`nodes.${node.node_type}.label`)}
+              {t(`nodes.${resolvedType}.label`)}
             </span>
             <code className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px]">
               {node.node_key}

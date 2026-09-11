@@ -37,12 +37,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { resolveContactFieldLabel } from "@/lib/contact-fields";
+import { nodeMetaFor } from "../shared";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import type { CustomField } from "@/types";
 import type { ContactFieldMapping } from "@/lib/flows/types";
 import { useTranslations } from "next-intl";
-import { NODE_META, type BuilderNode } from "../shared";
+import { type BuilderNode } from "../shared";
 
 export function TextRow({
   label,
@@ -131,13 +132,12 @@ export function NodeKeySelect({
       <SelectContent>
         <SelectItem value="__none__">{t("none")}</SelectItem>
         {options.map((n) => {
-          const Icon = NODE_META[n.node_type].icon;
+          const meta = nodeMetaFor(n.node_type);
+          const Icon = meta.icon;
           return (
             <SelectItem key={n.node_key} value={n.node_key}>
               <span className="inline-flex items-center gap-1.5">
-                <Icon
-                  className={cn("h-3 w-3", NODE_META[n.node_type].color)}
-                />
+                <Icon className={cn("h-3 w-3", meta.color)} />
                 {n.node_key}
               </span>
             </SelectItem>
