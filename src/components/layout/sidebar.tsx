@@ -548,7 +548,7 @@ function NavRow({
     badge > 0
       ? isNotifications
         ? t("unreadNotifications", { count: badge })
-        : `${badge} open conversation${badge === 1 ? "" : "s"}`
+        : t("activeOpenConversations", { count: badge })
       : undefined;
   const badgeText = badge > 99 ? "9+" : String(badge);
 

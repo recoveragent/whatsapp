@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ACTIVE_OPEN_WINDOW_MS,
   getInboxActivityAt,
   getNextInboxConversation,
+  isActiveOpenInboxConversation,
   isOpenInboxConversation,
   matchesInboxSearch,
   shouldShowInInboxList,
@@ -19,6 +21,48 @@ describe('shouldShowInInboxList', () => {
     expect(shouldShowInInboxList({ last_message_at: '2026-08-21T07:00:00Z' })).toBe(
       true,
     );
+  });
+});
+
+describe('isActiveOpenInboxConversation', () => {
+  const now = new Date('2026-09-11T12:00:00Z');
+
+  it('counts open threads with a message in the last 24 hours', () => {
+    expect(
+      isActiveOpenInboxConversation(
+        {
+          status: 'open',
+          last_message_at: new Date(now.getTime() - 60 * 60 * 1000).toISOString(),
+        },
+        now,
+      ),
+    ).toBe(true);
+  });
+
+  it('ignores open threads whose last message is older than 24 hours', () => {
+    expect(
+      isActiveOpenInboxConversation(
+        {
+          status: 'open',
+          last_message_at: new Date(
+            now.getTime() - ACTIVE_OPEN_WINDOW_MS - 1,
+          ).toISOString(),
+        },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it('ignores closed threads even when recent', () => {
+    expect(
+      isActiveOpenInboxConversation(
+        {
+          status: 'closed',
+          last_message_at: new Date(now.getTime() - 60 * 60 * 1000).toISOString(),
+        },
+        now,
+      ),
+    ).toBe(false);
   });
 });
 

@@ -28,6 +28,7 @@
     "settings": "설정",
     "beta": "베타",
     "unreadConversations": "읽지 않은 대화 {count}건",
+    "activeOpenConversations": "최근 24시간 활성 오픈 대화 {count}건",
     "unreadNotifications": "읽지 않은 알림 {count}건",
     "roleOwner": "소유자",
     "roleAdmin": "관리자",

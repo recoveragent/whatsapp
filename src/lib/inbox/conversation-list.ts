@@ -77,6 +77,23 @@ export function isOpenInboxConversation(conv: {
   return conv.status === 'open' && shouldShowInInboxList(conv);
 }
 
+/** Sidebar badge window — open threads with a message in the last 24 hours. */
+export const ACTIVE_OPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Open inbox threads with message activity inside {@link ACTIVE_OPEN_WINDOW_MS}. */
+export function isActiveOpenInboxConversation(
+  conv: {
+    status: Conversation['status'];
+    last_message_at?: string | null;
+  },
+  now: Date = new Date(),
+): boolean {
+  if (!isOpenInboxConversation(conv)) return false;
+  const at = conv.last_message_at ? Date.parse(conv.last_message_at) : Number.NaN;
+  if (!Number.isFinite(at)) return false;
+  return now.getTime() - at < ACTIVE_OPEN_WINDOW_MS;
+}
+
 /** Sidebar list after search + status filter (preserves input order). */
 export function filterInboxConversations<T extends InboxListConversation>(
   conversations: T[],
