@@ -30,4 +30,24 @@ describe('admin template preset store', () => {
     });
     expect(() => validatePresetPayload(form)).not.toThrow();
   });
+
+  it('rejects URL buttons with {{1}} but no example', () => {
+    const base = getAdminTemplatePreset('order_confirmation');
+    expect(base).not.toBeNull();
+    const form = presetViewToFormData({
+      ...base!,
+      has_override: false,
+      is_custom: false,
+    });
+    form.buttons = [
+      {
+        type: 'URL',
+        text: 'Track my order',
+        url: 'https://wa.recoveragent.ai/t/{{1}}',
+      },
+    ];
+    expect(() => validatePresetPayload(form)).toThrow(
+      /Meta requires an example value/,
+    );
+  });
 });

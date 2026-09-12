@@ -4,8 +4,8 @@
 
 import { NextResponse } from 'next/server';
 
-import { toErrorResponse } from '@/lib/auth/account';
 import { requireSuperAdmin } from '@/lib/auth/super-admin';
+import { toAdminPresetErrorResponse } from '@/lib/whatsapp/admin-template-preset-errors';
 import {
   deleteAdminTemplatePresetOverride,
   listMergedAdminTemplatePresets,
@@ -80,22 +80,11 @@ export async function PUT(
 
     return NextResponse.json({ preset });
   } catch (err) {
-    if (err instanceof Error) {
-      if (
-        err.message === 'Unknown template preset.' ||
-        err.message === 'Custom template not found.'
-      ) {
-        return NextResponse.json({ error: err.message }, { status: 404 });
-      }
-      if (
-        err.message.includes('required') ||
-        err.message.includes('must stay')
-      ) {
-        return NextResponse.json({ error: err.message }, { status: 400 });
-      }
+    const response = toAdminPresetErrorResponse(err);
+    if (response.status === 500) {
+      console.error('[PUT /api/admin/templates/presets/[slug]]', err);
     }
-    console.error('[PUT /api/admin/templates/presets/[slug]]', err);
-    return toErrorResponse(err);
+    return response;
   }
 }
 
@@ -126,10 +115,10 @@ export async function DELETE(
 
     return NextResponse.json({ preset, deleted: false });
   } catch (err) {
-    if (err instanceof Error && err.message === 'Template not found.') {
-      return NextResponse.json({ error: err.message }, { status: 404 });
+    const response = toAdminPresetErrorResponse(err);
+    if (response.status === 500) {
+      console.error('[DELETE /api/admin/templates/presets/[slug]]', err);
     }
-    console.error('[DELETE /api/admin/templates/presets/[slug]]', err);
-    return toErrorResponse(err);
+    return response;
   }
 }

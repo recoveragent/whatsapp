@@ -4,8 +4,8 @@
 
 import { NextResponse } from 'next/server';
 
-import { toErrorResponse } from '@/lib/auth/account';
 import { requireSuperAdmin } from '@/lib/auth/super-admin';
+import { toAdminPresetErrorResponse } from '@/lib/whatsapp/admin-template-preset-errors';
 import {
   createAdminTemplateCustomPreset,
   listMergedAdminTemplatePresets,
@@ -50,17 +50,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ preset }, { status: 201 });
   } catch (err) {
-    if (err instanceof Error) {
-      if (
-        err.message.includes('already exists') ||
-        err.message.includes('reserved') ||
-        err.message.includes('required') ||
-        err.message.includes('must match')
-      ) {
-        return NextResponse.json({ error: err.message }, { status: 400 });
-      }
+    const response = toAdminPresetErrorResponse(err);
+    if (response.status === 500) {
+      console.error('[POST /api/admin/templates/presets]', err);
     }
-    console.error('[POST /api/admin/templates/presets]', err);
-    return toErrorResponse(err);
+    return response;
   }
 }
