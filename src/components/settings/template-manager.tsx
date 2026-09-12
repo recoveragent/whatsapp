@@ -12,7 +12,9 @@ import {
   Pencil,
   RotateCcw,
   Upload,
+  FileText,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { getWhatsAppTrackingButtonUrlTemplate } from '@/lib/shopify/tracking-redirect';
 import {
   uploadAccountMedia,
@@ -60,10 +62,25 @@ type HeaderFormat = 'none' | 'text' | 'image' | 'video' | 'document';
 const HEADER_FORMATS: HeaderFormat[] = ['none', 'text', 'image', 'video', 'document'];
 
 const categoryColors: Record<string, string> = {
-  Marketing: 'bg-purple-600/20 text-purple-400 border-purple-600/30',
-  Utility: 'bg-blue-600/20 text-blue-400 border-blue-600/30',
-  Authentication: 'bg-amber-600/20 text-amber-400 border-amber-600/30',
+  Marketing: 'border-purple-500/20 bg-purple-500/10 text-purple-700 dark:text-purple-300',
+  Utility: 'border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300',
+  Authentication: 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
 };
+
+/** Frosted material — cards and panels float above content. */
+const glassSurface =
+  'rounded-2xl border border-border/60 bg-card/70 shadow-sm ring-1 ring-white/20 backdrop-blur-xl backdrop-saturate-150';
+
+/** Instant press feedback — highlight on pointer-down, not release. */
+const pressable =
+  'transition-[transform,background-color,color,box-shadow,border-color] duration-100 active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100';
+
+const glassButtonOutline = cn(
+  'h-9 gap-2 rounded-xl border-border/80 bg-card/80 shadow-sm backdrop-blur-sm',
+  pressable,
+);
+
+const glassButtonPrimary = cn('h-9 gap-2 rounded-xl shadow-md', pressable);
 
 interface TemplateFormData {
   name: string;
@@ -490,8 +507,15 @@ export function TemplateManager() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="size-6 animate-spin text-primary" />
+      <div className="flex flex-col items-center justify-center gap-3 py-20">
+        <div
+          className={cn(
+            glassSurface,
+            'flex size-12 items-center justify-center border-0 bg-card/50',
+          )}
+        >
+          <Loader2 className="size-5 animate-spin text-primary" />
+        </div>
       </div>
     );
   }
@@ -523,8 +547,9 @@ export function TemplateManager() {
   }
 
   return (
-    <section className="animate-in fade-in-50 space-y-4 duration-200">
+    <section className="animate-in fade-in-50 space-y-5 duration-300 motion-reduce:animate-none">
       <SettingsPanelHead
+        className="mb-6"
         title={t('title')}
         description={t('description')}
         action={
@@ -534,11 +559,12 @@ export function TemplateManager() {
               onClick={handleSyncFromMeta}
               disabled={syncing}
               title={t('syncTitle')}
+              className={glassButtonOutline}
             >
-              <RefreshCw className={`size-4 ${syncing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={cn('size-4', syncing && 'animate-spin')} />
               {syncing ? t('syncing') : t('syncFromMeta')}
             </Button>
-            <Button onClick={openCreate}>
+            <Button onClick={openCreate} className={glassButtonPrimary}>
               <Plus className="size-4" />
               {t('newTemplate')}
             </Button>
@@ -547,120 +573,160 @@ export function TemplateManager() {
       />
 
       {templates.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <p className="text-muted-foreground text-sm">{t('noTemplates')}</p>
-            <p className="text-muted-foreground text-xs mt-1">
-              {t('createFirst')}
-            </p>
+        <Card className={cn(glassSurface, 'border-0 py-0 shadow-none')}>
+          <CardContent className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+            <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/20">
+              <FileText className="size-6 text-primary" />
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-base font-semibold tracking-tight text-foreground">
+                {t('noTemplates')}
+              </p>
+              <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
+                {t('createFirst')}
+              </p>
+            </div>
+            <Button onClick={openCreate} className={cn(glassButtonPrimary, 'mt-1')}>
+              <Plus className="size-4" />
+              {t('newTemplate')}
+            </Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-3 xl:grid-cols-2">
-          {templates.map((template) => {
+        <div className="grid gap-4 xl:grid-cols-2">
+          {templates.map((template, index) => {
             const statusKey = template.status || 'DRAFT';
             const status = templateStatusConfig[statusKey];
             return (
-              <Card key={template.id}>
-                <CardContent className="flex items-start justify-between pt-4">
-                  <div className="space-y-2 min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-medium text-foreground">{template.name}</h3>
-                      <Badge
-                        className={`text-xs border ${categoryColors[template.category] || ''}`}
-                      >
-                        {template.category}
-                      </Badge>
-                      <Badge className={`text-xs border ${status.classes}`}>
-                        {status.label}
-                      </Badge>
-                      {template.language && (
-                        <span className="text-xs text-muted-foreground uppercase">
-                          {template.language}
-                        </span>
-                      )}
-                      {template.quality_score && (
-                        <span
-                          className={`text-[10px] uppercase font-medium ${
-                            template.quality_score === 'GREEN'
-                              ? 'text-emerald-400'
-                              : template.quality_score === 'YELLOW'
-                                ? 'text-yellow-400'
-                                : 'text-red-400'
-                          }`}
-                          title="Meta quality score"
+              <Card
+                key={template.id}
+                style={{ animationDelay: `${Math.min(index, 12) * 40}ms` }}
+                className={cn(
+                  glassSurface,
+                  'group/card border-0 py-0 shadow-none transition-[transform,box-shadow,border-color] duration-200 hover:shadow-md motion-reduce:transition-none',
+                  'animate-in fade-in slide-in-from-bottom-1 duration-300 [animation-fill-mode:backwards] motion-reduce:animate-none',
+                )}
+              >
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1 space-y-3">
+                      <h3 className="truncate text-[15px] font-semibold tracking-tight text-foreground">
+                        {template.name}
+                      </h3>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge
+                          className={cn(
+                            'border text-[10px]',
+                            categoryColors[template.category] || '',
+                          )}
                         >
-                          {template.quality_score}
-                        </span>
+                          {template.category}
+                        </Badge>
+                        <Badge className={cn('border text-[10px]', status.classes)}>
+                          {status.label}
+                        </Badge>
+                        {template.language ? (
+                          <span className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+                            {template.language}
+                          </span>
+                        ) : null}
+                        {template.quality_score ? (
+                          <span
+                            className={cn(
+                              'text-[10px] font-semibold tracking-wider uppercase',
+                              template.quality_score === 'GREEN'
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : template.quality_score === 'YELLOW'
+                                  ? 'text-amber-600 dark:text-yellow-400'
+                                  : 'text-red-600 dark:text-red-400',
+                            )}
+                            title="Meta quality score"
+                          >
+                            {template.quality_score}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="rounded-xl bg-muted/45 px-3.5 py-2.5 ring-1 ring-black/5 dark:ring-white/5">
+                        <p className="line-clamp-3 text-sm leading-relaxed text-muted-foreground">
+                          {template.body_text}
+                        </p>
+                        {template.footer_text ? (
+                          <p className="mt-1.5 text-[11px] tracking-wide text-muted-foreground/80 italic">
+                            {template.footer_text}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      {(template.rejection_reason || template.submission_error) && (
+                        <div className="flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/8 px-3 py-2 text-xs leading-relaxed text-destructive">
+                          <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                          <span>
+                            {template.rejection_reason || template.submission_error}
+                          </span>
+                        </div>
                       )}
                     </div>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {template.body_text}
-                    </p>
-                    {template.footer_text && (
-                      <p className="text-xs text-muted-foreground italic">
-                        {template.footer_text}
-                      </p>
-                    )}
-                    {(template.rejection_reason || template.submission_error) && (
-                      <div className="flex items-start gap-1.5 text-xs text-red-400 bg-red-950/20 border border-red-900/40 rounded px-2 py-1.5">
-                        <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
-                        <span>
-                          {template.rejection_reason || template.submission_error}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0 ml-2">
-                    {statusKey === 'APPROVED' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEdit(template)}
-                        title={t('editTitle')}
-                        aria-label={t('editLabel')}
-                        className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
-                      >
-                        <Pencil className="size-3.5" />
-                        {t('edit')}
-                      </Button>
-                    )}
-                    {(statusKey === 'REJECTED' || statusKey === 'PAUSED') && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEdit(template)}
-                        title={t('resubmitTitle')}
-                        aria-label={t('resubmitLabel')}
-                        className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
-                      >
-                        <RotateCcw className="size-3.5" />
-                        {t('resubmit')}
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setTemplateToDelete(template)}
-                      disabled={deletingId === template.id}
-                      aria-label={
-                        template.meta_template_id
-                          ? t('deleteMetaLocallyAria')
-                          : t('deleteLocallyAria')
-                      }
-                      title={
-                        template.meta_template_id
-                          ? t('deleteMetaLocallyTitle')
-                          : t('deleteLocallyTitle')
-                      }
-                      className="text-muted-foreground hover:text-red-400 hover:bg-red-950/30 h-8 w-8"
-                    >
-                      {deletingId === template.id ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="size-4" />
+
+                    <div className="flex shrink-0 flex-col gap-0.5 opacity-100 sm:opacity-0 sm:transition-opacity sm:duration-150 sm:group-hover/card:opacity-100 sm:group-focus-within/card:opacity-100">
+                      {statusKey === 'APPROVED' && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => openEdit(template)}
+                          title={t('editTitle')}
+                          aria-label={t('editLabel')}
+                          className={cn(
+                            pressable,
+                            'rounded-full text-muted-foreground hover:bg-primary/10 hover:text-primary',
+                          )}
+                        >
+                          <Pencil className="size-3.5" />
+                        </Button>
                       )}
-                    </Button>
+                      {(statusKey === 'REJECTED' || statusKey === 'PAUSED') && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => openEdit(template)}
+                          title={t('resubmitTitle')}
+                          aria-label={t('resubmitLabel')}
+                          className={cn(
+                            pressable,
+                            'rounded-full text-muted-foreground hover:bg-primary/10 hover:text-primary',
+                          )}
+                        >
+                          <RotateCcw className="size-3.5" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => setTemplateToDelete(template)}
+                        disabled={deletingId === template.id}
+                        aria-label={
+                          template.meta_template_id
+                            ? t('deleteMetaLocallyAria')
+                            : t('deleteLocallyAria')
+                        }
+                        title={
+                          template.meta_template_id
+                            ? t('deleteMetaLocallyTitle')
+                            : t('deleteLocallyTitle')
+                        }
+                        className={cn(
+                          pressable,
+                          'rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive',
+                        )}
+                      >
+                        {deletingId === template.id ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="size-3.5" />
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -679,7 +745,7 @@ export function TemplateManager() {
           }
         }}
       >
-        <DialogContent className="bg-popover border-border sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl border-border/60 bg-popover/95 shadow-xl ring-1 ring-white/20 backdrop-blur-xl backdrop-saturate-150 sm:max-w-2xl motion-reduce:backdrop-blur-none">
           <DialogHeader>
             <DialogTitle className="text-popover-foreground">
               {editingId ? t('dialogEditTitle') : t('dialogNewTitle')}
@@ -1182,7 +1248,7 @@ export function TemplateManager() {
           if (!open) setTemplateToDelete(null);
         }}
       >
-        <DialogContent className="bg-popover border-border sm:max-w-sm">
+        <DialogContent className="rounded-2xl border-border/60 bg-popover/95 shadow-xl ring-1 ring-white/20 backdrop-blur-xl backdrop-saturate-150 sm:max-w-sm motion-reduce:backdrop-blur-none">
           <DialogHeader>
             <DialogTitle className="text-popover-foreground">{t('deleteDialogTitle')}</DialogTitle>
             <DialogDescription className="text-muted-foreground">
