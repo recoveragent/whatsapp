@@ -1398,8 +1398,10 @@
 
       "uploadImage": "이미지 업로드",
       "uploadHint": "JPEG 또는 PNG, 5MB 이하",
-      "mediaUrlPlaceholder": "https://… (또는 공개 {format} 링크 붙여넣기)",
-      "imageHint": "JPEG/PNG(5MB 이하, 800×418px 이상 권장)를 업로드하거나 공개 HTTPS 링크를 붙여넣으세요 — 검토를 위해 자동으로 Meta에 업로드됩니다.",
+      "pasteUrlInstead": "공개 링크 붙여넣기",
+      "useUploadInstead": "파일 업로드로 전환",
+      "mediaUrlPlaceholder": "https://… (공개 {format} 링크)",
+      "imageHint": "JPEG/PNG(5MB 이하, 800×418px 이상 권장)를 업로드하세요. 공개 링크를 저장하고 승인 제출 시 Meta에 자동으로 전송합니다.",
       "mediaHint": "공개적으로 접근 가능한 HTTPS 링크여야 합니다. Meta가 검토 중 한 번 가져오므로 약 24시간 동안 살아있어야 합니다.",
       "videoHint": " 권장: MP4 / 3GPP, 16MB 이하, 60초 이하.",
       "documentHint": " 권장: PDF, 100MB 이하.",

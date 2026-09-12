@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Plus,
@@ -11,15 +11,10 @@ import {
   X,
   Pencil,
   RotateCcw,
-  Upload,
   FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getWhatsAppTrackingButtonUrlTemplate } from '@/lib/shopify/tracking-redirect';
-import {
-  uploadAccountMedia,
-  MEDIA_MAX_BYTES_BY_KIND,
-} from '@/lib/storage/upload-media';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
@@ -56,6 +51,7 @@ import {
   TEMPLATE_LIMITS,
 } from '@/lib/whatsapp/template-validators';
 import { TemplateMobilePreview } from '@/components/shared/template-mobile-preview';
+import { TemplateHeaderMediaField } from '@/components/shared/template-header-media-field';
 
 const CATEGORIES = ['Marketing', 'Utility', 'Authentication'] as const;
 type HeaderFormat = 'none' | 'text' | 'image' | 'video' | 'document';
@@ -178,12 +174,6 @@ export function TemplateManager() {
   // doesn't take the template off Meta as well as locally.
   const [templateToDelete, setTemplateToDelete] =
     useState<MessageTemplate | null>(null);
-  // Header-image upload (issue #230). Uploads to the account-scoped
-  // chat-media bucket and stores the public URL in header_media_url; the
-  // submit route turns that into a Meta Resumable-Upload handle.
-  const [uploadingHeader, setUploadingHeader] = useState(false);
-  const headerFileRef = useRef<HTMLInputElement>(null);
-
   // Body variable indices — `[1, 2, 3]` for "{{1}} {{2}} {{3}}". We
   // re-run the extractor on every render to keep the sample-value rows
   // in sync with what the user typed.
@@ -522,29 +512,6 @@ export function TemplateManager() {
 
   const headerNeedsMedia =
     form.header_format !== 'none' && form.header_format !== 'text';
-
-  async function handleHeaderImageFile(file: File) {
-    if (!['image/jpeg', 'image/png'].includes(file.type)) {
-      toast.error(t('toastInvalidImage'));
-      return;
-    }
-    if (file.size > MEDIA_MAX_BYTES_BY_KIND.image) {
-      toast.error(
-        t('toastImageTooLarge', { size: (file.size / 1024 / 1024).toFixed(1) }),
-      );
-      return;
-    }
-    setUploadingHeader(true);
-    try {
-      const { publicUrl } = await uploadAccountMedia('chat-media', file);
-      setForm((f) => ({ ...f, header_media_url: publicUrl }));
-      toast.success(t('toastUploadSuccess'));
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('toastUploadFailed'));
-    } finally {
-      setUploadingHeader(false);
-    }
-  }
 
   return (
     <section className="animate-in fade-in-50 space-y-5 duration-300 motion-reduce:animate-none">
@@ -915,61 +882,33 @@ export function TemplateManager() {
               )}
 
               {headerNeedsMedia && (
-                <div className="space-y-2 mt-2">
-                  {form.header_format === 'image' && (
-                    <div className="flex items-center gap-2">
-                      <input
-                        ref={headerFileRef}
-                        type="file"
-                        accept="image/jpeg,image/png"
-                        className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) void handleHeaderImageFile(f);
-                          e.target.value = '';
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={uploadingHeader}
-                        onClick={() => headerFileRef.current?.click()}
-                      >
-                        {uploadingHeader ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Upload className="h-3.5 w-3.5" />
-                        )}
-                        {t('uploadImage')}
-                      </Button>
-                      <span className="text-[11px] text-muted-foreground">
-                        {t('uploadHint')}
-                      </span>
-                    </div>
-                  )}
-                  <Input
-                    placeholder={t('mediaUrlPlaceholder', { format: form.header_format })}
+                <div className="mt-2">
+                  <TemplateHeaderMediaField
+                    headerFormat={form.header_format as 'image' | 'video' | 'document'}
                     value={form.header_media_url}
-                    onChange={(e) =>
-                      setForm({ ...form, header_media_url: e.target.value })
+                    onChange={(header_media_url) =>
+                      setForm({ ...form, header_media_url })
                     }
-                    className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+                    labels={{
+                      uploadImage: t('uploadImage'),
+                      uploadHint: t('uploadHint'),
+                      imageHint: t('imageHint'),
+                      mediaHint: t('mediaHint'),
+                      videoHint: t('videoHint'),
+                      documentHint: t('documentHint'),
+                      mediaUrlPlaceholder: t('mediaUrlPlaceholder', {
+                        format: form.header_format,
+                      }),
+                      pasteUrlInstead: t('pasteUrlInstead'),
+                      useUploadInstead: t('useUploadInstead'),
+                      toastInvalidImage: t('toastInvalidImage'),
+                      toastImageTooLarge: t('toastImageTooLarge', {
+                        size: '{size}',
+                      }),
+                      toastUploadSuccess: t('toastUploadSuccess'),
+                      toastUploadFailed: t('toastUploadFailed'),
+                    }}
                   />
-                  {form.header_format === 'image' && form.header_media_url && (
-                    <p className="text-[11px] text-muted-foreground">
-                      Header image shown in the preview below.
-                    </p>
-                  )}
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    {form.header_format === 'image'
-                      ? t('imageHint')
-                      : t('mediaHint')}
-                    {form.header_format === 'video' &&
-                      t('videoHint')}
-                    {form.header_format === 'document' &&
-                      t('documentHint')}
-                  </p>
                 </div>
               )}
             </div>

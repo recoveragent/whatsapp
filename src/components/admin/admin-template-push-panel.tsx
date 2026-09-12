@@ -64,6 +64,7 @@ import {
   type PresetEditorSnapshot,
 } from '@/lib/whatsapp/admin-template-preset-store';
 import { cn } from '@/lib/utils';
+import { TemplateHeaderMediaField } from '@/components/shared/template-header-media-field';
 import type { MessageTemplate, TemplateButton, TemplateSampleValues } from '@/types';
 
 const CATEGORIES = ['Marketing', 'Utility'] as const;
@@ -845,18 +846,17 @@ export function AdminTemplatePushPanel() {
               ) : null}
 
               {headerNeedsMedia ? (
-                <div className="mt-2 space-y-2">
-                  <Input
-                    value={form.header_media_url}
-                    onChange={(e) =>
-                      setForm({ ...form, header_media_url: e.target.value })
+                <div className="mt-2">
+                  <TemplateHeaderMediaField
+                    headerFormat={
+                      form.header_format as 'image' | 'video' | 'document'
                     }
-                    placeholder={`Public HTTPS ${form.header_format} URL`}
+                    value={form.header_media_url}
+                    onChange={(header_media_url) =>
+                      setForm({ ...form, header_media_url })
+                    }
+                    uploadScope="admin"
                   />
-                  <p className="text-[11px] text-muted-foreground">
-                    Paste a publicly reachable HTTPS link. Meta fetches it
-                    during review for each brand.
-                  </p>
                 </div>
               ) : null}
             </div>

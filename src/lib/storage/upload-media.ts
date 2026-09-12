@@ -143,3 +143,37 @@ export async function deleteAccountMedia(
   const { error } = await supabase.storage.from(bucket).remove([path]);
   if (error) throw new Error(error.message);
 }
+
+/**
+ * Upload a template header image from the super-admin template push
+ * panel. Uses a server route because super admins clear brand context
+ * and cannot write via account-scoped RLS paths.
+ */
+export async function uploadAdminTemplateMedia(
+  file: File,
+): Promise<UploadAccountMediaResult> {
+  const form = new FormData();
+  form.append("file", file);
+
+  const res = await fetch("/api/admin/templates/media/upload", {
+    method: "POST",
+    body: form,
+    credentials: "include",
+  });
+
+  const data = (await res.json()) as {
+    publicUrl?: string;
+    path?: string;
+    error?: string;
+  };
+
+  if (!res.ok) {
+    throw new Error(data.error ?? "Upload failed");
+  }
+
+  if (!data.publicUrl || !data.path) {
+    throw new Error("Upload failed");
+  }
+
+  return { publicUrl: data.publicUrl, path: data.path };
+}
