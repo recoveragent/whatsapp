@@ -49,6 +49,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useAuth } from '@/hooks/use-auth';
+import { getWhatsAppTrackingButtonUrlTemplate } from '@/lib/shopify/tracking-redirect';
 import {
   extractVariableIndices,
   TEMPLATE_LIMITS,
@@ -980,11 +981,33 @@ export function AdminTemplatePushPanel() {
                     maxLength={TEMPLATE_LIMITS.buttonTextMaxLength}
                   />
                   {btn.type === 'URL' ? (
-                    <Input
-                      value={btn.url}
-                      onChange={(e) => updateButton(i, { url: e.target.value })}
-                      placeholder="https://…"
-                    />
+                    <div className="space-y-1">
+                      <Input
+                        value={btn.url}
+                        onChange={(e) =>
+                          updateButton(i, { url: e.target.value })
+                        }
+                        placeholder="https://… or with {{1}} suffix"
+                      />
+                      {extractVariableIndices(btn.url).length > 0 ? (
+                        <Input
+                          value={btn.example ?? ''}
+                          onChange={(e) =>
+                            updateButton(i, { example: e.target.value })
+                          }
+                          placeholder="Example value for {{1}} (required)"
+                        />
+                      ) : null}
+                      <p className="text-[10px] text-muted-foreground">
+                        Order tracking: use{' '}
+                        <span className="font-mono">
+                          {getWhatsAppTrackingButtonUrlTemplate()}
+                        </span>
+                        . Map button {`{{1}}`} to{' '}
+                        {`{{ vars.tracking_url_redirect_suffix }}`} at send
+                        time.
+                      </p>
+                    </div>
                   ) : null}
                   {btn.type === 'PHONE_NUMBER' ? (
                     <Input
