@@ -428,7 +428,7 @@ export function FlowEditorProvider({
   );
 
   // ---- Save (PUT) ----
-  const save = useCallback(async () => {
+  const save = useCallback(async (): Promise<boolean> => {
     setSaving(true);
     try {
       const res = await fetch(`/api/flows/${initialFlow.id}`, {
@@ -456,13 +456,15 @@ export function FlowEditorProvider({
       }
       setDirty(false);
       toast.success(t("saved"));
+      return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Save failed";
       toast.error(msg);
+      return false;
     } finally {
       setSaving(false);
     }
-  }, [initialFlow.id, state]);
+  }, [initialFlow.id, state, t]);
 
   // ---- Activate / Pause / Archive ----
   const setStatus = useCallback(
@@ -477,7 +479,10 @@ export function FlowEditorProvider({
         // latest state — the user shouldn't have to remember "save
         // then activate".
         if (next === "active") {
-          await save();
+          const saved = await save();
+          if (!saved) {
+            throw new Error("Save failed — fix the issues and try activating again.");
+          }
         }
         const res = await fetch(`/api/flows/${initialFlow.id}/activate`, {
           method: "POST",

@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import { defaultCheckoutAppTriggerConfig } from '@/lib/flows/checkout-app-webhook'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { ensureFlowWebhookConfig } from '@/lib/flows/webhook-config'
 import { validateFlowForActivation } from '@/lib/flows/validate'
 
 /**
@@ -64,6 +66,7 @@ export async function POST(
   }
 
   const admin = supabaseAdmin()
+  let triggerConfigPatch: Record<string, unknown> | undefined
 
   if (status === 'active') {
     // Re-load with the full payload the validator needs.
@@ -105,11 +108,45 @@ export async function POST(
         { status: 422 },
       )
     }
+
+    // Re-ensure webhook trigger config on activate (same as PUT) so a
+    // resume after pause doesn't rely on a separate save having run.
+    if (
+      flow.trigger_type === 'shopify_checkout_app_abandoned' ||
+      flow.trigger_type === 'webhook_received'
+    ) {
+      const prev = flow.trigger_config as Record<string, unknown> | null
+      let ensured = ensureFlowWebhookConfig({
+        ...(flow.trigger_type === 'shopify_checkout_app_abandoned'
+          ? defaultCheckoutAppTriggerConfig()
+          : {}),
+        ...(prev ?? {}),
+      }) as unknown as Record<string, unknown>
+      if (
+        prev?.last_received_payload != null &&
+        ensured.last_received_payload == null
+      ) {
+        ensured = {
+          ...ensured,
+          last_received_payload: prev.last_received_payload,
+          last_received_at: prev.last_received_at,
+        }
+      }
+      triggerConfigPatch = ensured
+    }
+  }
+
+  const flowPatch: Record<string, unknown> = {
+    status,
+    updated_at: new Date().toISOString(),
+  }
+  if (triggerConfigPatch) {
+    flowPatch.trigger_config = triggerConfigPatch
   }
 
   const { data: updated, error } = await admin
     .from('flows')
-    .update({ status, updated_at: new Date().toISOString() })
+    .update(flowPatch)
     .eq('id', id)
     .select()
     .maybeSingle()
