@@ -47,5 +47,5 @@ export function ensureFlowWebhookConfig(
   return mergeAbandonedCheckoutSkipTriggerConfig(
     ensured,
     config ?? {},
-  ) as FlowWebhookTriggerConfig
+  ) as unknown as FlowWebhookTriggerConfig
 }
