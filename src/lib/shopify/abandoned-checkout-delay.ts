@@ -5,6 +5,34 @@ import { loadCampaign } from './send-campaign'
 export const SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_DEFAULT = 60
 export const SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_MIN = 5
 export const SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_MAX = 10080
+export const ABANDONED_CHECKOUT_MAX_AGE_HOURS_DEFAULT = 24
+export const ABANDONED_CHECKOUT_MAX_AGE_HOURS_MIN = 1
+export const ABANDONED_CHECKOUT_MAX_AGE_HOURS_MAX = 168
+
+/** Drop queued checkouts whose send time is older than this — stale carts. */
+export function resolveAbandonedCheckoutMaxAgeMs(nowMs = Date.now()): number {
+  const raw = process.env.ABANDONED_CHECKOUT_MAX_AGE_HOURS
+  const parsed =
+    raw != null && raw.trim() !== ''
+      ? Number.parseInt(raw, 10)
+      : ABANDONED_CHECKOUT_MAX_AGE_HOURS_DEFAULT
+  const hours = Number.isFinite(parsed)
+    ? Math.min(
+        ABANDONED_CHECKOUT_MAX_AGE_HOURS_MAX,
+        Math.max(ABANDONED_CHECKOUT_MAX_AGE_HOURS_MIN, parsed),
+      )
+    : ABANDONED_CHECKOUT_MAX_AGE_HOURS_DEFAULT
+  return hours * 60 * 60 * 1000
+}
+
+export function isAbandonedCheckoutStale(
+  runAtIso: string,
+  nowMs = Date.now(),
+): boolean {
+  const runAt = Date.parse(runAtIso)
+  if (!Number.isFinite(runAt)) return true
+  return nowMs - runAt > resolveAbandonedCheckoutMaxAgeMs(nowMs)
+}
 
 function clampDelayMinutes(raw: unknown): number | null {
   if (typeof raw !== 'number' || !Number.isFinite(raw)) return null

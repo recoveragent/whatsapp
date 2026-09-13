@@ -15,7 +15,10 @@ import { loadCampaign, sendShopifyCampaign } from './send-campaign';
 import { logShopifyFulfillmentEvent } from './log-fulfillment-event';
 import { enrichContextWithTrackingRedirect } from './tracking-redirect';
 import { syncShopifyOrder } from './sync-order';
-import { resolveAbandonedCheckoutDelayMinutes } from './abandoned-checkout-delay';
+import {
+  isAbandonedCheckoutStale,
+  resolveAbandonedCheckoutDelayMinutes,
+} from './abandoned-checkout-delay';
 import {
   isRecoverAgentMirrorPayload,
   processRecoverAgentAbandonedCheckout,
@@ -383,6 +386,19 @@ export async function processDueAbandonedCheckouts(db: SupabaseClient): Promise<
       .maybeSingle();
 
     if (!claim) continue;
+
+    const runAt = String(row.run_at ?? '');
+    if (isAbandonedCheckoutStale(runAt)) {
+      await db
+        .from('shopify_pending_checkouts')
+        .update({
+          status: 'cancelled',
+          error_message: 'stale_queue',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id);
+      continue;
+    }
 
     const accountId = row.account_id as string;
     const payload = row.payload;
