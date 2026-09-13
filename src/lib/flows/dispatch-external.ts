@@ -40,6 +40,12 @@ import {
   enrichCheckoutAppWebhookVars,
   isCheckoutAppFlowTrigger,
 } from './checkout-app-webhook'
+import {
+  contactHasRecentShopifyOrder,
+  isAbandonedCheckoutFlowTrigger,
+  resolveContactPhoneForDispatch,
+  resolveSkipRecentOrderDays,
+} from './abandoned-checkout-skip-recent-order'
 
 export interface FlowDispatchContext {
   message_text?: string
@@ -75,6 +81,7 @@ export interface FlowDispatchSkipped {
     | 'no_conversation'
     | 'start_failed'
     | 'duplicate_fulfillment_status'
+    | 'recent_order'
 }
 
 export interface FlowDispatchOutcome {
@@ -317,6 +324,34 @@ export async function runFlowsForTrigger(
           reason: 'no_conversation',
         })
         continue
+      }
+
+      if (isAbandonedCheckoutFlowTrigger(input.triggerType)) {
+        const skipWithinDays = resolveSkipRecentOrderDays(
+          flow.trigger_config as Record<string, unknown>,
+        )
+        if (skipWithinDays != null) {
+          const phone = await resolveContactPhoneForDispatch(
+            db,
+            input.accountId,
+            input.contactId,
+            input.context?.vars?.phone,
+          )
+          const hasRecentOrder = await contactHasRecentShopifyOrder(db, {
+            accountId: input.accountId,
+            contactId: input.contactId,
+            phone,
+            withinDays: skipWithinDays,
+          })
+          if (hasRecentOrder) {
+            outcome.skipped.push({
+              flow_id: flow.id,
+              flow_name: flow.name,
+              reason: 'recent_order',
+            })
+            continue
+          }
+        }
       }
 
       const result = await startFlowForExternalEvent({

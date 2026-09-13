@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { flowsQuery, contactQuery, startFlowForExternalEvent } = vi.hoisted(() => ({
+const {
+  flowsQuery,
+  contactQuery,
+  startFlowForExternalEvent,
+  contactHasRecentShopifyOrder,
+} = vi.hoisted(() => ({
   flowsQuery: vi.fn(),
   contactQuery: vi.fn(),
   startFlowForExternalEvent: vi.fn(),
+  contactHasRecentShopifyOrder: vi.fn(),
 }))
 
 vi.mock('./admin-client', () => ({
@@ -25,6 +31,14 @@ vi.mock('@/lib/shopify/ensure-contact', () => ({
   ensureShopifyContact: vi.fn(),
   ensureConversation: vi.fn(),
 }))
+vi.mock('./abandoned-checkout-skip-recent-order', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./abandoned-checkout-skip-recent-order')>()
+  return {
+    ...actual,
+    contactHasRecentShopifyOrder,
+    resolveContactPhoneForDispatch: vi.fn().mockResolvedValue('919876543210'),
+  }
+})
 
 import { runFlowsForTrigger } from './dispatch-external'
 import type { FlowRow } from './types'
@@ -113,6 +127,71 @@ describe('runFlowsForTrigger — Shopify payment filter', () => {
     })
 
     expect(outcome.started).toHaveLength(1)
+  })
+})
+
+describe('runFlowsForTrigger — abandoned checkout recent order skip', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    contactQuery.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'contact-1' } }),
+    })
+    startFlowForExternalEvent.mockResolvedValue({
+      ok: true,
+      flow_run_id: 'run-abc',
+    })
+    contactHasRecentShopifyOrder.mockResolvedValue(false)
+  })
+
+  it('starts abandoned checkout flow when recent-order skip is disabled', async () => {
+    mockFlowsChain([
+      baseFlow({
+        name: 'ABC',
+        trigger_type: 'shopify_checkout_abandoned',
+        trigger_config: { delay_minutes: 60 },
+      }),
+    ])
+
+    const outcome = await runFlowsForTrigger({
+      accountId: 'acc-1',
+      triggerType: 'shopify_checkout_abandoned',
+      contactId: 'contact-1',
+      conversationId: 'conv-1',
+      context: { vars: { phone: '919876543210' } },
+    })
+
+    expect(outcome.started).toHaveLength(1)
+    expect(contactHasRecentShopifyOrder).not.toHaveBeenCalled()
+  })
+
+  it('skips abandoned checkout flow when customer ordered recently', async () => {
+    contactHasRecentShopifyOrder.mockResolvedValue(true)
+    mockFlowsChain([
+      baseFlow({
+        name: 'ABC',
+        trigger_type: 'shopify_checkout_app_abandoned',
+        trigger_config: {
+          skip_recent_order_enabled: true,
+          skip_recent_order_days: 30,
+        },
+      }),
+    ])
+
+    const outcome = await runFlowsForTrigger({
+      accountId: 'acc-1',
+      triggerType: 'shopify_checkout_app_abandoned',
+      contactId: 'contact-1',
+      conversationId: 'conv-1',
+      context: { vars: { phone: '919876543210' } },
+    })
+
+    expect(outcome.started).toHaveLength(0)
+    expect(outcome.skipped).toEqual([
+      expect.objectContaining({ reason: 'recent_order', flow_name: 'ABC' }),
+    ])
+    expect(startFlowForExternalEvent).not.toHaveBeenCalled()
   })
 })
 

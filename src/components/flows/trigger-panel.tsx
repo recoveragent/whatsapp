@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import {
+  ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_DEFAULT,
+  ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_MAX,
+  ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_MIN,
+  isAbandonedCheckoutFlowTrigger,
+} from "@/lib/flows/abandoned-checkout-skip-recent-order";
 import {
   Select,
   SelectContent,
@@ -120,10 +127,26 @@ export function summarizeTrigger(
             ? triggerConfig.delay_minutes
             : null;
         const base = FLOW_TRIGGER_LABELS[triggerType] ?? triggerType;
-        return delay != null ? `${base} · ${delay} min delay` : base;
+        const bits = [delay != null ? `${base} · ${delay} min delay` : base];
+        if (triggerConfig.skip_recent_order_enabled) {
+          const days =
+            typeof triggerConfig.skip_recent_order_days === "number"
+              ? triggerConfig.skip_recent_order_days
+              : ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_DEFAULT;
+          bits.push(`skip if ordered in ${days}d`);
+        }
+        return bits.join(" · ");
       }
       if (triggerType === "shopify_checkout_app_abandoned") {
-        return "Checkout app webhook (GoKwik, Fastrr, …)";
+        const bits = ["Checkout app webhook (GoKwik, Fastrr, …)"];
+        if (triggerConfig.skip_recent_order_enabled) {
+          const days =
+            typeof triggerConfig.skip_recent_order_days === "number"
+              ? triggerConfig.skip_recent_order_days
+              : ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_DEFAULT;
+          bits.push(`skip if ordered in ${days}d`);
+        }
+        return bits.join(" · ");
       }
       if (isShopifyOrderFlowTrigger(triggerType)) {
         const ps = triggerConfig.payment_status as ShopifyPaymentStatus | undefined;
@@ -386,6 +409,72 @@ export function TriggerPanel({
               webhook, then waits this long before starting the flow if the order
               was not completed.
             </p>
+          </div>
+        )}
+        {isAbandonedCheckoutFlowTrigger(state.trigger_type) && (
+          <div className="md:col-span-2 rounded-md border border-border bg-muted/40 px-3 py-2.5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <label
+                  htmlFor="skip-recent-order-toggle"
+                  className="text-xs font-medium text-foreground"
+                >
+                  Skip if customer ordered recently
+                </label>
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  Don&apos;t start this flow when the customer already has a
+                  Shopify order within the last X days. Checked when the flow is
+                  about to start — including after the abandonment wait.
+                </p>
+              </div>
+              <Switch
+                id="skip-recent-order-toggle"
+                checked={Boolean(state.trigger_config.skip_recent_order_enabled)}
+                onCheckedChange={(checked) =>
+                  setState((s) => ({
+                    ...s,
+                    trigger_config: {
+                      ...s.trigger_config,
+                      skip_recent_order_enabled: checked,
+                      skip_recent_order_days:
+                        typeof s.trigger_config.skip_recent_order_days === "number"
+                          ? s.trigger_config.skip_recent_order_days
+                          : ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_DEFAULT,
+                    },
+                  }))
+                }
+              />
+            </div>
+            {Boolean(state.trigger_config.skip_recent_order_enabled) && (
+              <div className="mt-3 max-w-xs">
+                <label className="mb-1 block text-xs text-muted-foreground">
+                  Within last (days)
+                </label>
+                <Input
+                  type="number"
+                  min={ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_MIN}
+                  max={ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_MAX}
+                  value={
+                    typeof state.trigger_config.skip_recent_order_days === "number"
+                      ? state.trigger_config.skip_recent_order_days
+                      : ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_DEFAULT
+                  }
+                  onChange={(e) => {
+                    const parsed = Number(e.target.value);
+                    setState((s) => ({
+                      ...s,
+                      trigger_config: {
+                        ...s.trigger_config,
+                        skip_recent_order_days: Number.isFinite(parsed)
+                          ? parsed
+                          : undefined,
+                      },
+                    }));
+                  }}
+                  className="bg-background"
+                />
+              </div>
+            )}
           </div>
         )}
         {state.trigger_type === "google_sheet_row" && (

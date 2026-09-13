@@ -43,6 +43,10 @@ import {
   hasReplyTimeoutTiming,
 } from "./reply-timeout";
 import { resolveUpdateContactFieldEntries } from "./extended-nodes-shared";
+import {
+  ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_MAX,
+  ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_MIN,
+} from "./abandoned-checkout-skip-recent-order";
 import type { UpdateContactFieldNodeConfig } from "./types";
 
 export interface ValidationIssue {
@@ -340,6 +344,12 @@ function validateTrigger(
       });
     }
   }
+  if (
+    trigger_type === "shopify_checkout_abandoned" ||
+    trigger_type === "shopify_checkout_app_abandoned"
+  ) {
+    issues.push(...validateAbandonedCheckoutSkipRecentOrder(trigger_config));
+  }
   if (trigger_type === "time_based") {
     if (!nonEmpty(trigger_config.schedule)) {
       issues.push({
@@ -499,6 +509,40 @@ function validateTrigger(
     }
   }
   // first_inbound_message / manual / message triggers — no extra config.
+
+  return issues;
+}
+
+function validateAbandonedCheckoutSkipRecentOrder(
+  trigger_config: Record<string, unknown>,
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (!trigger_config.skip_recent_order_enabled) return issues;
+
+  const days = trigger_config.skip_recent_order_days;
+  if (days === undefined || days === null) return issues;
+
+  if (typeof days !== "number" || !Number.isFinite(days)) {
+    issues.push({
+      severity: "error",
+      scope: "trigger",
+      field: "trigger_config.skip_recent_order_days",
+      message: "Recent-order skip needs a number of days.",
+    });
+    return issues;
+  }
+
+  if (
+    days < ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_MIN ||
+    days > ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_MAX
+  ) {
+    issues.push({
+      severity: "error",
+      scope: "trigger",
+      field: "trigger_config.skip_recent_order_days",
+      message: `Days must be between ${ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_MIN} and ${ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_MAX}.`,
+    });
+  }
 
   return issues;
 }
