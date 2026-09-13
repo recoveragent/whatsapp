@@ -16,6 +16,7 @@ describe('enrichCheckoutAppWebhookVars', () => {
     const vars = enrichCheckoutAppWebhookVars(payload, {})
     expect(vars.customer_name).toBe('Aditi Sharma')
     expect(vars.checkout_url).toBe('https://store.example.com/cart/recover/abc')
+    expect(vars.checkout_url_suffix).toBe('cart/recover/abc')
     expect(vars.checkout_id).toBe('cart-99')
     expect(vars.order_items).toBe('Running Shoes')
     expect(vars.product_image).toBe('https://cdn/shoe.webp')

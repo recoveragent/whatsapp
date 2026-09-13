@@ -34,6 +34,18 @@ describe('splitPublicUrlForWhatsApp', () => {
       suffix: null,
     })
   })
+
+  it('splits query-only checkout recovery URLs', () => {
+    expect(
+      splitPublicUrlForWhatsApp(
+        'https://ttfclothings.in?mrid=dae2b104-4e52-47dc-8fea-36f5e44071c9',
+      ),
+    ).toEqual({
+      url: 'https://ttfclothings.in/?mrid=dae2b104-4e52-47dc-8fea-36f5e44071c9',
+      prefix: 'https://ttfclothings.in/',
+      suffix: '?mrid=dae2b104-4e52-47dc-8fea-36f5e44071c9',
+    })
+  })
 })
 
 describe('extractOrderTracking', () => {

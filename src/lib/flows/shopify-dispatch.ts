@@ -36,6 +36,7 @@ function contextToVars(ctx: ShopifyEventContext): Record<string, unknown> {
     order_status_url_suffix: ctx.orderStatusUrlSuffix,
     tracking_url_redirect_suffix: ctx.trackingRedirectSuffix,
     checkout_url: ctx.checkoutUrl,
+    checkout_url_suffix: ctx.checkoutUrlSuffix,
     fulfillment_status: ctx.fulfillmentStatus,
     shipment_status: ctx.shipmentStatus,
     payment_status: ctx.financialStatus,

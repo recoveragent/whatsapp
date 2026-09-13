@@ -131,6 +131,7 @@ export async function resolveFlowProductImageUrl(
     orderStatusUrlSuffix: null,
     trackingRedirectSuffix: null,
     checkoutUrl: null,
+    checkoutUrlSuffix: null,
     fulfillmentStatus: null,
     shipmentStatus: null,
     financialStatus: null,

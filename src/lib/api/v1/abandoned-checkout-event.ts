@@ -10,6 +10,7 @@ import {
   ensureShopifyContact,
 } from '@/lib/shopify/ensure-contact';
 import { loadCampaign, sendShopifyCampaign } from '@/lib/shopify/send-campaign';
+import { splitPublicUrlForWhatsApp } from '@/lib/shopify/order-links';
 import type { ShopifyEventContext } from '@/lib/shopify/types';
 import {
   isValidE164,
@@ -89,6 +90,7 @@ export function contextFromRecoverAgentEvent(
 ): ShopifyEventContext {
   const checkoutKey = checkoutKeyFromEvent(event);
   const customerName = event.customer_name?.trim() || 'Customer';
+  const checkoutSplit = splitPublicUrlForWhatsApp(event.checkout_url);
 
   return {
     customerName,
@@ -116,7 +118,8 @@ export function contextFromRecoverAgentEvent(
     orderStatusUrl: null,
     orderStatusUrlSuffix: null,
     trackingRedirectSuffix: null,
-    checkoutUrl: event.checkout_url?.trim() || null,
+    checkoutUrl: checkoutSplit.url,
+    checkoutUrlSuffix: checkoutSplit.suffix,
     fulfillmentStatus: null,
     shipmentStatus: null,
     financialStatus: null,
@@ -135,6 +138,7 @@ function flowVarsFromRecoverAgentEvent(
     phone: context.phone,
     checkout_id: checkoutKeyFromEvent(event) || undefined,
     checkout_url: context.checkoutUrl,
+    checkout_url_suffix: context.checkoutUrlSuffix,
     order_total: context.orderTotal,
     order_items: context.orderItems,
     product: event.product?.trim() || context.orderItems,

@@ -2,6 +2,7 @@ import {
   extractByPath,
   formatWebhookScalar,
 } from '@/lib/automations/webhook-payload'
+import { splitPublicUrlForWhatsApp } from '@/lib/shopify/order-links'
 import { generateWebhookToken } from '@/lib/automations/webhook-token'
 import type { FlowWebhookTriggerConfig } from './webhook-config'
 
@@ -168,6 +169,15 @@ export function enrichCheckoutAppWebhookVars(
   if (!next.checkout_url) {
     const checkoutUrl = firstStringAtPaths(payload, CHECKOUT_URL_PATHS)
     if (checkoutUrl) next.checkout_url = checkoutUrl
+  }
+
+  if (
+    typeof next.checkout_url === 'string' &&
+    next.checkout_url.trim() &&
+    !next.checkout_url_suffix
+  ) {
+    const split = splitPublicUrlForWhatsApp(next.checkout_url)
+    if (split.suffix) next.checkout_url_suffix = split.suffix
   }
 
   if (!next.checkout_id) {

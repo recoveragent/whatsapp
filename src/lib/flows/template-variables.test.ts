@@ -82,6 +82,16 @@ describe('templateVariableGroupsForFlow', () => {
     ).toBe(true)
   })
 
+  it('includes checkout URL suffix for abandoned checkout triggers', () => {
+    const groups = templateVariableGroupsForFlow('shopify_checkout_abandoned')
+    const trigger = groups.find((g) => g.id === 'trigger')
+    expect(
+      trigger?.options.some(
+        (o) => o.token === '{{ vars.checkout_url_suffix }}',
+      ),
+    ).toBe(true)
+  })
+
   it('does not include tracking redirect suffix for non-fulfillment Shopify triggers', () => {
     const groups = templateVariableGroupsForFlow('shopify_order_placed')
     const trigger = groups.find((g) => g.id === 'trigger')

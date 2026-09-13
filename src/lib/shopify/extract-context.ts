@@ -178,6 +178,17 @@ function orderStatusFields(
   };
 }
 
+function checkoutUrlFields(raw: string | null | undefined): {
+  checkoutUrl: string | null;
+  checkoutUrlSuffix: string | null;
+} {
+  const split = splitPublicUrlForWhatsApp(raw);
+  return {
+    checkoutUrl: split.url,
+    checkoutUrlSuffix: split.suffix,
+  };
+}
+
 function normalizeShipmentStatus(raw: string | null | undefined): string | null {
   if (!raw?.trim()) return null;
   return raw.trim().toLowerCase().replace(/[\s-]+/g, '_');
@@ -209,6 +220,7 @@ export function contextFromOrder(
     ...orderStatusFields(order),
     trackingRedirectSuffix: null,
     checkoutUrl: null,
+    checkoutUrlSuffix: null,
     fulfillmentStatus: order.fulfillment_status ?? null,
     shipmentStatus: null,
     financialStatus: order.financial_status ?? null,
@@ -244,7 +256,7 @@ export function contextFromCheckout(
     orderStatusUrl: null,
     orderStatusUrlSuffix: null,
     trackingRedirectSuffix: null,
-    checkoutUrl: checkout.abandoned_checkout_url ?? null,
+    ...checkoutUrlFields(checkout.abandoned_checkout_url),
     fulfillmentStatus: null,
     shipmentStatus: null,
     financialStatus: null,
@@ -274,6 +286,7 @@ export function contextFromFulfillment(
     orderStatusUrlSuffix: null,
     trackingRedirectSuffix: null,
     checkoutUrl: null,
+    checkoutUrlSuffix: null,
     fulfillmentStatus: null,
     shipmentStatus: null,
     financialStatus: null,
@@ -338,6 +351,8 @@ function resolveVariable(key: ShopifyVariableKey, ctx: ShopifyEventContext): str
       return ctx.trackingRedirectSuffix ?? '';
     case 'checkout_url':
       return ctx.checkoutUrl ?? '';
+    case 'checkout_url_suffix':
+      return ctx.checkoutUrlSuffix ?? '';
     case 'fulfillment_status':
       return ctx.fulfillmentStatus ?? '';
     case 'shipment_status':

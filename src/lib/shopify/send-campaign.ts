@@ -132,6 +132,7 @@ export async function sendShopifyCampaign(args: {
   const suffix =
     enrichedContext.trackingRedirectSuffix?.trim() ||
     enrichedContext.orderStatusUrlSuffix?.trim() ||
+    enrichedContext.checkoutUrlSuffix?.trim() ||
     undefined;
   const productImage = enrichedContext.productImage?.trim() || undefined;
 

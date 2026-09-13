@@ -71,6 +71,11 @@ const SHOPIFY_OPTIONS: TemplateVariableOption[] = [
     type: 'text',
   },
   { label: 'Checkout URL', token: '{{ vars.checkout_url }}', type: 'text' },
+  {
+    label: 'Checkout URL suffix (Complete order button)',
+    token: '{{ vars.checkout_url_suffix }}',
+    type: 'text',
+  },
   { label: 'Shop name', token: '{{ vars.shop_name }}', type: 'text' },
   { label: 'Product title', token: '{{ vars.product_title }}', type: 'text' },
   { label: 'Product price', token: '{{ vars.product_price }}', type: 'text' },

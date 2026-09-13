@@ -63,6 +63,7 @@ describe('contextFromRecoverAgentEvent', () => {
     expect(context.orderItems).toBe("Men's Cotton Boxer - XL");
     expect(context.orderTotal).toBe('999');
     expect(context.checkoutUrl).toBe('https://store.com/checkouts/abc123');
+    expect(context.checkoutUrlSuffix).toBe('checkouts/abc123');
     expect(context.shippingAddress).toBe('12 MG Road, Bengaluru, KA, 560001');
     expect(context.resourceKey).toBe('checkout:abc123');
   });

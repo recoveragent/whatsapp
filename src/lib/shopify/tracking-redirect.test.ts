@@ -27,6 +27,7 @@ const baseContext: ShopifyEventContext = {
   orderStatusUrlSuffix: null,
   trackingRedirectSuffix: null,
   checkoutUrl: null,
+  checkoutUrlSuffix: null,
   fulfillmentStatus: 'success',
   shipmentStatus: 'in_transit',
   financialStatus: 'paid',

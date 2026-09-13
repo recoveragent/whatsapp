@@ -94,6 +94,7 @@ describe('sendShopifyCampaign header media', () => {
         orderStatusUrl: null,
         orderStatusUrlSuffix: '/1234567890/orders/abc',
         checkoutUrl: null,
+        checkoutUrlSuffix: null,
         fulfillmentStatus: null,
         shipmentStatus: null,
         financialStatus: 'pending',

@@ -390,11 +390,16 @@ export function SendTemplateFields({
     const hasStatusSuffix = variableGroups.some((g) =>
       g.options.some((o) => o.token.includes("vars.order_status_url_suffix")),
     );
+    const hasCheckoutSuffix = variableGroups.some((g) =>
+      g.options.some((o) => o.token.includes("vars.checkout_url_suffix")),
+    );
     const preferredToken = hasTrackingRedirect
       ? "{{ vars.tracking_url_redirect_suffix }}"
       : hasStatusSuffix
         ? "{{ vars.order_status_url_suffix }}"
-        : null;
+        : hasCheckoutSuffix
+          ? "{{ vars.checkout_url_suffix }}"
+          : null;
     if (!preferredToken) return;
 
     const next = { ...variables };
