@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { ensureFlowWebhookConfig } from './webhook-config'
 import {
   ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_DEFAULT,
   clampSkipRecentOrderDays,
   contactHasRecentShopifyOrder,
   isAbandonedCheckoutFlowTrigger,
+  mergeAbandonedCheckoutSkipTriggerConfig,
   resolveSkipRecentOrderDays,
 } from './abandoned-checkout-skip-recent-order'
 
@@ -34,6 +36,34 @@ describe('abandoned checkout skip recent order config', () => {
     expect(resolveSkipRecentOrderDays({ skip_recent_order_enabled: true, skip_recent_order_days: 14 })).toBe(
       14,
     )
+  })
+
+  it('mergeAbandonedCheckoutSkipTriggerConfig preserves enabled + days', () => {
+    expect(
+      mergeAbandonedCheckoutSkipTriggerConfig(
+        { delay_minutes: 60 },
+        { skip_recent_order_enabled: true, skip_recent_order_days: 14 },
+      ),
+    ).toEqual({
+      delay_minutes: 60,
+      skip_recent_order_enabled: true,
+      skip_recent_order_days: 14,
+    })
+  })
+
+  it('ensureFlowWebhookConfig keeps recent-order skip settings', () => {
+    expect(
+      ensureFlowWebhookConfig({
+        webhook_token: 'abc123',
+        phone_path: 'phone',
+        skip_recent_order_enabled: true,
+        skip_recent_order_days: 14,
+      }),
+    ).toMatchObject({
+      webhook_token: 'abc123',
+      skip_recent_order_enabled: true,
+      skip_recent_order_days: 14,
+    })
   })
 })
 

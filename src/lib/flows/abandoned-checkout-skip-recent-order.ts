@@ -37,6 +37,29 @@ export function resolveSkipRecentOrderDays(
   )
 }
 
+/**
+ * Keep recent-order skip settings when trigger_config is normalized
+ * (e.g. webhook field whitelisting on save/activate).
+ */
+export function mergeAbandonedCheckoutSkipTriggerConfig(
+  base: Record<string, unknown>,
+  source: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  const next = { ...base }
+  if (source?.skip_recent_order_enabled === true) {
+    next.skip_recent_order_enabled = true
+    next.skip_recent_order_days =
+      clampSkipRecentOrderDays(source.skip_recent_order_days) ??
+      ABANDONED_CHECKOUT_SKIP_RECENT_ORDER_DAYS_DEFAULT
+    return next
+  }
+  if (source?.skip_recent_order_enabled === false) {
+    next.skip_recent_order_enabled = false
+    delete next.skip_recent_order_days
+  }
+  return next
+}
+
 function phoneSuffix(phone: string): string | null {
   const normalized = normalizePhone(phone)
   if (!normalized) return null

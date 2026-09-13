@@ -1,6 +1,7 @@
 import type { WebhookTriggerConfig } from '@/types'
 import { generateWebhookToken } from '@/lib/automations/webhook-token'
 import { normalizeAllowedTriggerEvents } from '@/lib/flows/booking-lifecycle'
+import { mergeAbandonedCheckoutSkipTriggerConfig } from '@/lib/flows/abandoned-checkout-skip-recent-order'
 
 export type FlowWebhookTriggerConfig = WebhookTriggerConfig
 
@@ -19,7 +20,7 @@ export function ensureFlowWebhookConfig(
 ): FlowWebhookTriggerConfig {
   const base = defaultFlowWebhookConfig()
   const c = (config ?? {}) as Partial<FlowWebhookTriggerConfig>
-  return {
+  const ensured = {
     webhook_token:
       typeof c.webhook_token === 'string' && c.webhook_token.trim()
         ? c.webhook_token
@@ -42,4 +43,9 @@ export function ensureFlowWebhookConfig(
     last_received_payload: c.last_received_payload,
     last_received_at: c.last_received_at,
   }
+
+  return mergeAbandonedCheckoutSkipTriggerConfig(
+    ensured,
+    config ?? {},
+  ) as FlowWebhookTriggerConfig
 }

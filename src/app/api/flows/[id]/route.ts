@@ -6,6 +6,7 @@ import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { ensureFlowWebhookConfig } from '@/lib/flows/webhook-config'
 import { defaultCheckoutAppTriggerConfig } from '@/lib/flows/checkout-app-webhook'
 import { ensureGoogleSheetRowConfig, preserveGoogleSheetWatermarks } from '@/lib/google-sheets/trigger-config'
+import { mergeAbandonedCheckoutSkipTriggerConfig } from '@/lib/flows/abandoned-checkout-skip-recent-order'
 import type { FlowTriggerType } from '@/lib/flows/trigger-types'
 
 /**
@@ -204,6 +205,12 @@ export async function PUT(
         string,
         unknown
       >
+    }
+    if (
+      effectiveTriggerType === 'shopify_checkout_abandoned' ||
+      effectiveTriggerType === 'shopify_checkout_app_abandoned'
+    ) {
+      cfg = mergeAbandonedCheckoutSkipTriggerConfig(cfg, cfg)
     }
     flowPatch.trigger_config = cfg
   }

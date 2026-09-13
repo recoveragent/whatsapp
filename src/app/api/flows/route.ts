@@ -4,6 +4,7 @@ import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { accountIsLeadGen } from '@/lib/auth/brand-accounts'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { getFlowTemplate } from '@/lib/flows/templates'
+import { mergeAbandonedCheckoutSkipTriggerConfig } from '@/lib/flows/abandoned-checkout-skip-recent-order'
 import { ensureFlowWebhookConfig } from '@/lib/flows/webhook-config'
 import { defaultCheckoutAppTriggerConfig } from '@/lib/flows/checkout-app-webhook'
 import { ensureGoogleSheetRowConfig } from '@/lib/google-sheets/trigger-config'
@@ -165,12 +166,19 @@ export async function POST(request: Request) {
     trigger_config = { ...ensureFlowWebhookConfig(trigger_config) }
   }
   if (trigger_type === 'shopify_checkout_app_abandoned') {
-    trigger_config = {
-      ...ensureFlowWebhookConfig({
+    trigger_config = mergeAbandonedCheckoutSkipTriggerConfig(
+      ensureFlowWebhookConfig({
         ...defaultCheckoutAppTriggerConfig(),
         ...trigger_config,
-      }),
-    }
+      }) as unknown as Record<string, unknown>,
+      trigger_config,
+    )
+  }
+  if (trigger_type === 'shopify_checkout_abandoned') {
+    trigger_config = mergeAbandonedCheckoutSkipTriggerConfig(
+      trigger_config,
+      trigger_config,
+    )
   }
   if (trigger_type === 'google_sheet_row') {
     if (!(await accountIsLeadGen(supabase, accountId))) {
