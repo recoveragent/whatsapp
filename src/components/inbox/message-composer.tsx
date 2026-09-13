@@ -1012,44 +1012,6 @@ export function MessageComposer({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* More menu — interactive, quick replies, flows. Gated on the 24h
-              window like free-form text (interactive requires it). */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              disabled={inputsDisabled}
-              title={
-                readOnly
-                  ? t("readOnlyTitle")
-                  : inputsDisabled
-                    ? undefined
-                    : t("moreActions")
-              }
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <MoreVertical className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="border-border bg-popover">
-              <DropdownMenuItem
-                disabled={readOnly}
-                onClick={() => openInteractiveBuilder()}
-              >
-                <MessageSquareDashed className="mr-2 h-4 w-4" />
-                {t("interactiveMessage")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={readOnly}
-                onClick={() => setQuickReplyOpen(true)}
-              >
-                <Zap className="mr-2 h-4 w-4" />
-                {t("quickReplies")}
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled={readOnly} onClick={onOpenFlows}>
-                <Workflow className="mr-2 h-4 w-4" />
-                {t("startFlow")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
           <GatedButton
             variant="ghost"
             size="sm"
@@ -1062,19 +1024,48 @@ export function MessageComposer({
             <LayoutTemplate className="h-4 w-4" />
           </GatedButton>
 
-          {showProductPicker && onOpenProducts ? (
-            <GatedButton
-              variant="ghost"
-              size="sm"
-              canAct={!readOnly}
-              gateReason="send messages"
-              title={readOnly ? undefined : t("sendProduct")}
-              className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-              onClick={onOpenProducts}
+          {/* More menu — products, interactive, quick replies, flows. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              disabled={readOnly}
+              title={readOnly ? t("readOnlyTitle") : t("moreActions")}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <ShoppingBag className="h-4 w-4" />
-            </GatedButton>
-          ) : null}
+              <MoreVertical className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="border-border bg-popover">
+              {showProductPicker && onOpenProducts ? (
+                <DropdownMenuItem
+                  disabled={readOnly || sessionExpired}
+                  onClick={onOpenProducts}
+                >
+                  <ShoppingBag className="mr-2 h-4 w-4" />
+                  {t("sendProduct")}
+                </DropdownMenuItem>
+              ) : null}
+              <DropdownMenuItem
+                disabled={readOnly || sessionExpired}
+                onClick={() => openInteractiveBuilder()}
+              >
+                <MessageSquareDashed className="mr-2 h-4 w-4" />
+                {t("interactiveMessage")}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={readOnly || sessionExpired}
+                onClick={() => setQuickReplyOpen(true)}
+              >
+                <Zap className="mr-2 h-4 w-4" />
+                {t("quickReplies")}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={readOnly || sessionExpired}
+                onClick={onOpenFlows}
+              >
+                <Workflow className="mr-2 h-4 w-4" />
+                {t("startFlow")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {isAiAgentsEnabled ? (
             <GatedButton
@@ -1136,7 +1127,7 @@ export function MessageComposer({
       {/* Hint sits outside the flex row so its height doesn't push
           `items-end` buttons below the textarea. Indented to line up
           under the textarea left edge. */}
-      {!draft && !recording && (
+      {isAiAgentsEnabled && !draft && !recording && (
         <p className="mt-1 pl-[5.5rem] text-[10px] text-muted-foreground">
           {t("draftHint")}
         </p>
