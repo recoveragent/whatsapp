@@ -24,7 +24,7 @@ import {
   StickyNote,
   UserPlus,
   Sparkles,
-  Plus,
+  MoreVertical,
   MessageSquareDashed,
   Zap,
 } from "lucide-react";
@@ -1012,8 +1012,8 @@ export function MessageComposer({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* + menu — interactive messages + quick replies. Gated on the
-              24h window like free-form text (interactive requires it). */}
+          {/* More menu — interactive, quick replies, flows. Gated on the 24h
+              window like free-form text (interactive requires it). */}
           <DropdownMenu>
             <DropdownMenuTrigger
               disabled={inputsDisabled}
@@ -1026,31 +1026,29 @@ export function MessageComposer({
               }
               className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Plus className="h-4 w-4" />
+              <MoreVertical className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="border-border bg-popover">
-              <DropdownMenuItem onClick={() => openInteractiveBuilder()}>
+              <DropdownMenuItem
+                disabled={readOnly}
+                onClick={() => openInteractiveBuilder()}
+              >
                 <MessageSquareDashed className="mr-2 h-4 w-4" />
                 {t("interactiveMessage")}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setQuickReplyOpen(true)}>
+              <DropdownMenuItem
+                disabled={readOnly}
+                onClick={() => setQuickReplyOpen(true)}
+              >
                 <Zap className="mr-2 h-4 w-4" />
                 {t("quickReplies")}
               </DropdownMenuItem>
+              <DropdownMenuItem disabled={readOnly} onClick={onOpenFlows}>
+                <Workflow className="mr-2 h-4 w-4" />
+                {t("startFlow")}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-
-          <GatedButton
-            variant="ghost"
-            size="sm"
-            canAct={!readOnly}
-            gateReason="send messages"
-            title={readOnly ? undefined : "Start flow"}
-            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-            onClick={onOpenFlows}
-          >
-            <Workflow className="h-4 w-4" />
-          </GatedButton>
 
           <GatedButton
             variant="ghost"
@@ -1070,7 +1068,7 @@ export function MessageComposer({
               size="sm"
               canAct={!readOnly}
               gateReason="send messages"
-              title={readOnly ? undefined : "Send product"}
+              title={readOnly ? undefined : t("sendProduct")}
               className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
               onClick={onOpenProducts}
             >

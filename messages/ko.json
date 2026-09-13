@@ -203,6 +203,8 @@
       "addCaption": "캡션 추가…",
       "removeAttachment": "첨부 파일 제거",
       "moreActions": "더보기",
+      "startFlow": "플로우 시작",
+      "sendProduct": "상품 보내기",
       "interactiveMessage": "인터랙티브 메시지",
       "quickReplies": "빠른 답장",
       "quickRepliesEmpty": "아직 빠른 답장이 없습니다. 설정 → 빠른 답장에서 추가하세요.",
