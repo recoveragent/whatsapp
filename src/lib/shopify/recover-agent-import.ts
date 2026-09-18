@@ -48,6 +48,7 @@ export async function importRecoverAgentShopifyConnection(args: {
     scopes: [],
     webhookCallbackUrl: args.webhookCallbackUrl,
     keepExistingAppCredentials: true,
+    allowWebhookRegistrationFailure: true,
   });
 
   if (!result.ok) throw new Error(result.error);

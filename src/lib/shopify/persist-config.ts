@@ -22,6 +22,8 @@ export interface PersistShopifyConfigInput {
   apiSecret?: string | null;
   /** When true, keep existing api_key/api_secret if new values omitted. */
   keepExistingAppCredentials?: boolean;
+  /** SSO imports may persist the store before webhook registration is retried. */
+  allowWebhookRegistrationFailure?: boolean;
 }
 
 export type PersistShopifyConfigResult =
@@ -94,9 +96,9 @@ export async function persistShopifyConfig(
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'webhook registration failed';
-    if (isLocalWebhookUrl(input.webhookCallbackUrl)) {
+    if (isLocalWebhookUrl(input.webhookCallbackUrl) || input.allowWebhookRegistrationFailure) {
       console.warn(
-        '[shopify] webhook registration skipped on localhost — deploy or use a public HTTPS URL for live webhooks:',
+        '[shopify] webhook registration deferred; store credentials will still be persisted:',
         message,
       );
     } else {
