@@ -54,9 +54,9 @@ export function ShopifyBrandConnection() {
   const [accountCtx, setAccountCtx] = useState<AccountContextPayload | null>(null);
   const [connection, setConnection] = useState<ConnectionPayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [shopInput] = useState('');
-  const [clientId] = useState('');
-  const [clientSecret] = useState('');
+  const [shopInput, setShopInput] = useState('');
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
   const [connecting] = useState(false);
   const [disconnecting] = useState(false);
 
@@ -203,6 +203,8 @@ export function ShopifyBrandConnection() {
     }
   };
   */
+  const handleConnect = (_opts?: { useStoredCredentials?: boolean }) => undefined;
+  const handleDisconnect = () => undefined;
 
   if (loading) {
     return (
@@ -414,13 +416,13 @@ export function ShopifyBrandConnection() {
               )}
               {false && connection?.api_key_hint && (
                 <p className="text-xs text-muted-foreground">
-                  Custom app Client ID {connection.api_key_hint}
+                  Custom app Client ID {connection?.api_key_hint}
                 </p>
               )}
               {false && connection?.connected_at && (
                 <p className="text-xs text-muted-foreground">
                   Connected{' '}
-                  {new Date(connection.connected_at).toLocaleString(undefined, {
+                  {new Date(connection?.connected_at ?? '').toLocaleString(undefined, {
                     dateStyle: 'medium',
                     timeStyle: 'short',
                   })}
