@@ -139,6 +139,36 @@ describe("consumeSsoTicket", () => {
   });
 });
 
+describe("parseSsoConsumeResponse Shopify handoff", () => {
+  it("accepts a complete server-side Shopify connection", () => {
+    expect(
+      parseSsoConsumeResponse({
+        identity: { email: "ada@brand.com", company_id: "co-1" },
+        shopify_connection: {
+          shop_domain: "brand.myshopify.com",
+          access_token: "shpat_test",
+          client_id: "client-id",
+          client_secret: "client-secret",
+        },
+      }).shopify_connection,
+    ).toEqual({
+      shop_domain: "brand.myshopify.com",
+      access_token: "shpat_test",
+      client_id: "client-id",
+      client_secret: "client-secret",
+    });
+  });
+
+  it("drops an incomplete Shopify connection", () => {
+    expect(
+      parseSsoConsumeResponse({
+        identity: { email: "ada@brand.com" },
+        shopify_connection: { shop_domain: "brand.myshopify.com" },
+      }).shopify_connection,
+    ).toBeUndefined();
+  });
+});
+
 describe("completeSsoLogin", () => {
   const verifyOtp = vi.fn();
 

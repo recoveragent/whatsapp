@@ -10,6 +10,7 @@ import {
   SsoError,
   ssoErrorHtml,
 } from "@/lib/auth/sso";
+import { importRecoverAgentShopifyConnection } from "@/lib/shopify/recover-agent-import";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +79,21 @@ export async function GET(request: NextRequest) {
   );
 
   try {
-    await completeSsoLogin(ticket, supabase);
+    const consumed = await completeSsoLogin(ticket, supabase);
+    if (consumed.shopify_connection) {
+      try {
+        await importRecoverAgentShopifyConnection({
+          sessionClient: supabase,
+          connection: consumed.shopify_connection,
+          webhookCallbackUrl: `${origin}/api/shopify/webhook`,
+        });
+      } catch (shopifyError) {
+        console.error(
+          "[sso] Recover Agent Shopify import failed:",
+          shopifyError instanceof Error ? shopifyError.message : shopifyError,
+        );
+      }
+    }
     return finalizeFrameHeaders(request, redirectResponse);
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);

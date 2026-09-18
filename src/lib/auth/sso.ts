@@ -47,9 +47,17 @@ export interface SsoIdentity {
   roles?: unknown;
 }
 
+export interface RecoverAgentShopifyConnection {
+  shop_domain: string;
+  access_token: string;
+  client_id?: string | null;
+  client_secret?: string | null;
+}
+
 export interface SsoConsumeResponse {
   identity: SsoIdentity;
   hashed_token?: string;
+  shopify_connection?: RecoverAgentShopifyConnection;
 }
 
 export function recoverAgentDashboardUrl(): string {
@@ -112,6 +120,13 @@ export function parseSsoConsumeResponse(raw: unknown): SsoConsumeResponse {
   const hashed =
     asNonEmptyString(body.hashed_token) ??
     asNonEmptyString(body.token_hash);
+  const shopifyRaw = body.shopify_connection;
+  const shopify =
+    shopifyRaw && typeof shopifyRaw === "object"
+      ? (shopifyRaw as Record<string, unknown>)
+      : null;
+  const shopDomain = shopify ? asNonEmptyString(shopify.shop_domain) : undefined;
+  const accessToken = shopify ? asNonEmptyString(shopify.access_token) : undefined;
   return {
     identity: {
       email,
@@ -120,6 +135,15 @@ export function parseSsoConsumeResponse(raw: unknown): SsoConsumeResponse {
       roles: identityObj.roles,
     },
     hashed_token: hashed,
+    shopify_connection:
+      shopDomain && accessToken
+        ? {
+            shop_domain: shopDomain,
+            access_token: accessToken,
+            client_id: asNonEmptyString(shopify?.client_id),
+            client_secret: asNonEmptyString(shopify?.client_secret),
+          }
+        : undefined,
   };
 }
 
@@ -270,7 +294,7 @@ export function shouldUseSharedHashedToken(
 export async function completeSsoLogin(
   ticket: string,
   supabase: SupabaseClient,
-): Promise<SsoIdentity> {
+): Promise<SsoConsumeResponse> {
   const trimmed = ticket.trim();
   if (!trimmed) {
     throw new SsoError(
@@ -285,12 +309,12 @@ export async function completeSsoLogin(
   // a different project simply fails verify and we fall through.
   if (consumed.hashed_token) {
     const verified = await verifyTokenHash(supabase, consumed.hashed_token);
-    if (verified.ok) return consumed.identity;
+    if (verified.ok) return consumed;
     console.error("[sso] hashed_token verify failed:", verified.message);
   }
 
   await createSessionFromIdentity(supabase, consumed.identity);
-  return consumed.identity;
+  return consumed;
 }
 
 export function ssoErrorHtml(message: string, dashboardUrl: string): string {
