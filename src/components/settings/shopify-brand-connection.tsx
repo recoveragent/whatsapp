@@ -5,8 +5,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   CheckCircle2,
-  ExternalLink,
   Loader2,
+  ExternalLink,
   RotateCcw,
   ShoppingBag,
   Unlink,
@@ -54,11 +54,11 @@ export function ShopifyBrandConnection() {
   const [accountCtx, setAccountCtx] = useState<AccountContextPayload | null>(null);
   const [connection, setConnection] = useState<ConnectionPayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [shopInput, setShopInput] = useState('');
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
-  const [connecting, setConnecting] = useState(false);
-  const [disconnecting, setDisconnecting] = useState(false);
+  const [shopInput] = useState('');
+  const [clientId] = useState('');
+  const [clientSecret] = useState('');
+  const [connecting] = useState(false);
+  const [disconnecting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,11 +97,6 @@ export function ShopifyBrandConnection() {
       }
 
       setConnection(data);
-      if (data.shop_domain) setShopInput(data.shop_domain.replace('.myshopify.com', ''));
-      if (data.has_app_credentials) {
-        setClientId('');
-        setClientSecret('');
-      }
     } catch (err) {
       setConnection({ configured: false, connected: false });
       setLoadError(err instanceof Error ? err.message : 'Could not load Shopify status.');
@@ -135,7 +130,9 @@ export function ShopifyBrandConnection() {
     }
   }, [searchParams, load, router]);
 
-  const handleConnect = async (opts?: { useStoredCredentials?: boolean }) => {
+  /* Dashboard SSO is the only Shopify connection path for this workspace. */
+  /* Manual OAuth handlers intentionally removed. */
+  /*
     if (!shopInput.trim()) {
       toast.error('Enter your shop domain');
       return;
@@ -205,6 +202,7 @@ export function ShopifyBrandConnection() {
       setDisconnecting(false);
     }
   };
+  */
 
   if (loading) {
     return (
@@ -238,10 +236,10 @@ export function ShopifyBrandConnection() {
 
   const configured = connection?.configured ?? false;
   const connected = connection?.connected ?? false;
-  const needsReconnect = Boolean(connection?.needs_reconnect ?? (configured && !connected));
   const canEdit = accountCtx?.canEditSettings ?? false;
-  const showConnectForm = canEdit && (!configured || needsReconnect);
-  const redirectUri = connection?.redirect_uri ?? '';
+  const needsReconnect = false;
+  const showConnectForm = false;
+  const redirectUri = '';
 
   return (
     <section className="animate-in fade-in-50 duration-200">
@@ -272,20 +270,13 @@ export function ShopifyBrandConnection() {
             )}
             <div>
               <AlertTitle className="text-foreground mb-1">
-                {configured && connected
-                  ? 'Shopify connected'
-                  : configured && needsReconnect
-                    ? 'Reconnect required'
-                    : 'No Shopify store connected'}
+                {configured && connected ? 'Shopify connected' : 'No Shopify store connected'}
               </AlertTitle>
               <AlertDescription className="text-muted-foreground text-sm">
                 {loadError ??
-                  (connection?.message ??
-                    (configured && connected
-                      ? 'Webhooks are registered. Enable campaigns below to start sending messages.'
-                      : canEdit
-                        ? 'Create a custom app in the client’s Shopify Dev Dashboard, then enter Client ID, Client Secret, and shop domain.'
-                        : 'Ask a workspace admin to connect Shopify.'))}
+                  (configured && connected
+                    ? 'Managed through RecoverAgent Dashboard. Enable campaigns below to start sending messages.'
+                    : 'Open WhatsApp from the connected brand in RecoverAgent Dashboard to import Shopify.')}
               </AlertDescription>
             </div>
           </div>
@@ -421,12 +412,12 @@ export function ShopifyBrandConnection() {
               {connection?.shop_domain && (
                 <p className="text-muted-foreground">{connection.shop_domain}</p>
               )}
-              {connection?.api_key_hint && (
+              {false && connection?.api_key_hint && (
                 <p className="text-xs text-muted-foreground">
                   Custom app Client ID {connection.api_key_hint}
                 </p>
               )}
-              {connection?.connected_at && (
+              {false && connection?.connected_at && (
                 <p className="text-xs text-muted-foreground">
                   Connected{' '}
                   {new Date(connection.connected_at).toLocaleString(undefined, {
@@ -435,7 +426,7 @@ export function ShopifyBrandConnection() {
                   })}
                 </p>
               )}
-              {canEdit && connected && (
+              {false && canEdit && connected && (
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Button
                     type="button"
