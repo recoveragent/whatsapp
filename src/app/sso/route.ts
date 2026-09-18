@@ -88,10 +88,12 @@ export async function GET(request: NextRequest) {
           webhookCallbackUrl: `${origin}/api/shopify/webhook`,
         });
       } catch (shopifyError) {
+        const detail = shopifyError instanceof Error ? shopifyError.message : String(shopifyError);
         console.error(
           "[sso] Recover Agent Shopify import failed:",
-          shopifyError instanceof Error ? shopifyError.message : shopifyError,
+          detail,
         );
+        return errorResponse(`Shopify connection import failed: ${detail}`);
       }
     }
     return finalizeFrameHeaders(request, redirectResponse);
