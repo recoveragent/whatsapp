@@ -24,6 +24,8 @@ export interface PersistShopifyConfigInput {
   keepExistingAppCredentials?: boolean;
   /** SSO imports may persist the store before webhook registration is retried. */
   allowWebhookRegistrationFailure?: boolean;
+  /** A Dashboard-owned SSO import may reclaim a stale store claim for this brand. */
+  allowStoreReassignment?: boolean;
 }
 
 export type PersistShopifyConfigResult =
@@ -73,11 +75,21 @@ export async function persistShopifyConfig(
     .maybeSingle();
 
   if (claimed) {
-    return {
-      ok: false,
-      status: 409,
-      error: 'This Shopify store is already linked to another brand.',
-    };
+    if (!input.allowStoreReassignment) {
+      return {
+        ok: false,
+        status: 409,
+        error: 'This Shopify store is already linked to another brand.',
+      };
+    }
+
+    const { error: releaseError } = await input.supabase
+      .from('shopify_config')
+      .delete()
+      .eq('account_id', claimed.account_id);
+    if (releaseError) {
+      return { ok: false, status: 500, error: 'Failed to release the stale Shopify store claim' };
+    }
   }
 
   let shopInfo;
