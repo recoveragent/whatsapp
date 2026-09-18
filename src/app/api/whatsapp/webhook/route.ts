@@ -356,6 +356,7 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           // inserts that need it for NOT NULL FK compliance. Always
           // the admin who saved the WhatsApp config.
           config.user_id,
+          config.id,
           decryptedAccessToken,
           // Default ON: the column is NOT NULL DEFAULT TRUE, but a row
           // read before migration 039 lands would have it undefined,
@@ -673,6 +674,7 @@ async function processMessage(
   // (contacts, conversations). Always the admin who saved the
   // WhatsApp config; the choice is arbitrary post-017 but stable.
   configOwnerUserId: string,
+  whatsappConfigId: string,
   accessToken: string,
   // Per-account opt-out for the inbound-media mirror (migration 039).
   // See parseMessageContent for what it turns off.
@@ -696,13 +698,14 @@ async function processMessage(
     supabaseAdmin(),
     accountId,
     contactRecord.id,
+    whatsappConfigId,
   )
   const ensured = await ensureConversationForContact(
     supabaseAdmin(),
     accountId,
     configOwnerUserId,
     contactRecord.id,
-    { createStatus: 'open' },
+    { createStatus: 'open', whatsappConfigId },
   )
   if (!ensured) return
 

@@ -15,6 +15,7 @@ interface CompleteBody {
   phone_number_id?: unknown;
   pin?: unknown;
   coexistence?: unknown;
+  reference_name?: unknown;
 }
 
 /**
@@ -41,6 +42,8 @@ export async function POST(request: Request) {
     const phoneNumberIdInput =
       typeof body?.phone_number_id === 'string' ? body.phone_number_id.trim() : '';
     const coexistence = body?.coexistence === true;
+    const referenceName =
+      typeof body?.reference_name === 'string' ? body.reference_name.trim() : '';
     const pin =
       body?.pin === undefined || body?.pin === null || body?.pin === ''
         ? null
@@ -53,6 +56,9 @@ export async function POST(request: Request) {
     }
     if (!wabaId) {
       return NextResponse.json({ error: 'waba_id is required' }, { status: 400 });
+    }
+    if (!referenceName) {
+      return NextResponse.json({ error: 'reference_name is required' }, { status: 400 });
     }
     if (!phoneNumberIdInput && !coexistence) {
       return NextResponse.json(
@@ -98,6 +104,7 @@ export async function POST(request: Request) {
       userId: ctx.userId,
       accountId: ctx.accountId,
       phone_number_id: phoneNumberId,
+      reference_name: referenceName,
       waba_id: wabaId,
       access_token: accessToken,
       verify_token: verifyToken,

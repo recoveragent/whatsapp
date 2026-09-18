@@ -1,6 +1,7 @@
 'use client';
 
 import { Loader2 } from 'lucide-react';
+import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +16,7 @@ export function WhatsAppEmbeddedSignupPanel({
   /** Credentials saved but inbound /register still needs a PIN. */
   registrationOnly?: boolean;
 }) {
+  const [referenceName, setReferenceName] = useState('');
   const {
     configLoading,
     enabled,
@@ -25,7 +27,7 @@ export function WhatsAppEmbeddedSignupPanel({
     pin,
     setPin,
     retryWithPin,
-  } = useWhatsAppEmbeddedSignup({ onComplete });
+  } = useWhatsAppEmbeddedSignup({ onComplete, referenceName });
 
   if (configLoading) {
     return (
@@ -52,6 +54,20 @@ export function WhatsAppEmbeddedSignupPanel({
   return (
     <div className="space-y-4 rounded-lg border border-border bg-card p-4">
       {showConnect && (
+        <div className="space-y-2">
+          <Label htmlFor="wa-reference-name">Reference name</Label>
+          <Input
+            id="wa-reference-name"
+            value={referenceName}
+            onChange={(event) => setReferenceName(event.target.value)}
+            placeholder="e.g. Sales or Support"
+            maxLength={80}
+          />
+          <p className="text-xs text-muted-foreground">Used to identify this number in Settings and Inbox.</p>
+        </div>
+      )}
+
+      {showConnect && (
         <div>
           <p className="font-medium text-foreground">Connect with Meta</p>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -67,7 +83,7 @@ export function WhatsAppEmbeddedSignupPanel({
           <Button
             type="button"
             onClick={() => launch('standard')}
-            disabled={!sdkReady || launching}
+            disabled={!sdkReady || launching || !referenceName.trim()}
             className="bg-[#1877F2] hover:bg-[#166FE5] text-white"
           >
             {launching ? (
@@ -83,7 +99,7 @@ export function WhatsAppEmbeddedSignupPanel({
             type="button"
             variant="outline"
             onClick={() => launch('coexistence')}
-            disabled={!sdkReady || launching}
+            disabled={!sdkReady || launching || !referenceName.trim()}
           >
             Connect existing Business app number
           </Button>

@@ -67,6 +67,13 @@ const SORT_OPTIONS: { label: string; value: InboxSortOrder }[] = [
   { label: "Oldest", value: "oldest" },
 ];
 
+const WHATSAPP_FILTER_STORAGE_KEY = "wacrm:inbox:whatsapp-number-ids";
+type WhatsAppNumberOption = {
+  id: string;
+  reference_name: string;
+  phone_number_id: string;
+};
+
 export function ConversationList({
   activeConversationId,
   onSelect,
@@ -103,6 +110,8 @@ export function ConversationList({
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  const [whatsappNumbers, setWhatsappNumbers] = useState<WhatsAppNumberOption[]>([]);
+  const [selectedWhatsappIds, setSelectedWhatsappIds] = useState<string[]>([]);
 
   useEffect(() => {
     onListViewChange?.({ filter, search, sort });
@@ -157,6 +166,44 @@ export function ConversationList({
     };
   }, []);
 
+  useEffect(() => {
+    const supabase = createClient();
+    let cancelled = false;
+    void supabase
+      .from("whatsapp_config")
+      .select("id, reference_name, phone_number_id")
+      .order("created_at", { ascending: true })
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        const options = data as WhatsAppNumberOption[];
+        setWhatsappNumbers(options);
+        let stored: string[] | null = null;
+        try {
+          const raw = localStorage.getItem(WHATSAPP_FILTER_STORAGE_KEY);
+          if (raw) stored = JSON.parse(raw) as string[];
+        } catch {
+          // Best-effort device persistence.
+        }
+        const validStored = stored?.filter((id) => options.some((item) => item.id === id));
+        setSelectedWhatsappIds(validStored?.length ? validStored : options.map((item) => item.id));
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggleWhatsappNumber = useCallback((id: string) => {
+    setSelectedWhatsappIds((previous) => {
+      const next = previous.includes(id)
+        ? previous.filter((item) => item !== id)
+        : [...previous, id];
+      try {
+        localStorage.setItem(WHATSAPP_FILTER_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // Best-effort device persistence.
+      }
+      return next;
+    });
+  }, []);
+
   const companies = useMemo(() => {
     const set = new Set<string>();
     for (const c of conversations) {
@@ -187,8 +234,17 @@ export function ConversationList({
       );
     }
 
+    if (whatsappNumbers.length > 1) {
+      result = result.filter((conversation) =>
+        Boolean(
+          conversation.whatsapp_config_id &&
+            selectedWhatsappIds.includes(conversation.whatsapp_config_id),
+        ),
+      );
+    }
+
     return result;
-  }, [conversations, filter, search, sort, selectedTagIds, selectedCompany]);
+  }, [conversations, filter, search, sort, selectedTagIds, selectedCompany, whatsappNumbers.length, selectedWhatsappIds]);
 
   const hasSearchMatchesInAll = useMemo(() => {
     if (!search.trim() || filter === "all") return false;
@@ -237,9 +293,38 @@ export function ConversationList({
     <div className="flex h-full w-full flex-col border-r border-border bg-surface lg:w-80">
       <div className="space-y-2 border-b border-border p-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="font-cabinet text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-            Inbox
-          </h2>
+          <div className="flex min-w-0 items-center gap-1">
+            <h2 className="font-cabinet text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">Inbox</h2>
+            {whatsappNumbers.length > 1 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger className="inline-flex h-7 max-w-40 items-center gap-1 rounded-md px-2 text-xs font-medium text-foreground hover:bg-muted">
+                  <span className="truncate">
+                    {selectedWhatsappIds.length === whatsappNumbers.length
+                      ? "All numbers"
+                      : selectedWhatsappIds.length === 1
+                        ? whatsappNumbers.find((item) => item.id === selectedWhatsappIds[0])?.reference_name
+                        : `${selectedWhatsappIds.length} numbers`}
+                  </span>
+                  <ChevronDown className="h-3 w-3 shrink-0" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56 border-border bg-popover">
+                  {whatsappNumbers.map((number) => (
+                    <DropdownMenuCheckboxItem
+                      key={number.id}
+                      checked={selectedWhatsappIds.includes(number.id)}
+                      onSelect={(event) => event.preventDefault()}
+                      onCheckedChange={() => toggleWhatsappNumber(number.id)}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate">{number.reference_name}</span>
+                        <span className="block truncate text-[10px] text-muted-foreground">{number.phone_number_id}</span>
+                      </span>
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
           {onConversationCreated && (
             <NewMessageDialog onCreated={onConversationCreated} />
           )}

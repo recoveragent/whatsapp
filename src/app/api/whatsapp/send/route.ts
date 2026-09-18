@@ -180,6 +180,7 @@ export async function POST(request: Request) {
       .from('conversations')
       .select(`
         id,
+        whatsapp_config_id,
         assigned_agent_id,
         last_customer_message_at,
         contact:contacts(id, phone)
@@ -272,6 +273,7 @@ export async function POST(request: Request) {
       .from('whatsapp_config')
       .select('*')
       .eq('account_id', accountId)
+      .eq('id', conversation.whatsapp_config_id)
       .single()
 
     if (configError || !config) {

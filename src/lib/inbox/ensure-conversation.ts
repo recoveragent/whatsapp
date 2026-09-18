@@ -23,12 +23,17 @@ export async function findConversationsForContact(
   db: SupabaseClient,
   accountId: string,
   contactId: string,
+  whatsappConfigId?: string | null,
 ): Promise<ConversationCandidate[]> {
-  const { data, error } = await db
+  let query = db
     .from('conversations')
     .select('id, status, last_message_at, created_at')
     .eq('account_id', accountId)
     .eq('contact_id', contactId);
+
+  if (whatsappConfigId) query = query.eq('whatsapp_config_id', whatsappConfigId);
+
+  const { data, error } = await query;
 
   if (error) {
     console.error('[inbox] findConversationsForContact failed:', error.message);
@@ -93,11 +98,13 @@ export async function ensureConversationForContact(
   accountId: string,
   ownerUserId: string,
   contactId: string,
-  opts?: { createStatus?: ConversationCreateStatus },
+  opts?: { createStatus?: ConversationCreateStatus; whatsappConfigId?: string | null },
 ): Promise<{ id: string } | null> {
   const createStatus = opts?.createStatus ?? 'closed';
 
-  const existing = await findConversationsForContact(db, accountId, contactId);
+  const existing = await findConversationsForContact(
+    db, accountId, contactId, opts?.whatsappConfigId,
+  );
   const canonicalId = await pickCanonicalConversationId(db, existing);
   if (canonicalId) return { id: canonicalId };
 
@@ -107,6 +114,7 @@ export async function ensureConversationForContact(
       account_id: accountId,
       user_id: ownerUserId,
       contact_id: contactId,
+      whatsapp_config_id: opts?.whatsappConfigId ?? null,
       status: createStatus,
     })
     .select('id')
@@ -114,7 +122,9 @@ export async function ensureConversationForContact(
 
   if (error) {
     if (isUniqueViolation(error)) {
-      const raced = await findConversationsForContact(db, accountId, contactId);
+      const raced = await findConversationsForContact(
+        db, accountId, contactId, opts?.whatsappConfigId,
+      );
       const racedId = await pickCanonicalConversationId(db, raced);
       if (racedId) return { id: racedId };
     }

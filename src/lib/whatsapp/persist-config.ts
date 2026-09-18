@@ -15,6 +15,7 @@ export interface PersistWhatsAppConfigInput {
   userId: string;
   accountId: string;
   phone_number_id: string;
+  reference_name?: string | null;
   waba_id?: string | null;
   access_token: string;
   verify_token?: string | null;
@@ -47,6 +48,7 @@ export async function persistWhatsAppConfig(
     userId,
     accountId,
     phone_number_id,
+    reference_name,
     waba_id,
     access_token,
     verify_token,
@@ -112,7 +114,7 @@ export async function persistWhatsAppConfig(
   const { data: existing } = await supabase
     .from('whatsapp_config')
     .select('id, registered_at, phone_number_id')
-    .eq('account_id', accountId)
+    .eq('phone_number_id', phone_number_id)
     .maybeSingle();
 
   const sameNumber =
@@ -165,6 +167,8 @@ export async function persistWhatsAppConfig(
   }
 
   const baseRow = {
+    reference_name:
+      reference_name?.trim() || phoneInfo.display_phone_number || `WhatsApp ${phone_number_id}`,
     phone_number_id,
     waba_id: waba_id || null,
     access_token: encryptedAccessToken,
@@ -181,7 +185,7 @@ export async function persistWhatsAppConfig(
     const { error: updateError } = await supabase
       .from('whatsapp_config')
       .update(baseRow)
-      .eq('account_id', accountId);
+      .eq('id', existing.id);
 
     if (updateError) {
       console.error('Error updating whatsapp_config:', updateError);

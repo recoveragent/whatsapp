@@ -285,6 +285,8 @@ export interface Conversation {
   created_at: string;
   updated_at: string;
   contact?: Contact;
+  /** WhatsApp number this thread belongs to (migration 103). */
+  whatsapp_config_id?: string | null;
   /**
    * AI auto-reply state for this thread (migration 029 + 033):
    *  - `ai_autoreply_disabled` — the bot is paused here (a human took

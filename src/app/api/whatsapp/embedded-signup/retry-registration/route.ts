@@ -28,6 +28,9 @@ export async function POST(request: Request) {
       .from('whatsapp_config')
       .select('phone_number_id, access_token')
       .eq('account_id', ctx.accountId)
+      .is('registered_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (fetchError || !config?.access_token || !config.phone_number_id) {
@@ -62,7 +65,8 @@ export async function POST(request: Request) {
           status: 'disconnected',
           updated_at: new Date().toISOString(),
         })
-        .eq('account_id', ctx.accountId);
+        .eq('account_id', ctx.accountId)
+        .eq('phone_number_id', config.phone_number_id);
 
       return NextResponse.json({ error: message }, { status: 400 });
     }
@@ -77,7 +81,8 @@ export async function POST(request: Request) {
         last_registration_error: null,
         updated_at: now,
       })
-      .eq('account_id', ctx.accountId);
+      .eq('account_id', ctx.accountId)
+      .eq('phone_number_id', config.phone_number_id);
 
     return NextResponse.json({ success: true, registered: true });
   } catch (err) {
