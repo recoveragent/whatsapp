@@ -274,6 +274,8 @@
       "noApprovedTemplates": "No approved templates",
       "noApprovedTemplatesHint": "Approve a template in Meta WhatsApp Manager, then sync it from Settings → Templates.",
       "preview": "Preview",
+      "requiredDetails": "Required details",
+      "requiredDetailsHint": "Add a value for every variable. The preview updates as you type.",
       "headerValuePlaceholder": "Value for the header variable",
       "bodyValuePlaceholder": "Value for {val}",
       "urlSuffixValuePlaceholder": "URL suffix value",
