@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { SettingsPanelHead } from './settings-panel-head';
 import { MetaConversionsPanel } from './meta-conversions-panel';
+import { MetaLeadAdsPanel } from './meta-lead-ads-panel';
 
 interface EditableStep {
   delay_hours: string;
@@ -133,6 +134,7 @@ export function LeadCadencesSettings() {
 
   return (
     <div className="space-y-8">
+      {isLeadGenBrand && <MetaLeadAdsPanel />}
       {isLeadGenBrand && <MetaConversionsPanel />}
       <div>
       <SettingsPanelHead
