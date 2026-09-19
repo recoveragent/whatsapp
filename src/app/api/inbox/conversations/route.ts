@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
-import { ensureConversation, ensureShopifyContact } from '@/lib/shopify/ensure-contact';
+import { ensureShopifyContact } from '@/lib/shopify/ensure-contact';
+import { ensureConversationForContact } from '@/lib/inbox/ensure-conversation';
 import { isValidE164 } from '@/lib/whatsapp/phone-utils';
 
 export async function POST(req: Request) {
   try {
     const ctx = await requireRole('agent');
-    const body = (await req.json()) as { phone?: string; name?: string };
+    const body = (await req.json()) as { phone?: string; name?: string; whatsapp_config_id?: string };
 
     const phone = String(body.phone ?? '').trim();
     const name = String(body.name ?? '').trim() || phone;
@@ -34,12 +35,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Could not create contact' }, { status: 400 });
     }
 
-    const conv = await ensureConversation(
+    const conv = await ensureConversationForContact(
       ctx.supabase,
       ctx.accountId,
       ctx.userId,
       contact.id,
-      { createStatus: 'open' },
+      // New outbound conversations need an explicit sending number.
+      { createStatus: 'open', whatsappConfigId: body.whatsapp_config_id || null },
     );
     if (!conv) {
       return NextResponse.json({ error: 'Could not create conversation' }, { status: 500 });

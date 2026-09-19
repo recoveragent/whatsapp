@@ -23,6 +23,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { WhatsAppNumberPicker } from '@/components/shared/whatsapp-number-picker';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -74,6 +75,7 @@ export function ContactDetailView({
   // find-or-creates the conversation, so no inbound message is required.
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [sendingTemplate, setSendingTemplate] = useState(false);
+  const [whatsappConfigId, setWhatsappConfigId] = useState('');
 
   // Details tab
   const [editName, setEditName] = useState('');
@@ -334,6 +336,7 @@ export function ContactDetailView({
         .filter(([, val]) => val.trim())
         .map(([fieldId, val]) => ({
           contact_id: contactId,
+          whatsapp_config_id: whatsappConfigId || undefined,
           custom_field_id: fieldId,
           value: val.trim(),
         }));
@@ -459,6 +462,7 @@ export function ContactDetailView({
                     )}
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
+                    <WhatsAppNumberPicker value={whatsappConfigId} onChange={setWhatsappConfigId} />
                     <Button
                       size="sm"
                       className="h-8 gap-1.5"

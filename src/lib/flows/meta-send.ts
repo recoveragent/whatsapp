@@ -24,6 +24,20 @@ import {
 } from '@/lib/whatsapp/phone-utils'
 import { supabaseAdmin } from './admin-client'
 
+async function conversationConfigId(
+  db: ReturnType<typeof supabaseAdmin>,
+  accountId: string,
+  conversationId: string,
+) {
+  const { data } = await db
+    .from('conversations')
+    .select('whatsapp_config_id')
+    .eq('id', conversationId)
+    .eq('account_id', accountId)
+    .maybeSingle()
+  return data?.whatsapp_config_id ?? null
+}
+
 // ------------------------------------------------------------
 // Flows-side Meta sender (interactive variants).
 //
@@ -93,7 +107,8 @@ export async function engineSendText(
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', args.accountId)
-    .single()
+    .eq('id', await conversationConfigId(db, args.accountId, args.conversationId))
+    .maybeSingle()
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }
@@ -198,7 +213,8 @@ export async function engineSendMedia(
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', args.accountId)
-    .single()
+    .eq('id', await conversationConfigId(db, args.accountId, args.conversationId))
+    .maybeSingle()
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }
@@ -345,7 +361,8 @@ async function sendInteractiveViaMeta(
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', input.accountId)
-    .single()
+    .eq('id', await conversationConfigId(db, input.accountId, input.conversationId))
+    .maybeSingle()
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }
@@ -493,7 +510,8 @@ export async function engineSendAddressMessage(
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', args.accountId)
-    .single()
+    .eq('id', await conversationConfigId(db, args.accountId, args.conversationId))
+    .maybeSingle()
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }
@@ -604,7 +622,8 @@ export async function engineSendFlowMessage(
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', args.accountId)
-    .single()
+    .eq('id', await conversationConfigId(db, args.accountId, args.conversationId))
+    .maybeSingle()
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }

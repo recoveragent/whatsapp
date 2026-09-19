@@ -287,6 +287,7 @@ export interface Conversation {
   contact?: Contact;
   /** WhatsApp number this thread belongs to (migration 103). */
   whatsapp_config_id?: string | null;
+  whatsapp_config?: { id: string; reference_name: string; phone_number_id: string } | null;
   /**
    * AI auto-reply state for this thread (migration 029 + 033):
    *  - `ai_autoreply_disabled` — the bot is paused here (a human took

@@ -76,6 +76,7 @@ export async function POST(request: Request) {
       // yet (Contact detail → Send template) — we find-or-create one below.
       conversation_id: conversationIdInput,
       contact_id,
+      whatsapp_config_id,
       message_type,
       content_text,
       media_url,
@@ -158,7 +159,8 @@ export async function POST(request: Request) {
         supabase,
         accountId,
         userId,
-        contact_id
+        contact_id,
+        typeof whatsapp_config_id === 'string' ? whatsapp_config_id : null,
       )
       if (!resolved) {
         return NextResponse.json(
@@ -572,13 +574,15 @@ async function findOrCreateConversation(
   accountId: string,
   userId: string,
   contactId: string,
+  whatsappConfigId?: string | null,
 ): Promise<string | null> {
-  const { data: existing } = await supabase
+  let existingQuery = supabase
     .from('conversations')
     .select('id')
     .eq('account_id', accountId)
-    .eq('contact_id', contactId)
-    .maybeSingle()
+    .eq('contact_id', contactId);
+  if (whatsappConfigId) existingQuery = existingQuery.eq('whatsapp_config_id', whatsappConfigId);
+  const { data: existing } = await existingQuery.maybeSingle();
 
   if (existing) return existing.id
 
@@ -588,6 +592,7 @@ async function findOrCreateConversation(
       account_id: accountId,
       user_id: userId,
       contact_id: contactId,
+      whatsapp_config_id: whatsappConfigId ?? null,
     })
     .select('id')
     .single()
