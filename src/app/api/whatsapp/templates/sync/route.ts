@@ -146,7 +146,7 @@ export async function POST(request: Request) {
     if (typeof body.whatsapp_config_id === 'string' && body.whatsapp_config_id) {
       configQuery = configQuery.eq('id', body.whatsapp_config_id)
     } else {
-      configQuery = configQuery.order('created_at', { ascending: true }).limit(1)
+      configQuery = configQuery.order('is_default', { ascending: false }).order('created_at', { ascending: true }).limit(1)
     }
     const { data: configs, error: configError } = await configQuery
     const config = configs?.[0] ?? null

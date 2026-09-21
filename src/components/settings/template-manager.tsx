@@ -293,6 +293,7 @@ export function TemplateManager() {
           ? form.header_media_url.trim() || undefined
           : undefined,
       body_text: form.body_text.trim(),
+      whatsapp_config_id: syncConfigId || undefined,
       footer_text: form.footer_text.trim() || undefined,
       buttons: form.buttons.length > 0 ? form.buttons : undefined,
       sample_values:

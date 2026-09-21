@@ -28,6 +28,7 @@ export function WhatsAppNumberPicker({
     void createClient()
       .from('whatsapp_config')
       .select('id, reference_name, phone_number_id')
+      .order('is_default', { ascending: false })
       .order('created_at', { ascending: true })
       .then(({ data }) => {
         if (cancelled || !data) return;

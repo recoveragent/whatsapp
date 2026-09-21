@@ -29,6 +29,7 @@ function buildUpsertRow(
     status: 'DRAFT' | string
     metaTemplateId: string | null
     submissionError: string | null
+    whatsappConfigId?: string | null
   },
 ) {
   return {
@@ -36,6 +37,7 @@ function buildUpsertRow(
     // of migration 017. Without this an INSERT throws on the
     // not-null constraint.
     account_id: accountId,
+    whatsapp_config_id: extras.whatsappConfigId ?? null,
     // Original author — kept as audit only. Upsert looks up the
     // existing row by (account_id, name, language) so teammates
     // update the shared catalog instead of inserting a shadow copy.
@@ -71,6 +73,7 @@ async function upsertTemplateRow(
     .from('message_templates')
     .select('id')
     .eq('account_id', row.account_id)
+    .eq('whatsapp_config_id', row.whatsapp_config_id ?? '')
     .eq('name', row.name)
     .eq('language', row.language)
     .maybeSingle()
@@ -147,16 +150,22 @@ export async function POST(request: Request) {
 
     let metaTemplateId: string
     let metaStatus: string
+    const whatsappConfigId = typeof (payload as TemplatePayload & { whatsapp_config_id?: unknown }).whatsapp_config_id === 'string'
+      ? (payload as TemplatePayload & { whatsapp_config_id: string }).whatsapp_config_id
+      : null
 
     if (dryRun) {
       metaTemplateId = `dry-run-${crypto.randomUUID()}`
       metaStatus = 'PENDING'
     } else {
-      const { data: config, error: configError } = await supabase
+      const { data: configs, error: configError } = await supabase
         .from('whatsapp_config')
         .select('*')
         .eq('account_id', accountId)
-        .single()
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: true })
+        .limit(1)
+      const config = configs?.[0] ?? null
       if (configError || !config) {
         return NextResponse.json(
           {
@@ -210,6 +219,7 @@ export async function POST(request: Request) {
             status: 'DRAFT',
             metaTemplateId: null,
             submissionError: message,
+            whatsappConfigId,
           }),
         )
         const isRateLimit = /\b429\b/.test(message)
@@ -230,6 +240,7 @@ export async function POST(request: Request) {
         status: normalizeStatus(metaStatus),
         metaTemplateId,
         submissionError: null,
+        whatsappConfigId,
       }),
     )
 
