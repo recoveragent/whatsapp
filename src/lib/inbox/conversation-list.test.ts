@@ -146,28 +146,20 @@ const sampleConversations = [
 ];
 
 describe('getInboxActivityAt', () => {
-  it('prefers the newer of last message and updated timestamps', () => {
+  it('uses the last message timestamp even when the conversation was updated later', () => {
     expect(
       getInboxActivityAt({
         last_message_at: '2026-08-21T08:00:00Z',
         updated_at: '2026-08-21T10:00:00Z',
       }),
-    ).toBe('2026-08-21T10:00:00Z');
-    expect(
-      getInboxActivityAt({
-        last_message_at: '2026-08-21T10:00:00Z',
-        updated_at: '2026-08-21T08:00:00Z',
-      }),
-    ).toBe('2026-08-21T10:00:00Z');
+    ).toBe('2026-08-21T08:00:00Z');
   });
 
-  it('falls back to whichever timestamp is present', () => {
+  it('does not fall back to a non-message update timestamp', () => {
     expect(
       getInboxActivityAt({ last_message_at: '2026-08-21T08:00:00Z' }),
     ).toBe('2026-08-21T08:00:00Z');
-    expect(getInboxActivityAt({ updated_at: '2026-08-21T09:00:00Z' })).toBe(
-      '2026-08-21T09:00:00Z',
-    );
+    expect(getInboxActivityAt({ updated_at: '2026-08-21T09:00:00Z' })).toBeNull();
   });
 });
 
@@ -177,7 +169,7 @@ describe('sortInboxConversations', () => {
     expect(sorted.map((c) => c.id)).toEqual(['a', 'b', 'c']);
   });
 
-  it('ranks a recently closed thread above older messages', () => {
+  it('ignores a recent close update and sorts only by last message', () => {
     const sorted = sortInboxConversations(
       [
         {
@@ -195,7 +187,7 @@ describe('sortInboxConversations', () => {
       ],
       'newest',
     );
-    expect(sorted.map((c) => c.id)).toEqual(['closed-now', 'old-msg']);
+    expect(sorted.map((c) => c.id)).toEqual(['old-msg', 'closed-now']);
   });
 
   it('orders by oldest last message first when requested', () => {

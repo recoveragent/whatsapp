@@ -15,24 +15,15 @@ type InboxListConversation = {
   last_message_text?: string | null;
 };
 
-/** Latest customer/agent message or status/assignment change — drives sidebar order. */
+/** Latest sent or received message — drives the sidebar timestamp and order. */
 export function getInboxActivityAt(conv: {
   last_message_at?: string | null;
   updated_at?: string | null;
 }): string | null {
-  const msg = conv.last_message_at
-    ? Date.parse(conv.last_message_at)
-    : Number.NaN;
-  const updated = conv.updated_at ? Date.parse(conv.updated_at) : Number.NaN;
-  const msgValid = Number.isFinite(msg);
-  const updatedValid = Number.isFinite(updated);
-
-  if (msgValid && updatedValid) {
-    return msg >= updated ? conv.last_message_at! : conv.updated_at!;
-  }
-  if (msgValid) return conv.last_message_at!;
-  if (updatedValid) return conv.updated_at!;
-  return null;
+  if (!conv.last_message_at) return null;
+  return Number.isFinite(Date.parse(conv.last_message_at))
+    ? conv.last_message_at
+    : null;
 }
 
 /** Only conversations with at least one message belong in the inbox sidebar. */
@@ -118,7 +109,7 @@ export function filterInboxConversations<T extends InboxListConversation>(
   return result;
 }
 
-/** Sort sidebar rows by most recent inbox activity (message or status change). */
+/** Sort sidebar rows by their most recent sent or received message. */
 export function sortInboxConversations<T extends InboxListConversation>(
   conversations: T[],
   sort: InboxSortOrder,
