@@ -8,9 +8,19 @@ SET reference_name = COALESCE(NULLIF(reference_name, ''), 'Primary')
 WHERE reference_name IS NULL OR reference_name = '';
 
 ALTER TABLE whatsapp_config ALTER COLUMN reference_name SET NOT NULL;
-ALTER TABLE whatsapp_config
-  ADD CONSTRAINT whatsapp_config_reference_name_not_blank
-  CHECK (length(btrim(reference_name)) > 0);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'whatsapp_config_reference_name_not_blank'
+      AND conrelid = 'whatsapp_config'::regclass
+  ) THEN
+    ALTER TABLE whatsapp_config
+      ADD CONSTRAINT whatsapp_config_reference_name_not_blank
+      CHECK (length(btrim(reference_name)) > 0);
+  END IF;
+END $$;
 
 ALTER TABLE whatsapp_config
   DROP CONSTRAINT IF EXISTS whatsapp_config_account_id_key;
