@@ -33,6 +33,7 @@ interface TemplatePickerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelect: (template: MessageTemplate, values: TemplateSendValues) => void;
+  whatsappConfigId?: string | null;
 }
 
 function renderBodyPreview(body: string, params: string[]): string {
@@ -77,6 +78,7 @@ export function TemplatePicker({
   open,
   onOpenChange,
   onSelect,
+  whatsappConfigId,
 }: TemplatePickerProps) {
   const { accountId } = useAuth();
   const t = useTranslations('Inbox.templatePicker');
@@ -106,6 +108,7 @@ export function TemplatePicker({
         .from('message_templates')
         .select('*')
         .eq('account_id', accountId)
+        .eq('whatsapp_config_id', whatsappConfigId ?? '')
         .eq('status', 'APPROVED')
         .order('created_at', { ascending: false });
 
@@ -122,7 +125,7 @@ export function TemplatePicker({
     return () => {
       cancelled = true;
     };
-  }, [open, accountId]);
+  }, [open, accountId, whatsappConfigId]);
 
   function resetSelection() {
     setSelected(null);

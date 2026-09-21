@@ -1611,6 +1611,11 @@ export function MessageThread({
       </div>
 
       <div className="shrink-0">
+      {conversation.whatsapp_config && (
+        <div className="border-b border-border bg-muted/30 px-4 py-1.5 text-xs text-muted-foreground">
+          Sending from <span className="font-medium text-foreground">{conversation.whatsapp_config.reference_name}</span>
+        </div>
+      )}
       {/* AI auto-reply banner — take over an active bot, or resume it
           after a handoff. Renders nothing unless the account has
           auto-reply configured. */}
@@ -1654,6 +1659,7 @@ export function MessageThread({
         open={templateModalOpen}
         onOpenChange={setTemplateModalOpen}
         onSelect={handleSendTemplate}
+        whatsappConfigId={conversation?.whatsapp_config_id}
       />
 
       <FlowPicker

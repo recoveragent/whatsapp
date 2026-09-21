@@ -247,14 +247,21 @@ export function TemplateManager() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, profileLoading, accountId]);
 
+  useEffect(() => {
+    if (accountId && syncConfigId) void fetchTemplates(accountId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncConfigId]);
+
   async function fetchTemplates(id: string) {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      let templatesQuery = supabase
         .from('message_templates')
         .select('*')
         .eq('account_id', id)
         .order('created_at', { ascending: false });
+      if (syncConfigId) templatesQuery = templatesQuery.eq('whatsapp_config_id', syncConfigId);
+      const { data, error } = await templatesQuery;
       if (error) throw error;
       setTemplates(data || []);
     } catch (err) {
@@ -538,14 +545,16 @@ export function TemplateManager() {
         action={
           <div className="flex items-center gap-2">
             {whatsappNumbers.length > 1 && (
-              <Select value={syncConfigId} onValueChange={(value) => setSyncConfigId(value ?? '')}>
-                <SelectTrigger className="h-9 w-48"><SelectValue placeholder="Sync number" /></SelectTrigger>
-                <SelectContent>
-                  {whatsappNumbers.map((number) => (
-                    <SelectItem key={number.id} value={number.id}>{number.reference_name} ({number.phone_number_id})</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <select
+                value={syncConfigId}
+                onChange={(event) => setSyncConfigId(event.target.value)}
+                aria-label="WhatsApp number for template sync"
+                className="h-9 w-48 rounded-xl border border-border/80 bg-card/80 px-3 text-sm"
+              >
+                {whatsappNumbers.map((number) => (
+                  <option key={number.id} value={number.id}>{number.reference_name} ({number.phone_number_id})</option>
+                ))}
+              </select>
             )}
             <Button
               variant="outline"
