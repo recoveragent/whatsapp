@@ -130,7 +130,7 @@ function extractSampleValues(
   return sv
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     // Syncing rewrites the account-wide template catalog, which is
     // settings-class data: `canEditSettings` and the message_templates
@@ -138,11 +138,18 @@ export async function POST() {
     // Resolving account_id off the profile only proved membership.
     const { supabase, accountId, userId } = await requireRole('admin')
 
-    const { data: config, error: configError } = await supabase
+    const body = (await request.json().catch(() => ({}))) as { whatsapp_config_id?: unknown }
+    let configQuery = supabase
       .from('whatsapp_config')
       .select('*')
       .eq('account_id', accountId)
-      .single()
+    if (typeof body.whatsapp_config_id === 'string' && body.whatsapp_config_id) {
+      configQuery = configQuery.eq('id', body.whatsapp_config_id)
+    } else {
+      configQuery = configQuery.order('created_at', { ascending: true }).limit(1)
+    }
+    const { data: configs, error: configError } = await configQuery
+    const config = configs?.[0] ?? null
 
     if (configError || !config) {
       return NextResponse.json(

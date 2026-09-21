@@ -163,6 +163,8 @@ export function TemplateManager() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [whatsappNumbers, setWhatsappNumbers] = useState<Array<{ id: string; reference_name: string; phone_number_id: string }>>([]);
+  const [syncConfigId, setSyncConfigId] = useState('');
   const [form, setForm] = useState<TemplateFormData>(emptyForm);
   // Non-null when the dialog is editing an existing row — switches the
   // submit handler from POST /submit to PATCH /[id] and changes the
@@ -232,6 +234,16 @@ export function TemplateManager() {
       return;
     }
     void fetchTemplates(accountId);
+    void supabase
+      .from('whatsapp_config')
+      .select('id, reference_name, phone_number_id')
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => {
+        const rows = (data ?? []) as Array<{ id: string; reference_name: string; phone_number_id: string }>;
+        setWhatsappNumbers(rows);
+        if (!syncConfigId && rows[0]) setSyncConfigId(rows[0].id);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, profileLoading, accountId]);
 
@@ -353,7 +365,11 @@ export function TemplateManager() {
     if (!accountId) return;
     setSyncing(true);
     try {
-      const res = await fetch('/api/whatsapp/templates/sync', { method: 'POST' });
+      const res = await fetch('/api/whatsapp/templates/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ whatsapp_config_id: syncConfigId || undefined }),
+      });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data?.error || `Sync failed (HTTP ${res.status})`);
@@ -521,6 +537,16 @@ export function TemplateManager() {
         description={t('description')}
         action={
           <div className="flex items-center gap-2">
+            {whatsappNumbers.length > 1 && (
+              <Select value={syncConfigId} onValueChange={(value) => setSyncConfigId(value ?? '')}>
+                <SelectTrigger className="h-9 w-48"><SelectValue placeholder="Sync number" /></SelectTrigger>
+                <SelectContent>
+                  {whatsappNumbers.map((number) => (
+                    <SelectItem key={number.id} value={number.id}>{number.reference_name} ({number.phone_number_id})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Button
               variant="outline"
               onClick={handleSyncFromMeta}
