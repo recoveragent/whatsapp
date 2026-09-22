@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/client';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -128,12 +128,14 @@ function LoginPageInner() {
         <CardContent>
           {!showLegacyLogin && !inviteToken ? (
             <div className="flex flex-col gap-4">
-              <Button
-                asChild
-                className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 w-full"
+              <a
+                href={dashboardSsoUrl}
+                className={buttonVariants({
+                  className: 'h-10 w-full',
+                })}
               >
-                <a href={dashboardSsoUrl}>{t('continueDashboard')}</a>
-              </Button>
+                {t('continueDashboard')}
+              </a>
               <button
                 type="button"
                 onClick={() => setShowLegacyLogin(true)}
