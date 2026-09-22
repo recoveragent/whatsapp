@@ -104,13 +104,22 @@ export function TemplatePicker({
       }
 
       const supabase = createClient();
-      const { data, error } = await supabase
+      let templatesQuery = supabase
         .from('message_templates')
         .select('*')
         .eq('account_id', accountId)
-        .eq('whatsapp_config_id', whatsappConfigId ?? '')
         .eq('status', 'APPROVED')
         .order('created_at', { ascending: false });
+
+      // Older conversations can predate per-WhatsApp-config mapping and
+      // therefore have a null whatsapp_config_id. Never turn that null into
+      // an empty-string equality: it hides every approved template. When a
+      // conversation is mapped, keep templates scoped to that config.
+      if (whatsappConfigId) {
+        templatesQuery = templatesQuery.eq('whatsapp_config_id', whatsappConfigId);
+      }
+
+      const { data, error } = await templatesQuery;
 
       if (cancelled) return;
       if (error) {
