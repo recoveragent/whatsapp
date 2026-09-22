@@ -20,7 +20,7 @@ export const SSO_CONSUME_URL =
 
 export const RECOVER_AGENT_PROJECT_REF = "huyoveugeexdhyqhawvq";
 
-export const DEFAULT_DASHBOARD_URL = "https://app.recoveragent.ai";
+export const DEFAULT_DASHBOARD_URL = "https://dashboard.recoveragent.ai";
 
 /**
  * Publishable anon key for the Recover Agent dashboard project.
