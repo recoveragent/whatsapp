@@ -16,6 +16,48 @@ interface ConversationCandidate {
 }
 
 /**
+ * Outbound sources such as Shopify and flows do not have an inbound webhook
+ * from which to infer the sender number.  In that case, use the brand's
+ * configured default instead of creating an orphaned conversation that can
+ * never be used by the inbox send endpoint.
+ */
+async function resolveDefaultWhatsAppConfigId(
+  db: SupabaseClient,
+  accountId: string,
+): Promise<string | null> {
+  const preferred = await db
+    .from('whatsapp_config')
+    .select('id')
+    .eq('account_id', accountId)
+    .order('is_default', { ascending: false })
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (!preferred.error) return preferred.data?.id ?? null
+
+  // Some existing deployments have not applied migration 105 yet. They
+  // cannot have a configured default number, so preserve the historic
+  // single-number behavior by using the oldest connected configuration.
+  if (preferred.error.code === '42703') {
+    const fallback = await db
+      .from('whatsapp_config')
+      .select('id')
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    if (!fallback.error) return fallback.data?.id ?? null
+    console.error('[inbox] resolve fallback WhatsApp config failed:', fallback.error.message)
+    return null
+  }
+
+  console.error('[inbox] resolve default WhatsApp config failed:', preferred.error.message)
+  return null
+}
+
+/**
  * All conversations for a contact within an account. Normally 0–1
  * rows; may return multiple before migration 067 backfill runs.
  */
@@ -101,9 +143,12 @@ export async function ensureConversationForContact(
   opts?: { createStatus?: ConversationCreateStatus; whatsappConfigId?: string | null },
 ): Promise<{ id: string } | null> {
   const createStatus = opts?.createStatus ?? 'closed';
+  const whatsappConfigId =
+    opts?.whatsappConfigId ??
+    (await resolveDefaultWhatsAppConfigId(db, accountId));
 
   const existing = await findConversationsForContact(
-    db, accountId, contactId, opts?.whatsappConfigId,
+    db, accountId, contactId, whatsappConfigId,
   );
   const canonicalId = await pickCanonicalConversationId(db, existing);
   if (canonicalId) return { id: canonicalId };
@@ -114,7 +159,7 @@ export async function ensureConversationForContact(
       account_id: accountId,
       user_id: ownerUserId,
       contact_id: contactId,
-      whatsapp_config_id: opts?.whatsappConfigId ?? null,
+      whatsapp_config_id: whatsappConfigId,
       status: createStatus,
     })
     .select('id')
@@ -123,7 +168,7 @@ export async function ensureConversationForContact(
   if (error) {
     if (isUniqueViolation(error)) {
       const raced = await findConversationsForContact(
-        db, accountId, contactId, opts?.whatsappConfigId,
+        db, accountId, contactId, whatsappConfigId,
       );
       const racedId = await pickCanonicalConversationId(db, raced);
       if (racedId) return { id: racedId };
