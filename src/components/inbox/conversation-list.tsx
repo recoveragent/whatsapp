@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  CONVERSATION_SELECT,
   matchesContactFilters,
   normalizeConversations,
 } from "@/lib/inbox/conversations";
@@ -130,72 +129,68 @@ export function ConversationList({
   }, [conversations]);
 
   useEffect(() => {
-    const supabase = createClient();
     let cancelled = false;
 
     (async () => {
       setLoading(true);
       setHasMore(false);
       setNextCursor(null);
-      const { data, error } = await supabase
-        .from("conversations")
-        .select(CONVERSATION_SELECT)
-        .not("last_message_at", "is", null)
-        .order("last_message_at", {
-          ascending: sort === "oldest",
-        });
+      const params = new URLSearchParams({ sort, filter });
+      const response = await fetch(`/api/inbox/conversations/page?${params}`, {
+        cache: "no-store",
+      });
+      const body = (await response.json()) as {
+        conversations?: Conversation[];
+        hasMore?: boolean;
+        error?: string;
+      };
 
       if (cancelled) return;
 
-      if (error) {
-        console.error("Failed to fetch conversations:", {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-        });
+      if (!response.ok) {
+        console.error("Failed to fetch conversations:", body.error);
         setLoading(false);
         return;
       }
 
-      const loaded = normalizeConversations(data ?? []);
+      const loaded = normalizeConversations(body.conversations ?? []);
       conversationsRef.current = loaded;
       onConversationsLoadedRef.current(loaded);
       const cursor = loaded.at(-1)?.last_message_at ?? null;
       setNextCursor(cursor);
-      setHasMore(Boolean(cursor));
+      setHasMore(Boolean(body.hasMore && cursor));
       setLoading(false);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [resyncToken, sort]);
+  }, [filter, resyncToken, sort]);
 
   const loadMoreConversations = useCallback(async () => {
     if (loadingMore || !hasMore || !nextCursor) return;
 
     setLoadingMore(true);
-    const supabase = createClient();
-    let query = supabase
-      .from("conversations")
-      .select(CONVERSATION_SELECT)
-      .not("last_message_at", "is", null)
-      .order("last_message_at", { ascending: sort === "oldest" });
-
-    query =
-      sort === "oldest"
-        ? query.gt("last_message_at", nextCursor)
-        : query.lt("last_message_at", nextCursor);
-
-    const { data, error } = await query;
-    if (error) {
-      console.error("Failed to load more conversations:", error);
+    const params = new URLSearchParams({
+      sort,
+      filter,
+      cursor: nextCursor,
+    });
+    const response = await fetch(`/api/inbox/conversations/page?${params}`, {
+      cache: "no-store",
+    });
+    const body = (await response.json()) as {
+      conversations?: Conversation[];
+      hasMore?: boolean;
+      error?: string;
+    };
+    if (!response.ok) {
+      console.error("Failed to load more conversations:", body.error);
       setLoadingMore(false);
       return;
     }
 
-    const loaded = normalizeConversations(data ?? []);
+    const loaded = normalizeConversations(body.conversations ?? []);
     const existingIds = new Set(
       conversationsRef.current.map((conversation) => conversation.id),
     );
@@ -207,9 +202,9 @@ export function ConversationList({
     onConversationsLoadedRef.current(merged);
     const cursor = loaded.at(-1)?.last_message_at ?? null;
     setNextCursor(cursor);
-    setHasMore(Boolean(cursor));
+    setHasMore(Boolean(body.hasMore && cursor));
     setLoadingMore(false);
-  }, [hasMore, loadingMore, nextCursor, sort]);
+  }, [filter, hasMore, loadingMore, nextCursor, sort]);
 
   useEffect(() => {
     const supabase = createClient();
