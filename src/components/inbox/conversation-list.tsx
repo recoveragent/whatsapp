@@ -138,9 +138,9 @@ export function ConversationList({
       setLoading(true);
       setHasMore(false);
       setNextOffset(0);
-      const { data, error } = await supabase
+      const { data, error, count } = await supabase
         .from("conversations")
-        .select(CONVERSATION_SELECT)
+        .select(CONVERSATION_SELECT, { count: "exact" })
         .order("last_message_at", { ascending: false })
         .range(0, INBOX_PAGE_SIZE - 1);
 
@@ -161,7 +161,7 @@ export function ConversationList({
       conversationsRef.current = loaded;
       onConversationsLoadedRef.current(loaded);
       setNextOffset(loaded.length);
-      setHasMore(loaded.length === INBOX_PAGE_SIZE);
+      setHasMore(loaded.length < (count ?? loaded.length));
       setLoading(false);
     })();
 
@@ -175,9 +175,9 @@ export function ConversationList({
 
     setLoadingMore(true);
     const supabase = createClient();
-    const { data, error } = await supabase
+    const { data, error, count } = await supabase
       .from("conversations")
-      .select(CONVERSATION_SELECT)
+      .select(CONVERSATION_SELECT, { count: "exact" })
       .order("last_message_at", { ascending: false })
       .range(nextOffset, nextOffset + INBOX_PAGE_SIZE - 1);
 
@@ -203,7 +203,7 @@ export function ConversationList({
     conversationsRef.current = merged;
     onConversationsLoadedRef.current(merged);
     setNextOffset(nextOffset + loaded.length);
-    setHasMore(loaded.length === INBOX_PAGE_SIZE);
+    setHasMore(nextOffset + loaded.length < (count ?? nextOffset + loaded.length));
     setLoadingMore(false);
   }, [hasMore, loadingMore, nextOffset]);
 
