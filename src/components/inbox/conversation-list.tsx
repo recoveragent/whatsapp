@@ -110,7 +110,7 @@ export function ConversationList({
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
-  const [nextOffset, setNextOffset] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
@@ -137,12 +137,12 @@ export function ConversationList({
     (async () => {
       setLoading(true);
       setHasMore(false);
-      setNextOffset(0);
+      setNextCursor(null);
       const { data, error, count } = await supabase
         .from("conversations")
         .select(CONVERSATION_SELECT, { count: "exact" })
         .order("last_message_at", { ascending: false })
-        .range(0, INBOX_PAGE_SIZE - 1);
+        .limit(INBOX_PAGE_SIZE);
 
       if (cancelled) return;
 
@@ -160,8 +160,9 @@ export function ConversationList({
       const loaded = normalizeConversations(data ?? []);
       conversationsRef.current = loaded;
       onConversationsLoadedRef.current(loaded);
-      setNextOffset(loaded.length);
-      setHasMore(loaded.length < (count ?? loaded.length));
+      const cursor = loaded.at(-1)?.last_message_at ?? null;
+      setNextCursor(cursor);
+      setHasMore(Boolean(cursor) && loaded.length < (count ?? loaded.length));
       setLoading(false);
     })();
 
@@ -171,7 +172,7 @@ export function ConversationList({
   }, [resyncToken]);
 
   const loadMoreConversations = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
+    if (loadingMore || !hasMore || !nextCursor) return;
 
     setLoadingMore(true);
     const supabase = createClient();
@@ -179,7 +180,8 @@ export function ConversationList({
       .from("conversations")
       .select(CONVERSATION_SELECT, { count: "exact" })
       .order("last_message_at", { ascending: false })
-      .range(nextOffset, nextOffset + INBOX_PAGE_SIZE - 1);
+      .lt("last_message_at", nextCursor)
+      .limit(INBOX_PAGE_SIZE);
 
     if (error) {
       console.error("Failed to load more conversations:", {
@@ -202,10 +204,13 @@ export function ConversationList({
     ];
     conversationsRef.current = merged;
     onConversationsLoadedRef.current(merged);
-    setNextOffset(nextOffset + loaded.length);
-    setHasMore(nextOffset + loaded.length < (count ?? nextOffset + loaded.length));
+    const cursor = loaded.at(-1)?.last_message_at ?? null;
+    setNextCursor(cursor);
+    setHasMore(
+      Boolean(cursor) && merged.length < (count ?? merged.length),
+    );
     setLoadingMore(false);
-  }, [hasMore, loadingMore, nextOffset]);
+  }, [hasMore, loadingMore, nextCursor]);
 
   useEffect(() => {
     const supabase = createClient();
