@@ -6,6 +6,7 @@ import { isOpenInboxConversation } from "@/lib/inbox/conversation-list";
 import type { Conversation } from "@/types";
 
 type ConvSnapshot = {
+  contactId: string;
   unread: number;
   status: Conversation["status"];
   last_message_at: string | null;
@@ -15,12 +16,12 @@ const PAGE_SIZE = 1000;
 
 function totalsFrom(map: Map<string, ConvSnapshot>) {
   let unread = 0;
-  let open = 0;
+  const openContactIds = new Set<string>();
   for (const row of map.values()) {
     if (row.unread > 0) unread += 1;
-    if (isOpenInboxConversation(row)) open += 1;
+    if (isOpenInboxConversation(row)) openContactIds.add(row.contactId);
   }
-  return { unread, open };
+  return { unread, openContacts: openContactIds.size };
 }
 
 async function fetchAllConversationSnapshots(
@@ -32,7 +33,7 @@ async function fetchAllConversationSnapshots(
   while (true) {
     const { data, error } = await supabase
       .from("conversations")
-      .select("id, unread_count, status, last_message_at")
+      .select("id, contact_id, unread_count, status, last_message_at")
       .order("id", { ascending: true })
       .range(from, from + PAGE_SIZE - 1);
 
@@ -41,11 +42,13 @@ async function fetchAllConversationSnapshots(
 
     for (const row of data as {
       id: string;
+      contact_id: string;
       unread_count: number;
       status: Conversation["status"];
       last_message_at: string | null;
     }[]) {
       map.set(row.id, {
+        contactId: row.contact_id,
         unread: row.unread_count ?? 0,
         status: row.status,
         last_message_at: row.last_message_at ?? null,
@@ -61,14 +64,14 @@ async function fetchAllConversationSnapshots(
 
 /**
  * Live inbox counts for the sidebar: unread conversations (at least one
- * unread inbound) and open conversations that appear in the inbox's Open
- * filter. This makes the Inbox badge match the visible Open list.
+ * unread inbound) and unique contacts with a conversation in the inbox's
+ * Open filter.
  *
  * Lives on its own realtime channel (distinct from the inbox page's
  * "inbox-realtime") so both can coexist without sharing state.
  */
-export function useInboxNavCounts(): { unread: number; open: number } {
-  const [counts, setCounts] = useState({ unread: 0, open: 0 });
+export function useInboxNavCounts(): { unread: number; openContacts: number } {
+  const [counts, setCounts] = useState({ unread: 0, openContacts: 0 });
 
   // Keep a live local mirror so INSERT/UPDATE/DELETE events can adjust
   // both totals in O(n) without refetching.
@@ -105,6 +108,7 @@ export function useInboxNavCounts(): { unread: number; open: number } {
           } else {
             const row = payload.new as Conversation;
             map.set(row.id, {
+              contactId: row.contact_id,
               unread: row.unread_count ?? 0,
               status: row.status,
               last_message_at: row.last_message_at ?? null,

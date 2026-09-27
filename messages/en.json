@@ -35,7 +35,7 @@
     "settings": "Settings",
     "beta": "Beta",
     "unreadConversations": "{count} unread {count, plural, =1 {conversation} other {conversations}}",
-    "openConversations": "{count} open {count, plural, =1 {conversation} other {conversations}}",
+    "openContacts": "{count} open {count, plural, =1 {contact} other {contacts}}",
     "unreadNotifications": "{count} unread {count, plural, =1 {notification} other {notifications}}",
     "roleOwner": "Owner",
     "roleAdmin": "Admin",

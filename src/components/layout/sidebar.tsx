@@ -139,7 +139,7 @@ export function Sidebar({
     : isSuperAdminActing
       ? pathname === "/settings" && searchParams.get("tab") === "templates"
       : pathname.startsWith("/admin/templates");
-  const { unread: totalUnread, open: openInboxCount } = useInboxNavCounts();
+  const { unread: totalUnread, openContacts: openInboxCount } = useInboxNavCounts();
   const showAccountStrip =
     !opsOnlyNav &&
     !profileLoading &&
@@ -529,7 +529,7 @@ function NavRow({
   t: ReturnType<typeof useTranslations>;
 }) {
   const badgeLabel =
-    badge > 0 ? t("openConversations", { count: badge }) : undefined;
+    badge > 0 ? t("openContacts", { count: badge }) : undefined;
   const badgeText = String(badge);
 
   return (
