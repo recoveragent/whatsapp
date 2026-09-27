@@ -529,7 +529,7 @@ function NavRow({
   t: ReturnType<typeof useTranslations>;
 }) {
   const badgeLabel =
-    badge > 0 ? t("activeOpenConversations", { count: badge }) : undefined;
+    badge > 0 ? t("openConversations", { count: badge }) : undefined;
   const badgeText = badge > 99 ? "9+" : String(badge);
 
   return (

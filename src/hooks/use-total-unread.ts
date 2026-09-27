@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { isActiveOpenInboxConversation } from "@/lib/inbox/conversation-list";
+import { isOpenInboxConversation } from "@/lib/inbox/conversation-list";
 import type { Conversation } from "@/types";
 
 type ConvSnapshot = {
@@ -13,12 +13,12 @@ type ConvSnapshot = {
 
 const PAGE_SIZE = 1000;
 
-function totalsFrom(map: Map<string, ConvSnapshot>, now = new Date()) {
+function totalsFrom(map: Map<string, ConvSnapshot>) {
   let unread = 0;
   let open = 0;
   for (const row of map.values()) {
     if (row.unread > 0) unread += 1;
-    if (isActiveOpenInboxConversation(row, now)) open += 1;
+    if (isOpenInboxConversation(row)) open += 1;
   }
   return { unread, open };
 }
@@ -61,8 +61,8 @@ async function fetchAllConversationSnapshots(
 
 /**
  * Live inbox counts for the sidebar: unread conversations (at least one
- * unread inbound) and active open conversations (status = open, has a
- * message, last message within 24 hours).
+ * unread inbound) and open conversations that appear in the inbox's Open
+ * filter. This makes the Inbox badge match the visible Open list.
  *
  * Lives on its own realtime channel (distinct from the inbox page's
  * "inbox-realtime") so both can coexist without sharing state.
