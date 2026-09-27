@@ -13,6 +13,11 @@ export async function GET(request: Request) {
     const sort = params.get("sort") === "oldest" ? "oldest" : "newest";
     const filter = params.get("filter") ?? "open";
     const cursor = params.get("cursor");
+    const requestedPageSize = Number.parseInt(params.get("pageSize") ?? "", 10);
+    const pageSize =
+      requestedPageSize >= 1 && requestedPageSize <= PAGE_SIZE
+        ? requestedPageSize
+        : PAGE_SIZE;
 
     let query = ctx.supabase
       .from("conversations")
@@ -37,7 +42,7 @@ export async function GET(request: Request) {
     // Fetch one extra row so the client can show the pagination control only
     // when another page truly exists. This also prevents a misleading empty
     // page after the last set of conversations.
-    const { data, error } = await query.limit(PAGE_SIZE + 1);
+    const { data, error } = await query.limit(pageSize + 1);
     if (error) {
       console.error("Failed to load inbox page:", error);
       return NextResponse.json(
@@ -47,9 +52,9 @@ export async function GET(request: Request) {
     }
 
     const rows = data ?? [];
-    const hasMore = rows.length > PAGE_SIZE;
+    const hasMore = rows.length > pageSize;
     return NextResponse.json({
-      conversations: hasMore ? rows.slice(0, PAGE_SIZE) : rows,
+      conversations: hasMore ? rows.slice(0, pageSize) : rows,
       hasMore,
     });
   } catch (err) {

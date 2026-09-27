@@ -67,6 +67,7 @@ const SORT_OPTIONS: { label: string; value: InboxSortOrder }[] = [
 ];
 
 const WHATSAPP_FILTER_STORAGE_KEY = "wacrm:inbox:whatsapp-number-ids";
+const CONVERSATIONS_PER_PAGE = 30;
 type WhatsAppNumberOption = {
   id: string;
   reference_name: string;
@@ -167,7 +168,7 @@ export function ConversationList({
     };
   }, [filter, resyncToken, sort]);
 
-  const loadMoreConversations = useCallback(async () => {
+  const loadMoreConversations = useCallback(async (pageSize = CONVERSATIONS_PER_PAGE) => {
     if (loadingMore || !hasMore || !nextCursor) return;
 
     setLoadingMore(true);
@@ -175,6 +176,7 @@ export function ConversationList({
       sort,
       filter,
       cursor: nextCursor,
+      pageSize: String(pageSize),
     });
     const response = await fetch(`/api/inbox/conversations/page?${params}`, {
       cache: "no-store",
@@ -297,6 +299,30 @@ export function ConversationList({
 
     return result;
   }, [conversations, filter, search, sort, selectedTagIds, selectedCompany, whatsappNumbers.length, selectedWhatsappIds]);
+
+  const canRefillPage =
+    !search.trim() &&
+    selectedTagIds.length === 0 &&
+    selectedCompany === null &&
+    (whatsappNumbers.length < 2 || selectedWhatsappIds.length === whatsappNumbers.length);
+
+  // Closing a conversation removes it from the selected status tab. Keep the
+  // current page full by fetching one replacement, without expanding the page.
+  useEffect(() => {
+    if (
+      !canRefillPage ||
+      filtered.length >= CONVERSATIONS_PER_PAGE ||
+      !hasMore ||
+      loadingMore
+    ) {
+      return;
+    }
+
+    const refillTimer = window.setTimeout(() => {
+      void loadMoreConversations(1);
+    }, 0);
+    return () => window.clearTimeout(refillTimer);
+  }, [canRefillPage, filtered.length, hasMore, loadingMore, loadMoreConversations]);
 
   const hasSearchMatchesInAll = useMemo(() => {
     if (!search.trim() || filter === "all") return false;
@@ -643,7 +669,7 @@ export function ConversationList({
                 <Button
                   variant="outline"
                   className="w-full"
-                  onClick={loadMoreConversations}
+                  onClick={() => void loadMoreConversations()}
                   disabled={loadingMore}
                 >
                   {loadingMore ? t("loadingMore") : t("loadMore")}
