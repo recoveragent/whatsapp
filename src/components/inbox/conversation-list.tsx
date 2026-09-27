@@ -107,9 +107,6 @@ export function ConversationList({
   const [filter, setFilter] = useState<InboxFilter>("open");
   const [sort, setSort] = useState<InboxSortOrder>("newest");
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
@@ -121,22 +118,15 @@ export function ConversationList({
   }, [filter, search, sort, onListViewChange]);
 
   const onConversationsLoadedRef = useRef(onConversationsLoaded);
-  const conversationsRef = useRef(conversations);
   useEffect(() => {
     onConversationsLoadedRef.current = onConversationsLoaded;
   });
-  useEffect(() => {
-    conversationsRef.current = conversations;
-  }, [conversations]);
 
   useEffect(() => {
     const supabase = createClient();
     let cancelled = false;
 
     (async () => {
-      setLoading(true);
-      setHasMore(false);
-      setNextCursor(null);
       const { data, error } = await supabase
         .from("conversations")
         .select(CONVERSATION_SELECT)
@@ -155,12 +145,7 @@ export function ConversationList({
         return;
       }
 
-      const loaded = normalizeConversations(data ?? []);
-      conversationsRef.current = loaded;
-      onConversationsLoadedRef.current(loaded);
-      const cursor = loaded.at(-1)?.last_message_at ?? null;
-      setNextCursor(cursor);
-      setHasMore(Boolean(cursor));
+      onConversationsLoadedRef.current(normalizeConversations(data ?? []));
       setLoading(false);
     })();
 
@@ -168,44 +153,6 @@ export function ConversationList({
       cancelled = true;
     };
   }, [resyncToken]);
-
-  const loadMoreConversations = useCallback(async () => {
-    if (loadingMore || !hasMore || !nextCursor) return;
-
-    setLoadingMore(true);
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("conversations")
-      .select(CONVERSATION_SELECT)
-      .order("last_message_at", { ascending: false })
-      .lt("last_message_at", nextCursor);
-
-    if (error) {
-      console.error("Failed to load more conversations:", {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-      });
-      setLoadingMore(false);
-      return;
-    }
-
-    const loaded = normalizeConversations(data ?? []);
-    const existingIds = new Set(
-      conversationsRef.current.map((conversation) => conversation.id),
-    );
-    const merged = [
-      ...conversationsRef.current,
-      ...loaded.filter((conversation) => !existingIds.has(conversation.id)),
-    ];
-    conversationsRef.current = merged;
-    onConversationsLoadedRef.current(merged);
-    const cursor = loaded.at(-1)?.last_message_at ?? null;
-    setNextCursor(cursor);
-    setHasMore(Boolean(cursor));
-    setLoadingMore(false);
-  }, [hasMore, loadingMore, nextCursor]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -639,18 +586,6 @@ export function ConversationList({
                 t={t}
               />
             ))}
-            {hasMore && (
-              <div className="px-3 py-3">
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={loadMoreConversations}
-                  disabled={loadingMore}
-                >
-                  {loadingMore ? t("loadingMore") : t("loadMore")}
-                </Button>
-              </div>
-            )}
           </div>
         )}
       </ScrollArea>
