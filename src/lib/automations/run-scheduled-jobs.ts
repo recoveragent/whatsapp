@@ -3,6 +3,7 @@ import { resumePendingExecution } from '@/lib/automations/engine'
 import type { AutomationContext } from '@/lib/automations/engine'
 import { pollGoogleSheetFlows } from '@/lib/google-sheets/poll'
 import { resumeFlowPendingExecutions } from '@/lib/flows/engine'
+import { reconcileRecentFlowOutboundMessages } from '@/lib/flows/backfill-outbound-prompt'
 import { processDueCadences } from '@/lib/leads/engine'
 import { pollLeadSources } from '@/lib/leads/poll-sources'
 import { processDueAbandonedCheckouts } from '@/lib/shopify/handle-webhook'
@@ -14,6 +15,7 @@ export interface ScheduledAutomationJobsResult {
   cadences: unknown
   flow_waits: unknown
   abandoned_checkouts: number
+  flow_outbound_reconciliation: unknown
   errors: string[]
 }
 
@@ -85,12 +87,14 @@ export async function runScheduledAutomationJobs(): Promise<ScheduledAutomationJ
     cadencesResult,
     flowWaitsResult,
     abandonedCheckoutsResult,
+    flowOutboundReconciliationResult,
   ] = await Promise.allSettled([
     pollGoogleSheetFlows(admin),
     pollLeadSources(admin),
     processDueCadences(admin),
     resumeFlowPendingExecutions(),
     processDueAbandonedCheckouts(admin),
+    reconcileRecentFlowOutboundMessages({ db: admin }),
   ])
 
   return {
@@ -102,6 +106,11 @@ export async function runScheduledAutomationJobs(): Promise<ScheduledAutomationJ
     abandoned_checkouts:
       settledValue(abandonedCheckoutsResult, 'abandoned_checkouts', errors) ??
       0,
+    flow_outbound_reconciliation: settledValue(
+      flowOutboundReconciliationResult,
+      'flow_outbound_reconciliation',
+      errors,
+    ),
     errors,
   }
 }

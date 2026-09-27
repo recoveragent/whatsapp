@@ -62,9 +62,12 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (embedded) return;
     if (!loading && !user) {
-      router.push("/login");
+      // Full document navigation — router.push would fetch the RSC flight
+      // payload for /login, and with our CDN cache headers that response
+      // can be stored and served back as the page on the next visit.
+      window.location.assign("/login");
     }
-  }, [user, loading, router, embedded]);
+  }, [user, loading, embedded]);
 
   useEffect(() => {
     if (embedded) return;

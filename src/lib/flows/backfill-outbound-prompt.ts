@@ -6,6 +6,7 @@ import {
 } from '@/lib/inbox/template-message-display'
 import { buildSendTimeParamsFromVariables } from '@/lib/flows/template-send-params'
 import { interpolateTemplateString } from '@/lib/flows/template-interpolate'
+import { ensureConversation } from '@/lib/shopify/ensure-contact'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
 import { insertOutboundMessage, isMetaSentDbInsertFailed } from '@/lib/whatsapp/persist-outbound-message'
 import type { AutomationLogStepResult, AutomationStep } from '@/types'
@@ -294,6 +295,187 @@ export async function backfillMissingOutboundPrompt(args: {
   return inserted?.id ?? null
 }
 
+export interface FlowOutboundRepairResult {
+  repaired_count: number
+  message_ids: string[]
+}
+
+export interface FlowOutboundReconciliationResult {
+  scanned: number
+  repaired_count: number
+  unresolved_count: number
+}
+
+/**
+ * After Meta accepts a flow send, guarantee the inbox row exists before
+ * we log `message_sent`. Uses the event payload when available so the
+ * thread matches what the customer received even if the first persist
+ * attempt failed (e.g. conversation row not yet visible).
+ */
+export async function ensureFlowOutboundPersisted(args: {
+  db: AdminClient
+  accountId: string
+  contactId: string
+  conversationId: string
+  metaMessageId: string
+  eventPayload?: Record<string, unknown>
+  createdAt?: string
+}): Promise<string | null> {
+  const { data: existing } = await args.db
+    .from('messages')
+    .select('id')
+    .eq('conversation_id', args.conversationId)
+    .eq('message_id', args.metaMessageId)
+    .maybeSingle()
+  if (existing?.id) return existing.id
+
+  if (args.eventPayload) {
+    const snapshot = snapshotFromEventPayload(args.eventPayload)
+    if (snapshot) {
+      try {
+        await insertOutboundMessage(args.db, {
+          conversation_id: args.conversationId,
+          sender_type: snapshot.sender_type,
+          content_type: snapshot.content_type,
+          content_text: snapshot.content_text,
+          template_name: snapshot.template_name ?? null,
+          content_payload: snapshot.content_payload ?? null,
+          message_id: args.metaMessageId,
+          status: 'sent',
+          ...(args.createdAt ? { created_at: args.createdAt } : {}),
+        })
+        const { data: inserted } = await args.db
+          .from('messages')
+          .select('id')
+          .eq('message_id', args.metaMessageId)
+          .maybeSingle()
+        if (inserted?.id) return inserted.id
+      } catch (err) {
+        console.error('[flows] ensure outbound from event payload failed:', err)
+      }
+    }
+  }
+
+  return backfillMissingOutboundPrompt({
+    db: args.db,
+    accountId: args.accountId,
+    contactId: args.contactId,
+    conversationId: args.conversationId,
+    metaMessageId: args.metaMessageId,
+    createdAt: args.createdAt,
+  })
+}
+
+/**
+ * Repair recent flow sends whose Meta WAMID was durably recorded in the
+ * append-only flow event log but whose inbox row did not persist. This is the
+ * recovery net for a database blip after Meta has already accepted a message:
+ * it never resends WhatsApp messages, it only recreates missing inbox rows.
+ */
+export async function reconcileRecentFlowOutboundMessages(args: {
+  db: AdminClient
+  lookbackHours?: number
+  limit?: number
+}): Promise<FlowOutboundReconciliationResult> {
+  const lookbackHours = args.lookbackHours ?? 24 * 7
+  const limit = args.limit ?? 100
+  const since = new Date(Date.now() - lookbackHours * 60 * 60 * 1000).toISOString()
+  const { data: runs, error: runsError } = await args.db
+    .from('flow_runs')
+    .select('id, account_id, user_id, contact_id, conversation_id, vars, started_at')
+    .not('contact_id', 'is', null)
+    .gte('started_at', since)
+    .order('started_at', { ascending: false })
+    .limit(limit)
+
+  if (runsError) throw new Error(runsError.message)
+
+  let scanned = 0
+  let repairedCount = 0
+  let unresolvedCount = 0
+
+  for (const rawRun of runs ?? []) {
+    const run = rawRun as Pick<
+      FlowRunRow,
+      'id' | 'account_id' | 'user_id' | 'contact_id' | 'conversation_id' | 'vars'
+    >
+    if (!run.contact_id) continue
+
+    const { data: events, error: eventsError } = await args.db
+      .from('flow_run_events')
+      .select('payload, created_at')
+      .eq('flow_run_id', run.id)
+      .eq('event_type', 'message_sent')
+      .order('created_at', { ascending: true })
+
+    if (eventsError) {
+      console.error('[flows] outbound reconciliation event lookup failed:', eventsError)
+      unresolvedCount += 1
+      continue
+    }
+
+    for (const rawEvent of events ?? []) {
+      const event = rawEvent as { payload?: Record<string, unknown>; created_at?: string }
+      const payload = event.payload ?? {}
+      const metaMessageId =
+        typeof payload.whatsapp_message_id === 'string'
+          ? payload.whatsapp_message_id.trim()
+          : ''
+      if (!metaMessageId) continue
+      scanned += 1
+
+      let conversationId = run.conversation_id
+      if (!conversationId) {
+        const conversation = await ensureConversation(
+          args.db,
+          run.account_id,
+          run.user_id,
+          run.contact_id,
+        )
+        conversationId = conversation?.id ?? null
+        if (conversationId) {
+          await args.db
+            .from('flow_runs')
+            .update({ conversation_id: conversationId })
+            .eq('id', run.id)
+        }
+      }
+
+      if (!conversationId) {
+        unresolvedCount += 1
+        continue
+      }
+
+      const { data: existing, error: existingError } = await args.db
+        .from('messages')
+        .select('id')
+        .eq('conversation_id', conversationId)
+        .eq('message_id', metaMessageId)
+        .maybeSingle()
+      if (existingError) {
+        console.error('[flows] outbound reconciliation message lookup failed:', existingError)
+        unresolvedCount += 1
+        continue
+      }
+      if (existing?.id) continue
+
+      const messageId = await ensureFlowOutboundPersisted({
+        db: args.db,
+        accountId: run.account_id,
+        contactId: run.contact_id,
+        conversationId,
+        metaMessageId,
+        eventPayload: payload,
+        createdAt: event.created_at,
+      })
+      if (messageId) repairedCount += 1
+      else unresolvedCount += 1
+    }
+  }
+
+  return { scanned, repaired_count: repairedCount, unresolved_count: unresolvedCount }
+}
+
 const META_WAMID_FROM_AUTOMATION_LOG =
   /(?:template )?sent via Meta \(([^)]+)\)/
 
@@ -372,8 +554,8 @@ async function repairMissingAutomationOutbound(args: {
   conversationId: string
   contactId: string
   promptCreatedAt?: string
-}): Promise<string | null> {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+}): Promise<string[]> {
+  const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
   const { data: logs } = await args.db
     .from('automation_logs')
     .select('id, automation_id, steps_executed, created_at')
@@ -381,11 +563,12 @@ async function repairMissingAutomationOutbound(args: {
     .eq('contact_id', args.contactId)
     .gte('created_at', since)
     .order('created_at', { ascending: false })
-    .limit(8)
+    .limit(20)
 
-  if (!logs?.length) return null
+  if (!logs?.length) return []
 
   const vars = await resolveRunVars(args.db, { vars: {}, contact_id: args.contactId })
+  const repairedIds: string[] = []
 
   for (const log of logs) {
     const stepsExecuted =
@@ -416,9 +599,10 @@ async function repairMissingAutomationOutbound(args: {
           contactId: args.contactId,
           conversationId: args.conversationId,
           metaMessageId,
-          createdAt: args.promptCreatedAt,
+          createdAt: args.promptCreatedAt ?? (log.created_at as string | undefined),
         })
-        if (id) return id
+        if (id && !repairedIds.includes(id)) repairedIds.push(id)
+        continue
       }
 
       const { data: stepRow } = await args.db
@@ -461,11 +645,13 @@ async function repairMissingAutomationOutbound(args: {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
-      if (inserted?.id) return inserted.id
+      if (inserted?.id && !repairedIds.includes(inserted.id)) {
+        repairedIds.push(inserted.id)
+      }
     }
   }
 
-  return null
+  return repairedIds
 }
 
 /**
@@ -479,7 +665,9 @@ export async function repairMissingFlowPromptForConversation(args: {
   accountId: string
   conversationId: string
   contactId: string
-}): Promise<string | null> {
+}): Promise<FlowOutboundRepairResult> {
+  const repairedIds: string[] = []
+
   const { data: existingBot } = await args.db
     .from('messages')
     .select('id')
@@ -501,20 +689,15 @@ export async function repairMissingFlowPromptForConversation(args: {
     ? new Date(new Date(firstCustomerAt).getTime() - 1000).toISOString()
     : undefined
 
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-  let runsQuery = args.db
+  const { data: runsForConv } = await args.db
     .from('flow_runs')
     .select('*')
     .eq('account_id', args.accountId)
     .eq('contact_id', args.contactId)
-    .gte('started_at', since)
+    .eq('conversation_id', args.conversationId)
     .order('started_at', { ascending: false })
-    .limit(8)
+    .limit(20)
 
-  const { data: runsForConv } = await runsQuery.eq(
-    'conversation_id',
-    args.conversationId,
-  )
   let runs = (runsForConv as FlowRunRow[] | null) ?? []
 
   // Runs whose conversation shell was deleted (ON DELETE SET NULL) still
@@ -526,10 +709,20 @@ export async function repairMissingFlowPromptForConversation(args: {
       .eq('account_id', args.accountId)
       .eq('contact_id', args.contactId)
       .is('conversation_id', null)
-      .gte('started_at', since)
       .order('started_at', { ascending: false })
-      .limit(8)
+      .limit(20)
     runs = (orphaned as FlowRunRow[] | null) ?? []
+  }
+
+  if (runs.length === 0) {
+    const { data: anyRuns } = await args.db
+      .from('flow_runs')
+      .select('*')
+      .eq('account_id', args.accountId)
+      .eq('contact_id', args.contactId)
+      .order('started_at', { ascending: false })
+      .limit(20)
+    runs = (anyRuns as FlowRunRow[] | null) ?? []
   }
 
   for (const run of runs) {
@@ -538,8 +731,9 @@ export async function repairMissingFlowPromptForConversation(args: {
       .select('payload, created_at')
       .eq('flow_run_id', run.id)
       .eq('event_type', 'message_sent')
-      .order('created_at', { ascending: false })
+      .order('created_at', { ascending: true })
 
+    let sawWamidEvent = false
     for (const row of events ?? []) {
       const payload = (row as { payload?: Record<string, unknown> }).payload ?? {}
       const metaMessageId =
@@ -547,11 +741,12 @@ export async function repairMissingFlowPromptForConversation(args: {
           ? payload.whatsapp_message_id
           : null
       if (!metaMessageId) continue
+      sawWamidEvent = true
 
       const eventCreatedAt = (row as { created_at?: string }).created_at
       const createdAt =
-        promptCreatedAtBeforeReply ??
         eventCreatedAt ??
+        promptCreatedAtBeforeReply ??
         (run.started_at as string | undefined)
 
       const id = await backfillMissingOutboundPrompt({
@@ -562,55 +757,65 @@ export async function repairMissingFlowPromptForConversation(args: {
         metaMessageId,
         createdAt,
       })
-      if (id) return id
+      if (id && !repairedIds.includes(id)) repairedIds.push(id)
     }
 
-    if (existingBot?.id) continue
+    // Legacy fallback when Meta send predates WAMID logging and the
+    // thread has no outbound bubbles yet.
+    if (!existingBot?.id && !sawWamidEvent) {
+      const snapshot = await snapshotFromFlowRun(
+        args.db,
+        args.accountId,
+        run,
+        '__repair__',
+      )
+      if (!snapshot) continue
 
-    const snapshot = await snapshotFromFlowRun(
-      args.db,
-      args.accountId,
-      run,
-      '__repair__',
-    )
-    if (!snapshot) continue
+      try {
+        await insertOutboundMessage(args.db, {
+          conversation_id: args.conversationId,
+          sender_type: snapshot.sender_type,
+          content_type: snapshot.content_type,
+          content_text: snapshot.content_text,
+          template_name: snapshot.template_name ?? null,
+          content_payload: snapshot.content_payload ?? null,
+          status: 'sent',
+          ...(promptCreatedAtBeforeReply ? { created_at: promptCreatedAtBeforeReply } : {}),
+        })
+      } catch (err) {
+        console.error('[flows] repair outbound prompt failed:', err)
+        continue
+      }
 
-    try {
-      await insertOutboundMessage(args.db, {
-        conversation_id: args.conversationId,
-        sender_type: snapshot.sender_type,
-        content_type: snapshot.content_type,
-        content_text: snapshot.content_text,
-        template_name: snapshot.template_name ?? null,
-        content_payload: snapshot.content_payload ?? null,
-        status: 'sent',
-        ...(promptCreatedAtBeforeReply ? { created_at: promptCreatedAtBeforeReply } : {}),
-      })
-    } catch (err) {
-      console.error('[flows] repair outbound prompt failed:', err)
-      continue
+      const { data: inserted } = await args.db
+        .from('messages')
+        .select('id')
+        .eq('conversation_id', args.conversationId)
+        .in('sender_type', ['bot'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (inserted?.id && !repairedIds.includes(inserted.id)) {
+        repairedIds.push(inserted.id)
+      }
     }
-
-    const { data: inserted } = await args.db
-      .from('messages')
-      .select('id')
-      .eq('conversation_id', args.conversationId)
-      .in('sender_type', ['bot'])
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (inserted?.id) return inserted.id
   }
 
-  if (existingBot?.id || !customerMsgs?.length) return null
-
-  return repairMissingAutomationOutbound({
+  const automationIds = await repairMissingAutomationOutbound({
     db: args.db,
     accountId: args.accountId,
     conversationId: args.conversationId,
     contactId: args.contactId,
     promptCreatedAt: promptCreatedAtBeforeReply,
   })
+  for (const id of automationIds) {
+    if (!repairedIds.includes(id)) repairedIds.push(id)
+  }
+
+  return {
+    repaired_count: repairedIds.length,
+    message_ids: repairedIds,
+  }
 }
 
 interface FlowRunJoinRow {

@@ -446,29 +446,30 @@ export function MessageThread({
         console.error("Failed to fetch messages:", error);
       } else {
         let rows = data ?? [];
-        const missingOutbound =
-          rows.length === 0 ||
-          rows.every((m) => m.sender_type === "customer");
-        if (missingOutbound) {
-          try {
-            const res = await fetch(
-              `/api/inbox/conversations/${conversationId}/repair-flow-prompt`,
-              { method: "POST" },
-            );
-            if (res.ok) {
-              const body = (await res.json()) as { repaired?: boolean };
-              if (body.repaired) {
-                const { data: refetched } = await supabase
-                  .from("messages")
-                  .select("*")
-                  .eq("conversation_id", conversationId)
-                  .order("created_at", { ascending: true });
-                if (refetched?.length) rows = refetched;
-              }
+        // Always reconcile flow/automation sends against message_sent
+        // audit rows — a thread can have later bot bubbles while an
+        // earlier Meta-accepted send never landed in messages.
+        try {
+          const res = await fetch(
+            `/api/inbox/conversations/${conversationId}/repair-flow-prompt`,
+            { method: "POST" },
+          );
+          if (res.ok) {
+            const body = (await res.json()) as {
+              repaired?: boolean;
+              repaired_count?: number;
+            };
+            if (body.repaired || (body.repaired_count ?? 0) > 0) {
+              const { data: refetched } = await supabase
+                .from("messages")
+                .select("*")
+                .eq("conversation_id", conversationId)
+                .order("created_at", { ascending: true });
+              if (refetched?.length) rows = refetched;
             }
-          } catch (repairErr) {
-            console.warn("[inbox] repair flow prompt failed:", repairErr);
           }
+        } catch (repairErr) {
+          console.warn("[inbox] repair flow prompt failed:", repairErr);
         }
         onMessagesLoadedRef.current(rows);
       }

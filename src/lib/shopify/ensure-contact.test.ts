@@ -8,6 +8,7 @@ import {
 function mockDb(handlers: {
   flowRunCount?: number
   flowRunError?: boolean
+  activeRunOnConvCount?: number
   msgCount?: number
   noteCount?: number
   orphanedMetaSend?: boolean
@@ -20,58 +21,112 @@ function mockDb(handlers: {
     from: (table: string) => {
       if (table === 'flow_runs') {
         return {
-          select: vi.fn().mockReturnThis(),
-          eq: vi.fn((col: string) => {
-            if (col === 'account_id') {
+          select: vi.fn((_: string, opts?: { count?: string; head?: boolean }) => {
+            if (opts?.count) {
+              const countResult = handlers.flowRunError
+                ? { count: null, error: { message: 'db error' } }
+                : { count: handlers.flowRunCount ?? 0, error: null }
+              const convCountResult = {
+                count: handlers.activeRunOnConvCount ?? 0,
+                error: null,
+              }
               return {
-                eq: vi.fn((col2: string) => {
-                  if (col2 !== 'contact_id') {
-                    throw new Error(`unexpected eq ${col2}`)
-                  }
-                  return {
-                    in: vi.fn().mockResolvedValue(
-                      handlers.flowRunError
-                        ? { count: null, error: { message: 'db error' } }
-                        : { count: handlers.flowRunCount ?? 0, error: null },
-                    ),
-                  }
-                }),
+                eq: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    in: vi.fn().mockResolvedValue(countResult),
+                  })),
+                  in: vi.fn().mockResolvedValue(convCountResult),
+                })),
               }
             }
-            if (col === 'conversation_id') {
-              return Promise.resolve({
-                data: handlers.orphanedMetaSend
-                  ? [{ id: 'run-1' }]
-                  : [],
-                error: handlers.orphanedMetaSendError
-                  ? { message: 'events error' }
-                  : null,
-              })
+            return {
+              eq: vi.fn((col: string) => {
+                if (col === 'account_id') {
+                  return {
+                    eq: vi.fn((col2: string) => {
+                      if (col2 !== 'contact_id') {
+                        throw new Error(`unexpected eq ${col2}`)
+                      }
+                      return {
+                        in: vi.fn().mockResolvedValue(
+                          handlers.flowRunError
+                            ? { count: null, error: { message: 'db error' } }
+                            : { count: handlers.flowRunCount ?? 0, error: null },
+                        ),
+                      }
+                    }),
+                  }
+                }
+                if (col === 'conversation_id') {
+                  return Promise.resolve({
+                    data: handlers.orphanedMetaSend ? [{ id: 'run-1' }] : [],
+                    error: handlers.orphanedMetaSendError
+                      ? { message: 'events error' }
+                      : null,
+                  })
+                }
+                if (col === 'contact_id') {
+                  return {
+                    is: vi.fn().mockResolvedValue({
+                      data: handlers.orphanedMetaSend ? [{ id: 'run-orphan' }] : [],
+                      error: null,
+                    }),
+                  }
+                }
+                throw new Error(`unexpected eq ${col}`)
+              }),
             }
-            throw new Error(`unexpected eq ${col}`)
           }),
         }
       }
       if (table === 'flow_run_events') {
+        let pendingEventType: string | null = null
         return {
           select: vi.fn().mockReturnThis(),
           in: vi.fn().mockReturnThis(),
-          eq: vi.fn().mockResolvedValue({
-            data: handlers.orphanedMetaSend
-              ? [{ payload: { detail: 'sent to Meta but DB insert failed: fk' } }]
-              : [],
-            error: handlers.orphanedMetaSendError
-              ? { message: 'events error' }
-              : null,
+          eq: vi.fn((col: string, value?: string) => {
+            if (col === 'event_type') pendingEventType = value ?? null
+            return Promise.resolve({
+              data:
+                handlers.orphanedMetaSend && pendingEventType === 'error'
+                  ? [{ payload: { detail: 'sent to Meta but DB insert failed: fk' } }]
+                  : handlers.orphanedMetaSend && pendingEventType === 'message_sent'
+                    ? [
+                        {
+                          payload: {
+                            whatsapp_message_id: 'wamid.orphan',
+                          },
+                        },
+                      ]
+                    : [],
+              error: handlers.orphanedMetaSendError
+                ? { message: 'events error' }
+                : null,
+            })
           }),
         }
       }
       if (table === 'messages') {
         return {
-          select: vi.fn().mockReturnThis(),
-          eq: vi.fn().mockResolvedValue({
-            count: handlers.msgCount ?? 0,
-            error: null,
+          select: vi.fn((cols?: string, opts?: { count?: string; head?: boolean }) => {
+            if (opts?.count) {
+              return {
+                eq: vi.fn().mockResolvedValue({
+                  count: handlers.msgCount ?? 0,
+                  error: null,
+                }),
+              }
+            }
+            return {
+              eq: vi.fn().mockResolvedValue({
+                count: handlers.msgCount ?? 0,
+                error: null,
+              }),
+              in: vi.fn().mockResolvedValue({
+                data: handlers.orphanedMetaSend ? [] : [{ message_id: 'wamid.orphan' }],
+                error: null,
+              }),
+            }
           }),
         }
       }

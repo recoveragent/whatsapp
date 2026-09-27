@@ -28,7 +28,10 @@ import {
   parseFlowNfmReply,
   type WhatsAppReferral,
 } from '@/lib/whatsapp/flow-form-message'
-import { shouldReopenConversationOnInbound } from '@/lib/inbox/reopen-on-inbound'
+import {
+  shouldAttemptSqlReopenOnInbound,
+  shouldReopenConversationOnInbound,
+} from '@/lib/inbox/reopen-on-inbound'
 import {
   handleCoexistenceWebhookChange,
   isCoexistenceWebhookField,
@@ -958,12 +961,31 @@ async function processMessage(
       status: 'open',
       actor: { kind: 'customer' },
     })
-  } else {
+  } else if (
+    shouldAttemptSqlReopenOnInbound({
+      suppressInboxReopen: flowResult.suppress_inbox_reopen,
+    })
+  ) {
     // A customer writing again re-opens the thread (issue #409). Kept as a
     // separate conditional statement rather than a `status` field on the
     // update above so the write can be gated on the row's CURRENT status in
     // SQL — see the helper for why that matters.
     await reopenClosedConversation(supabaseAdmin(), conversation)
+  }
+
+  // Final guard: a flow close on this inbound must win over any reopen path
+  // above (including reopenClosedConversation on a stale closed snapshot).
+  if (flowResult.suppress_inbox_reopen) {
+    const { error: keepClosedErr } = await supabaseAdmin()
+      .from('conversations')
+      .update({ status: 'closed', updated_at: new Date().toISOString() })
+      .eq('id', conversation.id)
+    if (keepClosedErr) {
+      console.error(
+        'Error keeping conversation closed after flow close:',
+        keepClosedErr,
+      )
+    }
   }
 
   // If this contact was a recent broadcast recipient, flag the reply

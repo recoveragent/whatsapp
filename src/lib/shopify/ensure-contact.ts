@@ -76,10 +76,11 @@ export async function ensureConversation(
   accountId: string,
   ownerUserId: string,
   contactId: string,
-  opts?: { createStatus?: ConversationCreateStatus },
+  opts?: { createStatus?: ConversationCreateStatus; whatsappConfigId?: string | null },
 ): Promise<{ id: string } | null> {
   return ensureConversationForContact(db, accountId, ownerUserId, contactId, {
     createStatus: opts?.createStatus ?? 'closed',
+    whatsappConfigId: opts?.whatsappConfigId ?? null,
   });
 }
 
@@ -111,6 +112,55 @@ export async function hasActiveFlowRunForContact(
   return (count ?? 0) > 0;
 }
 
+async function flowRunsHaveUnpersistedMessageSent(
+  db: SupabaseClient,
+  runIds: string[],
+): Promise<boolean> {
+  if (runIds.length === 0) return false;
+
+  const { data: events, error: eventsErr } = await db
+    .from('flow_run_events')
+    .select('payload')
+    .in('flow_run_id', runIds)
+    .eq('event_type', 'message_sent');
+
+  if (eventsErr) {
+    console.error('[shopify] flowRunsHaveUnpersistedMessageSent failed:', eventsErr);
+    return true;
+  }
+
+  const wamids = [
+    ...new Set(
+      (events ?? [])
+        .map((row) => {
+          const payload = (row as { payload?: Record<string, unknown> }).payload ?? {};
+          const wamid = payload.whatsapp_message_id;
+          return typeof wamid === 'string' ? wamid.trim() : '';
+        })
+        .filter(Boolean),
+    ),
+  ];
+  if (wamids.length === 0) return false;
+
+  const { data: existing, error: msgErr } = await db
+    .from('messages')
+    .select('message_id')
+    .in('message_id', wamids);
+
+  if (msgErr) {
+    console.error('[shopify] flowRunsHaveUnpersistedMessageSent messages failed:', msgErr);
+    return true;
+  }
+
+  const persisted = new Set(
+    (existing ?? [])
+      .map((r) => (r as { message_id?: string }).message_id)
+      .filter(Boolean) as string[],
+  );
+
+  return wamids.some((wamid) => !persisted.has(wamid));
+}
+
 /**
  * True when a flow run logged a Meta send that never landed in
  * `messages` (typically "sent to Meta but DB insert failed"). Keep the
@@ -120,6 +170,7 @@ export async function hasActiveFlowRunForContact(
 export async function conversationHasOrphanedMetaSend(
   db: SupabaseClient,
   conversationId: string,
+  contactId?: string,
 ): Promise<boolean> {
   const { data: runs, error: runsErr } = await db
     .from('flow_runs')
@@ -132,27 +183,50 @@ export async function conversationHasOrphanedMetaSend(
   }
 
   const runIds = (runs ?? []).map((r) => (r as { id: string }).id);
-  if (runIds.length === 0) return false;
 
-  const { data: events, error: eventsErr } = await db
-    .from('flow_run_events')
-    .select('payload')
-    .in('flow_run_id', runIds)
-    .eq('event_type', 'error');
+  if (runIds.length > 0) {
+    const { data: errorEvents, error: eventsErr } = await db
+      .from('flow_run_events')
+      .select('payload')
+      .in('flow_run_id', runIds)
+      .eq('event_type', 'error');
 
-  if (eventsErr) {
-    console.error('[shopify] conversationHasOrphanedMetaSend events failed:', eventsErr);
-    return true;
+    if (eventsErr) {
+      console.error('[shopify] conversationHasOrphanedMetaSend events failed:', eventsErr);
+      return true;
+    }
+
+    for (const row of errorEvents ?? []) {
+      const payload = (row as { payload?: Record<string, unknown> }).payload ?? {};
+      const reason = String(payload.reason ?? '');
+      const detail = String(payload.detail ?? '');
+      if (
+        reason.includes('sent to Meta but DB insert failed') ||
+        detail.includes('sent to Meta but DB insert failed')
+      ) {
+        return true;
+      }
+    }
+
+    if (await flowRunsHaveUnpersistedMessageSent(db, runIds)) {
+      return true;
+    }
   }
 
-  for (const row of events ?? []) {
-    const payload = (row as { payload?: Record<string, unknown> }).payload ?? {};
-    const reason = String(payload.reason ?? '');
-    const detail = String(payload.detail ?? '');
-    if (
-      reason.includes('sent to Meta but DB insert failed') ||
-      detail.includes('sent to Meta but DB insert failed')
-    ) {
+  if (contactId) {
+    const { data: orphanedRuns, error: orphanErr } = await db
+      .from('flow_runs')
+      .select('id')
+      .eq('contact_id', contactId)
+      .is('conversation_id', null);
+
+    if (orphanErr) {
+      console.error('[shopify] conversationHasOrphanedMetaSend orphan runs failed:', orphanErr);
+      return true;
+    }
+
+    const orphanIds = (orphanedRuns ?? []).map((r) => (r as { id: string }).id);
+    if (await flowRunsHaveUnpersistedMessageSent(db, orphanIds)) {
       return true;
     }
   }
@@ -203,7 +277,7 @@ export async function deleteConversationIfEmpty(
 
   if (noteErr || (noteCount ?? 0) > 0) return;
 
-  if (await conversationHasOrphanedMetaSend(db, conversationId)) {
+  if (await conversationHasOrphanedMetaSend(db, conversationId, opts?.contactId)) {
     return;
   }
 

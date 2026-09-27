@@ -12,3 +12,14 @@ export function shouldReopenConversationOnInbound(args: {
     args.conversationStatus === "followup"
   );
 }
+
+/**
+ * Whether the webhook should call `reopenClosedConversation` after the
+ * primary reopen branch did not fire. Suppressed when a flow closed the
+ * conversation on the same inbound (e.g. template quick-reply → close).
+ */
+export function shouldAttemptSqlReopenOnInbound(args: {
+  suppressInboxReopen?: boolean;
+}): boolean {
+  return !args.suppressInboxReopen;
+}

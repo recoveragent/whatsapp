@@ -13,6 +13,8 @@ import type {
   UpdateContactFieldNodeConfig,
 } from './types'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
+import { ensureFlowOutboundPersisted } from '@/lib/flows/backfill-outbound-prompt'
+import { ensureConversation } from '@/lib/shopify/ensure-contact'
 import { buildSendTimeParamsFromVariables, isDynamicHeaderMediaMapping } from '@/lib/flows/template-send-params'
 import { resolveFlowProductImageUrl } from '@/lib/flows/resolve-product-image'
 import { interpolateTemplateString } from '@/lib/flows/template-interpolate'
@@ -132,6 +134,26 @@ export function isExtendedNodeType(nodeType: string): boolean {
   return EXTENDED_NODE_TYPES.has(nodeType)
 }
 
+async function resolveFlowRunConversation(
+  db: AdminClient,
+  run: FlowRunRow,
+): Promise<string> {
+  if (run.conversation_id) return run.conversation_id
+  if (!run.contact_id) throw new Error('flow run missing contact_id')
+
+  const conv = await ensureConversation(
+    db,
+    run.account_id,
+    run.user_id,
+    run.contact_id,
+  )
+  if (!conv?.id) throw new Error('could not resolve conversation for flow run')
+
+  await db.from('flow_runs').update({ conversation_id: conv.id }).eq('id', run.id)
+  run.conversation_id = conv.id
+  return conv.id
+}
+
 async function resolveFlowInterpolationVars(
   db: AdminClient,
   run: FlowRunRow,
@@ -237,10 +259,11 @@ export async function executeExtendedNode(
             messageParams.defaultUrlButtonSuffix = checkoutSuffix.trim()
           }
         }
+        const conversationId = await resolveFlowRunConversation(db, run)
         const { whatsapp_message_id } = await engineSendTemplate({
           accountId: run.account_id,
           userId: run.user_id,
-          conversationId: run.conversation_id!,
+          conversationId,
           contactId: run.contact_id!,
           templateName: c.template_name,
           language: c.language,
@@ -263,28 +286,37 @@ export async function executeExtendedNode(
             },
           )
         }
+        const messageSentPayload = {
+          node_type: 'send_template',
+          whatsapp_message_id,
+          template_name: c.template_name,
+          content_text: eventContentText,
+          content_payload:
+            (persisted as { content_payload?: Record<string, unknown> | null } | null)
+              ?.content_payload ??
+            (templateRow
+              ? templateDisplayPayload(
+                  buildTemplateMessageSnapshot(templateRow, {
+                    headerMediaUrl: messageParams.headerMediaUrl,
+                    headerText: messageParams.headerText,
+                    buttonParams: messageParams.buttonParams,
+                  }),
+                )
+              : null),
+        }
+        await ensureFlowOutboundPersisted({
+          db,
+          accountId: run.account_id,
+          contactId: run.contact_id!,
+          conversationId,
+          metaMessageId: whatsapp_message_id,
+          eventPayload: messageSentPayload,
+        })
         await db.from('flow_run_events').insert({
           flow_run_id: run.id,
           event_type: 'message_sent',
           node_key: node.node_key,
-          payload: {
-            node_type: 'send_template',
-            whatsapp_message_id,
-            template_name: c.template_name,
-            content_text: eventContentText,
-            content_payload:
-              (persisted as { content_payload?: Record<string, unknown> | null } | null)
-                ?.content_payload ??
-              (templateRow
-                ? templateDisplayPayload(
-                    buildTemplateMessageSnapshot(templateRow, {
-                      headerMediaUrl: messageParams.headerMediaUrl,
-                      headerText: messageParams.headerText,
-                      buttonParams: messageParams.buttonParams,
-                    }),
-                  )
-                : null),
-          },
+          payload: messageSentPayload,
         })
         if (templateConfigHasQuickReplies(c)) {
           const { data: msg } = await db

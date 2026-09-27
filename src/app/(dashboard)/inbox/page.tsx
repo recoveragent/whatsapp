@@ -397,8 +397,11 @@ function InboxPageInner() {
             )
               .then(async (res) => {
                 if (!res.ok) return;
-                const body = (await res.json()) as { repaired?: boolean };
-                if (body.repaired) {
+                const body = (await res.json()) as {
+                  repaired?: boolean;
+                  repaired_count?: number;
+                };
+                if (body.repaired || (body.repaired_count ?? 0) > 0) {
                   setResyncToken((n) => n + 1);
                 }
               })

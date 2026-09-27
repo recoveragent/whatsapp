@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
     /** Row `lookupInternalIdByMetaId` resolves for a `context.id`. */
     replyContextParent: null as { id: string } | null,
     conversation: { id: 'conv-1', unread_count: 0, account_id: 'acc-1' },
+    conversationUpdates: [] as Record<string, unknown>[],
     upsertCalls: [] as { row: Record<string, unknown>; options: unknown }[],
     rpcCalls: [] as { name: string; args: Record<string, unknown> }[],
     afterCallbacks: [] as (() => Promise<void> | void)[],
@@ -63,7 +64,6 @@ vi.mock('@supabase/supabase-js', () => ({
             }),
           }
         case 'conversations':
-          // findOrCreateConversation: select().eq().eq().order().limit()
           return {
             select: () => ({
               eq: () => ({
@@ -78,6 +78,12 @@ vi.mock('@supabase/supabase-js', () => ({
                 }),
               }),
             }),
+            update: (payload: Record<string, unknown>) => {
+              h.state.conversationUpdates.push(payload)
+              return {
+                eq: () => Promise.resolve({ error: null }),
+              }
+            },
           }
         case 'broadcast_recipients':
           // flagBroadcastReplyIfAny: select().eq().eq().in().order().limit()
@@ -201,9 +207,15 @@ vi.mock('@/lib/ai/auto-reply', () => ({
 vi.mock('@/lib/webhooks/deliver', () => ({
   dispatchWebhookEvent: h.dispatchWebhookEvent,
 }))
+vi.mock('@/lib/conversations/reopen', () => ({
+  reopenClosedConversation: vi.fn(async () => false),
+}))
 
 import { POST } from './route'
+import { reopenClosedConversation } from '@/lib/conversations/reopen'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
+
+const mockReopenClosedConversation = vi.mocked(reopenClosedConversation)
 
 const mockGetMediaUrl = vi.mocked(getMediaUrl)
 const mockDownloadMedia = vi.mocked(downloadMedia)
@@ -252,6 +264,7 @@ beforeEach(() => {
   h.state.priorCustomerMsgCount = 0
   h.state.replyContextParent = null
   h.state.conversation = { id: 'conv-1', unread_count: 0, account_id: 'acc-1' }
+  h.state.conversationUpdates = []
   h.state.upsertCalls = []
   h.state.rpcCalls = []
   h.state.afterCallbacks = []
@@ -536,5 +549,33 @@ describe('inbound webhook: after() awaits automations (#368)', () => {
     // If the dispatches were fire-and-forget, completed would still be 0
     // here — the callback would have resolved before the timers fired.
     expect(h.state.automationCompleted).toBe(3)
+  })
+})
+
+describe('inbound webhook: flow close suppresses SQL reopen', () => {
+  it('does not reopen when a flow closed the conversation on this inbound', async () => {
+    h.state.conversation = {
+      id: 'conv-1',
+      unread_count: 0,
+      account_id: 'acc-1',
+      status: 'closed',
+    }
+    h.dispatchInboundToFlows.mockResolvedValue({
+      consumed: true,
+      suppress_inbox_reopen: true,
+    })
+
+    await runWebhook({
+      id: 'wamid.BTN_CLOSE',
+      from: '15551230000',
+      timestamp: '1700000000',
+      type: 'button',
+      button: { text: 'Got it', payload: 'Got it' },
+    })
+
+    expect(mockReopenClosedConversation).not.toHaveBeenCalled()
+    expect(h.state.conversationUpdates.at(-1)).toMatchObject({
+      status: 'closed',
+    })
   })
 })

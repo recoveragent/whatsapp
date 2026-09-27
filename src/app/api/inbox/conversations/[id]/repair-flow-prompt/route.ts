@@ -23,14 +23,20 @@ export async function POST(
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
     }
 
-    const messageId = await repairMissingFlowPromptForConversation({
+    const result = await repairMissingFlowPromptForConversation({
       db: supabaseAdmin(),
       accountId: ctx.accountId,
       conversationId: conversation.id,
       contactId: conversation.contact_id,
     })
 
-    return NextResponse.json({ repaired: !!messageId, message_id: messageId })
+    return NextResponse.json({
+      repaired: result.repaired_count > 0,
+      repaired_count: result.repaired_count,
+      message_ids: result.message_ids,
+      // Back-compat for callers that read a single id.
+      message_id: result.message_ids[0] ?? null,
+    })
   } catch (err) {
     return toErrorResponse(err)
   }

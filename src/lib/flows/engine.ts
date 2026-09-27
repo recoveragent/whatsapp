@@ -48,6 +48,8 @@ import {
   engineSendFlowMessage,
 } from "./meta-send";
 import { decideFallback, resolveFallbackPolicy } from "./fallback";
+import { ensureFlowOutboundPersisted } from "./backfill-outbound-prompt";
+import { ensureConversation } from "@/lib/shopify/ensure-contact";
 import { addContactTagAndDispatch } from "@/lib/contacts/tag-events";
 import { removeContactTag } from "@/lib/contacts/tag-write";
 import {
@@ -424,6 +426,51 @@ async function logEvent(
   }
 }
 
+async function resolveFlowRunConversation(
+  db: AdminClient,
+  run: FlowRunRow,
+): Promise<string | null> {
+  if (run.conversation_id) return run.conversation_id;
+  if (!run.contact_id) return null;
+
+  const conv = await ensureConversation(
+    db,
+    run.account_id,
+    run.user_id,
+    run.contact_id,
+  );
+  if (!conv?.id) return null;
+
+  await db.from("flow_runs").update({ conversation_id: conv.id }).eq("id", run.id);
+  run.conversation_id = conv.id;
+  return conv.id;
+}
+
+/** Persist the inbox bubble, then log `message_sent` for audit/backfill. */
+async function logMessageSent(
+  db: AdminClient,
+  run: FlowRunRow,
+  node_key: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const wamid =
+    typeof payload.whatsapp_message_id === "string"
+      ? payload.whatsapp_message_id
+      : null;
+  const conversationId = await resolveFlowRunConversation(db, run);
+  if (wamid && conversationId && run.contact_id) {
+    await ensureFlowOutboundPersisted({
+      db,
+      accountId: run.account_id,
+      contactId: run.contact_id,
+      conversationId,
+      metaMessageId: wamid,
+      eventPayload: payload,
+    });
+  }
+  await logEvent(db, run.id, "message_sent", node_key, payload);
+}
+
 /**
  * Idempotency check — has a `reply_received` event with this Meta
  * message_id already been recorded for any of the contact's flow
@@ -532,7 +579,7 @@ async function sendButtonsAndSuspend(
     footerText: cfg.footer_text,
     buttons: cfg.buttons.map((b) => ({ id: b.reply_id, title: b.title })),
   });
-  await logEvent(db, run.id, "message_sent", node.node_key, {
+  await logMessageSent(db, run, node.node_key, {
     node_type: "send_buttons",
     whatsapp_message_id,
   });
@@ -576,7 +623,7 @@ async function sendListAndSuspend(
       })),
     })),
   });
-  await logEvent(db, run.id, "message_sent", node.node_key, {
+  await logMessageSent(db, run, node.node_key, {
     node_type: "send_list",
     whatsapp_message_id,
   });
@@ -787,7 +834,7 @@ async function advanceFromNodeKey(
           contactId: run.contact_id!,
           text: interpolateVars(cfg.text, run.vars),
         });
-        await logEvent(db, run.id, "message_sent", node.node_key, {
+        await logMessageSent(db, run, node.node_key, {
           node_type: "send_message",
           whatsapp_message_id,
         });
@@ -817,7 +864,7 @@ async function advanceFromNodeKey(
             : undefined,
           filename: cfg.filename,
         });
-        await logEvent(db, run.id, "message_sent", node.node_key, {
+        await logMessageSent(db, run, node.node_key, {
           node_type: "send_media",
           media_type: cfg.media_type,
           whatsapp_message_id,
@@ -849,7 +896,7 @@ async function advanceFromNodeKey(
           quantity: cfg.quantity,
           flowRunId: run.id,
         });
-        await logEvent(db, run.id, "message_sent", node.node_key, {
+        await logMessageSent(db, run, node.node_key, {
           node_type: "send_product",
           whatsapp_message_id: result.whatsapp_message_id,
           shopify_variant_id: variantId,
@@ -878,7 +925,7 @@ async function advanceFromNodeKey(
           contactId: run.contact_id!,
           text: interpolateVars(cfg.prompt_text, run.vars),
         });
-        await logEvent(db, run.id, "message_sent", node.node_key, {
+        await logMessageSent(db, run, node.node_key, {
           node_type: "collect_input",
           whatsapp_message_id,
         });
@@ -946,7 +993,7 @@ async function advanceFromNodeKey(
           values: prefill.values,
           savedAddresses: prefill.savedAddresses,
         });
-        await logEvent(db, run.id, "message_sent", node.node_key, {
+        await logMessageSent(db, run, node.node_key, {
           node_type: "send_address",
           whatsapp_message_id,
           country: cfg.country,
@@ -1019,7 +1066,7 @@ async function advanceFromNodeKey(
               )
             : undefined,
         });
-        await logEvent(db, run.id, "message_sent", node.node_key, {
+        await logMessageSent(db, run, node.node_key, {
           node_type: "send_flow",
           whatsapp_message_id,
           flow_id: cfg.flow_id,

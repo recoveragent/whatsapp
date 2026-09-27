@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldReopenConversationOnInbound } from "./reopen-on-inbound";
+import {
+  shouldAttemptSqlReopenOnInbound,
+  shouldReopenConversationOnInbound,
+} from "./reopen-on-inbound";
 
 describe("shouldReopenConversationOnInbound", () => {
   it("reopens closed and followup conversations by default", () => {
@@ -27,6 +30,18 @@ describe("shouldReopenConversationOnInbound", () => {
         conversationStatus: "closed",
         suppressInboxReopen: true,
       }),
+    ).toBe(false);
+  });
+});
+
+describe("shouldAttemptSqlReopenOnInbound", () => {
+  it("attempts SQL reopen by default", () => {
+    expect(shouldAttemptSqlReopenOnInbound({})).toBe(true);
+  });
+
+  it("skips SQL reopen when a flow closed on this inbound", () => {
+    expect(
+      shouldAttemptSqlReopenOnInbound({ suppressInboxReopen: true }),
     ).toBe(false);
   });
 });

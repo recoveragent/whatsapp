@@ -167,6 +167,26 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        // Auth pages must never be edge-cached. A soft navigation
+        // (router.push during logout) fetches the RSC flight payload;
+        // if the CDN stores it keyed only by URL, the next full load
+        // of /login renders raw flight text instead of HTML.
+        source: "/login",
+        headers: [{ key: "Cache-Control", value: "no-store" }],
+      },
+      {
+        source: "/signup",
+        headers: [{ key: "Cache-Control", value: "no-store" }],
+      },
+      {
+        source: "/forgot-password",
+        headers: [{ key: "Cache-Control", value: "no-store" }],
+      },
+      {
+        source: "/reset-password",
+        headers: [{ key: "Cache-Control", value: "no-store" }],
+      },
+      {
         // Security headers on every response, including /_next/static
         // assets (nosniff matters there) and /api/* (HSTS + referrer-
         // policy don't hurt).

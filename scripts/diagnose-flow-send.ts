@@ -235,14 +235,14 @@ async function main() {
     }
 
     if (repair && repairConversationId && run.contact_id) {
-      const repairedId = await repairMissingFlowPromptForConversation({
+      const repairResult = await repairMissingFlowPromptForConversation({
         db,
         accountId: run.account_id,
         conversationId: repairConversationId,
         contactId: run.contact_id,
       })
-      if (repairedId) {
-        console.info('Repair: backfilled message id', repairedId)
+      if (repairResult.repaired_count > 0) {
+        console.info('Repair: backfilled message ids', repairResult.message_ids)
       } else {
         console.info('Repair: nothing to backfill (or backfill failed)')
       }

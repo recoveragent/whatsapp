@@ -142,6 +142,13 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     throw new Error('contact not found for this account')
   }
 
+  const { data: conversation } = await db
+    .from('conversations')
+    .select('whatsapp_config_id')
+    .eq('id', input.conversationId)
+    .eq('account_id', input.accountId)
+    .maybeSingle()
+
   const sanitized = sanitizePhoneForMeta(contact.phone)
   if (!isValidE164(sanitized)) {
     throw new Error(`contact phone invalid: ${contact.phone}`)
@@ -151,7 +158,8 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', input.accountId)
-    .single()
+    .eq('id', conversation?.whatsapp_config_id ?? '')
+    .maybeSingle()
   if (configErr || !config) {
     throw new Error('WhatsApp not configured for this account')
   }
@@ -266,24 +274,39 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       ? `[template:${input.templateName}]`
       : input.text)
 
-  await persistOutboundAfterMetaSend(
+  const outboundRow = {
+    conversation_id: input.conversationId,
+    sender_type: 'bot',
+    sender_id: input.userId,
+    content_type,
+    content_text,
+    template_name,
+    content_payload,
+    message_id: waMessageId,
+    status: 'sent',
+  }
+  const conversationUpdate = {
+    conversationId: input.conversationId,
+    lastMessageText: previewText,
+  }
+  let persistResult = await persistOutboundAfterMetaSend(
     db,
-    {
-      conversation_id: input.conversationId,
-      sender_type: 'bot',
-      sender_id: input.userId,
-      content_type,
-      content_text,
-      template_name,
-      content_payload,
-      message_id: waMessageId,
-      status: 'sent',
-    },
-    {
-      conversationId: input.conversationId,
-      lastMessageText: previewText,
-    },
+    outboundRow,
+    conversationUpdate,
   )
+  if (!persistResult.persisted) {
+    persistResult = await persistOutboundAfterMetaSend(
+      db,
+      outboundRow,
+      conversationUpdate,
+    )
+  }
+  if (!persistResult.persisted) {
+    console.error('[automations/meta-send] Meta accepted send but inbox row missing', {
+      conversation_id: input.conversationId,
+      message_id: waMessageId,
+    })
+  }
 
   if (input.kind === 'template') {
     await debitWalletForTemplateSend({
