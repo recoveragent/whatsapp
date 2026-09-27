@@ -130,7 +130,10 @@ export function ConversationList({
       const { data, error } = await supabase
         .from("conversations")
         .select(CONVERSATION_SELECT)
-        .order("last_message_at", { ascending: false });
+        .order("last_message_at", {
+          ascending: sort === "oldest",
+          nullsFirst: false,
+        });
 
       if (cancelled) return;
 
@@ -152,7 +155,7 @@ export function ConversationList({
     return () => {
       cancelled = true;
     };
-  }, [resyncToken]);
+  }, [resyncToken, sort]);
 
   useEffect(() => {
     const supabase = createClient();
