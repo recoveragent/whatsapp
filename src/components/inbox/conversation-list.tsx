@@ -68,7 +68,6 @@ const SORT_OPTIONS: { label: string; value: InboxSortOrder }[] = [
 ];
 
 const WHATSAPP_FILTER_STORAGE_KEY = "wacrm:inbox:whatsapp-number-ids";
-const INBOX_PAGE_SIZE = 30;
 type WhatsAppNumberOption = {
   id: string;
   reference_name: string;
@@ -138,11 +137,10 @@ export function ConversationList({
       setLoading(true);
       setHasMore(false);
       setNextCursor(null);
-      const { data, error, count } = await supabase
+      const { data, error } = await supabase
         .from("conversations")
-        .select(CONVERSATION_SELECT, { count: "exact" })
-        .order("last_message_at", { ascending: false })
-        .limit(INBOX_PAGE_SIZE);
+        .select(CONVERSATION_SELECT)
+        .order("last_message_at", { ascending: false });
 
       if (cancelled) return;
 
@@ -162,7 +160,7 @@ export function ConversationList({
       onConversationsLoadedRef.current(loaded);
       const cursor = loaded.at(-1)?.last_message_at ?? null;
       setNextCursor(cursor);
-      setHasMore(Boolean(cursor) && loaded.length < (count ?? loaded.length));
+      setHasMore(Boolean(cursor));
       setLoading(false);
     })();
 
@@ -176,12 +174,11 @@ export function ConversationList({
 
     setLoadingMore(true);
     const supabase = createClient();
-    const { data, error, count } = await supabase
+    const { data, error } = await supabase
       .from("conversations")
-      .select(CONVERSATION_SELECT, { count: "exact" })
+      .select(CONVERSATION_SELECT)
       .order("last_message_at", { ascending: false })
-      .lt("last_message_at", nextCursor)
-      .limit(INBOX_PAGE_SIZE);
+      .lt("last_message_at", nextCursor);
 
     if (error) {
       console.error("Failed to load more conversations:", {
@@ -206,9 +203,7 @@ export function ConversationList({
     onConversationsLoadedRef.current(merged);
     const cursor = loaded.at(-1)?.last_message_at ?? null;
     setNextCursor(cursor);
-    setHasMore(
-      Boolean(cursor) && merged.length < (count ?? merged.length),
-    );
+    setHasMore(Boolean(cursor));
     setLoadingMore(false);
   }, [hasMore, loadingMore, nextCursor]);
 
