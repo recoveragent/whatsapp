@@ -530,7 +530,7 @@ function NavRow({
 }) {
   const badgeLabel =
     badge > 0 ? t("openConversations", { count: badge }) : undefined;
-  const badgeText = badge > 99 ? "9+" : String(badge);
+  const badgeText = String(badge);
 
   return (
     <li>
