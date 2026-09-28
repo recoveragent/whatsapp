@@ -24,6 +24,24 @@ export async function POST(req: Request) {
       );
     }
 
+    const requestedWhatsAppConfigId = String(body.whatsapp_config_id ?? '').trim();
+    if (requestedWhatsAppConfigId) {
+      const { data: config, error: configError } = await ctx.supabase
+        .from('whatsapp_config')
+        .select('id')
+        .eq('account_id', ctx.accountId)
+        .eq('id', requestedWhatsAppConfigId)
+        .eq('status', 'connected')
+        .maybeSingle();
+
+      if (configError || !config) {
+        return NextResponse.json(
+          { error: 'Select a WhatsApp number connected to this workspace' },
+          { status: 400 },
+        );
+      }
+    }
+
     const contact = await ensureShopifyContact(
       ctx.supabase,
       ctx.accountId,
@@ -41,7 +59,7 @@ export async function POST(req: Request) {
       ctx.userId,
       contact.id,
       // New outbound conversations need an explicit sending number.
-      { createStatus: 'open', whatsappConfigId: body.whatsapp_config_id || null },
+      { createStatus: 'open', whatsappConfigId: requestedWhatsAppConfigId || null },
     );
     if (!conv) {
       return NextResponse.json({ error: 'Could not create conversation' }, { status: 500 });

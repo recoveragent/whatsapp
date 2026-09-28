@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { Label } from '@/components/ui/label';
 
 export interface WhatsAppNumberOption {
   id: string;
   reference_name: string;
   phone_number_id: string;
+  display_phone_number?: string | null;
+  connected?: boolean;
 }
 
 export function WhatsAppNumberPicker({
@@ -25,16 +26,19 @@ export function WhatsAppNumberPicker({
 
   useEffect(() => {
     let cancelled = false;
-    void createClient()
-      .from('whatsapp_config')
-      .select('id, reference_name, phone_number_id')
-      .order('is_default', { ascending: false })
-      .order('created_at', { ascending: true })
-      .then(({ data }) => {
-        if (cancelled || !data) return;
-        const rows = data as WhatsAppNumberOption[];
+    void fetch('/api/whatsapp/connection')
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return response.json() as Promise<{ numbers?: WhatsAppNumberOption[] }>;
+      })
+      .then((data) => {
+        if (cancelled || !data?.numbers) return;
+        const rows = data.numbers.filter((number) => number.connected);
         setNumbers(rows);
         if (!value && rows[0]) onChange(rows[0].id);
+      })
+      .catch(() => {
+        // The surrounding action will show its normal error if no sender can be loaded.
       });
     return () => { cancelled = true; };
   }, [onChange, value]);
@@ -52,7 +56,7 @@ export function WhatsAppNumberPicker({
       >
         {numbers.map((number) => (
           <option key={number.id} value={number.id}>
-            {number.reference_name} ({number.phone_number_id})
+            {number.reference_name} ({number.display_phone_number || number.phone_number_id})
           </option>
         ))}
       </select>
