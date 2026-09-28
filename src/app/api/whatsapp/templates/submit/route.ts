@@ -154,27 +154,30 @@ export async function POST(request: Request) {
       ? (payload as TemplatePayload & { whatsapp_config_id: string }).whatsapp_config_id
       : null
 
+    // The caller may be working with a non-default number. Resolve the
+    // requested config explicitly so a submission cannot silently land on
+    // the account's primary/default number.
+    const configQuery = supabase
+      .from('whatsapp_config')
+      .select('*')
+      .eq('account_id', accountId)
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: true });
+    const { data: configs, error: configError } = whatsappConfigId
+      ? await configQuery.eq('id', whatsappConfigId).limit(1)
+      : await configQuery.limit(1);
+    const config = configs?.[0] ?? null;
+    if (configError || !config) {
+      return NextResponse.json(
+        { error: 'The selected WhatsApp number is not connected to this brand.' },
+        { status: 400 },
+      )
+    }
+
     if (dryRun) {
       metaTemplateId = `dry-run-${crypto.randomUUID()}`
       metaStatus = 'PENDING'
     } else {
-      const { data: configs, error: configError } = await supabase
-        .from('whatsapp_config')
-        .select('*')
-        .eq('account_id', accountId)
-        .order('is_default', { ascending: false })
-        .order('created_at', { ascending: true })
-        .limit(1)
-      const config = configs?.[0] ?? null
-      if (configError || !config) {
-        return NextResponse.json(
-          {
-            error:
-              'WhatsApp not configured. Connect your WhatsApp Business account in Settings first.',
-          },
-          { status: 400 },
-        )
-      }
       if (!config.waba_id) {
         return NextResponse.json(
           {
