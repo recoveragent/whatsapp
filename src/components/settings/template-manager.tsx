@@ -165,7 +165,7 @@ export function TemplateManager() {
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [copyingToSupport, setCopyingToSupport] = useState(false);
-  const [whatsappNumbers, setWhatsappNumbers] = useState<Array<{ id: string; reference_name: string; phone_number_id: string; is_default?: boolean }>>([]);
+  const [whatsappNumbers, setWhatsappNumbers] = useState<Array<{ id: string; reference_name: string; phone_number_id: string }>>([]);
   const [syncConfigId, setSyncConfigId] = useState('');
   const [form, setForm] = useState<TemplateFormData>(emptyForm);
   // Non-null when the dialog is editing an existing row — switches the
@@ -238,11 +238,16 @@ export function TemplateManager() {
     void fetchTemplates(accountId);
     void supabase
       .from('whatsapp_config')
-      .select('id, reference_name, phone_number_id, is_default')
+      .select('id, reference_name, phone_number_id')
       .eq('account_id', accountId)
       .order('created_at', { ascending: true })
-      .then(({ data }) => {
-        const rows = (data ?? []) as Array<{ id: string; reference_name: string; phone_number_id: string; is_default?: boolean }>;
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Failed to load WhatsApp numbers:', error);
+          toast.error('Could not load WhatsApp numbers');
+          return;
+        }
+        const rows = (data ?? []) as Array<{ id: string; reference_name: string; phone_number_id: string }>;
         setWhatsappNumbers(rows);
         if (!syncConfigId && rows[0]) setSyncConfigId(rows[0].id);
       });
@@ -423,7 +428,6 @@ export function TemplateManager() {
     );
     const primary =
       whatsappNumbers.find((number) => number.reference_name.trim().toLowerCase().includes('primary')) ??
-      whatsappNumbers.find((number) => number.is_default) ??
       whatsappNumbers.find((number) => number.id !== support?.id);
     if (!accountId || !primary || !support) return;
 
@@ -625,7 +629,6 @@ export function TemplateManager() {
     whatsappNumbers.find((number) =>
       number.reference_name.trim().toLowerCase().includes('primary'),
     ) ??
-    whatsappNumbers.find((number) => number.is_default) ??
     whatsappNumbers.find((number) => number.id !== supportNumber?.id);
   const canCopyPrimaryToSupport =
     Boolean(primaryNumber && supportNumber && primaryNumber.id !== supportNumber.id);
