@@ -165,7 +165,7 @@ export function TemplateManager() {
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [copyingToSupport, setCopyingToSupport] = useState(false);
-  const [whatsappNumbers, setWhatsappNumbers] = useState<Array<{ id: string; reference_name: string; phone_number_id: string }>>([]);
+  const [whatsappNumbers, setWhatsappNumbers] = useState<Array<{ id: string; reference_name: string; phone_number_id: string; is_default?: boolean }>>([]);
   const [syncConfigId, setSyncConfigId] = useState('');
   const [form, setForm] = useState<TemplateFormData>(emptyForm);
   // Non-null when the dialog is editing an existing row — switches the
@@ -238,11 +238,11 @@ export function TemplateManager() {
     void fetchTemplates(accountId);
     void supabase
       .from('whatsapp_config')
-      .select('id, reference_name, phone_number_id')
+      .select('id, reference_name, phone_number_id, is_default')
       .eq('account_id', accountId)
       .order('created_at', { ascending: true })
       .then(({ data }) => {
-        const rows = (data ?? []) as Array<{ id: string; reference_name: string; phone_number_id: string }>;
+        const rows = (data ?? []) as Array<{ id: string; reference_name: string; phone_number_id: string; is_default?: boolean }>;
         setWhatsappNumbers(rows);
         if (!syncConfigId && rows[0]) setSyncConfigId(rows[0].id);
       });
@@ -418,12 +418,13 @@ export function TemplateManager() {
   }
 
   async function handleCopyPrimaryToSupport() {
-    const primary = whatsappNumbers.find(
-      (number) => number.reference_name.trim().toLowerCase() === 'primary',
-    );
     const support = whatsappNumbers.find(
-      (number) => number.reference_name.trim().toLowerCase() === 'support',
+      (number) => number.reference_name.trim().toLowerCase().includes('support'),
     );
+    const primary =
+      whatsappNumbers.find((number) => number.reference_name.trim().toLowerCase().includes('primary')) ??
+      whatsappNumbers.find((number) => number.is_default) ??
+      whatsappNumbers.find((number) => number.id !== support?.id);
     if (!accountId || !primary || !support) return;
 
     if (
@@ -617,6 +618,17 @@ export function TemplateManager() {
 
   const headerNeedsMedia =
     form.header_format !== 'none' && form.header_format !== 'text';
+  const supportNumber = whatsappNumbers.find((number) =>
+    number.reference_name.trim().toLowerCase().includes('support'),
+  );
+  const primaryNumber =
+    whatsappNumbers.find((number) =>
+      number.reference_name.trim().toLowerCase().includes('primary'),
+    ) ??
+    whatsappNumbers.find((number) => number.is_default) ??
+    whatsappNumbers.find((number) => number.id !== supportNumber?.id);
+  const canCopyPrimaryToSupport =
+    Boolean(primaryNumber && supportNumber && primaryNumber.id !== supportNumber.id);
 
   return (
     <section className="animate-in fade-in-50 space-y-5 duration-300 motion-reduce:animate-none">
@@ -638,8 +650,7 @@ export function TemplateManager() {
                 ))}
               </select>
             )}
-            {whatsappNumbers.some((number) => number.reference_name.trim().toLowerCase() === 'primary') &&
-              whatsappNumbers.some((number) => number.reference_name.trim().toLowerCase() === 'support') && (
+            {canCopyPrimaryToSupport && (
                 <Button
                   variant="outline"
                   onClick={() => void handleCopyPrimaryToSupport()}
