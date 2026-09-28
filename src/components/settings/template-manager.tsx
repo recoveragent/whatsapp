@@ -12,7 +12,6 @@ import {
   Pencil,
   RotateCcw,
   FileText,
-  Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getWhatsAppTrackingButtonUrlTemplate } from '@/lib/shopify/tracking-redirect';
@@ -164,7 +163,6 @@ export function TemplateManager() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [copyingToSupport, setCopyingToSupport] = useState(false);
   const [whatsappNumbers, setWhatsappNumbers] = useState<Array<{ id: string; reference_name: string; phone_number_id: string }>>([]);
   const [syncConfigId, setSyncConfigId] = useState('');
   const [form, setForm] = useState<TemplateFormData>(emptyForm);
@@ -241,12 +239,7 @@ export function TemplateManager() {
       .select('id, reference_name, phone_number_id')
       .eq('account_id', accountId)
       .order('created_at', { ascending: true })
-      .then(({ data, error }) => {
-        if (error) {
-          console.error('Failed to load WhatsApp numbers:', error);
-          toast.error('Could not load WhatsApp numbers');
-          return;
-        }
+      .then(({ data }) => {
         const rows = (data ?? []) as Array<{ id: string; reference_name: string; phone_number_id: string }>;
         setWhatsappNumbers(rows);
         if (!syncConfigId && rows[0]) setSyncConfigId(rows[0].id);
@@ -259,7 +252,7 @@ export function TemplateManager() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [syncConfigId]);
 
-  async function fetchTemplates(id: string, configId = syncConfigId) {
+  async function fetchTemplates(id: string) {
     try {
       setLoading(true);
       let templatesQuery = supabase
@@ -267,7 +260,7 @@ export function TemplateManager() {
         .select('*')
         .eq('account_id', id)
         .order('created_at', { ascending: false });
-      if (configId) templatesQuery = templatesQuery.eq('whatsapp_config_id', configId);
+      if (syncConfigId) templatesQuery = templatesQuery.eq('whatsapp_config_id', syncConfigId);
       const { data, error } = await templatesQuery;
       if (error) throw error;
       setTemplates(data || []);
@@ -422,85 +415,6 @@ export function TemplateManager() {
     }
   }
 
-  async function handleCopyPrimaryToSupport() {
-    const support = whatsappNumbers.find(
-      (number) => number.reference_name.trim().toLowerCase().includes('support'),
-    );
-    const primary =
-      whatsappNumbers.find((number) => number.reference_name.trim().toLowerCase().includes('primary')) ??
-      whatsappNumbers.find((number) => number.id !== support?.id);
-    if (!accountId || !primary || !support) return;
-
-    if (
-      !window.confirm(
-        `Copy all templates from ${primary.reference_name} to ${support.reference_name} and submit them to Meta for approval?`,
-      )
-    ) {
-      return;
-    }
-
-    setCopyingToSupport(true);
-    try {
-      const { data: sourceTemplates, error } = await supabase
-        .from('message_templates')
-        .select('*')
-        .eq('account_id', accountId)
-        .eq('whatsapp_config_id', primary.id)
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      if (!sourceTemplates?.length) {
-        toast.message('No templates found on the Primary number.');
-        return;
-      }
-
-      const failures: string[] = [];
-      let copied = 0;
-      for (const template of sourceTemplates as MessageTemplate[]) {
-        const res = await fetch('/api/whatsapp/templates/submit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: template.name,
-            category: template.category,
-            language: template.language || 'en_US',
-            header_type: template.header_type,
-            header_content: template.header_content,
-            header_media_url: template.header_media_url,
-            header_handle: template.header_handle,
-            body_text: template.body_text,
-            footer_text: template.footer_text,
-            buttons: template.buttons,
-            sample_values: template.sample_values,
-            whatsapp_config_id: support.id,
-          }),
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          failures.push(`${template.name}: ${body?.error || `HTTP ${res.status}`}`);
-        } else {
-          copied += 1;
-        }
-      }
-
-      setSyncConfigId(support.id);
-      await fetchTemplates(accountId, support.id);
-      if (failures.length) {
-        toast.error(
-          `Submitted ${copied} of ${sourceTemplates.length} templates. ${failures.join(' ')}`,
-        );
-      } else {
-        toast.success(
-          `Submitted ${copied} templates from Primary to Support for approval.`,
-        );
-      }
-    } catch (err) {
-      console.error('Copy templates error:', err);
-      toast.error(err instanceof Error ? err.message : 'Could not copy templates');
-    } finally {
-      setCopyingToSupport(false);
-    }
-  }
-
   async function confirmDelete() {
     const target = templateToDelete;
     if (!target || deletingId) return;
@@ -622,16 +536,6 @@ export function TemplateManager() {
 
   const headerNeedsMedia =
     form.header_format !== 'none' && form.header_format !== 'text';
-  const supportNumber = whatsappNumbers.find((number) =>
-    number.reference_name.trim().toLowerCase().includes('support'),
-  );
-  const primaryNumber =
-    whatsappNumbers.find((number) =>
-      number.reference_name.trim().toLowerCase().includes('primary'),
-    ) ??
-    whatsappNumbers.find((number) => number.id !== supportNumber?.id);
-  const canCopyPrimaryToSupport =
-    Boolean(primaryNumber && supportNumber && primaryNumber.id !== supportNumber.id);
 
   return (
     <section className="animate-in fade-in-50 space-y-5 duration-300 motion-reduce:animate-none">
@@ -653,18 +557,6 @@ export function TemplateManager() {
                 ))}
               </select>
             )}
-            {canCopyPrimaryToSupport && (
-                <Button
-                  variant="outline"
-                  onClick={() => void handleCopyPrimaryToSupport()}
-                  disabled={copyingToSupport || syncing || submitting}
-                  title="Copy Primary templates to Support and submit for approval"
-                  className={glassButtonOutline}
-                >
-                  <Copy className={cn('size-4', copyingToSupport && 'animate-pulse')} />
-                  {copyingToSupport ? 'Submitting…' : 'Copy Primary → Support'}
-                </Button>
-              )}
             <Button
               variant="outline"
               onClick={handleSyncFromMeta}
