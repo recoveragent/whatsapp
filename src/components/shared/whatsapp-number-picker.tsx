@@ -9,6 +9,7 @@ export interface WhatsAppNumberOption {
   phone_number_id: string;
   display_phone_number?: string | null;
   connected?: boolean;
+  is_default?: boolean;
 }
 
 export function WhatsAppNumberPicker({
@@ -40,7 +41,9 @@ export function WhatsAppNumberPicker({
       .catch(() => {
         // The surrounding action will show its normal error if no sender can be loaded.
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [onChange, value]);
 
   if (numbers.length <= 1) return null;
@@ -52,11 +55,13 @@ export function WhatsAppNumberPicker({
         id={id}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+        className="border-input bg-background flex h-9 w-full rounded-md border px-3 py-1 text-sm"
       >
         {numbers.map((number) => (
           <option key={number.id} value={number.id}>
-            {number.reference_name} ({number.display_phone_number || number.phone_number_id})
+            {number.reference_name} (
+            {number.display_phone_number || number.phone_number_id})
+            {number.is_default ? ' — Default' : ''}
           </option>
         ))}
       </select>

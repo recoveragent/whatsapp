@@ -1,12 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
 
 import {
   getCurrentAccount,
   requireRole,
   toErrorResponse,
-} from "@/lib/auth/account";
-import { decrypt } from "@/lib/whatsapp/encryption";
-import { verifyPhoneNumber } from "@/lib/whatsapp/meta-api";
+} from '@/lib/auth/account';
+import { decrypt } from '@/lib/whatsapp/encryption';
+import { verifyPhoneNumber } from '@/lib/whatsapp/meta-api';
 
 /**
  * GET /api/whatsapp/connection
@@ -18,19 +18,39 @@ export async function GET() {
   try {
     const ctx = await getCurrentAccount();
 
-    const { data: configs, error } = await ctx.supabase
-      .from("whatsapp_config")
+    let { data: configs, error } = await ctx.supabase
+      .from('whatsapp_config')
       .select(
-        "id, reference_name, phone_number_id, status, registered_at, connected_at, last_registration_error, access_token",
+        'id, reference_name, phone_number_id, status, registered_at, connected_at, last_registration_error, access_token, is_default'
       )
-      .eq("account_id", ctx.accountId)
-      .order("created_at", { ascending: true });
+      .eq('account_id', ctx.accountId)
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: true });
+
+    // Workspaces that pre-date migration 105 have no default flag yet.
+    // Continue listing their senders in creation order rather than hiding
+    // the picker altogether.
+    if (error?.code === '42703') {
+      const fallback = await ctx.supabase
+        .from('whatsapp_config')
+        .select(
+          'id, reference_name, phone_number_id, status, registered_at, connected_at, last_registration_error, access_token'
+        )
+        .eq('account_id', ctx.accountId)
+        .order('created_at', { ascending: true });
+      configs =
+        fallback.data?.map((config) => ({
+          ...config,
+          is_default: false,
+        })) ?? null;
+      error = fallback.error;
+    }
 
     if (error) {
-      console.error("[GET /api/whatsapp/connection]", error);
+      console.error('[GET /api/whatsapp/connection]', error);
       return NextResponse.json(
-        { error: "Failed to load connection status" },
-        { status: 500 },
+        { error: 'Failed to load connection status' },
+        { status: 500 }
       );
     }
 
@@ -40,37 +60,46 @@ export async function GET() {
         connected: false,
         needs_reconnect: false,
         message:
-          "No WhatsApp number is connected yet. Use Connect with Meta to link your WhatsApp Business number.",
+          'No WhatsApp number is connected yet. Use Connect with Meta to link your WhatsApp Business number.',
       });
     }
 
-    const numbers = await Promise.all(configs.map(async (config) => {
-      let phoneInfo: { verified_name?: string; display_phone_number?: string } | null = null;
-      let connected = config.status === "connected";
-      try {
-        phoneInfo = await verifyPhoneNumber({
-          phoneNumberId: config.phone_number_id,
-          accessToken: decrypt(config.access_token),
-        });
-        connected = true;
-      } catch (err) {
-        console.warn("[GET /api/whatsapp/connection] Meta verify failed:", err);
-        connected = false;
-      }
-      return {
-        id: config.id,
-        reference_name: config.reference_name,
-        phone_number_id: config.phone_number_id,
-        verified_name: phoneInfo?.verified_name ?? null,
-        display_phone_number: phoneInfo?.display_phone_number ?? null,
-        status: config.status,
-        connected,
-        needs_reconnect: !connected,
-        registered: Boolean(config.registered_at),
-        registered_at: config.registered_at,
-        last_registration_error: config.last_registration_error,
-      };
-    }));
+    const numbers = await Promise.all(
+      configs.map(async (config) => {
+        let phoneInfo: {
+          verified_name?: string;
+          display_phone_number?: string;
+        } | null = null;
+        let connected = config.status === 'connected';
+        try {
+          phoneInfo = await verifyPhoneNumber({
+            phoneNumberId: config.phone_number_id,
+            accessToken: decrypt(config.access_token),
+          });
+          connected = true;
+        } catch (err) {
+          console.warn(
+            '[GET /api/whatsapp/connection] Meta verify failed:',
+            err
+          );
+          connected = false;
+        }
+        return {
+          id: config.id,
+          reference_name: config.reference_name,
+          phone_number_id: config.phone_number_id,
+          is_default: config.is_default,
+          verified_name: phoneInfo?.verified_name ?? null,
+          display_phone_number: phoneInfo?.display_phone_number ?? null,
+          status: config.status,
+          connected,
+          needs_reconnect: !connected,
+          registered: Boolean(config.registered_at),
+          registered_at: config.registered_at,
+          last_registration_error: config.last_registration_error,
+        };
+      })
+    );
     const config = numbers[0];
     const connected = numbers.some((number) => number.connected);
 
@@ -88,7 +117,7 @@ export async function GET() {
       last_registration_error: config.last_registration_error,
       message: connected
         ? undefined
-        : "This number is no longer valid with Meta (removed, revoked, or incomplete). Disconnect it, then connect a new number.",
+        : 'This number is no longer valid with Meta (removed, revoked, or incomplete). Disconnect it, then connect a new number.',
     });
   } catch (err) {
     return toErrorResponse(err);
@@ -102,23 +131,23 @@ export async function GET() {
  */
 export async function DELETE(request: Request) {
   try {
-    const ctx = await requireRole("admin");
+    const ctx = await requireRole('admin');
 
-    const configId = new URL(request.url).searchParams.get("id");
+    const configId = new URL(request.url).searchParams.get('id');
     if (!configId) {
-      return NextResponse.json({ error: "id is required" }, { status: 400 });
+      return NextResponse.json({ error: 'id is required' }, { status: 400 });
     }
     const { error } = await ctx.supabase
-      .from("whatsapp_config")
+      .from('whatsapp_config')
       .delete()
-      .eq("account_id", ctx.accountId)
-      .eq("id", configId);
+      .eq('account_id', ctx.accountId)
+      .eq('id', configId);
 
     if (error) {
-      console.error("[DELETE /api/whatsapp/connection]", error);
+      console.error('[DELETE /api/whatsapp/connection]', error);
       return NextResponse.json(
-        { error: "Failed to disconnect WhatsApp" },
-        { status: 500 },
+        { error: 'Failed to disconnect WhatsApp' },
+        { status: 500 }
       );
     }
 
