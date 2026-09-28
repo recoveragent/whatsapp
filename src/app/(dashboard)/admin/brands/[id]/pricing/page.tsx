@@ -20,7 +20,7 @@ import {
 } from '@/lib/wallet/types';
 import { formatInrFromPaise, rupeesToPaise } from '@/lib/wallet/format';
 
-export function BrandPricingPanel({ brandId }: { brandId: string }) {
+function BrandPricingPanel({ brandId }: { brandId: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [brandName, setBrandName] = useState('');
