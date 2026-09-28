@@ -226,6 +226,11 @@ function InboxPageInner() {
         return false;
       }
       autoSelectedForDeepLinkRef.current = match.id;
+      // Keep the deep-link reconciliation mirror in sync before scheduling
+      // React state updates. A visibility-triggered list fetch can finish in
+      // the same tick as a selection and must never re-apply the previous
+      // ?c= value over the conversation the user just chose.
+      activeConversationForDeepLinkRef.current = match;
       setActiveConversation(match);
       setActiveContact(match.contact ?? null);
       setMessages([]);
@@ -614,10 +619,11 @@ function InboxPageInner() {
         deepLinkConvId === lastSeenDeepLinkOnLoadRef.current;
       lastSeenDeepLinkOnLoadRef.current = deepLinkConvId;
 
+      const activeForDeepLink = activeConversationForDeepLinkRef.current;
       if (
         deepLinkUnchanged &&
-        activeConversation &&
-        activeConversation.id !== deepLinkConvId
+        activeForDeepLink &&
+        activeForDeepLink.id !== deepLinkConvId
       ) {
         return;
       }
@@ -630,7 +636,7 @@ function InboxPageInner() {
       // conversationId didn't change, MessageThread wouldn't
       // refetch. The thread would read "No messages yet" until a
       // full page reload rehydrated state from scratch.
-      if (activeConversation?.id === deepLinkConvId) {
+      if (activeForDeepLink?.id === deepLinkConvId) {
         autoSelectedForDeepLinkRef.current = deepLinkConvId;
         return;
       }
@@ -640,7 +646,7 @@ function InboxPageInner() {
         applyDeepLinkConversation(match);
       }
     },
-    [deepLinkConvId, activeConversation, applyDeepLinkConversation, embedDeepLinkAllowed]
+    [deepLinkConvId, applyDeepLinkConversation, embedDeepLinkAllowed]
   );
 
   // Reminder bell / external links change `?c=` while the inbox is
@@ -665,7 +671,6 @@ function InboxPageInner() {
 
     const match = convs.find((c) => c.id === deepLinkConvId);
     if (!match) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- deep-link handoff from URL while inbox stays mounted
     applyDeepLinkConversation(match);
   }, [deepLinkConvId, applyDeepLinkConversation, embedDeepLinkAllowed]);
 
@@ -723,6 +728,9 @@ function InboxPageInner() {
       if (blockIfOutboundInFlight()) {
         return;
       }
+      // Update the synchronous mirror before router.replace() and before any
+      // in-flight visibility resync can call handleConversationsLoaded.
+      activeConversationForDeepLinkRef.current = conv;
       setActiveConversation(conv);
       setActiveContact(conv.contact ?? null);
       setMessages([]);
@@ -776,6 +784,7 @@ function InboxPageInner() {
 
   const clearActiveConversation = useCallback(() => {
     if (embedded) return;
+    activeConversationForDeepLinkRef.current = null;
     setActiveConversation(null);
     setActiveContact(null);
     setMessages([]);
