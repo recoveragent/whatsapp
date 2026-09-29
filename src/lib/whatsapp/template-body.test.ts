@@ -103,6 +103,22 @@ describe('resolveTemplateRow', () => {
     expect(filters).toEqual({ account_id: 'acct-1', name: 'order_update' });
   });
 
+  it('scopes the lookup to the active WhatsApp number when supplied', async () => {
+    const filters: Record<string, unknown> = {};
+    await resolveTemplateRow(
+      dbReturning([row({})], filters),
+      'acct-1',
+      'order_update',
+      'en_US',
+      'wa-config-1'
+    );
+    expect(filters).toEqual({
+      account_id: 'acct-1',
+      name: 'order_update',
+      whatsapp_config_id: 'wa-config-1',
+    });
+  });
+
   it("matches a synced 'en' row when the caller asks for 'en_US' (#483)", async () => {
     const resolved = await resolveTemplateRow(
       dbReturning([row({ language: 'en' })]),

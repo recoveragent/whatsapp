@@ -92,13 +92,23 @@ export async function resolveTemplateRow(
   db: SupabaseClient,
   accountId: string,
   templateName: string,
-  requestedLanguage?: string | null
+  requestedLanguage?: string | null,
+  whatsappConfigId?: string | null,
 ): Promise<ResolvedTemplate> {
-  const { data } = await db
+  let query = db
     .from('message_templates')
     .select('*')
     .eq('account_id', accountId)
     .eq('name', templateName);
+
+  // A template name/language pair can exist once per WhatsApp number.
+  // When a send is tied to a conversation, only that number's template
+  // definition can describe the payload Meta expects.
+  if (whatsappConfigId) {
+    query = query.eq('whatsapp_config_id', whatsappConfigId);
+  }
+
+  const { data } = await query;
 
   // Sorted here rather than with `.order()` so the only query-builder
   // surface this helper depends on is select + eq — the same shape the

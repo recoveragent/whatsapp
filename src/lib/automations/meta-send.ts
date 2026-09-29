@@ -1,6 +1,6 @@
 import { sendTextMessage, sendTemplateMessage } from '@/lib/whatsapp/meta-api'
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
-import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
+import { resolveTemplateRow } from '@/lib/whatsapp/template-body'
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
 import {
   engineSendInteractiveButtons,
@@ -168,21 +168,31 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
 
   let templateCategory: string | null = null
   let templateRow: MessageTemplate | null = null
+  let templateLanguage: string | undefined
   if (input.kind === 'template') {
-    const lang = input.language ?? 'en_US'
-    const { data: row } = await db
-      .from('message_templates')
-      .select('*')
-      .eq('account_id', input.accountId)
-      .eq('name', input.templateName)
-      .eq('language', lang)
-      .maybeSingle()
-    if (row && isMessageTemplate(row)) {
-      templateRow = row
-      templateCategory = row.category
-    } else if (row?.category) {
-      templateCategory = row.category as string
+    const resolved = await resolveTemplateRow(
+      db,
+      input.accountId,
+      input.templateName,
+      input.language,
+      config.id,
+    )
+    if (resolved.malformed) {
+      throw new Error(
+        'Template is malformed locally — run “Sync from Meta” before using it in an automation.',
+      )
     }
+    if (!resolved.row) {
+      // Do not fall back to Meta's body-only payload. A local template row
+      // supplies mandatory image/video/document header components; omitting
+      // it produces Meta's opaque “expected IMAGE, received UNKNOWN” error.
+      throw new Error(
+        'Template was not found for this WhatsApp number — run “Sync from Meta” and select the template again.',
+      )
+    }
+    templateRow = resolved.row
+    templateCategory = resolved.row.category
+    templateLanguage = resolved.language
     await assertWalletCanSend(input.accountId, templateCategory)
   }
 
@@ -193,7 +203,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         accessToken,
         to: phone,
         templateName: input.templateName,
-        language: input.language,
+        language: templateLanguage,
         template: templateRow ?? undefined,
         messageParams: input.messageParams,
         params: input.params,
