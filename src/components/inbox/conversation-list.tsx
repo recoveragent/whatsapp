@@ -137,6 +137,7 @@ export function ConversationList({
       setHasMore(false);
       setNextCursor(null);
       const params = new URLSearchParams({ sort, filter });
+      if (search.trim()) params.set("search", search.trim());
       const response = await fetch(`/api/inbox/conversations/page?${params}`, {
         cache: "no-store",
       });
@@ -166,7 +167,7 @@ export function ConversationList({
     return () => {
       cancelled = true;
     };
-  }, [filter, resyncToken, sort]);
+  }, [filter, resyncToken, search, sort]);
 
   const loadMoreConversations = useCallback(async (pageSize = CONVERSATIONS_PER_PAGE) => {
     if (loadingMore || !hasMore || !nextCursor) return;
@@ -178,6 +179,7 @@ export function ConversationList({
       cursor: nextCursor,
       pageSize: String(pageSize),
     });
+    if (search.trim()) params.set("search", search.trim());
     const response = await fetch(`/api/inbox/conversations/page?${params}`, {
       cache: "no-store",
     });
@@ -206,7 +208,7 @@ export function ConversationList({
     setNextCursor(cursor);
     setHasMore(Boolean(body.hasMore && cursor));
     setLoadingMore(false);
-  }, [filter, hasMore, loadingMore, nextCursor, sort]);
+  }, [filter, hasMore, loadingMore, nextCursor, search, sort]);
 
   useEffect(() => {
     const supabase = createClient();
