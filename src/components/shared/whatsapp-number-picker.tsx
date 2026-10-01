@@ -8,7 +8,7 @@ export interface WhatsAppNumberOption {
   reference_name: string;
   phone_number_id: string;
   display_phone_number?: string | null;
-  connected?: boolean;
+  status?: string;
   is_default?: boolean;
 }
 
@@ -34,7 +34,9 @@ export function WhatsAppNumberPicker({
       })
       .then((data) => {
         if (cancelled || !data?.numbers) return;
-        const rows = data.numbers.filter((number) => number.connected);
+        // Match the conversation API's eligibility check. The connection
+        // endpoint's live Meta probe may fail temporarily for a valid sender.
+        const rows = data.numbers.filter((number) => number.status === 'connected');
         setNumbers(rows);
         if (!value && rows[0]) onChange(rows[0].id);
       })
