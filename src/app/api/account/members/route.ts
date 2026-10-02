@@ -36,7 +36,7 @@ export async function GET() {
     const { data, error } = await ctx.supabase
       .from("profiles")
       .select("user_id, full_name, email, avatar_url, account_role, created_at")
-      .eq("account_id", ctx.accountId)
+      .eq("account_id", ctx.brandAccountId ?? ctx.accountId)
       .order("created_at", { ascending: true });
 
     if (error) {

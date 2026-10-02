@@ -66,7 +66,6 @@ export async function persistWhatsAppConfig(
     .from('whatsapp_config')
     .select('account_id')
     .eq('phone_number_id', phone_number_id)
-    .neq('account_id', accountId)
     .maybeSingle();
 
   if (claimedError) {
@@ -74,13 +73,16 @@ export async function persistWhatsAppConfig(
     return { ok: false, status: 500, error: 'Failed to validate configuration' };
   }
 
-  if (claimed) {
-    return {
-      ok: false,
-      status: 409,
-      error:
-        'This WhatsApp phone number is already linked to another account on this instance. Each phone number can only be connected to one wacrm user.',
-    };
+  if (claimed && claimed.account_id !== accountId) {
+    const ownership = await supabaseAdmin().rpc('channel_brand_id', { target: claimed.account_id });
+    const current = await supabaseAdmin().rpc('channel_brand_id', { target: accountId });
+    if (ownership.error || current.error || ownership.data !== current.data) {
+      return {
+        ok: false,
+        status: 409,
+        error: 'This WhatsApp phone number is already linked to another brand on this instance.',
+      };
+    }
   }
 
   let phoneInfo;
@@ -113,7 +115,7 @@ export async function persistWhatsAppConfig(
 
   const { data: existing } = await supabase
     .from('whatsapp_config')
-    .select('id, registered_at, phone_number_id')
+    .select('id, registered_at, phone_number_id, reference_name')
     .eq('phone_number_id', phone_number_id)
     .maybeSingle();
 
@@ -168,7 +170,7 @@ export async function persistWhatsAppConfig(
 
   const baseRow = {
     reference_name:
-      reference_name?.trim() || phoneInfo.display_phone_number || `WhatsApp ${phone_number_id}`,
+      reference_name?.trim() || existing?.reference_name || phoneInfo.display_phone_number || `WhatsApp ${phone_number_id}`,
     phone_number_id,
     waba_id: waba_id || null,
     access_token: encryptedAccessToken,
@@ -189,7 +191,8 @@ export async function persistWhatsAppConfig(
 
     if (updateError) {
       console.error('Error updating whatsapp_config:', updateError);
-      return { ok: false, status: 500, error: 'Failed to update configuration' };
+      return { ok: false, status: updateError.code === '23514' || updateError.code === '23505' ? 409 : 500,
+        error: ['23514', '23505'].includes(updateError.code) ? updateError.message : 'Failed to update configuration' };
     }
   } else {
     const { error: insertError } = await supabase
@@ -202,7 +205,8 @@ export async function persistWhatsAppConfig(
 
     if (insertError) {
       console.error('Error inserting whatsapp_config:', insertError);
-      return { ok: false, status: 500, error: 'Failed to save configuration' };
+      return { ok: false, status: insertError.code === '23514' || insertError.code === '23505' ? 409 : 500,
+        error: ['23514', '23505'].includes(insertError.code) ? insertError.message : 'Failed to save configuration' };
     }
   }
 

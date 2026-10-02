@@ -127,7 +127,7 @@ export async function POST(request: Request) {
     const { data: assignee, error: assigneeError } = await ctx.supabase
       .from('profiles')
       .select('user_id')
-      .eq('account_id', ctx.accountId)
+      .eq('account_id', ctx.brandAccountId ?? ctx.accountId)
       .eq('user_id', assigneeId)
       .maybeSingle()
 

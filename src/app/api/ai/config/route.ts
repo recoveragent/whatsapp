@@ -65,7 +65,7 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
-    const { supabase, accountId, userId } = await requireAiAgentsAccount('admin')
+    const { supabase, accountId, brandAccountId, userId } = await requireAiAgentsAccount('admin')
 
     const limit = checkRateLimit(`ai-config:${userId}`, RATE_LIMITS.adminAction)
     if (!limit.success) return rateLimitResponse(limit)
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
       const { data: member } = await supabase
         .from('profiles')
         .select('user_id')
-        .eq('account_id', accountId)
+        .eq('account_id', brandAccountId ?? accountId)
         .eq('user_id', rawHandoff)
         .maybeSingle()
       if (!member) return bad('handoff_agent_id must be a member of this account')

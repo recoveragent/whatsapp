@@ -9,6 +9,7 @@ import { AccountAccessAlert } from "@/components/layout/account-access-alert";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 import { isEmbedMode } from "@/lib/embed/query";
 import { cn } from "@/lib/utils";
+import { ChannelSelector } from '@/components/layout/channel-selector';
 
 const SIDEBAR_COLLAPSED_KEY = "wacrm.sidebar.collapsed";
 
@@ -26,6 +27,8 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
     isSuperAdminActing,
     needsBrandContext,
     canClaimSuperAdmin,
+    channelError,
+    needsChannelSelection,
   } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -109,6 +112,20 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) return null;
+
+  if (!pathname.startsWith('/admin') && (channelError || needsChannelSelection)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-6">
+        <div className="w-full max-w-md space-y-4 rounded-xl border bg-card p-6">
+          <h1 className="text-xl font-semibold">Enter a WhatsApp channel</h1>
+          <p className="text-sm text-muted-foreground">Each channel has its own inbox, contacts, templates, broadcasts and automations.</p>
+          {channelError ? <p role="alert" className="text-sm text-destructive">{channelError}</p> : <ChannelSelector />}
+          {channelError && <button className="text-sm underline" onClick={() => window.location.reload()}>Try again</button>}
+          <button className="block text-sm text-muted-foreground underline" onClick={() => window.location.assign('/admin/brands')}>Brand management</button>
+        </div>
+      </div>
+    );
+  }
 
   const isFullHeightEditor =
     pathname !== null && /^\/flows\/[^/]+$/.test(pathname);

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ChannelWorkspaceState } from '@/lib/whatsapp/channel-workspace';
 
 // getCurrentAccount resolves the caller's account context. The
 // regression this file guards (issue #294): account loading must NOT
@@ -62,6 +63,8 @@ function makeClient(opts: {
 }
 
 const createClient = vi.fn();
+const channelState = vi.hoisted(() => ({ load: vi.fn<() => Promise<ChannelWorkspaceState>>(async () => ({ channels: [], active: null, migrationRequired: false })) }));
+vi.mock('@/lib/whatsapp/channel-workspace', () => ({ loadChannelWorkspaces: channelState.load }));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: () => createClient(),
 }));
@@ -72,9 +75,30 @@ const { getCurrentAccount, UnauthorizedError, ForbiddenError } = await import(
 
 afterEach(() => {
   vi.clearAllMocks();
+  channelState.load.mockResolvedValue({ channels: [], active: null, migrationRequired: false });
 });
 
 describe("getCurrentAccount", () => {
+  it('uses the selected channel tenant while preserving shared brand membership', async () => {
+    const { client } = makeClient({ user: { id: 'user-1' }, byTable: {
+      profiles: { data: { account_id: 'brand', account_role: 'admin' }, error: null },
+      accounts: { data: { id: 'brand', name: 'Recover Agent' }, error: null },
+    } });
+    createClient.mockReturnValue(client);
+    const active = { id: 'support', accountId: 'support', name: 'Support', phoneNumberId: '222', status: 'connected', whatsappConfigId: 'support-config' };
+    channelState.load.mockResolvedValue({ channels: [active], active, migrationRequired: false });
+    expect(await getCurrentAccount()).toMatchObject({ accountId: 'support', brandAccountId: 'brand', whatsappConfigId: 'support-config', role: 'admin' });
+  });
+
+  it('refuses operational access when multiple channels have no selected workspace', async () => {
+    const { client } = makeClient({ user: { id: 'user-1' }, byTable: {
+      profiles: { data: { account_id: 'brand', account_role: 'admin' }, error: null },
+      accounts: { data: { id: 'brand', name: 'Recover Agent' }, error: null },
+    } });
+    createClient.mockReturnValue(client);
+    channelState.load.mockResolvedValue({ channels: [{ id: 'support', accountId: 'support', name: 'Support', phoneNumberId: '222', status: 'connected' }], active: null, migrationRequired: false });
+    await expect(getCurrentAccount()).rejects.toThrow('Select a WhatsApp channel');
+  });
   it("resolves context via a plain accounts lookup, not an embedded join", async () => {
     const { client, calls } = makeClient({
       user: { id: "user-1" },

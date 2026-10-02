@@ -121,6 +121,9 @@ function SettingsPageInner() {
         {/* Clip horizontal overflow so wide panel children can't extend
             into the rail column and intercept pointer events. */}
         <div className="relative z-0 min-w-0 overflow-x-clip">
+          {section === 'shopify' && searchParams.get('channelImport') === 'failed' && (
+            <p role="alert" className="mb-4 rounded-md border p-3 text-sm text-destructive">Your channel is selected, but Shopify could not be connected. Reconnect it below.</p>
+          )}
           {panel[activeSection]}
         </div>
       </div>

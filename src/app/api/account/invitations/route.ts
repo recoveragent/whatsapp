@@ -145,7 +145,7 @@ export async function GET() {
       .select(
         "id, role, label, created_by_user_id, created_at, expires_at, accepted_at, accepted_by_user_id",
       )
-      .eq("account_id", ctx.accountId)
+      .eq("account_id", ctx.brandAccountId ?? ctx.accountId)
       .is("accepted_at", null)
       .gt("expires_at", new Date().toISOString())
       .order("created_at", { ascending: false });
@@ -219,7 +219,7 @@ export async function POST(request: Request) {
     const { data, error } = await ctx.supabase
       .from("account_invitations")
       .insert({
-        account_id: ctx.accountId,
+        account_id: ctx.brandAccountId ?? ctx.accountId,
         token_hash: hash,
         role,
         created_by_user_id: ctx.userId,

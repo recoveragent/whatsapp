@@ -65,11 +65,17 @@ export async function listOrganizationBrands(
   supabase: SupabaseClient,
   organizationId: string,
 ): Promise<{ brands: BrandListRow[]; categoryColumnMissing: boolean }> {
-  const withCategory = await supabase
+  let withCategory = await supabase
     .from('accounts')
     .select(BRAND_LIST_COLUMNS)
     .eq('organization_id', organizationId)
+    .is('parent_brand_id', null)
     .order('name');
+
+  if (isMissingColumnError(withCategory.error, 'parent_brand_id')) {
+    withCategory = await supabase.from('accounts').select(BRAND_LIST_COLUMNS)
+      .eq('organization_id', organizationId).order('name');
+  }
 
   if (!withCategory.error) {
     const brands = (withCategory.data ?? []).map((row) => ({
@@ -95,11 +101,17 @@ export async function listOrganizationBrands(
     throw withCategory.error;
   }
 
-  const fallback = await supabase
+  let fallback = await supabase
     .from('accounts')
     .select('id, name, owner_user_id, created_at')
     .eq('organization_id', organizationId)
+    .is('parent_brand_id', null)
     .order('name');
+
+  if (isMissingColumnError(fallback.error, 'parent_brand_id')) {
+    fallback = await supabase.from('accounts').select('id, name, owner_user_id, created_at')
+      .eq('organization_id', organizationId).order('name');
+  }
 
   if (fallback.error) throw fallback.error;
 

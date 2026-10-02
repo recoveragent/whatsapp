@@ -10,7 +10,7 @@ import {
   SsoError,
   ssoErrorHtml,
 } from "@/lib/auth/sso";
-import { importRecoverAgentShopifyConnection } from "@/lib/shopify/recover-agent-import";
+import { ChannelImportPendingError, deferShopifyChannelImport, importRecoverAgentShopifyConnection } from "@/lib/shopify/recover-agent-import";
 
 export const dynamic = "force-dynamic";
 
@@ -88,6 +88,12 @@ export async function GET(request: NextRequest) {
           webhookCallbackUrl: `${origin}/api/shopify/webhook`,
         });
       } catch (shopifyError) {
+        if (shopifyError instanceof ChannelImportPendingError) {
+          await deferShopifyChannelImport({ brandAccountId: shopifyError.brandAccountId,
+            userId: shopifyError.userId, connection: consumed.shopify_connection,
+            webhookCallbackUrl: `${origin}/api/shopify/webhook` });
+          return finalizeFrameHeaders(request, redirectResponse);
+        }
         const detail = shopifyError instanceof Error ? shopifyError.message : String(shopifyError);
         console.error(
           "[sso] Recover Agent Shopify import failed:",

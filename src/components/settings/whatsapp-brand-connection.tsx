@@ -60,7 +60,7 @@ interface ConnectionPayload {
 }
 
 export function WhatsAppBrandConnection() {
-  const { isSuperAdmin, isSuperAdminActing } = useAuth();
+  const { isSuperAdmin, isSuperAdminActing, refreshProfile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
   const [accountCtx, setAccountCtx] = useState<AccountContextPayload | null>(null);
@@ -280,7 +280,7 @@ export function WhatsAppBrandConnection() {
       <div className="space-y-6 max-w-xl">
         {(showConnect || registrationIncomplete) && (
           <WhatsAppEmbeddedSignupPanel
-            onComplete={load}
+            onComplete={async () => { await refreshProfile(); await load(); }}
             registrationOnly={registrationIncomplete}
           />
         )}

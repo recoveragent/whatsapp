@@ -43,7 +43,7 @@ interface UsePresenceResult {
  * out (e.g. while a parent sheet is closed).
  */
 export function usePresence(enabled = true): UsePresenceResult {
-  const { accountId } = useAuth();
+  const { brandAccountId: accountId } = useAuth();
 
   // Presence rows keyed by user_id, held in immutable state — each
   // update replaces the Map so React renders and the derived getters

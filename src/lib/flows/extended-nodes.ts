@@ -3,6 +3,7 @@
  */
 
 import 'server-only'
+import { resolveBrandAccountId } from '@/lib/whatsapp/channel-workspace'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -376,7 +377,7 @@ export async function executeExtendedNode(
           const { data: profiles } = await db
             .from('profiles')
             .select('user_id')
-            .eq('account_id', run.account_id)
+            .eq('account_id', await resolveBrandAccountId(db, run.account_id))
             .limit(1)
           agentId = profiles?.[0]?.user_id
         }

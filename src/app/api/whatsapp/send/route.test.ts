@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Workspace selection is covered by the account-context and PostgreSQL tests.
+// Keep these send-path fixtures pinned to their existing single sender.
+vi.mock('@/lib/whatsapp/channel-workspace', () => ({
+  loadChannelWorkspaces: async () => {
+    const active = { id: 'acct-1', accountId: 'acct-1', name: 'Primary', phoneNumberId: '111', status: 'connected', whatsappConfigId: 'cfg-1' };
+    return { channels: [active], active, migrationRequired: false };
+  },
+}));
+
 // ---------------------------------------------------------------------------
 // Tests for the `contact_id` send path (issue #296): sending an approved
 // template to a single contact from the Contact detail view. The route must

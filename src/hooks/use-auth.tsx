@@ -32,6 +32,7 @@ import {
 } from "@/lib/ecommerce/platform";
 import { fetchAccountWithCategory } from "@/lib/auth/brand-accounts";
 import { SUPER_ADMIN_ACTING_ROLE } from "@/lib/auth/organization";
+import type { ChannelWorkspace, ChannelWorkspaceState } from '@/lib/whatsapp/channel-workspace';
 
 interface Profile {
   id: string;
@@ -81,6 +82,11 @@ export type AccountStatus =
   | "error";
 
 interface AuthContextValue {
+  brandAccountId: string | null;
+  channels: ChannelWorkspace[];
+  activeChannel: ChannelWorkspace | null;
+  channelError: string | null;
+  needsChannelSelection: boolean;
   user: User | null;
   profile: Profile | null;
   /**
@@ -218,11 +224,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isSuperAdminActing, setIsSuperAdminActing] = useState(false);
   const [effectiveRole, setEffectiveRole] = useState<AccountRole | null>(null);
   const [effectiveAccountId, setEffectiveAccountId] = useState<string | null>(null);
+  const [brandAccountId, setBrandAccountId] = useState<string | null>(null);
+  const [channels, setChannels] = useState<ChannelWorkspace[]>([]);
+  const [activeChannel, setActiveChannel] = useState<ChannelWorkspace | null>(null);
+  const [channelError, setChannelError] = useState<string | null>(null);
 
   // Tracks the user ID we've successfully initiated/completed fetching
   // a profile for. This prevents redundant re-fetches and toggling
   // profileLoading back to true on window focus events/token refresh.
   const lastFetchedUserIdRef = useRef<string | null>(null);
+  const switchingChannelRef = useRef(false);
 
   // Shared across init, auth-state-change listener, and the exposed
   // refreshProfile() callback. Reads the current session's user id and
@@ -357,6 +368,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        setBrandAccountId(resolvedAccountId);
+        setChannels([]);
+        setActiveChannel(null);
+        setChannelError(null);
+        if (resolvedAccountId && role) {
+          try {
+            const response = await fetch('/api/whatsapp/channels', { cache: 'no-store' });
+            const state = await response.json() as ChannelWorkspaceState & { error?: string };
+            if (!response.ok) throw new Error(state.error || 'Could not load WhatsApp channels.');
+            setChannels(state.channels);
+            setActiveChannel(state.active);
+            if (state.migrationRequired) {
+              setChannelError('Channel isolation needs a database update. Apply migrations 105 and 106 before using this brand.');
+              resolvedAccountId = null;
+            } else if (state.channels.length > 0) {
+              resolvedAccountId = state.active?.accountId ?? null;
+              if (accountRow && state.active) {
+                const workspace = await fetchAccountWithCategory(supabase, state.active.accountId);
+                accountRow = { ...accountRow, id: state.active.accountId,
+                  default_currency: workspace?.default_currency ?? accountRow.default_currency };
+              }
+            }
+          } catch (error) {
+            setChannelError(error instanceof Error ? error.message : 'Could not load WhatsApp channels.');
+            resolvedAccountId = null;
+          }
+        }
+
         setEffectiveRole(role);
         setEffectiveAccountId(resolvedAccountId);
 
@@ -467,6 +506,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsSuperAdminActing(false);
         setEffectiveRole(null);
         setEffectiveAccountId(null);
+        setBrandAccountId(null);
+        setChannels([]);
+        setActiveChannel(null);
+        setChannelError(null);
         setProfileLoading(false);
       }
 
@@ -494,6 +537,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user?.id) return;
     await fetchProfile(user.id);
   }, [user?.id, fetchProfile]);
+
+  // Selection is per user and brand, including database RLS and Realtime.
+  // Reload other tabs when it changes so a stale composer cannot keep sending
+  // while its queries have already switched to another channel.
+  useEffect(() => {
+    if (!user?.id || !brandAccountId) return;
+    const start = () => { switchingChannelRef.current = true; };
+    const failed = () => { switchingChannelRef.current = false; };
+    window.addEventListener('wacrm:channel-switch-start', start);
+    window.addEventListener('wacrm:channel-switch-failed', failed);
+    const listener = createClient().channel(`channel-context:${user.id}:${brandAccountId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_channel_context', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const next = payload.new as { brand_account_id?: string; workspace_account_id?: string };
+          if (!switchingChannelRef.current && next.brand_account_id === brandAccountId && next.workspace_account_id !== activeChannel?.accountId) {
+            window.location.replace('/inbox');
+          }
+        }).subscribe();
+    return () => {
+      window.removeEventListener('wacrm:channel-switch-start', start);
+      window.removeEventListener('wacrm:channel-switch-failed', failed);
+      void createClient().removeChannel(listener);
+    };
+  }, [user?.id, brandAccountId, activeChannel?.accountId]);
 
   // Derive the role booleans once per profile change rather than on
   // every consumer render. Cheap regardless, but the memo also gives
@@ -553,6 +620,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profileLoading,
         signOut,
         refreshProfile,
+        brandAccountId,
+        channels,
+        activeChannel,
+        channelError,
+        needsChannelSelection: channels.length > 0 && !activeChannel,
         account,
         defaultCurrency: account?.default_currency ?? DEFAULT_CURRENCY,
         isSuperAdmin,
@@ -591,6 +663,11 @@ export function useAuth(): AuthContextValue {
       },
       refreshProfile: async () => {},
       account: null,
+      brandAccountId: null,
+      channels: [],
+      activeChannel: null,
+      channelError: null,
+      needsChannelSelection: false,
       defaultCurrency: DEFAULT_CURRENCY,
       brandCategory: DEFAULT_BRAND_CATEGORY,
       ecommercePlatform: null,

@@ -60,7 +60,7 @@ export async function PATCH(
         .from('profiles')
         .select('user_id')
         .eq('user_id', nextAssignee)
-        .eq('account_id', ctx.accountId)
+        .eq('account_id', ctx.brandAccountId ?? ctx.accountId)
         .maybeSingle()
 
       // Super-admin acting in a brand may not have a profile row on that

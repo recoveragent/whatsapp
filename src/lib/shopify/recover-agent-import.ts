@@ -3,6 +3,25 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import type { RecoverAgentShopifyConnection } from '@/lib/auth/sso';
 import { persistShopifyConfig } from './persist-config';
+import { loadChannelWorkspaces } from '@/lib/whatsapp/channel-workspace';
+import { encrypt } from '@/lib/whatsapp/encryption';
+
+export class ChannelImportPendingError extends Error {
+  constructor(readonly brandAccountId: string, readonly userId: string) {
+    super('Select a WhatsApp channel to finish connecting Shopify.');
+  }
+}
+
+export async function deferShopifyChannelImport(args: {
+  brandAccountId: string; userId: string; connection: RecoverAgentShopifyConnection; webhookCallbackUrl: string;
+}) {
+  const { error } = await supabaseAdmin().from('whatsapp_pending_shopify_imports').upsert({
+    user_id: args.userId, brand_account_id: args.brandAccountId,
+    encrypted_connection: encrypt(JSON.stringify(args.connection)),
+    webhook_callback_url: args.webhookCallbackUrl,
+  }, { onConflict: 'user_id,brand_account_id' });
+  if (error) throw new Error('Could not save the Shopify connection for channel selection.');
+}
 
 /**
  * Import the Shopify installation already owned by the Recover Agent
@@ -14,6 +33,8 @@ export async function importRecoverAgentShopifyConnection(args: {
   sessionClient: SupabaseClient;
   connection: RecoverAgentShopifyConnection;
   webhookCallbackUrl: string;
+  /** A queued import stays pinned to the channel chosen when it was claimed. */
+  workspaceAccountId?: string;
 }): Promise<void> {
   const {
     data: { user },
@@ -37,6 +58,15 @@ export async function importRecoverAgentShopifyConnection(args: {
   }
   if (!accountId) throw new Error('Select a WhatsApp CRM brand before importing Shopify');
 
+  const channels = await loadChannelWorkspaces(args.sessionClient, accountId, user.id);
+  const active = args.workspaceAccountId
+    ? channels.channels.find((channel) => channel.accountId === args.workspaceAccountId) ?? null
+    : channels.active;
+  if (channels.migrationRequired || (channels.channels.length > 0 && !active)) {
+    throw new ChannelImportPendingError(accountId, user.id);
+  }
+  accountId = active?.accountId ?? accountId;
+
   const result = await persistShopifyConfig({
     supabase: supabaseAdmin(),
     userId: user.id,
@@ -49,7 +79,7 @@ export async function importRecoverAgentShopifyConnection(args: {
     webhookCallbackUrl: args.webhookCallbackUrl,
     keepExistingAppCredentials: true,
     allowWebhookRegistrationFailure: true,
-    allowStoreReassignment: true,
+    allowStoreReassignment: false,
   });
 
   if (!result.ok) throw new Error(result.error);

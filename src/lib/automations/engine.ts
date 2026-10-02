@@ -25,6 +25,7 @@ import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
+import { resolveBrandAccountId } from '@/lib/whatsapp/channel-workspace'
 
 // ------------------------------------------------------------
 // Public API
@@ -535,7 +536,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         const { data: profiles } = await db
           .from('profiles')
           .select('user_id')
-          .eq('account_id', args.automation.account_id)
+          .eq('account_id', await resolveBrandAccountId(db, args.automation.account_id))
           .limit(1)
         agentId = profiles?.[0]?.user_id
       }
