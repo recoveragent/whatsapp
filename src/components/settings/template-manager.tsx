@@ -748,8 +748,8 @@ export function TemplateManager() {
           }
         }}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl border-border/60 bg-popover/95 shadow-xl ring-1 ring-white/20 backdrop-blur-xl backdrop-saturate-150 sm:max-w-2xl motion-reduce:backdrop-blur-none">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] min-w-0 flex-col overflow-hidden rounded-2xl border-border/60 bg-popover/95 p-0 shadow-xl ring-1 ring-white/20 backdrop-blur-xl backdrop-saturate-150 sm:max-w-2xl motion-reduce:backdrop-blur-none">
+          <DialogHeader className="shrink-0 px-6 pt-6 pr-12">
             <DialogTitle className="text-popover-foreground">
               {editingId ? t('dialogEditTitle') : t('dialogNewTitle')}
             </DialogTitle>
@@ -760,40 +760,106 @@ export function TemplateManager() {
             </DialogDescription>
           </DialogHeader>
 
-          {form.category === 'Authentication' && (
-            <div className="flex items-start gap-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-amber-800">
-              <AlertCircle className="size-4 mt-0.5 shrink-0" />
-              <p>{t.rich('authWarning', { bold: (chunks) => <strong>{chunks}</strong> })}</p>
-            </div>
-          )}
+          <div className="min-h-0 min-w-0 space-y-4 overflow-y-auto overscroll-contain px-6 pb-6 [overflow-wrap:anywhere]">
+            {form.category === 'Authentication' && (
+              <div className="flex items-start gap-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-amber-800">
+                <AlertCircle className="size-4 mt-0.5 shrink-0" />
+                <p>{t.rich('authWarning', { bold: (chunks) => <strong>{chunks}</strong> })}</p>
+              </div>
+            )}
 
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label className="text-muted-foreground">{t('templateName')}</Label>
-              <Input
-                placeholder={t('namePlaceholder')}
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                disabled={editingId !== null}
-                className="bg-muted border-border text-foreground placeholder:text-muted-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                {editingId
-                  ? t('nameFixed')
-                  : t('nameHint')}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-4 py-2">
               <div className="space-y-2">
-                <Label className="text-muted-foreground">{t('category')}</Label>
+                <Label className="text-muted-foreground">{t('templateName')}</Label>
+                <Input
+                  placeholder={t('namePlaceholder')}
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  disabled={editingId !== null}
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  {editingId
+                    ? t('nameFixed')
+                    : t('nameHint')}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="min-w-0 space-y-2">
+                  <Label className="text-muted-foreground">{t('category')}</Label>
+                  <Select
+                    modal={false}
+                    value={form.category}
+                    onValueChange={(val) =>
+                      setForm({
+                        ...form,
+                        category: val as MessageTemplate['category'],
+                      })
+                    }
+                  >
+                    <SelectTrigger className="w-full bg-muted border-border text-foreground">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent
+                      alignItemWithTrigger={false}
+                      className="bg-popover border-border"
+                    >
+                      {CATEGORIES.map((cat) => (
+                        <SelectItem
+                          key={cat}
+                          value={cat}
+                          className="text-popover-foreground focus:bg-muted focus:text-popover-foreground"
+                        >
+                          {cat}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="min-w-0 space-y-2">
+                  <Label className="text-muted-foreground">{t('language')}</Label>
+                  <Input
+                    list="template-language-codes"
+                    placeholder="en_US"
+                    value={form.language}
+                    onChange={(e) =>
+                      setForm({ ...form, language: e.target.value })
+                    }
+                    disabled={editingId !== null}
+                    className="bg-muted border-border text-foreground placeholder:text-muted-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+                  <datalist id="template-language-codes">
+                    {COMMON_LANGUAGE_CODES.map((code) => (
+                      <option key={code} value={code} />
+                    ))}
+                  </datalist>
+                  <p className="text-[11px] text-muted-foreground">
+                    {editingId ? (
+                      t('langFixed')
+                    ) : (
+                      <span>{t.rich('langHint', { code: (chunks) => <code>{chunks}</code> })}</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">{t('header')}</Label>
                 <Select
                   modal={false}
-                  value={form.category}
+                  value={form.header_format}
                   onValueChange={(val) =>
+                    // Preserve header_content, header_media_url, and
+                    // header_sample across format switches. The submit
+                    // payload builder only reads the field that matches
+                    // the active format, so an orphan value on a hidden
+                    // field is harmless — and keeping it lets the user
+                    // switch formats to compare without losing typing.
                     setForm({
                       ...form,
-                      category: val as MessageTemplate['category'],
+                      header_format: (val || 'none') as HeaderFormat,
                     })
                   }
                 >
@@ -804,389 +870,325 @@ export function TemplateManager() {
                     alignItemWithTrigger={false}
                     className="bg-popover border-border"
                   >
-                    {CATEGORIES.map((cat) => (
+                    {HEADER_FORMATS.map((type) => (
                       <SelectItem
-                        key={cat}
-                        value={cat}
+                        key={type}
+                        value={type}
                         className="text-popover-foreground focus:bg-muted focus:text-popover-foreground"
                       >
-                        {cat}
+                        {type === 'none'
+                          ? t('headerNone')
+                          : type === 'text'
+                            ? t('headerText')
+                            : type === 'image'
+                              ? t('headerImage')
+                              : type === 'video'
+                                ? t('headerVideo')
+                                : t('headerDocument')}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+
+                {form.header_format === 'text' && (
+                  <div className="space-y-2 mt-2">
+                    <Input
+                      id="template-header-text"
+                      aria-label="Header text"
+                      placeholder={t.raw('headerTextPlaceholder')}
+                      value={form.header_content}
+                      onChange={(e) =>
+                        setForm({ ...form, header_content: e.target.value })
+                      }
+                      maxLength={TEMPLATE_LIMITS.headerTextMaxLength}
+                      className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+                    />
+                    {headerVarCount > 0 && (
+                      <Input
+                        id="template-header-sample"
+                        aria-label={t('headerSampleAria')}
+                        placeholder={t.raw('headerSamplePlaceholder')}
+                        value={form.header_sample}
+                        onChange={(e) =>
+                          setForm({ ...form, header_sample: e.target.value })
+                        }
+                        className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+                      />
+                    )}
+                  </div>
+                )}
+
+                {headerNeedsMedia && (
+                  <div className="mt-2">
+                    <TemplateHeaderMediaField
+                      headerFormat={form.header_format as 'image' | 'video' | 'document'}
+                      value={form.header_media_url}
+                      onChange={(header_media_url) =>
+                        setForm({ ...form, header_media_url })
+                      }
+                      labels={{
+                        uploadImage: t('uploadImage'),
+                        uploadHint: t('uploadHint'),
+                        imageHint: t('imageHint'),
+                        mediaHint: t('mediaHint'),
+                        videoHint: t('videoHint'),
+                        documentHint: t('documentHint'),
+                        mediaUrlPlaceholder: t('mediaUrlPlaceholder', {
+                          format: form.header_format,
+                        }),
+                        pasteUrlInstead: t('pasteUrlInstead'),
+                        useUploadInstead: t('useUploadInstead'),
+                        toastInvalidImage: t('toastInvalidImage'),
+                        toastImageTooLarge: t('toastImageTooLarge', {
+                          size: '{size}',
+                        }),
+                        toastUploadSuccess: t('toastUploadSuccess'),
+                        toastUploadFailed: t('toastUploadFailed'),
+                      }}
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
-                <Label className="text-muted-foreground">{t('language')}</Label>
-                <Input
-                  list="template-language-codes"
-                  placeholder="en_US"
-                  value={form.language}
+                <Label className="text-muted-foreground">{t('bodyText')}</Label>
+                <Textarea
+                  placeholder={t.raw('bodyPlaceholder')}
+                  value={form.body_text}
                   onChange={(e) =>
-                    setForm({ ...form, language: e.target.value })
+                    setForm({ ...form, body_text: e.target.value })
                   }
-                  disabled={editingId !== null}
-                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                  rows={4}
+                  maxLength={TEMPLATE_LIMITS.bodyMaxLength}
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground resize-none"
                 />
-                <datalist id="template-language-codes">
-                  {COMMON_LANGUAGE_CODES.map((code) => (
-                    <option key={code} value={code} />
-                  ))}
-                </datalist>
                 <p className="text-[11px] text-muted-foreground">
-                  {editingId ? (
-                    t('langFixed')
-                  ) : (
-                    <span>{t.rich('langHint', { code: (chunks) => <code>{chunks}</code> })}</span>
-                  )}
+                  {t.raw('bodyHint')}
                 </p>
-              </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label className="text-muted-foreground">{t('header')}</Label>
-              <Select
-                modal={false}
-                value={form.header_format}
-                onValueChange={(val) =>
-                  // Preserve header_content, header_media_url, and
-                  // header_sample across format switches. The submit
-                  // payload builder only reads the field that matches
-                  // the active format, so an orphan value on a hidden
-                  // field is harmless — and keeping it lets the user
-                  // switch formats to compare without losing typing.
-                  setForm({
-                    ...form,
-                    header_format: (val || 'none') as HeaderFormat,
-                  })
-                }
-              >
-                <SelectTrigger className="w-full bg-muted border-border text-foreground">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent
-                  alignItemWithTrigger={false}
-                  className="bg-popover border-border"
-                >
-                  {HEADER_FORMATS.map((type) => (
-                    <SelectItem
-                      key={type}
-                      value={type}
-                      className="text-popover-foreground focus:bg-muted focus:text-popover-foreground"
-                    >
-                      {type === 'none'
-                        ? t('headerNone')
-                        : type === 'text'
-                          ? t('headerText')
-                          : type === 'image'
-                            ? t('headerImage')
-                            : type === 'video'
-                              ? t('headerVideo')
-                              : t('headerDocument')}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {form.header_format === 'text' && (
-                <div className="space-y-2 mt-2">
-                  <Input
-                    id="template-header-text"
-                    aria-label="Header text"
-                    placeholder={t.raw('headerTextPlaceholder')}
-                    value={form.header_content}
-                    onChange={(e) =>
-                      setForm({ ...form, header_content: e.target.value })
-                    }
-                    maxLength={TEMPLATE_LIMITS.headerTextMaxLength}
-                    className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
-                  />
-                  {headerVarCount > 0 && (
-                    <Input
-                      id="template-header-sample"
-                      aria-label={t('headerSampleAria')}
-                      placeholder={t.raw('headerSamplePlaceholder')}
-                      value={form.header_sample}
-                      onChange={(e) =>
-                        setForm({ ...form, header_sample: e.target.value })
-                      }
-                      className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
-                    />
-                  )}
-                </div>
-              )}
-
-              {headerNeedsMedia && (
-                <div className="mt-2">
-                  <TemplateHeaderMediaField
-                    headerFormat={form.header_format as 'image' | 'video' | 'document'}
-                    value={form.header_media_url}
-                    onChange={(header_media_url) =>
-                      setForm({ ...form, header_media_url })
-                    }
-                    labels={{
-                      uploadImage: t('uploadImage'),
-                      uploadHint: t('uploadHint'),
-                      imageHint: t('imageHint'),
-                      mediaHint: t('mediaHint'),
-                      videoHint: t('videoHint'),
-                      documentHint: t('documentHint'),
-                      mediaUrlPlaceholder: t('mediaUrlPlaceholder', {
-                        format: form.header_format,
-                      }),
-                      pasteUrlInstead: t('pasteUrlInstead'),
-                      useUploadInstead: t('useUploadInstead'),
-                      toastInvalidImage: t('toastInvalidImage'),
-                      toastImageTooLarge: t('toastImageTooLarge', {
-                        size: '{size}',
-                      }),
-                      toastUploadSuccess: t('toastUploadSuccess'),
-                      toastUploadFailed: t('toastUploadFailed'),
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-muted-foreground">{t('bodyText')}</Label>
-              <Textarea
-                placeholder={t.raw('bodyPlaceholder')}
-                value={form.body_text}
-                onChange={(e) =>
-                  setForm({ ...form, body_text: e.target.value })
-                }
-                rows={4}
-                maxLength={TEMPLATE_LIMITS.bodyMaxLength}
-                className="bg-muted border-border text-foreground placeholder:text-muted-foreground resize-none"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                {t.raw('bodyHint')}
-              </p>
-
-              {bodyVarCount > 0 && (
-                <div className="space-y-1.5 pt-1">
-                  <Label className="text-[11px] text-muted-foreground">
-                    {t('sampleValues')}
-                  </Label>
-                  {form.body_samples.map((val, i) => {
-                    const inputId = `template-body-sample-${i}`;
-                    return (
-                      <Input
-                        key={i}
-                        id={inputId}
-                        aria-label={t('sampleAria', { var: `{{${i + 1}}}` })}
-                        placeholder={t('samplePlaceholder', { var: `{{${i + 1}}}` })}
-                        value={val}
-                        onChange={(e) => {
-                          const next = [...form.body_samples];
-                          next[i] = e.target.value;
-                          setForm({ ...form, body_samples: next });
-                        }}
-                        className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
-                      />
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-muted-foreground">{t('footer')}</Label>
-              <Input
-                placeholder={t('footerPlaceholder')}
-                value={form.footer_text}
-                onChange={(e) =>
-                  setForm({ ...form, footer_text: e.target.value })
-                }
-                maxLength={TEMPLATE_LIMITS.footerMaxLength}
-                className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-muted-foreground">{t('buttons')}</Label>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addButton}
-                  disabled={form.buttons.length >= TEMPLATE_LIMITS.maxButtonsTotal}
-                  className="border-border bg-transparent text-muted-foreground hover:bg-muted h-7 text-xs"
-                >
-                  <Plus className="size-3" />
-                  {t('addButton')}
-                </Button>
-              </div>
-              {form.buttons.length === 0 ? (
-                <p className="text-[11px] text-muted-foreground">
-                  {t('buttonsLimit', { max: TEMPLATE_LIMITS.maxButtonsTotal })}
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {form.buttons.map((btn, i) => (
-                    <div
-                      key={i}
-                      className="space-y-2 rounded border border-border bg-muted/50 p-2"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Select
-                          modal={false}
-                          value={btn.type}
-                          onValueChange={(val) => {
-                            // Same null guard as the Header Select
-                            // (per PR 148): @base-ui Select fires
-                            // onValueChange(null) on deselect.
-                            if (!val) return;
-                            changeButtonType(i, val as TemplateButton['type']);
-                          }}
-                        >
-                          <SelectTrigger className="w-40 bg-muted border-border text-foreground h-8 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent
-                            alignItemWithTrigger={false}
-                            className="bg-popover border-border"
-                          >
-                            <SelectItem
-                              value="QUICK_REPLY"
-                              className="text-popover-foreground focus:bg-muted focus:text-popover-foreground"
-                            >
-                              {t('btnQuickReply')}
-                            </SelectItem>
-                            <SelectItem
-                              value="URL"
-                              className="text-popover-foreground focus:bg-muted focus:text-popover-foreground"
-                            >
-                              {t('btnUrl')}
-                            </SelectItem>
-                            <SelectItem
-                              value="PHONE_NUMBER"
-                              className="text-popover-foreground focus:bg-muted focus:text-popover-foreground"
-                            >
-                              {t('btnPhone')}
-                            </SelectItem>
-                            <SelectItem
-                              value="COPY_CODE"
-                              className="text-popover-foreground focus:bg-muted focus:text-popover-foreground"
-                            >
-                              {t('btnCopyCode')}
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
+                {bodyVarCount > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <Label className="text-[11px] text-muted-foreground">
+                      {t('sampleValues')}
+                    </Label>
+                    {form.body_samples.map((val, i) => {
+                      const inputId = `template-body-sample-${i}`;
+                      return (
                         <Input
-                          placeholder={t('btnLabelPlaceholder')}
-                          value={btn.text}
-                          maxLength={TEMPLATE_LIMITS.buttonTextMaxLength}
-                          onChange={(e) =>
-                            updateButton(i, { text: e.target.value })
-                          }
-                          className="flex-1 bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
+                          key={i}
+                          id={inputId}
+                          aria-label={t('sampleAria', { var: `{{${i + 1}}}` })}
+                          placeholder={t('samplePlaceholder', { var: `{{${i + 1}}}` })}
+                          value={val}
+                          onChange={(e) => {
+                            const next = [...form.body_samples];
+                            next[i] = e.target.value;
+                            setForm({ ...form, body_samples: next });
+                          }}
+                          className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
                         />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeButton(i)}
-                          className="text-muted-foreground hover:text-red-400 hover:bg-red-950/30 size-7"
-                        >
-                          <X className="size-3.5" />
-                        </Button>
-                      </div>
-                      {btn.type === 'URL' && (
-                        <div className="space-y-1 pl-1">
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">{t('footer')}</Label>
+                <Input
+                  placeholder={t('footerPlaceholder')}
+                  value={form.footer_text}
+                  onChange={(e) =>
+                    setForm({ ...form, footer_text: e.target.value })
+                  }
+                  maxLength={TEMPLATE_LIMITS.footerMaxLength}
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-muted-foreground">{t('buttons')}</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addButton}
+                    disabled={form.buttons.length >= TEMPLATE_LIMITS.maxButtonsTotal}
+                    className="border-border bg-transparent text-muted-foreground hover:bg-muted h-7 text-xs"
+                  >
+                    <Plus className="size-3" />
+                    {t('addButton')}
+                  </Button>
+                </div>
+                {form.buttons.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    {t('buttonsLimit', { max: TEMPLATE_LIMITS.maxButtonsTotal })}
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {form.buttons.map((btn, i) => (
+                      <div
+                        key={i}
+                        className="space-y-2 rounded border border-border bg-muted/50 p-2"
+                      >
+                        <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                          <Select
+                            modal={false}
+                            value={btn.type}
+                            onValueChange={(val) => {
+                              // Same null guard as the Header Select
+                              // (per PR 148): @base-ui Select fires
+                              // onValueChange(null) on deselect.
+                              if (!val) return;
+                              changeButtonType(i, val as TemplateButton['type']);
+                            }}
+                          >
+                            <SelectTrigger className="w-full bg-muted border-border text-foreground h-8 text-xs sm:w-40">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent
+                              alignItemWithTrigger={false}
+                              className="bg-popover border-border"
+                            >
+                              <SelectItem
+                                value="QUICK_REPLY"
+                                className="text-popover-foreground focus:bg-muted focus:text-popover-foreground"
+                              >
+                                {t('btnQuickReply')}
+                              </SelectItem>
+                              <SelectItem
+                                value="URL"
+                                className="text-popover-foreground focus:bg-muted focus:text-popover-foreground"
+                              >
+                                {t('btnUrl')}
+                              </SelectItem>
+                              <SelectItem
+                                value="PHONE_NUMBER"
+                                className="text-popover-foreground focus:bg-muted focus:text-popover-foreground"
+                              >
+                                {t('btnPhone')}
+                              </SelectItem>
+                              <SelectItem
+                                value="COPY_CODE"
+                                className="text-popover-foreground focus:bg-muted focus:text-popover-foreground"
+                              >
+                                {t('btnCopyCode')}
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
                           <Input
-                            placeholder={t.raw('urlPlaceholder')}
-                            value={btn.url}
+                            placeholder={t('btnLabelPlaceholder')}
+                            value={btn.text}
+                            maxLength={TEMPLATE_LIMITS.buttonTextMaxLength}
                             onChange={(e) =>
-                              updateButton(i, { url: e.target.value })
+                              updateButton(i, { text: e.target.value })
                             }
-                            className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
+                            className="min-w-0 flex-1 bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
                           />
-                          {extractVariableIndices(btn.url).length > 0 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeButton(i)}
+                            className="text-muted-foreground hover:text-red-400 hover:bg-red-950/30 size-7"
+                          >
+                            <X className="size-3.5" />
+                          </Button>
+                        </div>
+                        {btn.type === 'URL' && (
+                          <div className="space-y-1 pl-1">
                             <Input
-                              placeholder={t.raw('urlSamplePlaceholder')}
-                              value={btn.example ?? ''}
+                              placeholder={t.raw('urlPlaceholder')}
+                              value={btn.url}
                               onChange={(e) =>
-                                updateButton(i, { example: e.target.value })
+                                updateButton(i, { url: e.target.value })
                               }
                               className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
                             />
-                          )}
-                          <p className="text-[10px] text-muted-foreground">
-                            Order fulfilled (any carrier): use the platform
-                            redirect URL, e.g.{' '}
-                            <span className="font-mono">
-                              {getWhatsAppTrackingButtonUrlTemplate()}
-                            </span>
-                            . In the flow, map button {`{{1}}`} to{' '}
-                            {`{{ vars.tracking_url_redirect_suffix }}`} — we
-                            redirect to the courier tracking link at send time.
-                            {extractVariableIndices(btn.url).length === 0 && (
-                              <>
-                                {' '}
-                                A static URL (no {`{{1}}`}) sends the same link
-                                to every customer.
-                              </>
+                            {extractVariableIndices(btn.url).length > 0 && (
+                              <Input
+                                placeholder={t.raw('urlSamplePlaceholder')}
+                                value={btn.example ?? ''}
+                                onChange={(e) =>
+                                  updateButton(i, { example: e.target.value })
+                                }
+                                className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
+                              />
                             )}
-                          </p>
-                        </div>
-                      )}
-                      {btn.type === 'PHONE_NUMBER' && (
-                        <Input
-                          placeholder={t('phonePlaceholder')}
-                          value={btn.phone_number}
-                          onChange={(e) =>
-                            updateButton(i, { phone_number: e.target.value })
-                          }
-                          className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
-                        />
-                      )}
-                      {btn.type === 'COPY_CODE' && (
-                        <Input
-                          placeholder={t('codePlaceholder')}
-                          value={btn.example}
-                          onChange={(e) =>
-                            updateButton(i, { example: e.target.value })
-                          }
-                          className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
-                        />
-                      )}
-                    </div>
-                  ))}
+                            <p className="text-[10px] text-muted-foreground">
+                              Order fulfilled (any carrier): use the platform
+                              redirect URL, e.g.{' '}
+                              <span className="font-mono">
+                                {getWhatsAppTrackingButtonUrlTemplate()}
+                              </span>
+                              . In the flow, map button {`{{1}}`} to{' '}
+                              {`{{ vars.tracking_url_redirect_suffix }}`} — we
+                              redirect to the courier tracking link at send time.
+                              {extractVariableIndices(btn.url).length === 0 && (
+                                <>
+                                  {' '}
+                                  A static URL (no {`{{1}}`}) sends the same link
+                                  to every customer.
+                                </>
+                              )}
+                            </p>
+                          </div>
+                        )}
+                        {btn.type === 'PHONE_NUMBER' && (
+                          <Input
+                            placeholder={t('phonePlaceholder')}
+                            value={btn.phone_number}
+                            onChange={(e) =>
+                              updateButton(i, { phone_number: e.target.value })
+                            }
+                            className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
+                          />
+                        )}
+                        {btn.type === 'COPY_CODE' && (
+                          <Input
+                            placeholder={t('codePlaceholder')}
+                            value={btn.example}
+                            onChange={(e) =>
+                              updateButton(i, { example: e.target.value })
+                            }
+                            className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {form.category !== 'Authentication' && (
+                <div className="rounded-md border border-border bg-muted/30 p-3">
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <p className="text-xs font-medium text-foreground">Preview</p>
+                    <Badge
+                      variant="outline"
+                      className="border-primary/30 text-[10px] text-primary"
+                    >
+                      {form.category}
+                    </Badge>
+                    <span className="text-[10px] text-muted-foreground">
+                      As seen on customer&apos;s phone
+                    </span>
+                  </div>
+                  <TemplateMobilePreview
+                    bodyText={previewBodyText.trim() || 'Your message body…'}
+                    headerType={previewHeaderType}
+                    headerContent={previewHeaderContent}
+                    headerMediaUrl={previewHeaderMediaUrl}
+                    footerText={form.footer_text.trim() || null}
+                    buttons={previewButtons}
+                  />
                 </div>
               )}
             </div>
-
-            {form.category !== 'Authentication' && (
-              <div className="rounded-md border border-border bg-muted/30 p-3">
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <p className="text-xs font-medium text-foreground">Preview</p>
-                  <Badge
-                    variant="outline"
-                    className="border-primary/30 text-[10px] text-primary"
-                  >
-                    {form.category}
-                  </Badge>
-                  <span className="text-[10px] text-muted-foreground">
-                    As seen on customer&apos;s phone
-                  </span>
-                </div>
-                <TemplateMobilePreview
-                  bodyText={previewBodyText.trim() || 'Your message body…'}
-                  headerType={previewHeaderType}
-                  headerContent={previewHeaderContent}
-                  headerMediaUrl={previewHeaderMediaUrl}
-                  footerText={form.footer_text.trim() || null}
-                  buttons={previewButtons}
-                />
-              </div>
-            )}
           </div>
 
-          <DialogFooter className="bg-popover border-border">
+          <DialogFooter className="m-0 shrink-0 bg-popover border-border px-6">
             <Button
               variant="outline"
               onClick={() => setDialogOpen(false)}
