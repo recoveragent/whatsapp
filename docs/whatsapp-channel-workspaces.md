@@ -57,6 +57,13 @@ channel. Other tabs reload when the selection changes through Realtime.
    records legacy contact data, flows and unsent broadcasts needing explicit
    attribution. Review all brands, then resume webhook/cron ingestion.
 
+If an older copy of migration 106 fails with `relation "channel_contact_moves"
+does not exist`, use the updated migration, which keeps the contact mapping in
+a local variable instead of a temporary table. Run `ROLLBACK;` first to clear
+any failed transaction, then run the complete updated 106 file (including
+`BEGIN;` and `COMMIT;`). Do not run only the selected backfill block. The failed
+transaction rolls back its changes; the migration also supports reruns.
+
 ## Existing data
 
 Conversation IDs and message history are preserved. Conversations and templates

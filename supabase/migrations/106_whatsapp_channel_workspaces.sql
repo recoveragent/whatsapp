@@ -111,13 +111,9 @@ DO $$ BEGIN
   END IF;
 END $$;
 
-CREATE TEMP TABLE channel_contact_moves (
-  old_contact_id uuid, new_contact_id uuid, workspace_account_id uuid,
-  PRIMARY KEY (old_contact_id, workspace_account_id)
-) ON COMMIT DROP;
-
 DO $$
 DECLARE channel record; person record; new_workspace uuid; new_contact uuid; item record;
+  contact_moves jsonb;
 BEGIN
   FOR channel IN
     SELECT c.*, row_number() OVER (PARTITION BY c.account_id ORDER BY c.is_default DESC, c.created_at, c.id) AS position
@@ -129,6 +125,9 @@ BEGIN
       CONTINUE;
     END IF;
     new_workspace := create_channel_tenant(channel.account_id);
+    -- Keep the backfill map inside this block: no temporary-table lifetime or
+    -- SQL-editor session/search_path dependency.
+    contact_moves := '{}'::jsonb;
     UPDATE accounts SET whatsapp_channel_name = channel.reference_name, channel_phone_number_id = channel.phone_number_id WHERE id = new_workspace;
 
     -- Separate customer records. Only basic identity fields move; shared
@@ -140,7 +139,7 @@ BEGIN
       INSERT INTO contacts(id, user_id, account_id, phone, name, email, company, avatar_url, created_at, updated_at)
         VALUES(new_contact, person.user_id, new_workspace, person.phone, person.name, person.email,
           person.company, person.avatar_url, person.created_at, person.updated_at);
-      INSERT INTO channel_contact_moves VALUES(person.id, new_contact, new_workspace);
+      contact_moves := contact_moves || jsonb_build_object(person.id::text, new_contact::text);
       INSERT INTO channel_isolation_review(account_id, source_table, source_id, reason)
         VALUES(channel.account_id, 'contacts', person.id,
           'Contact was used by multiple-channel activity. Channel conversations were separated; existing shared notes, tags, custom values and deals remain on Primary for explicit review.')
@@ -165,9 +164,9 @@ BEGIN
 
     UPDATE whatsapp_config SET account_id = new_workspace, is_default = true WHERE id = channel.id;
     UPDATE message_templates SET account_id = new_workspace WHERE whatsapp_config_id = channel.id;
-    UPDATE conversations v SET account_id = new_workspace, contact_id = m.new_contact_id
-      FROM channel_contact_moves m WHERE v.whatsapp_config_id = channel.id
-        AND m.old_contact_id = v.contact_id AND m.workspace_account_id = new_workspace;
+    UPDATE conversations v SET account_id = new_workspace,
+      contact_id = (contact_moves->>v.contact_id::text)::uuid
+      WHERE v.whatsapp_config_id = channel.id AND contact_moves ? v.contact_id::text;
 
     -- Direct conversation-owned records (private notes, notifications,
     -- product sends, AI usage, etc.) follow their conversation. Their contact
