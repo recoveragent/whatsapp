@@ -30,7 +30,7 @@ export function ChannelSelector() {
     }
   }
 
-  if (!channels.length) return null;
+  if (!channels.some((channel) => channel.status === 'connected')) return null;
   return (
     <div className="min-w-0 max-w-xs">
       <label htmlFor="active-whatsapp-channel" className="block text-xs text-muted-foreground">WhatsApp channel</label>
