@@ -131,6 +131,7 @@ function renderNodeConfigBody({
             label={t("textToCustomer")}
             value={(cfg as { text?: string }).text ?? ""}
             onChange={(v) => onUpdateConfig({ text: v })}
+            rows={4}
           />
           <NextNodeRow
             value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
