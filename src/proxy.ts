@@ -44,8 +44,12 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
-  const respond = <T extends NextResponse>(response: T): T =>
-    finalizeFrameHeaders(request, withRefreshedCookies(response))
+  const respond = <T extends NextResponse>(response: T): T => {
+    // Include redirects: caching a prefetched /settings -> /login response
+    // can bounce a signed-in user through /login back to /dashboard.
+    response.headers.set('Cache-Control', 'private, no-store, max-age=0')
+    return finalizeFrameHeaders(request, withRefreshedCookies(response))
+  }
 
   // Auth pages - redirect to dashboard if already logged in.
   // Exception: when an invite token is in the query string we
