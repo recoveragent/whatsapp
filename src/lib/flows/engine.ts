@@ -1534,6 +1534,9 @@ async function handleReplyForActiveRun(
 ): Promise<DispatchInboundResult> {
   const message = input.message;
 
+  // Any customer response ends the no-response timer, even without a branch match.
+  await cancelAllReplyTimeouts(db, run.id);
+
   // Inbound may land on the canonical inbox thread while the run still
   // points at an older duplicate shell — keep them aligned so close
   // and outbound sends hit the conversation the agent sees.
@@ -1751,10 +1754,8 @@ async function handleReplyForActiveRun(
     // Re-send the same prompt. Same node, no current_node_key change.
     if (currentNode.node_type === "send_buttons") {
       await sendButtonsAndSuspend(db, run, currentNode);
-      await maybeScheduleReplyTimeoutForNode(db, run, currentNode, true);
     } else if (currentNode.node_type === "send_list") {
       await sendListAndSuspend(db, run, currentNode);
-      await maybeScheduleReplyTimeoutForNode(db, run, currentNode, true);
     } else if (currentNode.node_type === "collect_input") {
       // Customer typed something we couldn't accept (empty after trim,
       // or var_key missing — rare). Re-send the prompt so they try again.
@@ -1773,7 +1774,6 @@ async function handleReplyForActiveRun(
           detail: err instanceof Error ? err.message : String(err),
         });
       }
-      await maybeScheduleReplyTimeoutForNode(db, run, currentNode, true);
     } else if (currentNode.node_type === "send_address") {
       const cfg = currentNode.config as unknown as SendAddressNodeConfig;
       try {
@@ -1809,7 +1809,6 @@ async function handleReplyForActiveRun(
           detail: err instanceof Error ? err.message : String(err),
         });
       }
-      await maybeScheduleReplyTimeoutForNode(db, run, currentNode, true);
     } else if (currentNode.node_type === "send_flow") {
       const cfg = currentNode.config as unknown as SendFlowNodeConfig;
       try {
@@ -1848,7 +1847,6 @@ async function handleReplyForActiveRun(
           detail: err instanceof Error ? err.message : String(err),
         });
       }
-      await maybeScheduleReplyTimeoutForNode(db, run, currentNode, true);
     }
     return { consumed: true, flow_run_id: run.id, outcome: "fallback_fired" };
   }

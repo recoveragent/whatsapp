@@ -729,3 +729,26 @@ describe("reachableFromEntry", () => {
     expect(set).toEqual(new Set(["a", "b"]));
   });
 });
+
+
+describe("timeout branch reachability", () => {
+  it.each(["send_template", "send_buttons", "send_list", "collect_input", "send_address", "send_flow"])(
+    "follows the timeout branch of %s and its descendants",
+    (node_type) => {
+      const config = {
+        reply_timeout_enabled: true,
+        reply_timeout_amount: 1,
+        reply_timeout_unit: "minutes",
+        reply_timeout_next_node_key: "reminder",
+      };
+      const nodes = [
+        { node_key: "prompt", node_type, config },
+        { node_key: "reminder", node_type: "send_message", config: { next_node_key: "done" } },
+        { node_key: "done", node_type: "end", config: {} },
+      ];
+      expect([...reachableFromEntry("prompt", nodes)]).toEqual(["prompt", "reminder", "done"]);
+      config.reply_timeout_enabled = false;
+      expect([...reachableFromEntry("prompt", nodes)]).toEqual(["prompt"]);
+    },
+  );
+});

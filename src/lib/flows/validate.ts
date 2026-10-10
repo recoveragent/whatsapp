@@ -1688,6 +1688,15 @@ function nonEmpty(v: unknown): boolean {
 }
 
 function outgoingEdges(node: NodeInput): string[] {
+  const out = outgoingReplyEdges(node);
+  const timeout = nodeTypeHasReplyTimeoutSlot(node.node_type)
+    ? parseReplyTimeout(node.config)
+    : null;
+  if (timeout) out.push(timeout.next_node_key);
+  return out;
+}
+
+function outgoingReplyEdges(node: NodeInput): string[] {
   switch (node.node_type) {
     case "start":
     case "send_message":
