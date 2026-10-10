@@ -31,7 +31,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAccountWithCategory } from "./brand-accounts";
 import { isLeadGenBrand } from "./brand-category";
-import { loadChannelWorkspaces } from '@/lib/whatsapp/channel-workspace';
 import {
   fetchOrganizationMembership,
   SUPER_ADMIN_ACTING_ROLE,
@@ -70,15 +69,6 @@ export class BrandContextRequiredError extends ForbiddenError {
   }
 }
 
-export class ChannelContextRequiredError extends ForbiddenError {
-  readonly needsChannelContext = true;
-  constructor(readonly migrationRequired = false) {
-    super(migrationRequired
-      ? 'Channel isolation migration is required before using this brand. Apply migrations 105 and 106.'
-      : 'Select a WhatsApp channel to continue');
-  }
-}
-
 /**
  * Convert one of the typed errors above (or anything else) into a
  * `NextResponse`. Routes can do:
@@ -92,9 +82,6 @@ export class ChannelContextRequiredError extends ForbiddenError {
  * server internals out of the wire.
  */
 export function toErrorResponse(err: unknown): NextResponse {
-  if (err instanceof ChannelContextRequiredError) {
-    return NextResponse.json({ error: err.message, needsChannelContext: true, migrationRequired: err.migrationRequired }, { status: 409 });
-  }
   if (err instanceof BrandContextRequiredError) {
     return NextResponse.json(
       { error: err.message, needsBrandContext: true },
@@ -119,10 +106,6 @@ export interface AccountContext {
   userId: string;
   /** Active brand id (profile account or super-admin acting brand). */
   accountId: string;
-  /** Shared brand/team; accountId above is the isolated channel tenant. */
-  brandAccountId?: string;
-  whatsappConfigId?: string;
-  channelName?: string;
   /** Effective role within the active brand. */
   role: AccountRole;
   /** Lightweight account meta — id + name. */
@@ -225,20 +208,7 @@ export async function getCurrentBrandAccount(): Promise<AccountContext> {
 }
 
 export async function getCurrentAccount(): Promise<AccountContext> {
-  const brand = await getCurrentBrandAccount();
-  const state = await loadChannelWorkspaces(brand.supabase, brand.accountId, brand.userId);
-  if (state.migrationRequired || (state.channels.length > 0 && !state.active)) {
-    throw new ChannelContextRequiredError(state.migrationRequired);
-  }
-  if (!state.active) return { ...brand, brandAccountId: brand.accountId };
-  return {
-    ...brand,
-    brandAccountId: brand.accountId,
-    accountId: state.active.accountId,
-    whatsappConfigId: state.active.whatsappConfigId ?? undefined,
-    channelName: state.active.name,
-    account: { ...brand.account, id: state.active.accountId },
-  };
+  return getCurrentBrandAccount();
 }
 
 /**
@@ -266,7 +236,7 @@ export async function requireLeadGenAccount(
   min?: AccountRole,
 ): Promise<AccountContext> {
   const ctx = min ? await requireRole(min) : await getCurrentAccount();
-  const account = await fetchAccountWithCategory(ctx.supabase, ctx.brandAccountId ?? ctx.accountId);
+  const account = await fetchAccountWithCategory(ctx.supabase, ctx.accountId);
   if (!isLeadGenBrand(account?.brand_category)) {
     throw new ForbiddenError(
       "Lead management features are only available for lead generation brands",

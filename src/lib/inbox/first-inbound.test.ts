@@ -15,6 +15,7 @@ function mockDb(counts: { customer?: number; outbound?: number }) {
     from: (table: string) => {
       expect(table).toBe('messages')
       return {
+        _outbound: false,
         select: vi.fn().mockReturnThis(),
         in: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
@@ -22,7 +23,7 @@ function mockDb(counts: { customer?: number; outbound?: number }) {
           if (args[0] === 'content_type') this._outbound = true
           return this
         }),
-        then(onFulfilled: (value: { count: number; error: null }) => unknown) {
+        then(onFulfilled: (value: { count: number; error: null }) => unknown): Promise<unknown> {
           const count = this._outbound ? (counts.outbound ?? 0) : (counts.customer ?? 0)
           return Promise.resolve(onFulfilled({ count, error: null }))
         },

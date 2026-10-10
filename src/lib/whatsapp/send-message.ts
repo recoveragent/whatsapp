@@ -256,10 +256,9 @@ export async function sendMessageToConversation(
     .from('whatsapp_config')
     .select('*')
     .eq('account_id', accountId)
-    .eq('id', conversation.whatsapp_config_id)
     .single();
 
-  if (configError || !config) {
+  if (configError || !config || !config.access_token || config.status === 'disconnected') {
     throw new SendMessageError(
       'whatsapp_not_configured',
       'WhatsApp not configured. Please set up your WhatsApp integration first.',

@@ -18,33 +18,13 @@ export async function GET() {
   try {
     const ctx = await getCurrentAccount();
 
-    let { data: configs, error } = await ctx.supabase
+    const { data: config, error } = await ctx.supabase
       .from('whatsapp_config')
       .select(
-        'id, reference_name, phone_number_id, status, registered_at, connected_at, last_registration_error, access_token, is_default'
+        'id, phone_number_id, status, registered_at, connected_at, last_registration_error, access_token'
       )
       .eq('account_id', ctx.accountId)
-      .order('is_default', { ascending: false })
-      .order('created_at', { ascending: true });
-
-    // Workspaces that pre-date migration 105 have no default flag yet.
-    // Continue listing their senders in creation order rather than hiding
-    // the picker altogether.
-    if (error?.code === '42703') {
-      const fallback = await ctx.supabase
-        .from('whatsapp_config')
-        .select(
-          'id, reference_name, phone_number_id, status, registered_at, connected_at, last_registration_error, access_token'
-        )
-        .eq('account_id', ctx.accountId)
-        .order('created_at', { ascending: true });
-      configs =
-        fallback.data?.map((config) => ({
-          ...config,
-          is_default: false,
-        })) ?? null;
-      error = fallback.error;
-    }
+      .maybeSingle();
 
     if (error) {
       console.error('[GET /api/whatsapp/connection]', error);
@@ -54,7 +34,7 @@ export async function GET() {
       );
     }
 
-    if (!configs?.length) {
+    if (!config?.access_token) {
       return NextResponse.json({
         configured: false,
         connected: false,
@@ -64,53 +44,26 @@ export async function GET() {
       });
     }
 
-    const numbers = await Promise.all(
-      configs.map(async (config) => {
-        let phoneInfo: {
-          verified_name?: string;
-          display_phone_number?: string;
-        } | null = null;
-        let connected = config.status === 'connected';
-        try {
-          phoneInfo = await verifyPhoneNumber({
-            phoneNumberId: config.phone_number_id,
-            accessToken: decrypt(config.access_token),
-          });
-          connected = true;
-        } catch (err) {
-          console.warn(
-            '[GET /api/whatsapp/connection] Meta verify failed:',
-            err
-          );
-          connected = false;
-        }
-        return {
-          id: config.id,
-          reference_name: config.reference_name,
-          phone_number_id: config.phone_number_id,
-          is_default: config.is_default,
-          verified_name: phoneInfo?.verified_name ?? null,
-          display_phone_number: phoneInfo?.display_phone_number ?? null,
-          status: config.status,
-          connected,
-          needs_reconnect: !connected,
-          registered: Boolean(config.registered_at),
-          registered_at: config.registered_at,
-          last_registration_error: config.last_registration_error,
-        };
-      })
-    );
-    const config = numbers[0];
-    const connected = numbers.some((number) => number.connected);
+    let phoneInfo: { verified_name?: string; display_phone_number?: string } | null = null;
+    let connected = false;
+    try {
+      phoneInfo = await verifyPhoneNumber({
+        phoneNumberId: config.phone_number_id,
+        accessToken: decrypt(config.access_token),
+      });
+      connected = true;
+    } catch (err) {
+      console.warn('[GET /api/whatsapp/connection] Meta verify failed:', err);
+    }
 
     return NextResponse.json({
       configured: true,
       connected,
       needs_reconnect: !connected,
-      numbers,
+      id: config.id,
       phone_number_id: config.phone_number_id,
-      verified_name: config.verified_name,
-      display_phone_number: config.display_phone_number,
+      verified_name: phoneInfo?.verified_name ?? null,
+      display_phone_number: phoneInfo?.display_phone_number ?? null,
       status: config.status,
       registered: Boolean(config.registered_at),
       registered_at: config.registered_at,
@@ -139,7 +92,7 @@ export async function DELETE(request: Request) {
     }
     const { error } = await ctx.supabase
       .from('whatsapp_config')
-      .delete()
+      .update({ access_token: '', verify_token: null, status: 'disconnected', connected_at: null, registered_at: null, last_registration_error: null })
       .eq('account_id', ctx.accountId)
       .eq('id', configId);
 

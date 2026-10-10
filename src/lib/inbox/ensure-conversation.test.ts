@@ -51,7 +51,6 @@ describe('ensureConversationForContact', () => {
     }
     chain.eq
       .mockImplementationOnce(() => chain)
-      .mockImplementationOnce(() => chain)
       .mockResolvedValueOnce({
         data: [{ id: 'conv-1', created_at: '2026-01-01' }],
         error: null,
@@ -86,7 +85,6 @@ describe('ensureConversationForContact', () => {
       eq: vi.fn(),
     }
     chain.eq
-      .mockImplementationOnce(() => chain)
       .mockImplementationOnce(() => chain)
       .mockResolvedValueOnce({
         data: [],
@@ -131,7 +129,6 @@ describe('ensureConversationForContact', () => {
       }
       chain.eq
         .mockImplementationOnce(() => chain)
-        .mockImplementationOnce(() => chain)
         .mockResolvedValueOnce({ data, error: null })
       return chain
     }
@@ -172,7 +169,7 @@ describe('ensureConversationForContact', () => {
     expect(selectCalls).toBe(2)
   })
 
-  it('uses the account default WhatsApp number when none is supplied', async () => {
+  it('uses the account single WhatsApp number when none is supplied', async () => {
     const inserted = vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         single: vi.fn().mockResolvedValue({ data: { id: 'new-conv' }, error: null }),
@@ -181,9 +178,7 @@ describe('ensureConversationForContact', () => {
     const conversations = {
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: [], error: null }),
-          }),
+          eq: vi.fn().mockResolvedValue({ data: [], error: null }),
         }),
       }),
       insert: inserted,
@@ -191,13 +186,7 @@ describe('ensureConversationForContact', () => {
     const whatsappConfig = {
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
-          order: vi.fn().mockReturnValue({
-            order: vi.fn().mockReturnValue({
-              limit: vi.fn().mockReturnValue({
-                maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'default-config' }, error: null }),
-              }),
-            }),
-          }),
+          maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'default-config' }, error: null }),
         }),
       }),
     }
@@ -218,62 +207,5 @@ describe('ensureConversationForContact', () => {
     }))
   })
 
-  it('falls back to the oldest WhatsApp number before migration 105 is applied', async () => {
-    const inserted = vi.fn().mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({ data: { id: 'new-conv' }, error: null }),
-      }),
-    })
-    const conversations = {
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: [], error: null }),
-          }),
-        }),
-      }),
-      insert: inserted,
-    }
-    const fallbackQuery = {
-      eq: vi.fn().mockReturnValue({
-        order: vi.fn().mockReturnValue({
-          limit: vi.fn().mockReturnValue({
-            maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'legacy-config' }, error: null }),
-          }),
-        }),
-      }),
-    }
-    const preferredQuery = {
-      eq: vi.fn().mockReturnValue({
-        order: vi.fn().mockReturnValue({
-          order: vi.fn().mockReturnValue({
-            limit: vi.fn().mockReturnValue({
-              maybeSingle: vi.fn().mockResolvedValue({
-                data: null,
-                error: { code: '42703', message: 'is_default is missing' },
-              }),
-            }),
-          }),
-        }),
-      }),
-    }
-    const whatsappConfig = {
-      select: vi.fn()
-        .mockReturnValueOnce(preferredQuery)
-        .mockReturnValueOnce(fallbackQuery),
-    }
-    const db = {
-      from: (table: string) => {
-        if (table === 'conversations') return conversations
-        if (table === 'whatsapp_config') return whatsappConfig
-        throw new Error(`unexpected table ${table}`)
-      },
-    }
 
-    await ensureConversationForContact(db as never, 'acc-1', 'user-1', 'contact-1')
-
-    expect(inserted).toHaveBeenCalledWith(expect.objectContaining({
-      whatsapp_config_id: 'legacy-config',
-    }))
-  })
 })

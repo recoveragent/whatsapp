@@ -33,6 +33,7 @@ interface AccountContextPayload {
 }
 
 interface ConnectionPayload {
+  id?: string;
   configured: boolean;
   connected: boolean;
   needs_reconnect?: boolean;
@@ -46,17 +47,6 @@ interface ConnectionPayload {
   message?: string;
   error?: string;
   needsBrandContext?: boolean;
-  numbers?: Array<{
-    id: string;
-    reference_name: string;
-    phone_number_id: string;
-    display_phone_number?: string | null;
-    verified_name?: string | null;
-    connected: boolean;
-    registered?: boolean;
-    registered_at?: string | null;
-    last_registration_error?: string | null;
-  }>;
 }
 
 export function WhatsAppBrandConnection() {
@@ -257,7 +247,7 @@ export function WhatsAppBrandConnection() {
   const displayNumber =
     connection?.display_phone_number || connection?.phone_number_id || null;
   const verifiedName = connection?.verified_name;
-  const showConnect = canEditSettings && Boolean(accountCtx?.linked);
+  const showConnect = canEditSettings && Boolean(accountCtx?.linked) && !configured;
   const registrationIncomplete =
     canEditSettings &&
     configured &&
@@ -283,30 +273,6 @@ export function WhatsAppBrandConnection() {
             onComplete={async () => { await refreshProfile(); await load(); }}
             registrationOnly={registrationIncomplete}
           />
-        )}
-
-        {(connection?.numbers?.length ?? 0) > 0 && (
-          <div className="space-y-3">
-            {connection!.numbers!.map((number) => (
-              <Card key={number.id}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center justify-between gap-3 text-base text-foreground">
-                    <span className="flex min-w-0 items-center gap-2"><Phone className="size-4 shrink-0" /><span className="truncate">{number.reference_name}</span></span>
-                    <span className={number.connected ? 'text-xs font-medium text-emerald-400' : 'text-xs font-medium text-amber-400'}>{number.connected ? 'Connected' : 'Needs attention'}</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                  <p className="text-foreground">{number.display_phone_number || number.phone_number_id}</p>
-                  {number.verified_name && <p className="text-muted-foreground">{number.verified_name}</p>}
-                  {canEditSettings && (
-                    <Button type="button" variant="outline" size="sm" disabled={disconnecting} onClick={() => void handleDisconnect(number.id)}>
-                      <Unlink className="mr-1.5 size-4" /> Disconnect
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
         )}
 
         <Alert
@@ -347,7 +313,7 @@ export function WhatsAppBrandConnection() {
                     {connection?.message ??
                       'A number is on file but Meta verification failed.'}
                     {canEditSettings
-                      ? ' Use Connect with Meta above to link a new number, or Disconnect below to clear this one first.'
+                      ? ' Disconnect below before connecting a replacement number.'
                       : ' Contact your workspace admin or Recover Agent.'}
                   </>
                 ) : canEditSettings ? (
@@ -364,7 +330,7 @@ export function WhatsAppBrandConnection() {
 
         {configured && connected && canEditSettings && <WhatsAppWebhookSetupCard />}
 
-        {configured && !connection?.numbers?.length && (
+        {configured && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base text-foreground">
@@ -410,7 +376,7 @@ export function WhatsAppBrandConnection() {
                     variant="outline"
                     size="sm"
                     disabled={disconnecting}
-                    onClick={() => void handleDisconnect(connection?.numbers?.[0]?.id)}
+                    onClick={() => void handleDisconnect(connection?.id)}
                   >
                     {disconnecting ? (
                       <Loader2 className="size-4 animate-spin" />

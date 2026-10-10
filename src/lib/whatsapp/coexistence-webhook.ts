@@ -68,6 +68,7 @@ async function loadConfigByPhoneNumberId(
     .eq('phone_number_id', phoneNumberId);
 
   if (error || !data?.length) return null;
+  if (data[0].status === 'disconnected' || data[0].access_token === '') return null;
   if (data.length > 1) {
     console.warn(
       `[coexistence-webhook] multiple configs for phone_number_id ${phoneNumberId}`,

@@ -94,7 +94,6 @@ export async function POST(request: Request) {
       template_name,
       template_language,
       template_params,
-      whatsapp_config_id,
     } = body
 
     // Normalize to a list of {phone, params} regardless of shape.
@@ -126,17 +125,8 @@ export async function POST(request: Request) {
       )
     }
 
-    let configQuery = supabase
-      .from('whatsapp_config')
-      .select('*')
-      .eq('account_id', accountId)
-    if (typeof whatsapp_config_id === 'string' && whatsapp_config_id) {
-      configQuery = configQuery.eq('id', whatsapp_config_id)
-    } else {
-      configQuery = configQuery.order('is_default', { ascending: false }).order('created_at', { ascending: true }).limit(1)
-    }
-    const { data: configs, error: configError } = await configQuery
-    const config = configs?.[0] ?? null
+    const { data: config, error: configError } = await supabase
+      .from('whatsapp_config').select('*').eq('account_id', accountId).maybeSingle()
 
     if (configError || !config) {
       return NextResponse.json(

@@ -127,7 +127,7 @@ export async function PATCH(
         .from('whatsapp_config')
         .select('*')
         .eq('account_id', accountId)
-        .eq('id', existing.whatsapp_config_id ?? ctx.whatsappConfigId ?? '')
+        .eq('account_id', ctx.accountId)
         .single()
       if (configError || !config) {
         return NextResponse.json(
@@ -250,7 +250,7 @@ export async function DELETE(
         .from('whatsapp_config')
         .select('*')
         .eq('account_id', accountId)
-        .eq('id', existing.whatsapp_config_id ?? ctx.whatsappConfigId ?? '')
+        .eq('account_id', ctx.accountId)
         .single()
       if (configError || !config || !config.waba_id) {
         return NextResponse.json(

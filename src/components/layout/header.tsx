@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { LogOut, Menu, Settings as SettingsIcon, User } from "lucide-react";
 import {
@@ -21,7 +20,6 @@ import { ModeToggle } from "@/components/layout/mode-toggle";
 import { ReminderNotifications } from "@/components/layout/reminder-notifications";
 import { BRAND_ICON_PATH, BRAND_NAME } from "@/components/brand/brand-logo";
 import { useTranslations } from "next-intl";
-import { ChannelSelector } from './channel-selector';
 
 interface HeaderProps {
   /** Wired to the shell's drawer state. Used only on mobile — the
@@ -31,7 +29,6 @@ interface HeaderProps {
 
 export function Header({ onOpenSidebar }: HeaderProps) {
   const t = useTranslations("Header");
-  const pathname = usePathname();
   const { profile, signOut } = useAuth();
 
   const initial =
@@ -42,7 +39,6 @@ export function Header({ onOpenSidebar }: HeaderProps) {
   return (
     <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4 lg:bg-background/95 lg:px-9 lg:backdrop-blur-sm">
       <div className="flex min-w-0 items-center gap-2">
-        {!pathname.startsWith('/admin') && <ChannelSelector />}
         <button
           type="button"
           onClick={onOpenSidebar}

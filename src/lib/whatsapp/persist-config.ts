@@ -15,7 +15,6 @@ export interface PersistWhatsAppConfigInput {
   userId: string;
   accountId: string;
   phone_number_id: string;
-  reference_name?: string | null;
   waba_id?: string | null;
   access_token: string;
   verify_token?: string | null;
@@ -48,7 +47,6 @@ export async function persistWhatsAppConfig(
     userId,
     accountId,
     phone_number_id,
-    reference_name,
     waba_id,
     access_token,
     verify_token,
@@ -74,15 +72,25 @@ export async function persistWhatsAppConfig(
   }
 
   if (claimed && claimed.account_id !== accountId) {
-    const ownership = await supabaseAdmin().rpc('channel_brand_id', { target: claimed.account_id });
-    const current = await supabaseAdmin().rpc('channel_brand_id', { target: accountId });
-    if (ownership.error || current.error || ownership.data !== current.data) {
       return {
         ok: false,
         status: 409,
         error: 'This WhatsApp phone number is already linked to another brand on this instance.',
       };
-    }
+  }
+
+  // One configuration per account. Updating it preserves conversation and
+  // template references when the number is disconnected and reconnected.
+  const { data: existing, error: existingError } = await supabase
+    .from('whatsapp_config')
+    .select('id, registered_at, phone_number_id, reference_name, access_token')
+    .eq('account_id', accountId)
+    .maybeSingle();
+  if (existingError) {
+    return { ok: false, status: 500, error: 'Failed to load WhatsApp configuration' };
+  }
+  if (existing?.access_token && existing.phone_number_id !== phone_number_id) {
+    return { ok: false, status: 409, error: 'Only one WhatsApp number is supported. Disconnect the current number before connecting a replacement.' };
   }
 
   let phoneInfo;
@@ -113,16 +121,10 @@ export async function persistWhatsAppConfig(
     };
   }
 
-  const { data: existing } = await supabase
-    .from('whatsapp_config')
-    .select('id, registered_at, phone_number_id, reference_name')
-    .eq('phone_number_id', phone_number_id)
-    .maybeSingle();
-
   const sameNumber =
     existing?.phone_number_id === phone_number_id && existing?.registered_at != null;
 
-  let registeredAt: string | null = existing?.registered_at ?? null;
+  let registeredAt: string | null = sameNumber ? existing?.registered_at ?? null : null;
   let registrationError: string | null = null;
   let registrationSkipped = false;
 
@@ -169,8 +171,7 @@ export async function persistWhatsAppConfig(
   }
 
   const baseRow = {
-    reference_name:
-      reference_name?.trim() || existing?.reference_name || phoneInfo.display_phone_number || `WhatsApp ${phone_number_id}`,
+    reference_name: 'Primary',
     phone_number_id,
     waba_id: waba_id || null,
     access_token: encryptedAccessToken,

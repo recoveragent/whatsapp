@@ -11,7 +11,7 @@ vi.mock('@/lib/inbox/ensure-conversation', () => ({
   ensureConversationForContact: vi.fn().mockResolvedValue({ id: 'conv-1' }),
 }));
 
-function makeSupabaseStub() {
+function makeSupabaseStub(status = 'connected') {
   const inserts: Record<string, unknown>[] = [];
 
   const chain = {
@@ -37,6 +37,7 @@ function makeSupabaseStub() {
               Promise.resolve({
                 data: [
                   {
+                    status,
                     account_id: 'acc-1',
                     user_id: 'user-1',
                     phone_number_id: 'PN_1',
@@ -68,6 +69,15 @@ function makeSupabaseStub() {
 describe('handleCoexistenceWebhookChange — smb_message_echoes', () => {
   beforeEach(() => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  it('ignores a retired secondary sender', async () => {
+    const { stub, inserts } = makeSupabaseStub('disconnected');
+    await handleCoexistenceWebhookChange({
+      field: 'smb_message_echoes',
+      value: { metadata: { phone_number_id: 'PN_1' }, message_echoes: [{ id: 'retired', type: 'text', text: { body: 'Old sender' } }] },
+    }, stub);
+    expect(inserts).toHaveLength(0);
   });
 
   it('ingests outbound echoes from message_echoes (not messages)', async () => {

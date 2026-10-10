@@ -150,22 +150,17 @@ export async function POST(request: Request) {
 
     let metaTemplateId: string
     let metaStatus: string
-    const whatsappConfigId = typeof (payload as TemplatePayload & { whatsapp_config_id?: unknown }).whatsapp_config_id === 'string'
-      ? (payload as TemplatePayload & { whatsapp_config_id: string }).whatsapp_config_id
-      : null
+    let whatsappConfigId: string | null = null
 
     if (dryRun) {
       metaTemplateId = `dry-run-${crypto.randomUUID()}`
       metaStatus = 'PENDING'
     } else {
-      const { data: configs, error: configError } = await supabase
+      const { data: config, error: configError } = await supabase
         .from('whatsapp_config')
         .select('*')
         .eq('account_id', accountId)
-        .order('is_default', { ascending: false })
-        .order('created_at', { ascending: true })
-        .limit(1)
-      const config = configs?.[0] ?? null
+        .maybeSingle()
       if (configError || !config) {
         return NextResponse.json(
           {
@@ -175,6 +170,7 @@ export async function POST(request: Request) {
           { status: 400 },
         )
       }
+      whatsappConfigId = config.id
       if (!config.waba_id) {
         return NextResponse.json(
           {

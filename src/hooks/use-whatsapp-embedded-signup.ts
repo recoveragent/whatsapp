@@ -73,10 +73,8 @@ interface EmbeddedSignupConfig {
 
 export function useWhatsAppEmbeddedSignup({
   onComplete,
-  referenceName,
 }: {
   onComplete: () => void | Promise<void>;
-  referenceName: string;
 }) {
   const [config, setConfig] = useState<EmbeddedSignupConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
@@ -113,7 +111,6 @@ export function useWhatsAppEmbeddedSignup({
           phone_number_id: phone_number_id ?? null,
           pin: null,
           coexistence: coexistence === true,
-          reference_name: referenceName.trim(),
         }),
       });
 
@@ -136,7 +133,7 @@ export function useWhatsAppEmbeddedSignup({
       await onComplete();
       return 'success' as const;
     },
-    [onComplete, referenceName],
+    [onComplete],
   );
 
   const tryComplete = useCallback(async () => {

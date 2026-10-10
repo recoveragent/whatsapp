@@ -8,7 +8,6 @@ import type { Conversation } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { WhatsAppNumberPicker } from "@/components/shared/whatsapp-number-picker";
 import {
   Dialog,
   DialogContent,
@@ -28,12 +27,10 @@ export function NewMessageDialog({ onCreated }: NewMessageDialogProps) {
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [whatsappConfigId, setWhatsappConfigId] = useState("");
 
   const reset = useCallback(() => {
     setPhone("");
     setName("");
-    setWhatsappConfigId("");
   }, []);
 
   const handleSubmit = useCallback(async () => {
@@ -51,7 +48,6 @@ export function NewMessageDialog({ onCreated }: NewMessageDialogProps) {
         body: JSON.stringify({
           phone: trimmedPhone,
           name: name.trim() || undefined,
-          whatsapp_config_id: whatsappConfigId || undefined,
         }),
       });
 
@@ -70,7 +66,7 @@ export function NewMessageDialog({ onCreated }: NewMessageDialogProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [phone, name, whatsappConfigId, onCreated, reset]);
+  }, [phone, name, onCreated, reset]);
 
   return (
     <Dialog
@@ -98,9 +94,6 @@ export function NewMessageDialog({ onCreated }: NewMessageDialogProps) {
         </DialogHeader>
 
         <div className="space-y-3 py-1">
-          <div className="space-y-1.5">
-            <WhatsAppNumberPicker value={whatsappConfigId} onChange={setWhatsappConfigId} />
-          </div>
           <div className="space-y-1.5">
             <Label htmlFor="new-msg-phone">Phone number</Label>
             <Input

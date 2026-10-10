@@ -13,7 +13,7 @@ const h = vi.hoisted(() => ({
     priorCustomerMsgCount: 0,
     /** Row `lookupInternalIdByMetaId` resolves for a `context.id`. */
     replyContextParent: null as { id: string } | null,
-    conversation: { id: 'conv-1', unread_count: 0, account_id: 'acc-1' },
+    conversation: { id: 'conv-1', unread_count: 0, account_id: 'acc-1' } as { id: string; unread_count: number; account_id: string; status?: string },
     conversationUpdates: [] as Record<string, unknown>[],
     upsertCalls: [] as { row: Record<string, unknown>; options: unknown }[],
     rpcCalls: [] as { name: string; args: Record<string, unknown> }[],
@@ -53,6 +53,7 @@ vi.mock('@supabase/supabase-js', () => ({
                 Promise.resolve({
                   data: [
                     {
+                      id: 'config-1',
                       account_id: 'acc-1',
                       user_id: 'user-1',
                       access_token: 'enc',
@@ -67,15 +68,8 @@ vi.mock('@supabase/supabase-js', () => ({
           return {
             select: () => ({
               eq: () => ({
-                eq: () => ({
-                  order: () => ({
-                    limit: () =>
-                      Promise.resolve({
-                        data: [h.state.conversation],
-                        error: null,
-                      }),
-                  }),
-                }),
+                single: () => Promise.resolve({ data: h.state.conversation, error: null }),
+                eq: () => Promise.resolve({ data: [h.state.conversation], error: null }),
               }),
             }),
             update: (payload: Record<string, unknown>) => {
@@ -195,6 +189,17 @@ vi.mock('@/lib/whatsapp/template-webhook', () => ({
   isTemplateWebhookField: () => false,
   handleTemplateWebhookChange: vi.fn(),
 }))
+vi.mock('@/lib/inbox/ensure-conversation', () => ({
+  findConversationsForContact: async () => [h.state.conversation],
+  ensureConversationForContact: async () => ({ id: h.state.conversation.id }),
+}))
+vi.mock('@/lib/inbox/first-inbound', () => ({
+  isFirstColdInboundMessage: async () => h.state.priorCustomerMsgCount === 0,
+}))
+vi.mock('@/lib/flows/backfill-outbound-prompt', () => ({
+  backfillMissingOutboundPrompt: async () => null,
+}))
+vi.mock('@/lib/leads/pause', () => ({ pauseCadenceOnReply: vi.fn() }))
 vi.mock('@/lib/automations/engine', () => ({
   runAutomationsForTrigger: h.runAutomationsForTrigger,
 }))
@@ -355,12 +360,12 @@ describe('inbound webhook: template quick-reply buttons (#478)', () => {
     context: { id: 'wamid.BROADCAST1' },
   }
 
-  it('stores the tap as an interactive reply, not an unsupported message', async () => {
+  it('stores the button tap with its interactive reply payload', async () => {
     await runWebhook(templateButtonTap)
 
     expect(h.state.upsertCalls).toHaveLength(1)
     expect(h.state.upsertCalls[0].row).toMatchObject({
-      content_type: 'interactive',
+      content_type: 'button',
       content_text: 'Yes, interested',
       interactive_reply_id: 'YES_INTERESTED',
       reply_to_message_id: null,
@@ -396,7 +401,7 @@ describe('inbound webhook: template quick-reply buttons (#478)', () => {
     })
 
     expect(h.state.upsertCalls[0].row).toMatchObject({
-      content_type: 'interactive',
+      content_type: 'button',
       content_text: 'Track my order',
       interactive_reply_id: 'Track my order',
     })

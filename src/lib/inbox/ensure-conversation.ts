@@ -15,46 +15,12 @@ interface ConversationCandidate {
   created_at?: string;
 }
 
-/**
- * Outbound sources such as Shopify and flows do not have an inbound webhook
- * from which to infer the sender number.  In that case, use the brand's
- * configured default instead of creating an orphaned conversation that can
- * never be used by the inbox send endpoint.
- */
-async function resolveDefaultWhatsAppConfigId(
-  db: SupabaseClient,
-  accountId: string,
-): Promise<string | null> {
-  const preferred = await db
-    .from('whatsapp_config')
-    .select('id')
-    .eq('account_id', accountId)
-    .order('is_default', { ascending: false })
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
-
-  if (!preferred.error) return preferred.data?.id ?? null
-
-  // Some existing deployments have not applied migration 105 yet. They
-  // cannot have a configured default number, so preserve the historic
-  // single-number behavior by using the oldest connected configuration.
-  if (preferred.error.code === '42703') {
-    const fallback = await db
-      .from('whatsapp_config')
-      .select('id')
-      .eq('account_id', accountId)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle()
-
-    if (!fallback.error) return fallback.data?.id ?? null
-    console.error('[inbox] resolve fallback WhatsApp config failed:', fallback.error.message)
-    return null
-  }
-
-  console.error('[inbox] resolve default WhatsApp config failed:', preferred.error.message)
-  return null
+/** Resolve the account's single WhatsApp configuration for new threads. */
+async function resolveWhatsAppConfigId(db: SupabaseClient, accountId: string): Promise<string | null> {
+  const { data, error } = await db.from('whatsapp_config').select('id')
+    .eq('account_id', accountId).maybeSingle();
+  if (error) console.error('[inbox] resolve WhatsApp config failed:', error.message);
+  return data?.id ?? null;
 }
 
 /**
@@ -65,15 +31,12 @@ export async function findConversationsForContact(
   db: SupabaseClient,
   accountId: string,
   contactId: string,
-  whatsappConfigId?: string | null,
 ): Promise<ConversationCandidate[]> {
-  let query = db
+  const query = db
     .from('conversations')
     .select('id, status, last_message_at, created_at')
     .eq('account_id', accountId)
     .eq('contact_id', contactId);
-
-  if (whatsappConfigId) query = query.eq('whatsapp_config_id', whatsappConfigId);
 
   const { data, error } = await query;
 
@@ -145,10 +108,10 @@ export async function ensureConversationForContact(
   const createStatus = opts?.createStatus ?? 'closed';
   const whatsappConfigId =
     opts?.whatsappConfigId ??
-    (await resolveDefaultWhatsAppConfigId(db, accountId));
+    (await resolveWhatsAppConfigId(db, accountId));
 
   const existing = await findConversationsForContact(
-    db, accountId, contactId, whatsappConfigId,
+    db, accountId, contactId,
   );
   const canonicalId = await pickCanonicalConversationId(db, existing);
   if (canonicalId) return { id: canonicalId };
@@ -168,7 +131,7 @@ export async function ensureConversationForContact(
   if (error) {
     if (isUniqueViolation(error)) {
       const raced = await findConversationsForContact(
-        db, accountId, contactId, whatsappConfigId,
+        db, accountId, contactId,
       );
       const racedId = await pickCanonicalConversationId(db, raced);
       if (racedId) return { id: racedId };

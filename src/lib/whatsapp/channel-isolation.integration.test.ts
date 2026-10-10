@@ -44,9 +44,17 @@ describe('channel workspace migration and isolation', () => {
         phone_normalized text GENERATED ALWAYS AS (regexp_replace(phone, '[^0-9]', '', 'g')) STORED,
         UNIQUE(account_id, phone_normalized));
       CREATE TABLE whatsapp_config(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), account_id uuid REFERENCES accounts(id), user_id uuid,
-        phone_number_id text UNIQUE, reference_name text, waba_id text, created_at timestamptz DEFAULT now());
+        phone_number_id text UNIQUE, reference_name text, waba_id text, created_at timestamptz DEFAULT now(),
+        status text DEFAULT 'connected', access_token text DEFAULT 'encrypted', verify_token text,
+        connected_at timestamptz, registered_at timestamptz, last_registration_error text);
       CREATE TABLE conversations(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), account_id uuid REFERENCES accounts(id), contact_id uuid REFERENCES contacts(id),
         whatsapp_config_id uuid REFERENCES whatsapp_config(id));
+      CREATE UNIQUE INDEX idx_conversations_account_contact_whatsapp
+        ON conversations(account_id,contact_id,whatsapp_config_id) WHERE whatsapp_config_id IS NOT NULL;
+      CREATE TABLE member_presence(user_id uuid PRIMARY KEY, account_id uuid REFERENCES accounts(id), status text);
+      CREATE FUNCTION touch_test_presence() RETURNS void LANGUAGE sql SECURITY DEFINER AS
+        $$ INSERT INTO member_presence VALUES(auth.uid(), '${brand}', 'online')
+          ON CONFLICT(user_id) DO UPDATE SET status='online' $$;
       CREATE TABLE message_templates(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), account_id uuid REFERENCES accounts(id), whatsapp_config_id uuid REFERENCES whatsapp_config(id), name text);
       CREATE TABLE messages(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), conversation_id uuid REFERENCES conversations(id), content_text text);
       CREATE TABLE contact_notes(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), account_id uuid REFERENCES accounts(id), contact_id uuid REFERENCES contacts(id), note_text text);
@@ -179,5 +187,38 @@ describe('channel workspace migration and isolation', () => {
       VALUES('${brand}', 'Support', '222', 'WABA-2') RETURNING account_id`)).rows[0].account_id;
     expect(reconnected).toBe(support);
     expect((await db.query<{ whatsapp_config_id: string }>(`SELECT whatsapp_config_id FROM conversations WHERE id='${supportConversation}'`)).rows[0].whatsapp_config_id).toBeTruthy();
+  });
+  it('returns to one account without losing duplicate historical threads or archived secondary history', async () => {
+    await serviceRole();
+    // Match the production failure: two orphaned threads for the same contact
+    // cause the old reattach trigger to roll back an otherwise valid signup.
+    await db.exec(`UPDATE conversations SET whatsapp_config_id=NULL WHERE account_id='${brand}';
+      DELETE FROM whatsapp_config WHERE account_id='${brand}';
+      INSERT INTO conversations(account_id,contact_id) VALUES('${brand}', '${customer}');`);
+    const messagesBefore = (await db.query('SELECT * FROM messages')).rows;
+    await select(support);
+    await serviceRole();
+    const migration = readFileSync('supabase/migrations/20261010063043_single_whatsapp_account.sql', 'utf8');
+    await db.exec(migration);
+    await authenticated();
+    expect((await db.query<{ id: string }>('SELECT * FROM contacts')).rows.map(row => row.id)).toEqual([customer]);
+    await db.exec(`SELECT touch_test_presence()`);
+    await expect(db.exec(`SELECT edit_contact_as_definer('${supportContact}')`)).rejects.toThrow(/another account/);
+    await db.exec(`INSERT INTO whatsapp_config(account_id,reference_name,phone_number_id,waba_id)
+      VALUES('${brand}', 'Primary', '111', 'WABA-1')`);
+    expect((await db.query('SELECT * FROM conversations')).rows).toHaveLength(2);
+    await expect(db.exec(`INSERT INTO whatsapp_config(account_id,reference_name,phone_number_id,waba_id)
+      VALUES('${brand}', 'Another', '555', 'WABA-5')`)).rejects.toMatchObject({ code: '23505' });
+    await expect(db.exec(`SELECT * FROM whatsapp_channel_context`)).rejects.toMatchObject({ code: '42501' });
+    await serviceRole();
+    await expect(db.exec(`INSERT INTO whatsapp_config(account_id,reference_name,phone_number_id)
+      VALUES('${support}', 'Another', '555')`)).rejects.toThrow(/original brand/);
+    await expect(db.exec(`SELECT create_channel_tenant('${brand}')`)).rejects.toMatchObject({ code: '42883' });
+    expect((await db.query('SELECT * FROM messages')).rows).toEqual(messagesBefore);
+    expect((await db.query(`SELECT * FROM contacts WHERE account_id='${support}'`)).rows).toHaveLength(1);
+    expect((await db.query<{ access_token: string; status: string }>(`SELECT access_token,status FROM whatsapp_config WHERE account_id='${support}'`)).rows[0])
+      .toEqual({ access_token: '', status: 'disconnected' });
+    await db.exec(migration);
+    expect((await db.query('SELECT * FROM messages')).rows).toEqual(messagesBefore);
   });
 });

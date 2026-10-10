@@ -342,6 +342,7 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
       }
 
       const config = configRows[0]
+      if (config.status === 'disconnected' || config.access_token === '') continue
 
       const decryptedAccessToken = decrypt(config.access_token)
 
@@ -701,7 +702,6 @@ async function processMessage(
     supabaseAdmin(),
     accountId,
     contactRecord.id,
-    whatsappConfigId,
   )
   const ensured = await ensureConversationForContact(
     supabaseAdmin(),

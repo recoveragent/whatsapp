@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 
 import {
   BrandContextRequiredError,
-  ChannelContextRequiredError,
   ForbiddenError,
   getCurrentAccount,
   toErrorResponse,
@@ -79,9 +78,6 @@ export async function GET() {
       linked: true,
       needsBrandContext: false,
       accountId: ctx.accountId,
-      brandAccountId: ctx.brandAccountId ?? ctx.accountId,
-      whatsappConfigId: ctx.whatsappConfigId ?? null,
-      channelName: ctx.channelName ?? null,
       accountName: ctx.account.name,
       role: ctx.role,
       canEditSettings: canEditSettings(ctx.role),
@@ -91,7 +87,6 @@ export async function GET() {
       whatsappConnectMode,
     });
   } catch (err) {
-    if (err instanceof ChannelContextRequiredError) return toErrorResponse(err);
     if (err instanceof BrandContextRequiredError) {
       return NextResponse.json({
         linked: false,
