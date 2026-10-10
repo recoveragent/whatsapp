@@ -131,6 +131,7 @@ async function ingestSyncedMessage(
   config: { account_id: string; user_id: string },
   message: SyncMessage,
   direction: 'inbound' | 'outbound',
+  isLive: boolean,
 ) {
   if (!message.id || message.history_context?.status === 'deleted') return;
   if (await messageExists(db, message.id)) return;
@@ -207,17 +208,33 @@ async function ingestSyncedMessage(
   const preview =
     contentText.length > 100 ? `${contentText.slice(0, 100)}…` : contentText;
 
+  // History chunks can arrive after live messages, and in any order.
+  // Advance the preview only; never move the inbox backwards in time.
   await db
     .from('conversations')
     .update({
       last_message_at: createdAt,
       last_message_text: preview || '(message)',
-      ...(senderType === 'customer'
-        ? { last_customer_message_at: createdAt }
-        : {}),
       updated_at: new Date().toISOString(),
     })
-    .eq('id', conversationId);
+    .eq('id', conversationId)
+    .or(`last_message_at.is.null,last_message_at.lte.${createdAt}`);
+
+  if (senderType === 'customer') {
+    await db.from('conversations')
+      .update({ last_customer_message_at: createdAt })
+      .eq('id', conversationId)
+      .or(`last_customer_message_at.is.null,last_customer_message_at.lte.${createdAt}`);
+  }
+
+  // A new Business app message represents active work. Historical imports
+  // must not reopen conversations an agent has already resolved.
+  if (isLive) {
+    await db.from('conversations')
+      .update({ status: 'open', updated_at: new Date().toISOString() })
+      .eq('id', conversationId)
+      .eq('status', 'closed');
+  }
 }
 
 function collectSyncMessages(value: Record<string, unknown>): SyncMessage[] {
@@ -293,6 +310,6 @@ export async function handleCoexistenceWebhookChange(
     change.field === 'smb_message_echoes' ? 'outbound' : 'inbound';
 
   for (const message of messages) {
-    await ingestSyncedMessage(db, config, message, direction);
+    await ingestSyncedMessage(db, config, message, direction, change.field === 'smb_message_echoes');
   }
 }

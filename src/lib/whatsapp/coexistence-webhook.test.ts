@@ -11,8 +11,12 @@ vi.mock('@/lib/inbox/ensure-conversation', () => ({
   ensureConversationForContact: vi.fn().mockResolvedValue({ id: 'conv-1' }),
 }));
 
-function makeSupabaseStub(status = 'connected') {
+function makeSupabaseStub(status = 'connected', lastMessageAt: string | null = null) {
   const inserts: Record<string, unknown>[] = [];
+  const conversation: Record<string, unknown> = {
+    status: 'closed', last_message_at: lastMessageAt,
+    last_message_text: 'Recent reply', last_customer_message_at: lastMessageAt,
+  };
 
   const chain = {
     eq: () => chain,
@@ -23,9 +27,27 @@ function makeSupabaseStub(status = 'connected') {
       inserts.push(row);
       return Promise.resolve({ error: null });
     },
-    update: () => ({
-      eq: () => Promise.resolve({ error: null }),
-    }),
+    update: (row: Record<string, unknown>) => {
+      let matches = true;
+      const update = {
+        eq: (key: string, value: unknown) => {
+          if (key !== 'id') matches &&= conversation[key] === value;
+          return update;
+        },
+        or: (filter: string) => {
+          const [nullFilter, timeFilter] = filter.split(',');
+          const key = nullFilter.split('.')[0];
+          const cutoff = timeFilter.split('.lte.')[1];
+          matches &&= conversation[key] == null || String(conversation[key]) <= cutoff;
+          return update;
+        },
+        then: (resolve: (value: { error: null }) => unknown) => {
+          if (matches) Object.assign(conversation, row);
+          return Promise.resolve(resolve({ error: null }));
+        },
+      };
+      return update;
+    },
   };
 
   const stub = {
@@ -63,7 +85,7 @@ function makeSupabaseStub(status = 'connected') {
     },
   };
 
-  return { stub: stub as unknown as SupabaseClient, inserts };
+  return { stub: stub as unknown as SupabaseClient, inserts, conversation };
 }
 
 describe('handleCoexistenceWebhookChange — smb_message_echoes', () => {
@@ -81,7 +103,7 @@ describe('handleCoexistenceWebhookChange — smb_message_echoes', () => {
   });
 
   it('ingests outbound echoes from message_echoes (not messages)', async () => {
-    const { stub, inserts } = makeSupabaseStub();
+    const { stub, inserts, conversation } = makeSupabaseStub();
 
     await handleCoexistenceWebhookChange(
       {
@@ -112,6 +134,28 @@ describe('handleCoexistenceWebhookChange — smb_message_echoes', () => {
       sender_type: 'agent',
       content_text: 'Reply from Business app',
       conversation_id: 'conv-1',
+    });
+    expect(conversation).toMatchObject({
+      status: 'open',
+      last_message_text: 'Reply from Business app',
+      last_message_at: new Date(1739321024 * 1000).toISOString(),
+    });
+  });
+
+  it('keeps recent activity and closed status when older history arrives', async () => {
+    const recent = '2026-10-10T07:00:00.000Z';
+    const { stub, inserts, conversation } = makeSupabaseStub('connected', recent);
+    await handleCoexistenceWebhookChange({
+      field: 'history',
+      value: {
+        metadata: { phone_number_id: 'PN_1' },
+        messages: [{ id: 'old-history', from: '918489406020', timestamp: '1739321024', type: 'text', text: { body: 'Old reply' } }],
+      },
+    }, stub);
+    expect(inserts).toHaveLength(1);
+    expect(conversation).toMatchObject({
+      status: 'closed', last_message_at: recent,
+      last_customer_message_at: recent, last_message_text: 'Recent reply',
     });
   });
 });

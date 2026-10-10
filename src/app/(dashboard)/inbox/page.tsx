@@ -428,7 +428,9 @@ function InboxPageInner() {
         if (knownConvIdsRef.current.has(newMsg.conversation_id)) {
           setConversations((prev) =>
             prev.map((c) =>
-              c.id === newMsg.conversation_id
+              c.id === newMsg.conversation_id &&
+              (!c.last_message_at ||
+                Date.parse(newMsg.created_at) >= Date.parse(c.last_message_at))
                 ? {
                     ...c,
                     last_message_text: newMsg.content_text ?? "",
@@ -436,7 +438,7 @@ function InboxPageInner() {
                     unread_count:
                       activeConversation?.id === newMsg.conversation_id
                         ? 0
-                        : c.unread_count + 1,
+                        : c.unread_count + (newMsg.sender_type === "customer" ? 1 : 0),
                   }
                 : c,
             ),
