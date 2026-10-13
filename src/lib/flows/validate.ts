@@ -23,6 +23,8 @@
  * `node_key`; trigger-scoped use `scope: 'trigger'`.
  */
 
+import { validateConditionPredicate, isShopifySubject } from "./conditions";
+import type { ConditionNodeConfig, ConditionPredicate } from "./types";
 import { INTERACTIVE_LIMITS } from "@/lib/whatsapp/meta-api";
 import {
   collectFlowStartNodeKeys,
@@ -239,6 +241,21 @@ export function validateFlowForActivation(
   // Per-node rules (Meta limits + dead-end + edge resolution).
   for (const n of nodes) {
     issues.push(...validateNode(n, keys));
+    if (n.node_type === "condition" || n.node_type === "switch") {
+      const groups = n.node_type === "condition" ? [n.config] : Array.isArray(n.config.branches) ? n.config.branches : [];
+      for (const group of groups) {
+        if (!group || typeof group !== "object") continue;
+        const g = group as Record<string, unknown>;
+        for (const predicate of Array.isArray(g.rules) ? g.rules : [g]) {
+          if (!predicate || typeof predicate !== "object") continue;
+          const subject = (predicate as Record<string, unknown>).subject;
+          if (typeof subject !== "string" || !isShopifySubject(subject)) continue;
+          const checkout = flow.trigger_type.startsWith("shopify_") && flow.trigger_type.includes("checkout");
+          const order = flow.trigger_type.startsWith("shopify_order_");
+          if ((subject === "shopify_order" && !order) || (subject === "shopify_checkout" && !checkout)) issues.push({ severity: "error", scope: "node", node_key: n.node_key, field: "subject", message: "Shopify condition resource must match this flow’s trigger." });
+        }
+      }
+    }
   }
 
   // Reachability — every non-orphan node must be reachable from a
@@ -593,6 +610,69 @@ function validateExitConfig(config: FlowExitConfig): ValidationIssue[] {
 // ============================================================
 // Per-node
 // ============================================================
+
+function validateConditionGroup(
+  node: NodeInput,
+  cfg: Partial<ConditionNodeConfig>,
+  prefix = 'condition'
+): ValidationIssue[] {
+  const messages: { field: string; message: string }[] = [];
+  if (
+    cfg.rules !== undefined &&
+    (!Array.isArray(cfg.rules) || cfg.rules.length < 1 || cfg.rules.length > 20)
+  )
+    messages.push({
+      field: prefix + '.rules',
+      message: 'A condition group needs 1–20 rules.',
+    });
+  if (cfg.match !== undefined && !['all', 'any'].includes(cfg.match))
+    messages.push({
+      field: prefix + '.match',
+      message: 'Choose ALL or ANY rules.',
+    });
+  const predicates = Array.isArray(cfg.rules) ? cfg.rules : [cfg];
+  predicates.forEach((rule, index) => {
+    const field = cfg.rules ? prefix + '.rules.' + index : prefix;
+    if (!rule || typeof rule !== 'object') {
+      messages.push({ field, message: 'Invalid condition rule.' });
+      return;
+    }
+    // JSON input is untrusted; reject malformed scalar values before validation.
+    if (
+      [
+        'subject',
+        'subject_key',
+        'operator',
+        'value',
+        'value_to',
+        'data_source',
+        'cod_gateways',
+        'item_key',
+        'item_value',
+      ].some(
+        (key) =>
+          (rule as Record<string, unknown>)[key] !== undefined &&
+          typeof (rule as Record<string, unknown>)[key] !== 'string'
+      )
+    ) {
+      messages.push({
+        field,
+        message: 'Condition fields must be text values.',
+      });
+      return;
+    }
+    for (const message of validateConditionPredicate(
+      rule as Partial<ConditionPredicate>
+    ))
+      messages.push({ field, message });
+  });
+  return messages.map((m) => ({
+    ...m,
+    scope: 'node',
+    node_key: node.node_key,
+    severity: 'error',
+  }));
+}
 
 function validateNode(
   node: NodeInput,
@@ -1207,72 +1287,8 @@ function validateNode(
     }
 
     case "condition": {
-      const cfg = node.config as {
-        subject?: "var" | "tag" | "contact_field" | "shopify_payment";
-        subject_key?: string;
-        operator?: "equals" | "not_equals" | "contains" | "present" | "absent";
-        value?: string;
-        true_next?: string;
-        false_next?: string;
-      };
-      if (
-        !cfg.subject ||
-        !["var", "tag", "contact_field", "shopify_payment"].includes(cfg.subject)
-      ) {
-        issues.push({
-          severity: "error",
-          scope: "node",
-          node_key: node.node_key,
-          field: "subject",
-          message: "Condition needs a subject (var / tag / contact_field / shopify_payment).",
-        });
-      }
-      if (cfg.subject !== "shopify_payment" && !cfg.subject_key?.trim()) {
-        issues.push({
-          severity: "error",
-          scope: "node",
-          node_key: node.node_key,
-          field: "subject_key",
-          message: "Condition needs a subject_key (var name, tag id, or field name).",
-        });
-      }
-      if (
-        !cfg.operator ||
-        !["equals", "not_equals", "contains", "present", "absent"].includes(cfg.operator)
-      ) {
-        issues.push({
-          severity: "error",
-          scope: "node",
-          node_key: node.node_key,
-          field: "operator",
-          message: "Condition needs an operator.",
-        });
-      } else if (
-        cfg.subject === "shopify_payment" &&
-        (cfg.value === undefined || cfg.value === "")
-      ) {
-        issues.push({
-          severity: "error",
-          scope: "node",
-          node_key: node.node_key,
-          field: "value",
-          message:
-            "Shopify payment condition needs a payment status (paid, pending, or partially paid).",
-        });
-      } else if (
-        (cfg.operator === "equals" ||
-          cfg.operator === "not_equals" ||
-          cfg.operator === "contains") &&
-        (cfg.value === undefined || cfg.value === "")
-      ) {
-        issues.push({
-          severity: "warning",
-          scope: "node",
-          node_key: node.node_key,
-          field: "value",
-          message: `Operator "${cfg.operator}" usually expects a comparison value — empty value will only match empty subjects.`,
-        });
-      }
+      const cfg = node.config as unknown as ConditionNodeConfig;
+      issues.push(...validateConditionGroup(node, cfg));
       for (const branch of ["true_next", "false_next"] as const) {
         const key = cfg[branch];
         if (!key) {
@@ -1297,18 +1313,7 @@ function validateNode(
     }
 
     case "switch": {
-      const cfg = node.config as {
-        branches?: Array<{
-          branch_id?: string;
-          label?: string;
-          subject?: "var" | "tag" | "contact_field" | "shopify_payment";
-          subject_key?: string;
-          operator?: "equals" | "not_equals" | "contains" | "present" | "absent";
-          value?: string;
-          next_node_key?: string;
-        }>;
-        default_next?: string;
-      };
+      const cfg = node.config as unknown as import("./types").SwitchNodeConfig;
       const branches = cfg.branches ?? [];
       if (branches.length === 0) {
         issues.push({
@@ -1330,46 +1335,7 @@ function validateNode(
             message: "Each switch branch needs an internal id.",
           });
         }
-        if (
-          !branch.subject ||
-          !["var", "tag", "contact_field", "shopify_payment"].includes(
-            branch.subject,
-          )
-        ) {
-          issues.push({
-            severity: "error",
-            scope: "node",
-            node_key: node.node_key,
-            field: `${prefix}.subject`,
-            message: "Each switch branch needs a subject.",
-          });
-        }
-        if (
-          branch.subject !== "shopify_payment" &&
-          !branch.subject_key?.trim()
-        ) {
-          issues.push({
-            severity: "error",
-            scope: "node",
-            node_key: node.node_key,
-            field: `${prefix}.subject_key`,
-            message: "Each switch branch needs a subject key.",
-          });
-        }
-        if (
-          !branch.operator ||
-          !["equals", "not_equals", "contains", "present", "absent"].includes(
-            branch.operator,
-          )
-        ) {
-          issues.push({
-            severity: "error",
-            scope: "node",
-            node_key: node.node_key,
-            field: `${prefix}.operator`,
-            message: "Each switch branch needs an operator.",
-          });
-        }
+        issues.push(...validateConditionGroup(node, branch, prefix));
         if (!branch.next_node_key) {
           issues.push({
             severity: "error",

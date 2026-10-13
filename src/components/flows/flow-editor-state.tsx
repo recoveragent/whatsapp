@@ -634,6 +634,33 @@ export function FlowEditorProvider({
           node_type: type,
           config: defaultConfigFor(type),
         };
+        if (
+          (type === 'condition' || type === 'switch') &&
+          s.trigger_type.startsWith('shopify_')
+        ) {
+          const checkout = s.trigger_type.includes('checkout');
+          const predicate = {
+            subject: checkout ? 'shopify_checkout' : 'shopify_order',
+            subject_key: checkout ? 'total' : 'payment_status',
+            operator: checkout ? 'gte' : 'equals',
+            value: checkout ? '0' : 'paid',
+            data_source: 'snapshot',
+          };
+          if (type === 'condition')
+            next.config = { ...next.config, ...predicate };
+          else
+            next.config = {
+              ...next.config,
+              branches: [
+                {
+                  branch_id: 'case_1',
+                  label: 'Case 1',
+                  next_node_key: '',
+                  ...predicate,
+                },
+              ],
+            };
+        }
         return {
           ...s,
           nodes: [...s.nodes, next],

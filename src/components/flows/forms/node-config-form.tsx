@@ -47,10 +47,6 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { uploadAccountMedia, MEDIA_MAX_BYTES } from "@/lib/storage/upload-media";
-import {
-  SHOPIFY_PAYMENT_STATUSES,
-  SHOPIFY_PAYMENT_STATUS_LABELS,
-} from "@/lib/flows/trigger-types";
 import { slugify, type BuilderNode } from "../shared";
 import {
   nodeTypeHasReplyTimeoutSlot,
@@ -67,6 +63,8 @@ import {
 import type { TemplateQuickReplyButton } from "@/lib/flows/template-buttons";
 import type { FlowTriggerType } from "@/lib/flows/trigger-types";
 import { useAccountPipelines } from "./use-account-pipelines";
+import { ConditionRuleFields } from "./condition-fields";
+import type { ConditionNodeConfig } from "@/lib/flows/types";
 
 interface NodeConfigFormProps {
   node: BuilderNode;
@@ -87,14 +85,14 @@ export function NodeConfigForm({
 }: NodeConfigFormProps) {
   return (
     <>
-      {renderNodeConfigBody({
-        node,
-        allNodes,
-        showAdvanced,
-        onUpdateConfig,
-        triggerType,
-        triggerConfig,
-      })}
+      <NodeConfigBody
+        node={node}
+        allNodes={allNodes}
+        showAdvanced={showAdvanced}
+        onUpdateConfig={onUpdateConfig}
+        triggerType={triggerType}
+        triggerConfig={triggerConfig}
+      />
       {nodeTypeHasReplyTimeoutSlot(node.node_type) ? (
         <ReplyTimeoutSection cfg={node.config} onUpdateConfig={onUpdateConfig} />
       ) : null}
@@ -102,7 +100,7 @@ export function NodeConfigForm({
   );
 }
 
-function renderNodeConfigBody({
+function NodeConfigBody({
   node,
   allNodes,
   showAdvanced,
@@ -254,6 +252,7 @@ function renderNodeConfigBody({
     case "condition":
       return (
         <ConditionForm
+          triggerType={triggerType}
           cfg={cfg as ConditionCfg}
           allNodes={allNodes}
           currentKey={node.node_key}
@@ -265,6 +264,7 @@ function renderNodeConfigBody({
     case "switch":
       return (
         <SwitchForm
+          triggerType={triggerType}
           cfg={cfg as SwitchCfg}
           allNodes={allNodes}
           currentKey={node.node_key}
@@ -1225,16 +1225,9 @@ function SendFlowForm({
 // condition
 // ============================================================
 
-interface ConditionCfg {
-  subject?: "var" | "tag" | "contact_field" | "shopify_payment";
-  subject_key?: string;
-  operator?: "equals" | "not_equals" | "contains" | "present" | "absent";
-  value?: string;
-  true_next?: string;
-  false_next?: string;
-}
+type ConditionCfg = Partial<ConditionNodeConfig>;
 
-interface SwitchBranchCfg {
+interface SwitchBranchCfg extends ConditionCfg {
   branch_id: string;
   label: string;
   subject?: ConditionCfg["subject"];
@@ -1275,188 +1268,11 @@ function uniqueSwitchBranchId(
   return id;
 }
 
-function ConditionPredicateFields({
-  cfg,
-  allNodes,
-  onPatch,
-}: {
-  cfg: Pick<ConditionCfg, "subject" | "subject_key" | "operator" | "value">;
-  allNodes: BuilderNode[];
-  onPatch: (patch: Partial<ConditionCfg>) => void;
+function ConditionPredicateFields({ cfg, allNodes, onPatch, triggerType }: {
+  cfg: ConditionCfg; allNodes: BuilderNode[]; onPatch: (patch: Partial<ConditionCfg>) => void; triggerType?: FlowTriggerType;
 }) {
   const tags = useUserTags();
-  const varKeys = collectFlowVarKeys(allNodes);
-  const subject = cfg.subject ?? "var";
-  const operator = cfg.operator ?? "equals";
-  const showValue =
-    operator === "equals" ||
-    operator === "not_equals" ||
-    operator === "contains";
-  const isShopifyPayment = subject === "shopify_payment";
-
-  return (
-    <>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <div>
-          <label className="mb-1 block text-xs text-muted-foreground">If</label>
-          <Select
-            value={subject}
-            onValueChange={(v) => {
-              const next = v as ConditionCfg["subject"];
-              if (next === "shopify_payment") {
-                onPatch({
-                  subject: next,
-                  subject_key: "payment_status",
-                  operator: "equals",
-                  value: cfg.value || "paid",
-                });
-              } else {
-                onPatch({ subject: next });
-              }
-            }}
-          >
-            <SelectTrigger className="bg-muted">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="var">Captured variable</SelectItem>
-              <SelectItem value="shopify_payment">Shopify payment status</SelectItem>
-              <SelectItem value="tag">Contact has tag</SelectItem>
-              <SelectItem value="contact_field">Contact field</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="md:col-span-2">
-          <label className="mb-1 block text-xs text-muted-foreground">
-            {isShopifyPayment
-              ? "Payment status"
-              : subject === "var"
-                ? "Variable"
-                : subject === "tag"
-                  ? "Tag"
-                  : "Field"}
-          </label>
-          {isShopifyPayment ? (
-            <Select
-              value={cfg.value ?? "paid"}
-              onValueChange={(v) =>
-                onPatch({ value: v ?? undefined, operator: "equals" })
-              }
-            >
-              <SelectTrigger className="bg-muted">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SHOPIFY_PAYMENT_STATUSES.filter((ps) => ps !== "any").map((ps) => (
-                  <SelectItem key={ps} value={ps}>
-                    {SHOPIFY_PAYMENT_STATUS_LABELS[ps]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : subject === "tag" && tags.length > 0 ? (
-            <Select
-              value={cfg.subject_key ?? ""}
-              onValueChange={(v) => onPatch({ subject_key: v ?? undefined })}
-            >
-              <SelectTrigger className="bg-muted">
-                <SelectValue placeholder="Pick a tag…" />
-              </SelectTrigger>
-              <SelectContent>
-                {tags.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : subject === "contact_field" ? (
-            <Select
-              value={cfg.subject_key ?? ""}
-              onValueChange={(v) => onPatch({ subject_key: v ?? undefined })}
-            >
-              <SelectTrigger className="bg-muted">
-                <SelectValue placeholder="Pick a field…" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="name">name</SelectItem>
-                <SelectItem value="email">email</SelectItem>
-                <SelectItem value="phone">phone</SelectItem>
-                <SelectItem value="company">company</SelectItem>
-              </SelectContent>
-            </Select>
-          ) : subject === "var" && varKeys.length > 0 ? (
-            <Select
-              value={cfg.subject_key ?? ""}
-              onValueChange={(v) => onPatch({ subject_key: v ?? undefined })}
-            >
-              <SelectTrigger className="bg-muted">
-                <SelectValue placeholder="Pick a variable…" />
-              </SelectTrigger>
-              <SelectContent>
-                {varKeys.map((key) => (
-                  <SelectItem key={key} value={key}>
-                    vars.{key}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Input
-              value={cfg.subject_key ?? ""}
-              onChange={(e) => onPatch({ subject_key: e.target.value })}
-              placeholder={subject === "var" ? "e.g. email" : "tag UUID"}
-              className="bg-muted font-mono text-xs"
-            />
-          )}
-        </div>
-      </div>
-
-      <div
-        className={cn(
-          "grid grid-cols-1 gap-3",
-          showValue && !isShopifyPayment ? "md:grid-cols-2" : "",
-        )}
-      >
-        {!isShopifyPayment && (
-          <div>
-            <label className="mb-1 block text-xs text-muted-foreground">
-              Operator
-            </label>
-            <Select
-              value={operator}
-              onValueChange={(v) => {
-                if (v) onPatch({ operator: v as ConditionCfg["operator"] });
-              }}
-            >
-              <SelectTrigger className="bg-muted">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="present">is present</SelectItem>
-                <SelectItem value="absent">is absent</SelectItem>
-                <SelectItem value="equals">equals</SelectItem>
-                <SelectItem value="not_equals">does not equal</SelectItem>
-                <SelectItem value="contains">contains</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-        {showValue && !isShopifyPayment && (
-          <div>
-            <label className="mb-1 block text-xs text-muted-foreground">
-              Value
-            </label>
-            <Input
-              value={cfg.value ?? ""}
-              onChange={(e) => onPatch({ value: e.target.value })}
-              className="bg-muted"
-            />
-          </div>
-        )}
-      </div>
-    </>
-  );
+  return <ConditionRuleFields cfg={cfg} onPatch={onPatch} triggerType={triggerType} tags={tags} varKeys={collectFlowVarKeys(allNodes)} />;
 }
 
 interface UserTag {
@@ -1466,12 +1282,14 @@ interface UserTag {
 }
 
 function ConditionForm({
+  triggerType,
   cfg,
   allNodes,
   currentKey,
   onUpdateConfig,
   t,
 }: {
+  triggerType?: FlowTriggerType;
   cfg: ConditionCfg;
   allNodes: BuilderNode[];
   currentKey: string;
@@ -1481,6 +1299,7 @@ function ConditionForm({
   return (
     <>
       <ConditionPredicateFields
+        triggerType={triggerType}
         cfg={cfg}
         allNodes={allNodes}
         onPatch={(patch) => onUpdateConfig(patch)}
@@ -1506,11 +1325,13 @@ function ConditionForm({
 }
 
 function SwitchForm({
+  triggerType,
   cfg,
   allNodes,
   currentKey,
   onUpdateConfig,
 }: {
+  triggerType?: FlowTriggerType;
   cfg: SwitchCfg;
   allNodes: BuilderNode[];
   currentKey: string;
@@ -1538,10 +1359,10 @@ function SwitchForm({
         {
           branch_id: uniqueSwitchBranchId(branches, label),
           label,
-          subject: "var",
-          subject_key: "",
+          subject: triggerType?.startsWith('shopify_') ? triggerType.includes('checkout') ? 'shopify_checkout' : 'shopify_order' : 'var',
+          subject_key: triggerType?.startsWith('shopify_') ? triggerType.includes('checkout') ? 'total' : 'payment_status' : '',
           operator: "equals",
-          value: "",
+          value: triggerType?.startsWith('shopify_order_') ? 'paid' : '',
           next_node_key: "",
         },
       ],
@@ -1587,6 +1408,7 @@ function SwitchForm({
             </div>
             <div className="flex flex-col gap-3">
               <ConditionPredicateFields
+        triggerType={triggerType}
                 cfg={branch}
                 allNodes={allNodes}
                 onPatch={(patch) => updateBranch(index, patch)}

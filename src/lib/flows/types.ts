@@ -202,17 +202,48 @@ export type ConditionOperator =
   | "equals"
   | "not_equals"
   | "contains"
+  | "not_contains"
+  | "starts_with"
+  | "ends_with"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "between"
+  | "in"
+  | "not_in"
+  | "contains_any"
+  | "contains_all"
+  | "before"
+  | "after"
   | "present"
   | "absent";
 
-export type ConditionSubject = "var" | "tag" | "contact_field" | "shopify_payment";
+export type ConditionSubject = "var" | "tag" | "contact_field" | "shopify_payment" | "shopify_order" | "shopify_checkout";
+
+export interface ConditionPredicate {
+  subject: ConditionSubject;
+  subject_key: string;
+  operator: ConditionOperator;
+  value?: string;
+  value_to?: string;
+  /** Shopify conditions default to the event snapshot. Latest fetches the same resource. */
+  data_source?: "snapshot" | "latest";
+  /** Comma-separated gateway names, matched exactly, ignoring case. */
+  cod_gateways?: string;
+  /** Used by line-item quantity conditions to select a product, variant or SKU. */
+  item_key?: "product_id" | "variant_id" | "sku";
+  item_value?: string;
+}
 
 /**
  * Routes the run based on a predicate over the contact's tags,
  * profile fields, or stored vars. Always auto-advances — no Meta
  * call, no customer-side input.
  */
-export interface ConditionNodeConfig {
+export interface ConditionNodeConfig extends ConditionPredicate {
+  match?: "all" | "any";
+  rules?: ConditionPredicate[];
   subject: ConditionSubject;
   /**
    * For `var`: the key in flow_runs.vars.
@@ -231,7 +262,9 @@ export interface ConditionNodeConfig {
 }
 
 /** One branch in a multi-case switch node — first match wins. */
-export interface SwitchBranchConfig {
+export interface SwitchBranchConfig extends ConditionPredicate {
+  match?: "all" | "any";
+  rules?: ConditionPredicate[];
   branch_id: string;
   /** Shown on the canvas edge label. */
   label: string;

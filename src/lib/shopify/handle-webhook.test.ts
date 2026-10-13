@@ -66,6 +66,7 @@ function mockDb(): SupabaseClient {
     from: vi.fn(() => ({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
+      or: vi.fn().mockResolvedValue({ data: [], error: null }),
       maybeSingle: vi.fn().mockResolvedValue({
         data: {
           account_id: ACCOUNT_ID,

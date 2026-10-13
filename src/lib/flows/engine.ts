@@ -39,6 +39,8 @@ import {
   sendShopifyProductCard,
 } from "@/lib/shopify/send-product-card";
 import { supabaseAdmin } from "./admin-client";
+import { compareCondition } from "./conditions";
+import { createConditionEvaluator } from "./condition-runtime";
 import {
   engineSendInteractiveButtons,
   engineSendInteractiveList,
@@ -273,21 +275,7 @@ export function evaluateConditionPredicate(args: {
   /** The configured comparison value, when applicable. */
   configValue: string | undefined;
 }): boolean {
-  switch (args.operator) {
-    case "present":
-      return args.subjectValue !== undefined && args.subjectValue !== "";
-    case "absent":
-      return args.subjectValue === undefined || args.subjectValue === "";
-    case "equals":
-      if (args.subjectValue === undefined) return false;
-      return args.subjectValue === (args.configValue ?? "");
-    case "not_equals":
-      if (args.subjectValue === undefined) return true;
-      return args.subjectValue !== (args.configValue ?? "");
-    case "contains":
-      if (args.subjectValue === undefined) return false;
-      return args.subjectValue.includes(args.configValue ?? "");
-  }
+  return compareCondition(args);
 }
 
 // ============================================================
@@ -663,70 +651,6 @@ async function executeHandoff(
     assigned_to: cfg.assign_to ?? null,
   });
   await endRun(db, run.id, "handed_off", "handoff_node");
-}
-
-/**
- * Resolve a condition node's subject value from DB / run state, then
- * call the pure `evaluateConditionPredicate`. Splits out so the
- * predicate itself stays unit-testable without a Supabase mock.
- *
- * Subject sources:
- *   - `var` → `flow_runs.vars[subject_key]` (captured by collect_input
- *     or http_fetch in v2).
- *   - `tag` → present iff `contact_tags(contact_id, tag_id)` exists.
- *     `subject_key` IS the tag UUID; the SELECT returns 1 row or 0.
- *   - `contact_field` → one of name/email/phone/company on `contacts`.
- */
-async function evaluateConditionNode(
-  db: AdminClient,
-  run: FlowRunRow,
-  cfg: ConditionNodeConfig,
-): Promise<boolean> {
-  let subjectValue: string | undefined;
-  if (cfg.subject === "var" || cfg.subject === "shopify_payment") {
-    const key = cfg.subject === "shopify_payment" ? "payment_status" : cfg.subject_key;
-    const v = run.vars[key];
-    if (typeof v === "string") {
-      subjectValue = v;
-    } else if (v && typeof v === "object" && !Array.isArray(v)) {
-      const obj = v as Record<string, unknown>;
-      subjectValue =
-        typeof obj.formatted === "string" ? obj.formatted : JSON.stringify(v);
-    } else if (v === undefined || v === null) {
-      subjectValue = undefined;
-    } else {
-      subjectValue = String(v);
-    }
-  } else if (cfg.subject === "tag") {
-    const { count } = await db
-      .from("contact_tags")
-      .select("contact_id", { count: "exact", head: true })
-      .eq("contact_id", run.contact_id!)
-      .eq("tag_id", cfg.subject_key);
-    // For tags, "present" really is the only meaningful test — the
-    // `present`/`absent` operators are the natural fit. equals/contains
-    // against a tag UUID would still work mechanically (compare its
-    // existence to the value).
-    subjectValue = (count ?? 0) > 0 ? cfg.subject_key : undefined;
-  } else {
-    const ALLOWED = ["name", "email", "phone", "company"] as const;
-    type AllowedField = (typeof ALLOWED)[number];
-    if (!ALLOWED.includes(cfg.subject_key as AllowedField)) {
-      throw new Error(`unsupported contact_field: ${cfg.subject_key}`);
-    }
-    const { data } = await db
-      .from("contacts")
-      .select(cfg.subject_key)
-      .eq("id", run.contact_id!)
-      .maybeSingle();
-    const raw = (data as Record<string, unknown> | null)?.[cfg.subject_key];
-    subjectValue = typeof raw === "string" && raw.length > 0 ? raw : undefined;
-  }
-  return evaluateConditionPredicate({
-    operator: cfg.operator,
-    subjectValue,
-    configValue: cfg.value,
-  });
 }
 
 /**
@@ -1108,12 +1032,14 @@ async function advanceFromNodeKey(
     if (node.node_type === "condition") {
       const cfg = node.config as unknown as ConditionNodeConfig;
       let branch: "true" | "false";
+      const evaluator = createConditionEvaluator(db, run);
       try {
-        branch = (await evaluateConditionNode(db, run, cfg))
+        branch = (await evaluator.group(cfg))
           ? "true"
           : "false";
       } catch (err) {
         await logEvent(db, run.id, "error", node.node_key, {
+          condition_checks: evaluator.traces,
           reason: "condition_evaluation_failed",
           detail: err instanceof Error ? err.message : String(err),
         });
@@ -1124,6 +1050,7 @@ async function advanceFromNodeKey(
         branch === "true" ? cfg.true_next : cfg.false_next;
       await logEvent(db, run.id, "node_entered", node.node_key, {
         condition_result: branch,
+        condition_checks: evaluator.traces,
         advancing_to: currentKey,
       });
       continue;
@@ -1132,16 +1059,10 @@ async function advanceFromNodeKey(
       const cfg = node.config as unknown as SwitchNodeConfig;
       let nextKey = cfg.default_next;
       let matchedBranch: string | null = null;
+      const evaluator = createConditionEvaluator(db, run);
       try {
         for (const branch of cfg.branches ?? []) {
-          const matches = await evaluateConditionNode(db, run, {
-            subject: branch.subject,
-            subject_key: branch.subject_key,
-            operator: branch.operator,
-            value: branch.value,
-            true_next: "",
-            false_next: "",
-          });
+          const matches = await evaluator.group(branch);
           if (matches) {
             nextKey = branch.next_node_key;
             matchedBranch = branch.branch_id;
@@ -1150,6 +1071,7 @@ async function advanceFromNodeKey(
         }
       } catch (err) {
         await logEvent(db, run.id, "error", node.node_key, {
+          condition_checks: evaluator.traces,
           reason: "switch_evaluation_failed",
           detail: err instanceof Error ? err.message : String(err),
         });
@@ -1159,6 +1081,7 @@ async function advanceFromNodeKey(
       currentKey = nextKey;
       await logEvent(db, run.id, "node_entered", node.node_key, {
         switch_branch: matchedBranch,
+        condition_checks: evaluator.traces,
         advancing_to: currentKey,
       });
       continue;

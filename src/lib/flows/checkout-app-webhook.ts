@@ -5,6 +5,8 @@ import {
 import { splitPublicUrlForWhatsApp } from '@/lib/shopify/order-links'
 import { generateWebhookToken } from '@/lib/automations/webhook-token'
 import type { FlowWebhookTriggerConfig } from './webhook-config'
+import { shopifyConditionData } from '@/lib/shopify/condition-data'
+import type { ShopifyCheckoutPayload, ShopifyAddressFields, ShopifyLineItemFields } from '@/lib/shopify/types'
 
 /** Third-party Shopify checkout apps (GoKwik, Fastrr, Shopflo, Breeze, …). */
 export function isCheckoutAppFlowTrigger(t: string): boolean {
@@ -154,21 +156,21 @@ function resolveCustomerName(payload: unknown): string | null {
 /** Fill Shopify-like template vars from common checkout-app webhook shapes. */
 export function enrichCheckoutAppWebhookVars(
   payload: unknown,
-  vars: Record<string, unknown>,
+  vars: Record<string, unknown>
 ): Record<string, unknown> {
-  const next = { ...vars }
+  const next = { ...vars };
 
   if (!next.customer_name && !next.name) {
-    const customerName = resolveCustomerName(payload)
+    const customerName = resolveCustomerName(payload);
     if (customerName) {
-      next.customer_name = customerName
-      next.name = customerName
+      next.customer_name = customerName;
+      next.name = customerName;
     }
   }
 
   if (!next.checkout_url) {
-    const checkoutUrl = firstStringAtPaths(payload, CHECKOUT_URL_PATHS)
-    if (checkoutUrl) next.checkout_url = checkoutUrl
+    const checkoutUrl = firstStringAtPaths(payload, CHECKOUT_URL_PATHS);
+    if (checkoutUrl) next.checkout_url = checkoutUrl;
   }
 
   if (
@@ -176,41 +178,41 @@ export function enrichCheckoutAppWebhookVars(
     next.checkout_url.trim() &&
     !next.checkout_url_suffix
   ) {
-    const split = splitPublicUrlForWhatsApp(next.checkout_url)
-    if (split.suffix) next.checkout_url_suffix = split.suffix
+    const split = splitPublicUrlForWhatsApp(next.checkout_url);
+    if (split.suffix) next.checkout_url_suffix = split.suffix;
   }
 
   if (!next.checkout_id) {
-    const checkoutId = firstStringAtPaths(payload, CHECKOUT_ID_PATHS)
-    if (checkoutId) next.checkout_id = checkoutId
+    const checkoutId = firstStringAtPaths(payload, CHECKOUT_ID_PATHS);
+    if (checkoutId) next.checkout_id = checkoutId;
   }
 
   if (!next.order_total) {
     for (const path of TOTAL_PATHS) {
-      const totalPrice = extractByPath(payload, path)
-      if (totalPrice == null || typeof totalPrice === 'object') continue
-      const formatted = formatWebhookScalar(totalPrice)
+      const totalPrice = extractByPath(payload, path);
+      if (totalPrice == null || typeof totalPrice === 'object') continue;
+      const formatted = formatWebhookScalar(totalPrice);
       next.order_total =
         typeof formatted === 'string' || typeof formatted === 'number'
           ? String(formatted)
-          : formatted
-      break
+          : formatted;
+      break;
     }
   }
 
   if (!next.order_items) {
     for (const path of LINE_ITEM_PATHS) {
-      const orderItems = formatLineItems(extractByPath(payload, path))
+      const orderItems = formatLineItems(extractByPath(payload, path));
       if (orderItems) {
-        next.order_items = orderItems
-        break
+        next.order_items = orderItems;
+        break;
       }
     }
   }
 
   if (!next.product_image) {
-    const imageUrl = firstStringAtPaths(payload, IMAGE_PATHS)
-    if (imageUrl) next.product_image = imageUrl
+    const imageUrl = firstStringAtPaths(payload, IMAGE_PATHS);
+    if (imageUrl) next.product_image = imageUrl;
   }
 
   if (!next.email) {
@@ -219,13 +221,13 @@ export function enrichCheckoutAppWebhookVars(
       'data.email',
       'customer.email',
       'data.customer.email',
-    ])
-    if (email) next.email = email
+    ]);
+    if (email) next.email = email;
   }
 
   if (!next.phone) {
-    const phone = firstStringAtPaths(payload, PHONE_PATHS)
-    if (phone) next.phone = phone
+    const phone = firstStringAtPaths(payload, PHONE_PATHS);
+    if (phone) next.phone = phone;
   }
 
   if (!next.customer_lastname && !next.lastname) {
@@ -234,10 +236,10 @@ export function enrichCheckoutAppWebhookVars(
       'data.customer.lastname',
       'address.lastname',
       'data.address.lastname',
-    ])
+    ]);
     if (lastname) {
-      next.customer_lastname = lastname
-      next.lastname = lastname
+      next.customer_lastname = lastname;
+      next.lastname = lastname;
     }
   }
 
@@ -245,9 +247,126 @@ export function enrichCheckoutAppWebhookVars(
     const landingPage = firstStringAtPaths(payload, [
       'landing_page',
       'data.landing_page',
-    ])
-    if (landingPage) next.landing_page = landingPage
+    ]);
+    if (landingPage) next.landing_page = landingPage;
   }
 
-  return next
+  // Providers use different shapes. Preserve structured values when supplied;
+  // never infer item IDs, currency or quantities from human-readable text.
+  const rawAt = (key: string): unknown =>
+    next[key] ??
+    extractByPath(payload, key) ??
+    extractByPath(payload, `data.${key}`);
+  const rawItems =
+    LINE_ITEM_PATHS.map((path) => extractByPath(payload, path)).find(
+      Array.isArray
+    ) ?? rawAt('line_items');
+  const items = Array.isArray(rawItems)
+    ? rawItems
+        .filter((i): i is ShopifyLineItemFields => !!i && typeof i === 'object')
+        .map((i) => ({
+          product_id:
+            typeof i.product_id === 'string' || typeof i.product_id === 'number'
+              ? i.product_id
+              : undefined,
+          variant_id:
+            typeof i.variant_id === 'string' || typeof i.variant_id === 'number'
+              ? i.variant_id
+              : undefined,
+          sku: typeof i.sku === 'string' ? i.sku : undefined,
+          quantity:
+            typeof i.quantity === 'number' && Number.isFinite(i.quantity)
+              ? i.quantity
+              : undefined,
+        }))
+    : undefined;
+  const addressRaw =
+    rawAt('shipping_address_fields') ?? rawAt('shipping_address');
+  const address: ShopifyAddressFields | undefined =
+    addressRaw && typeof addressRaw === 'object' && !Array.isArray(addressRaw)
+      ? Object.fromEntries(
+          [
+            'address1',
+            'address2',
+            'city',
+            'province',
+            'province_code',
+            'zip',
+            'country_code',
+          ].flatMap((key) => {
+            const value = (addressRaw as Record<string, unknown>)[key];
+            return typeof value === 'string' ? [[key, value]] : [];
+          })
+        )
+      : ['address1', 'city', 'state', 'zip'].some(
+            (key) => typeof rawAt(key) === 'string'
+          )
+        ? {
+            address1:
+              typeof rawAt('address1') === 'string'
+                ? (rawAt('address1') as string)
+                : undefined,
+            city:
+              typeof rawAt('city') === 'string'
+                ? (rawAt('city') as string)
+                : undefined,
+            province:
+              typeof rawAt('state') === 'string'
+                ? (rawAt('state') as string)
+                : undefined,
+            zip:
+              typeof rawAt('zip') === 'string'
+                ? (rawAt('zip') as string)
+                : undefined,
+          }
+        : undefined;
+  const customerId =
+    rawAt('customer_id') ??
+    extractByPath(payload, 'customer.id') ??
+    extractByPath(payload, 'data.customer.id');
+  const checkout: ShopifyCheckoutPayload = {
+    id: typeof next.checkout_id === 'string' ? next.checkout_id : undefined,
+    total_price:
+      typeof next.order_total === 'string'
+        ? next.order_total
+        : typeof rawAt('amount') === 'number'
+          ? String(rawAt('amount'))
+          : undefined,
+    currency:
+      typeof rawAt('currency') === 'string'
+        ? (rawAt('currency') as string)
+        : undefined,
+    created_at:
+      typeof rawAt('created_at') === 'string'
+        ? (rawAt('created_at') as string)
+        : undefined,
+    total_discounts:
+      typeof rawAt('total_discounts') === 'string' ||
+      typeof rawAt('total_discounts') === 'number'
+        ? String(rawAt('total_discounts'))
+        : undefined,
+    customer:
+      typeof customerId === 'number' || typeof customerId === 'string'
+        ? { id: customerId }
+        : undefined,
+    shipping_address: address,
+    line_items: items,
+    discount_codes: Array.isArray(rawAt('discount_codes'))
+      ? (rawAt('discount_codes') as unknown[]).flatMap((d) =>
+          typeof d === 'string'
+            ? [{ code: d }]
+            : d &&
+                typeof d === 'object' &&
+                typeof (d as { code?: unknown }).code === 'string'
+              ? [{ code: (d as { code: string }).code }]
+              : []
+        )
+      : undefined,
+  };
+  const conditionData = shopifyConditionData(checkout, 'checkout');
+  if (!address) conditionData.has_shipping_address = undefined;
+  if (items?.some((i) => i.quantity === undefined))
+    conditionData.quantity = undefined;
+  next.shopify_condition_data = conditionData;
+  return next;
 }

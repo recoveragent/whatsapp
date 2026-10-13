@@ -40,6 +40,8 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { resolveContactFieldLabel } from "@/lib/contact-fields";
+import { CONDITION_OPERATOR_LABELS, isShopifySubject, SHOPIFY_CONDITION_FIELDS } from '@/lib/flows/conditions';
+import type { ConditionOperator } from '@/lib/flows/types';
 import {
   resolvePipelineLabel,
   resolveStageLabel,
@@ -582,6 +584,12 @@ export function summarizeNode(
       return bits.length > 0 ? bits.join(" · ") : null;
     }
     case 'condition': {
+      if (Array.isArray(cfg.rules)) return `${cfg.match === 'any' ? 'ANY' : 'ALL'} of ${cfg.rules.length} rules`;
+      if (isShopifySubject(String(cfg.subject))) {
+        const field = SHOPIFY_CONDITION_FIELDS.find(f => f.key === cfg.subject_key)?.label ?? String(cfg.subject_key ?? '');
+        const op = CONDITION_OPERATOR_LABELS[cfg.operator as ConditionOperator] ?? '';
+        return `${cfg.data_source === 'latest' ? 'Latest' : 'Triggering'} ${cfg.subject === 'shopify_checkout' ? 'checkout' : 'order'}: ${field} ${op} ${String(cfg.value ?? '')}${cfg.operator === 'between' ? ` – ${cfg.value_to}` : ''}`;
+      }
       if (cfg.subject === "shopify_payment") {
         const value = typeof cfg.value === "string" ? cfg.value : "";
         const label =
@@ -614,12 +622,10 @@ export function summarizeNode(
                 ? t ? t('opExists') : 'exists'
                 : cfg.operator === "absent"
                   ? t ? t('opMissing') : 'missing'
-                  : "";
+                  : CONDITION_OPERATOR_LABELS[cfg.operator as ConditionOperator] ?? "";
       const value = typeof cfg.value === "string" ? cfg.value : "";
       const valStr =
-        (cfg.operator === "equals" ||
-          cfg.operator === "not_equals" ||
-          cfg.operator === "contains") &&
+        cfg.operator !== "present" && cfg.operator !== "absent" &&
         value
           ? ` "${truncate(value, 20)}"`
           : '';

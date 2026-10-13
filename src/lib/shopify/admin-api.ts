@@ -162,8 +162,37 @@ export async function fetchOrder(
     shopDomain,
     accessToken,
     `/orders/${orderId}.json`,
+    { cache: 'no-store' },
   );
   return data.order ?? null;
+}
+
+/** Counts come from Shopify, not the incomplete local order cache. */
+export async function fetchConditionOrderCount(shopDomain: string, accessToken: string, customerId: string, createdBefore?: string): Promise<number> {
+  if (!/^\d+$/.test(customerId)) throw new Error('Invalid Shopify customer ID');
+  const { customer } = await shopifyFetch<{ customer?: { orders_count?: number } }>(shopDomain, accessToken, `/customers/${customerId}.json?fields=id,orders_count`);
+  const lifetime = customer?.orders_count;
+  if (lifetime == null || !Number.isInteger(lifetime) || lifetime < 0) throw new Error('Shopify customer order history is unavailable');
+  if (!createdBefore) return lifetime;
+  const base = shopAdminBase(shopDomain);
+  let next: string | null = `${base}/customers/${customerId}/orders.json?status=any&limit=250&fields=id,created_at`;
+  let visible = 0, previous = 0;
+  const cutoff = Date.parse(createdBefore);
+  for (let page = 0; next && page < 40; page++) {
+    const response: Response = await fetch(next, { headers: { 'X-Shopify-Access-Token': accessToken }, cache: 'no-store' });
+    if (!response.ok) throw new Error(`Shopify customer history lookup failed (${response.status})`);
+    const data = await response.json() as { orders?: Array<{ id: string | number; created_at: string }> };
+    if (!Array.isArray(data.orders)) throw new Error('Invalid Shopify customer order history');
+    visible += data.orders.length;
+    previous += data.orders.filter(o => Date.parse(o.created_at) <= cutoff).length;
+    // URLs can contain commas (e.g. fields=id,created_at). Parse the link target whole.
+    const url: string | undefined = response.headers.get('link')?.match(/<([^>]+)>\s*;\s*rel="next"/)?.[1];
+    if (url && (!url.startsWith(base + '/') || new URL(url).origin !== new URL(base).origin)) throw new Error('Invalid Shopify pagination URL');
+    next = url ?? null;
+  }
+  // read_orders alone may only expose recent orders; never call that a lifetime count.
+  if (next || visible < lifetime) throw new Error('Complete customer history is unavailable; historical order access may be required');
+  return previous;
 }
 
 /**

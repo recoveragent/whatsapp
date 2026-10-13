@@ -9,6 +9,7 @@ import type {
 } from './types';
 import { splitPublicUrlForWhatsApp } from './order-links';
 import { normalizePhone } from '@/lib/whatsapp/phone-utils';
+import { shopifyConditionData } from './condition-data';
 
 function fullName(
   first?: string | null,
@@ -205,6 +206,8 @@ export function contextFromOrder(
 
   return {
     customerName,
+    conditionData: shopifyConditionData(order, 'order'),
+    shopifyOrderId: order.id == null ? undefined : String(order.id),
     phone: extractOrderPhone(order),
     email: extractOrderEmail(order),
     orderNumber: order.name ?? (order.order_number != null ? `#${order.order_number}` : null),
@@ -240,6 +243,7 @@ export function contextFromCheckout(
 
   return {
     customerName,
+    conditionData: shopifyConditionData(checkout, 'checkout'),
     phone: extractPhone(checkout),
     email: checkout.email ?? checkout.customer?.email ?? null,
     orderNumber: null,
@@ -296,7 +300,26 @@ export function contextFromFulfillment(
 
   return {
     ...base,
-    trackingNumber: fulfillment.tracking_number ?? fulfillment.tracking_company ?? null,
+    shopifyOrderId:
+      fulfillment.order_id == null
+        ? base.shopifyOrderId
+        : String(fulfillment.order_id),
+    conditionData: order
+      ? shopifyConditionData(
+          {
+            ...order,
+            fulfillments: [
+              ...(order.fulfillments ?? []).filter(
+                (f) => f.id == null || String(f.id) !== String(fulfillment.id)
+              ),
+              fulfillment,
+            ],
+          },
+          'order'
+        )
+      : undefined,
+    trackingNumber:
+      fulfillment.tracking_number ?? fulfillment.tracking_company ?? null,
     trackingUrl: fulfillment.tracking_url ?? null,
     fulfillmentStatus: fulfillment.status ?? 'updated',
     shipmentStatus: normalizeShipmentStatus(fulfillment.shipment_status),

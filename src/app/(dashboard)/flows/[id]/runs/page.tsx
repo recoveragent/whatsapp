@@ -241,71 +241,71 @@ function RunCard({
       })
     : null;
   return (
-    <div className="rounded-lg border border-border bg-card">
+    <div className="border-border bg-card rounded-lg border">
       <button
         type="button"
         onClick={onToggle}
         className="flex w-full items-center gap-3 px-4 py-3 text-left"
       >
         {expanded ? (
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <ChevronDown className="text-muted-foreground h-4 w-4 shrink-0" />
         ) : (
-          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <ChevronRight className="text-muted-foreground h-4 w-4 shrink-0" />
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="truncate text-sm font-medium text-foreground">
+            <span className="text-foreground truncate text-sm font-medium">
               {contactLabel}
             </span>
-            <Badge variant="outline" className={cn("gap-1", meta.classes)}>
+            <Badge variant="outline" className={cn('gap-1', meta.classes)}>
               <StatusIcon className="h-3 w-3" />
               {t(
-                run.status === "active"
-                  ? "statusActive"
-                  : run.status === "completed"
-                  ? "statusCompleted"
-                  : run.status === "handed_off"
-                  ? "statusHandedOff"
-                  : run.status === "timed_out"
-                  ? "statusTimedOut"
-                  : run.status === "paused_by_agent"
-                  ? "statusPaused"
-                  : "statusFailed"
+                run.status === 'active'
+                  ? 'statusActive'
+                  : run.status === 'completed'
+                    ? 'statusCompleted'
+                    : run.status === 'handed_off'
+                      ? 'statusHandedOff'
+                      : run.status === 'timed_out'
+                        ? 'statusTimedOut'
+                        : run.status === 'paused_by_agent'
+                          ? 'statusPaused'
+                          : 'statusFailed'
               )}
             </Badge>
-            {(run.status === "active" || run.status === "waiting") &&
+            {(run.status === 'active' || run.status === 'waiting') &&
               run.current_node_key && (
-              <code className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                {t("atNode", { node: run.current_node_key })}
-              </code>
-            )}
+                <code className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px]">
+                  {t('atNode', { node: run.current_node_key })}
+                </code>
+              )}
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-            <span>{t("started", { time: format(new Date(run.started_at), "PP p") })}</span>
+          <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-2 text-[11px]">
+            <span>
+              {t('started', { time: format(new Date(run.started_at), 'PP p') })}
+            </span>
             {run.reprompt_count > 0 && (
-              <span>· {t("reprompts", { count: run.reprompt_count })}</span>
+              <span>· {t('reprompts', { count: run.reprompt_count })}</span>
             )}
-            {duration && <span>· {t("ranFor", { duration })}</span>}
+            {duration && <span>· {t('ranFor', { duration })}</span>}
           </div>
         </div>
       </button>
       {expanded && (
-        <div className="border-t border-border px-4 py-3">
+        <div className="border-border border-t px-4 py-3">
           {Object.keys(vars).length > 0 && (
             <details className="mb-3">
-              <summary className="cursor-pointer text-xs text-muted-foreground">
-                {t("capturedVars", { count: Object.keys(vars).length })}
+              <summary className="text-muted-foreground cursor-pointer text-xs">
+                {t('capturedVars', { count: Object.keys(vars).length })}
               </summary>
-              <pre className="mt-2 overflow-x-auto rounded-md bg-background p-2 text-[11px] text-muted-foreground">
+              <pre className="bg-background text-muted-foreground mt-2 overflow-x-auto rounded-md p-2 text-[11px]">
                 {JSON.stringify(vars, null, 2)}
               </pre>
             </details>
           )}
           <div className="flex flex-col gap-1">
             {events.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                {t("noEvents")}
-              </p>
+              <p className="text-muted-foreground text-xs">{t('noEvents')}</p>
             ) : (
               events.map((ev, ix) => <EventLine key={ix} ev={ev} />)
             )}
@@ -344,9 +344,22 @@ function EventLine({ ev }: { ev: EventRow }) {
         </code>
       )}
       {Object.keys(ev.payload ?? {}).length > 0 && (
-        <span className="min-w-0 truncate text-[10px] text-muted-foreground">
-          {summarizePayload(ev.payload ?? {})}
-        </span>
+        <div className="min-w-0 flex-1 text-[10px] text-muted-foreground">
+          <span className="block truncate">{summarizePayload(ev.payload ?? {})}</span>
+          {typeof ev.payload.detail === 'string' && <p className="mt-1 break-words">{ev.payload.detail}</p>}
+          {Array.isArray(ev.payload.condition_checks) && ev.payload.condition_checks.length > 0 && (
+            <details className="mt-1">
+              <summary className="cursor-pointer">Condition checks</summary>
+              <ul className="mt-1 space-y-1">
+                {ev.payload.condition_checks.map((raw, index) => {
+                  if (!raw || typeof raw !== 'object') return null;
+                  const check = raw as Record<string, unknown>;
+                  return <li key={index} className="break-words">{String(check.subject)}.{String(check.field)} · {String(check.source).replaceAll('_', ' ')} · {check.missing ? 'Data unavailable' : check.result ? 'Matched' : 'Did not match'}</li>;
+                })}
+              </ul>
+            </details>
+          )}
+        </div>
       )}
     </div>
   );

@@ -58,6 +58,12 @@ describe('dispatchShopifyFlows', () => {
     ensureConversation.mockResolvedValue({ id: 'conv-1' })
   })
 
+  it('passes structured data and the order identity through fulfillment dispatch', async () => {
+    runFlowsForTrigger.mockResolvedValue({ started: [], skipped: [], no_active_flows: true })
+    await dispatchShopifyFlows({ db: {} as never, accountId: 'acc-1', ownerUserId: 'user-1', triggerType: 'shopify_order_fulfilled', context: { ...baseContext, resourceKey: 'fulfillment:900', shopifyOrderId: '123', conditionData: { resource_type: 'order', total: 599 } } })
+    expect(runFlowsForTrigger).toHaveBeenCalledWith(expect.objectContaining({ context: { vars: expect.objectContaining({ shopify_order_id: '123', shopify_condition_data: { resource_type: 'order', total: 599 } }) } }))
+  })
+
   it('always attempts empty-shell cleanup (active runs guarded inside helper)', async () => {
     runFlowsForTrigger.mockResolvedValue({
       started: [],

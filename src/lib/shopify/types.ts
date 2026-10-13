@@ -74,6 +74,9 @@ export interface ShopifyConfigRow {
 
 /** Runtime context extracted from a Shopify webhook payload. */
 export interface ShopifyEventContext {
+  /** Structured condition data; display variables remain unchanged. */
+  conditionData?: Record<string, unknown>;
+  shopifyOrderId?: string;
   customerName: string;
   phone: string | null;
   email: string | null;
@@ -108,6 +111,7 @@ export interface ShopifyEventContext {
 
 /** Subset of line-item fields we read from order/checkout webhooks. */
 export interface ShopifyLineItemFields {
+  sku?: string;
   name?: string;
   title?: string;
   quantity?: number;
@@ -119,6 +123,10 @@ export interface ShopifyLineItemFields {
 }
 
 export interface ShopifyOrderPayload {
+  current_total_price?: string;
+  total_discounts?: string;
+  discount_codes?: Array<{ code?: string }>;
+  processed_at?: string;
   id?: number | string;
   name?: string;
   order_number?: number;
@@ -133,6 +141,8 @@ export interface ShopifyOrderPayload {
   created_at?: string;
   line_items?: ShopifyLineItemFields[];
   customer?: {
+    id?: number | string;
+    orders_count?: number;
     first_name?: string;
     last_name?: string;
     phone?: string;
@@ -147,6 +157,7 @@ export interface ShopifyOrderPayload {
   /** Customer-facing order status page (same domain across couriers). */
   order_status_url?: string | null;
   fulfillments?: Array<{
+    id?: string | number;
     status?: string;
     tracking_number?: string | null;
     tracking_url?: string | null;
@@ -156,6 +167,9 @@ export interface ShopifyOrderPayload {
 }
 
 export interface ShopifyCheckoutPayload {
+  total_discounts?: string;
+  discount_codes?: Array<{ code?: string }>;
+  created_at?: string;
   id?: number | string;
   token?: string;
   abandoned_checkout_url?: string;
@@ -164,6 +178,8 @@ export interface ShopifyCheckoutPayload {
   completed_at?: string | null;
   line_items?: ShopifyLineItemFields[];
   customer?: {
+    id?: number | string;
+    orders_count?: number;
     first_name?: string;
     last_name?: string;
     phone?: string;

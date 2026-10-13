@@ -127,6 +127,11 @@ export const SHOPIFY_PAYMENT_STATUSES = [
   'paid',
   'pending',
   'partially_paid',
+  'authorized',
+  'partially_refunded',
+  'refunded',
+  'voided',
+  'expired',
 ] as const
 
 export type ShopifyPaymentStatus = (typeof SHOPIFY_PAYMENT_STATUSES)[number]
@@ -136,6 +141,11 @@ export const SHOPIFY_PAYMENT_STATUS_LABELS: Record<ShopifyPaymentStatus, string>
   paid: 'Paid',
   pending: 'Pending',
   partially_paid: 'Partially paid',
+  authorized: 'Authorized',
+  partially_refunded: 'Partially refunded',
+  refunded: 'Refunded',
+  voided: 'Voided',
+  expired: 'Expired',
 }
 
 export function isShopifyOrderFlowTrigger(

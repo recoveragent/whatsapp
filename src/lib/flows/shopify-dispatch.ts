@@ -6,6 +6,7 @@ import { runFlowsForTrigger, type FlowDispatchOutcome } from './dispatch-externa
 import { shopifyTopicToFlowTrigger, type FlowTriggerType } from './trigger-types'
 
 function shopifyOrderIdFromContext(ctx: ShopifyEventContext): string | undefined {
+  if (ctx.shopifyOrderId) return ctx.shopifyOrderId;
   if (!ctx.resourceKey.startsWith('order:')) return undefined
   const id = ctx.resourceKey.slice('order:'.length).trim()
   return id || undefined
@@ -43,6 +44,7 @@ function contextToVars(ctx: ShopifyEventContext): Record<string, unknown> {
     financial_status: ctx.financialStatus,
     shop_name: ctx.shopName,
     name: ctx.customerName,
+    shopify_condition_data: ctx.conditionData,
   }
 }
 
