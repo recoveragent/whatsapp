@@ -14,15 +14,26 @@ export async function POST(request: Request) {
   const shopDomain = request.headers.get('x-shopify-shop-domain');
 
   if (!topic || !shopDomain) {
-    return NextResponse.json({ error: 'Missing Shopify headers' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Missing Shopify headers' },
+      { status: 400 }
+    );
   }
 
   try {
-    if (!(await verifyShopifyWebhookHmac(rawBody, hmac, shopDomain))) {
+    if (
+      !(await verifyShopifyWebhookHmac(rawBody, hmac, shopDomain, {
+        webhookId: request.headers.get('x-shopify-webhook-id'),
+        topic,
+      }))
+    ) {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
   } catch {
-    return NextResponse.json({ error: 'Webhook verification not configured' }, { status: 503 });
+    return NextResponse.json(
+      { error: 'Webhook verification not configured' },
+      { status: 503 }
+    );
   }
 
   let payload: unknown;
