@@ -134,8 +134,9 @@ export function AgentOnboarding({
             )}
           </Button>
           <p className="text-muted-foreground mt-2 text-xs">
-            Get started imports published store policies when connected. Next,
-            add your provider key and test replies before enabling WhatsApp.
+            Get started imports published store policies when connected. Your
+            super admin configures the AI model; test replies before enabling
+            WhatsApp.
           </p>
         </div>
       )}

@@ -28,12 +28,12 @@ The agent already supported OpenAI/Anthropic provider keys, hybrid knowledge ret
 
 1. Open AI Agents and choose Get started.
 2. If policy access is denied, grant `read_legal_policies` in the Shopify app and reconnect. New OAuth connections request this scope by default, unless deployment configuration overrides `SHOPIFY_SCOPES`.
-3. Add/test the AI provider key. Optionally configure the embeddings key for semantic knowledge retrieval. Keyword retrieval works without it.
+3. A super admin opens **Brands → expand the brand → WhatsApp AI model** to select the provider/model and add/test the provider key. They can optionally configure the embeddings key for semantic knowledge retrieval. Keyword retrieval works without it. Brand admins manage the system prompt, reply switches, reply cap, handoff and knowledge in AI Agents.
 4. Import policies, add FAQs/size guides in Knowledge, and check the catalog sync and Sell on WhatsApp settings.
 5. Test a real contact's order lookup, an unknown order, multiple orders, a policy question, a return execution request, and human handoff.
 6. Enable automatic replies after testing. Importing policies never changes the agent's active/auto-reply switches.
 
-No schema migration is needed. Existing AI knowledge migrations and Shopify product tables must be installed.
+Apply `20261014060149_super_admin_ai_model_controls.sql` when deploying the centralized model controls. It restricts authenticated database writes to behavior fields, while scoped super-admin routes manage model credentials through the service role. Existing model configurations remain in place. Existing AI knowledge migrations and Shopify product tables must also be installed.
 
 ## Research and next priorities
 

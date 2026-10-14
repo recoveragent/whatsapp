@@ -93,7 +93,7 @@ export async function POST(request: Request) {
         err instanceof Error &&
         /relation .* does not exist|Could not find the table/i.test(err.message)
           ? 'AI tables are missing — run pending Supabase migrations (090+), then retry.'
-          : 'Stored API key could not be decrypted — re-enter your key in Setup.';
+          : 'Stored API key could not be decrypted — ask super admin to replace it.';
       throw new AiError(message, {
         code: 'key_decrypt_failed',
         status: 400,
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
     if (!config) {
       return NextResponse.json(
         {
-          error: 'No agent configured yet. Add your provider key in Setup.',
+          error: 'Ask super admin to configure an AI model for this brand.',
           code: 'ai_not_configured',
         },
         { status: 400 }

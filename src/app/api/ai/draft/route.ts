@@ -99,7 +99,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            'AI assistant is not set up. Enable it in Settings → AI Assistant.',
+            'Ask super admin to configure the AI model, then enable the assistant in AI Agents → Setup.',
           code: 'ai_not_configured',
         },
         { status: 400 }

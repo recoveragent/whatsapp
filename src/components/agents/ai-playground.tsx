@@ -140,7 +140,9 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (data.code === 'ai_not_configured') {
-          toast.error('No agent configured yet — finish Setup first.');
+          toast.error(
+            'Ask your super admin to configure an AI model for this brand.'
+          );
         } else {
           toast.error(data.error ?? "Couldn't get a reply.");
         }

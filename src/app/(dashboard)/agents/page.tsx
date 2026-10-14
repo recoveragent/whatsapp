@@ -69,8 +69,8 @@ export default function AgentsPage() {
         </h1>
       </div>
       <p className="text-muted-foreground mt-1 text-sm">
-        Your bring-your-own-key AI agent — set it up, then test it in the
-        playground before it replies to customers in the inbox.
+        Your AI model is managed by super admin. Configure your agent’s behavior
+        and knowledge, then test replies in the playground before going live.
       </p>
 
       {decided && (
