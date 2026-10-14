@@ -8,9 +8,17 @@ import {
 
 import type { ChatMessage } from './types';
 import { latestUserMessage } from './query';
+import { isOrderSupportQuery, isHumanSupportQuery } from './commerce-intent';
+import {
+  extractProductPreferences,
+  productMatchesPreferences,
+  shoppingUserMessages,
+  stripProductPreferenceTerms,
+  type ProductPreferences,
+} from './product-preferences';
 
 const PRODUCT_INTENT_PATTERN =
-  /\b(recommend|suggestion|suggest|show\s+me|looking\s+for|browse|catalog|catalogue|products?|collection|buy|shop|purchase|what\s+do\s+you\s+have|do\s+you\s+have|any\s+.+\s+available|new\s+arrivals?|best\s+sellers?|gift|gifts|anniversary|birthday|present)\b/i;
+  /\b(recommend|suggestion|suggest|show(?:\s+me)?|looking\s+for|browse|catalog|catalogue|products?|collection|buy|shop|purchase|what\s+do\s+you\s+have|do\s+you\s+have|any\s+.+\s+available|new\s+arrivals?|best\s+sellers?|gift|gifts|anniversary|birthday|present)\b/i;
 
 /** Stripped from catalog search — keep meaningful product/gift terms only. */
 const SEARCH_STOP_WORDS = new Set([
@@ -61,6 +69,9 @@ const SEARCH_STOP_WORDS = new Set([
   'suggestion',
   'something',
   'options',
+  'in',
+  'and',
+  'actually',
   'option',
   'looking',
   'need',
@@ -99,9 +110,13 @@ export function extractProductSearchTerms(text: string): string[] {
   const seen = new Set<string>();
   const terms: string[] = [];
 
-  for (const raw of text.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, ' ').split(/\s+/)) {
+  for (const raw of text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+    .split(/\s+/)) {
     const word = raw.trim();
-    if (word.length < 2 || SEARCH_STOP_WORDS.has(word) || seen.has(word)) continue;
+    if (word.length < 2 || SEARCH_STOP_WORDS.has(word) || seen.has(word))
+      continue;
     seen.add(word);
     terms.push(word);
   }
@@ -115,10 +130,21 @@ export function extractProductSearchTerms(text: string): string[] {
  * messages in the same thread.
  */
 export function buildProductSearchQuery(messages: ChatMessage[]): string {
-  const userText = messages
-    .filter((message) => message.role === 'user')
+  const preferences = extractProductPreferences(messages);
+  const userText = shoppingUserMessages(messages)
     .slice(-5)
-    .map((message) => message.content)
+    .map((message) => {
+      const text = stripProductPreferenceTerms(
+        message.content,
+        preferences.minPrice != null || preferences.maxPrice != null
+      );
+      if (
+        preferences.size &&
+        /^(?:xs|s|m|l|xl|xxl|small|medium|large)[.!]?$/i.test(text.trim())
+      )
+        return '';
+      return text;
+    })
     .join(' ');
 
   return extractProductSearchTerms(userText).join(' ');
@@ -132,13 +158,30 @@ export function buildProductSearchQuery(messages: ChatMessage[]): string {
 export function shouldOfferProductCarousel(messages: ChatMessage[]): boolean {
   const latest = latestUserMessage(messages).trim();
   if (!latest) return false;
+  if (/\b(?:size|sizing) (?:guide|chart)\b/i.test(latest)) return false;
+  if (isHumanSupportQuery(latest)) return false;
+  // An explicit browse request can mention delivery ("show me gifts with
+  // delivery"), but support asks such as "return this product" must win.
+  if (
+    isOrderSupportQuery(latest) &&
+    !/\b(recommend|suggest|show me|looking for|browse|buy)\b/i.test(latest)
+  )
+    return false;
+  if (/\b(cancel|refund|damaged|broken|wrong item)\b/i.test(latest))
+    return false;
   if (isProductRecommendationQuery(latest)) return true;
 
   const userMessages = messages.filter((message) => message.role === 'user');
   if (userMessages.length < 2) return false;
 
-  const hadProductIntent = userMessages
-    .slice(0, -1)
+  const previousMessages = userMessages.slice(0, -1);
+  const lastSupportIndex = previousMessages.findLastIndex(
+    (message) =>
+      isOrderSupportQuery(message.content) ||
+      isHumanSupportQuery(message.content)
+  );
+  const hadProductIntent = previousMessages
+    .slice(lastSupportIndex + 1)
     .some((message) => isProductRecommendationQuery(message.content));
   if (!hadProductIntent) return false;
 
@@ -151,9 +194,10 @@ export function shouldOfferProductCarousel(messages: ChatMessage[]): boolean {
 function carouselReady(
   products: ShopifyCatalogProduct[],
   limit: number,
+  preferences: ProductPreferences = {}
 ): ShopifyCatalogProduct[] {
   return products
-    .filter((product) => Boolean(product.image_url?.trim()))
+    .filter((product) => productMatchesPreferences(product, preferences))
     .slice(0, Math.min(Math.max(limit, 2), MAX_CAROUSEL_LIMIT));
 }
 
@@ -168,6 +212,7 @@ export async function searchRecommendedProducts(
   accountId: string,
   query: string,
   limit: number = aiProductCarouselLimit(),
+  preferences: ProductPreferences = {}
 ): Promise<ShopifyCatalogProduct[]> {
   const max = Math.min(Math.max(limit, MIN_CAROUSEL_LIMIT), MAX_CAROUSEL_LIMIT);
   const minNeeded = MIN_CAROUSEL_LIMIT;
@@ -175,7 +220,7 @@ export async function searchRecommendedProducts(
 
   const merge = (products: ShopifyCatalogProduct[]) => {
     for (const product of products) {
-      if (!product.in_stock || !product.image_url?.trim()) continue;
+      if (!productMatchesPreferences(product, preferences)) continue;
       byVariant.set(product.shopify_variant_id, product);
     }
   };
@@ -188,22 +233,22 @@ export async function searchRecommendedProducts(
         db,
         accountId,
         query: terms.join(' '),
-        limit: max * 3,
+        limit: 50,
         inStockOnly: true,
-      }),
+      })
     );
 
     if (byVariant.size < minNeeded) {
-      for (const term of terms) {
+      for (const term of terms.slice(0, 8)) {
         if (byVariant.size >= max) break;
         merge(
           await searchShopifyProducts({
             db,
             accountId,
             query: term,
-            limit: max,
+            limit: 50,
             inStockOnly: true,
-          }),
+          })
         );
       }
     }
@@ -215,13 +260,13 @@ export async function searchRecommendedProducts(
       await searchShopifyProducts({
         db,
         accountId,
-        limit: max * 3,
+        limit: 50,
         inStockOnly: true,
-      }),
+      })
     );
   }
 
-  return carouselReady([...byVariant.values()], max);
+  return carouselReady([...byVariant.values()], max, preferences);
 }
 
 /** Shopify variant IDs from knowledge-base URLs (`?variant=123`). */
@@ -247,26 +292,28 @@ export async function productsFromKnowledgeVariantIds(
   accountId: string,
   variantIds: number[],
   limit: number = aiProductCarouselLimit(),
+  preferences: ProductPreferences = {}
 ): Promise<ShopifyCatalogProduct[]> {
   const max = Math.min(Math.max(limit, MIN_CAROUSEL_LIMIT), MAX_CAROUSEL_LIMIT);
-  const products: ShopifyCatalogProduct[] = [];
-
-  for (const variantId of variantIds) {
-    if (products.length >= max) break;
-    const product = await getShopifyCatalogProduct({
-      db,
-      accountId,
-      shopifyVariantId: variantId,
-    });
-    if (!product?.in_stock || !product.image_url?.trim()) continue;
-    products.push(product);
-  }
-
-  return products;
+  const products = await Promise.all(
+    variantIds
+      .slice(0, 20)
+      .map((variantId) =>
+        getShopifyCatalogProduct({ db, accountId, shopifyVariantId: variantId })
+      )
+  );
+  return products
+    .filter(
+      (product): product is ShopifyCatalogProduct =>
+        !!product && productMatchesPreferences(product, preferences)
+    )
+    .slice(0, max);
 }
 
 /** Pull likely product-name lines from knowledge-base excerpts (bullets, numbered lists). */
-export function extractProductHintsFromKnowledge(knowledge: string[]): string[] {
+export function extractProductHintsFromKnowledge(
+  knowledge: string[]
+): string[] {
   const hints: string[] = [];
   const seen = new Set<string>();
 
@@ -282,7 +329,7 @@ export function extractProductHintsFromKnowledge(knowledge: string[]): string[] 
       if (line.endsWith(':')) continue;
       if (
         /^(when|if|do not|never|only|use|note|tip|price|policy|always)\b/i.test(
-          line,
+          line
         )
       ) {
         continue;
@@ -304,6 +351,7 @@ export async function productsFromKnowledgeHints(
   accountId: string,
   knowledge: string[],
   limit: number = aiProductCarouselLimit(),
+  preferences: ProductPreferences = {}
 ): Promise<ShopifyCatalogProduct[]> {
   const hints = extractProductHintsFromKnowledge(knowledge);
   if (hints.length === 0) return [];
@@ -317,16 +365,16 @@ export async function productsFromKnowledgeHints(
       db,
       accountId,
       query: hint,
-      limit: 2,
+      limit: 50,
       inStockOnly: true,
     });
     for (const product of products) {
-      if (!product.in_stock || !product.image_url?.trim()) continue;
+      if (!productMatchesPreferences(product, preferences)) continue;
       byVariant.set(product.shopify_variant_id, product);
     }
   }
 
-  return carouselReady([...byVariant.values()], max);
+  return carouselReady([...byVariant.values()], max, preferences);
 }
 
 /**
@@ -339,14 +387,22 @@ export async function resolveRecommendedProducts(
   query: string,
   knowledge: string[] = [],
   limit: number = aiProductCarouselLimit(),
+  preferences: ProductPreferences = {}
 ): Promise<ShopifyCatalogProduct[]> {
   const max = Math.min(Math.max(limit, MIN_CAROUSEL_LIMIT), MAX_CAROUSEL_LIMIT);
   const variantIds = extractVariantIdsFromKnowledge(knowledge);
 
   if (variantIds.length > 0) {
     return carouselReady(
-      await productsFromKnowledgeVariantIds(db, accountId, variantIds, max),
+      await productsFromKnowledgeVariantIds(
+        db,
+        accountId,
+        variantIds,
+        max,
+        preferences
+      ),
       max,
+      preferences
     );
   }
 
@@ -354,23 +410,27 @@ export async function resolveRecommendedProducts(
 
   const merge = (products: ShopifyCatalogProduct[]) => {
     for (const product of products) {
-      if (!product.in_stock || !product.image_url?.trim()) continue;
+      if (!productMatchesPreferences(product, preferences)) continue;
       byVariant.set(product.shopify_variant_id, product);
     }
   };
 
-  merge(await productsFromKnowledgeHints(db, accountId, knowledge, max));
+  merge(
+    await productsFromKnowledgeHints(db, accountId, knowledge, max, preferences)
+  );
 
   if (byVariant.size < MIN_CAROUSEL_LIMIT) {
-    merge(await searchRecommendedProducts(db, accountId, query, max));
+    merge(
+      await searchRecommendedProducts(db, accountId, query, max, preferences)
+    );
   }
 
-  return carouselReady([...byVariant.values()], max);
+  return carouselReady([...byVariant.values()], max, preferences);
 }
 
 /** Summarize matched catalog products for the AI prompt. */
 export function formatProductRecommendationsForAi(
-  products: ShopifyCatalogProduct[],
+  products: ShopifyCatalogProduct[]
 ): string {
   if (products.length === 0) return '';
   return products

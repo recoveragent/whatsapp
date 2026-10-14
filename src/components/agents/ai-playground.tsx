@@ -98,7 +98,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
       try {
         const res = await fetch(
           `/api/shopify/orders?contact_id=${encodeURIComponent(contactId)}`,
-          { cache: 'no-store' },
+          { cache: 'no-store' }
         );
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
@@ -178,14 +178,16 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
   };
 
   return (
-    <div className="flex h-[60vh] min-h-[420px] flex-col rounded-xl border border-border bg-card">
+    <div className="border-border bg-card flex h-[60vh] min-h-[420px] flex-col rounded-xl border">
       {/* Header */}
-      <div className="space-y-2 border-b border-border px-4 py-3">
+      <div className="border-border space-y-2 border-b px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
-            <Bot className="h-4 w-4 shrink-0 text-primary" />
-            <span className="text-sm font-medium text-foreground">Playground</span>
-            <span className="hidden text-xs text-muted-foreground sm:inline">
+            <Bot className="text-primary h-4 w-4 shrink-0" />
+            <span className="text-foreground text-sm font-medium">
+              Playground
+            </span>
+            <span className="text-muted-foreground hidden text-xs sm:inline">
               — test replies as if you were a customer
             </span>
           </div>
@@ -194,7 +196,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
             size="sm"
             onClick={() => setTurns([])}
             disabled={turns.length === 0 || sending}
-            className="shrink-0 text-muted-foreground"
+            className="text-muted-foreground shrink-0"
           >
             <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Reset
           </Button>
@@ -204,20 +206,25 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
           <div className="flex flex-wrap items-center gap-2">
             <Select
               value={contactId || NO_CONTACT}
-              onValueChange={(value) =>
-                setContactId(!value || value === NO_CONTACT ? '' : value)
-              }
+              onValueChange={(value) => {
+                setContactId(!value || value === NO_CONTACT ? '' : value);
+                setTurns([]);
+              }}
               disabled={contactsLoading || sending}
             >
               <SelectTrigger className="h-8 w-full max-w-sm text-xs">
                 <SelectValue
                   placeholder={
-                    contactsLoading ? 'Loading contacts…' : 'Simulate a customer'
+                    contactsLoading
+                      ? 'Loading contacts…'
+                      : 'Simulate a customer'
                   }
                 />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NO_CONTACT}>No contact (generic test)</SelectItem>
+                <SelectItem value={NO_CONTACT}>
+                  No contact (generic test)
+                </SelectItem>
                 {contacts.map((contact) => (
                   <SelectItem key={contact.id} value={contact.id}>
                     {contactLabel(contact)}
@@ -226,7 +233,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
               </SelectContent>
             </Select>
             {contactId && (
-              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
                 <ShoppingBag className="h-3.5 w-3.5" />
                 {ordersLoading
                   ? 'Loading Shopify orders…'
@@ -244,18 +251,39 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
       {/* Transcript */}
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto p-4">
         {turns.length === 0 && (
-          <div className="flex h-full flex-col items-center justify-center text-center text-sm text-muted-foreground">
-            <Bot className="mb-2 h-8 w-8 text-muted-foreground/60" />
+          <div className="text-muted-foreground flex h-full flex-col items-center justify-center text-center text-sm">
+            <Bot className="text-muted-foreground/60 mb-2 h-8 w-8" />
             <p>Send a message to see how your agent would reply.</p>
             <p className="mt-1 text-xs">
               It uses your knowledge base and behaves exactly like the
               auto-reply bot — including handoff.
             </p>
             {isShopifyBrand && (
-              <p className="mt-1 max-w-sm text-xs">
-                Pick a customer to test order context, or ask “show me products”
-                to preview the product recommendation carousel.
-              </p>
+              <>
+                <p className="mt-1 max-w-sm text-xs">
+                  Pick a customer to test order context, or ask “show me
+                  products” to preview the product recommendation carousel.
+                </p>
+                <div className="mt-4 flex max-w-lg flex-wrap justify-center gap-2">
+                  {[
+                    'Where is my order?',
+                    'Recommend an anniversary gift',
+                    'What is your return policy?',
+                    'Cancel my order',
+                    'I want to talk to a human',
+                  ].map((question) => (
+                    <Button
+                      key={question}
+                      variant="outline"
+                      size="sm"
+                      className="h-auto text-xs whitespace-normal"
+                      onClick={() => setInput(question)}
+                    >
+                      {question}
+                    </Button>
+                  ))}
+                </div>
+              </>
             )}
             {onGoToSetup && (
               <Button
@@ -264,7 +292,8 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
                 onClick={onGoToSetup}
                 className="mt-1 h-auto p-0 text-xs"
               >
-                Not set up yet? Go to Setup <ArrowRight className="ml-1 h-3 w-3" />
+                Not set up yet? Go to Setup{' '}
+                <ArrowRight className="ml-1 h-3 w-3" />
               </Button>
             )}
           </div>
@@ -275,30 +304,32 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
             key={i}
             className={cn(
               'flex gap-2',
-              t.role === 'user' ? 'justify-end' : 'justify-start',
+              t.role === 'user' ? 'justify-end' : 'justify-start'
             )}
           >
             {t.role === 'assistant' && (
-              <Bot className="mt-1 h-5 w-5 shrink-0 text-primary" />
+              <Bot className="text-primary mt-1 h-5 w-5 shrink-0" />
             )}
             <div
               className={cn(
                 t.productCarousel ? 'max-w-[92%]' : 'max-w-[80%]',
                 'rounded-2xl px-3.5 py-2 text-sm',
                 t.role === 'user'
-                  ? 'rounded-br-sm bg-primary text-primary-foreground'
-                  : 'rounded-bl-sm bg-muted text-foreground',
+                  ? 'bg-primary text-primary-foreground rounded-br-sm'
+                  : 'bg-muted text-foreground rounded-bl-sm'
               )}
             >
               {t.content && <p className="whitespace-pre-wrap">{t.content}</p>}
               {t.role === 'assistant' && t.productCarousel && (
-                <PlaygroundProductCarouselPreview carousel={t.productCarousel} />
+                <PlaygroundProductCarouselPreview
+                  carousel={t.productCarousel}
+                />
               )}
               {t.role === 'assistant' && t.handoff && (
                 <p
                   className={cn(
                     'flex items-center gap-1 text-xs text-amber-500',
-                    t.content && 'mt-1.5 border-t border-border/50 pt-1.5',
+                    t.content && 'border-border/50 mt-1.5 border-t pt-1.5'
                   )}
                 >
                   <UserCircle2 className="h-3.5 w-3.5" />
@@ -307,28 +338,28 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
               )}
             </div>
             {t.role === 'user' && (
-              <UserCircle2 className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
+              <UserCircle2 className="text-muted-foreground mt-1 h-5 w-5 shrink-0" />
             )}
           </div>
         ))}
 
         {sending && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Bot className="h-5 w-5 text-primary" />
+          <div className="text-muted-foreground flex items-center gap-2 text-sm">
+            <Bot className="text-primary h-5 w-5" />
             <Loader2 className="h-4 w-4 animate-spin" /> Thinking…
           </div>
         )}
       </div>
 
       {/* Composer */}
-      <div className="flex items-end gap-2 border-t border-border p-3">
+      <div className="border-border flex items-end gap-2 border-t p-3">
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Type a customer message…"
           rows={1}
-          className="flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary/50"
+          className="border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 flex-1 resize-none rounded-xl border px-4 py-2.5 text-sm outline-none"
         />
         <Button
           size="sm"

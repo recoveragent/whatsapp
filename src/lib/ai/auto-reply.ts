@@ -1,32 +1,46 @@
-import { fetchAccountWithCategory } from '@/lib/auth/brand-accounts'
-import { supabaseAdmin } from './admin-client'
-import { loadAiConfig } from './config'
-import { buildConversationContext } from './context'
-import { retrieveKnowledge } from './knowledge'
-import { retrieveShopifyContext } from './shopify-context'
+import { fetchAccountWithCategory } from '@/lib/auth/brand-accounts';
+import { supabaseAdmin } from './admin-client';
+import { loadAiConfig } from './config';
+import { buildConversationContext } from './context';
+import { retrieveKnowledge } from './knowledge';
+import { retrieveShopifyContext } from './shopify-context';
 import {
   buildProductSearchQuery,
   formatProductRecommendationsForAi,
   resolveRecommendedProducts,
   shouldOfferProductCarousel,
-} from './product-recommendations'
-import { sendShopifyProductCarousel } from '@/lib/shopify/send-product-carousel'
-import { generateReply } from './generate'
-import { buildSystemPrompt } from './defaults'
-import { buildHandoffSummary } from './handoff'
-import { logAiUsage } from './usage'
-import { latestUserMessage } from './query'
-import { engineSendText } from '@/lib/flows/meta-send'
-import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+} from './product-recommendations';
+import { sendShopifyProductCarousel } from '@/lib/shopify/send-product-carousel';
+import {
+  ProductCarouselAlreadySentError,
+  ProductCarouselDeliveryUncertainError,
+} from '@/lib/shopify/product-delivery-error';
+import { generateReply } from './generate';
+import { buildSystemPrompt } from './defaults';
+import { buildHandoffSummary } from './handoff';
+import { logAiUsage } from './usage';
+import { latestUserMessage } from './query';
+import { shouldRefreshShopifyOrders } from './commerce-intent';
+import {
+  extractProductPreferences,
+  formatProductPreferences,
+} from './product-preferences';
+import {
+  appendRecommendationText,
+  canDeliverProductCarousel,
+  loadRecommendationStore,
+} from './product-delivery';
+import { engineSendText } from '@/lib/flows/meta-send';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 interface DispatchArgs {
   /** Tenancy key — drives config, contact, and whatsapp_config lookups. */
-  accountId: string
-  conversationId: string
-  contactId: string
+  accountId: string;
+  conversationId: string;
+  contactId: string;
   /** The account's WhatsApp config owner, used for the outbound send's
    *  audit columns (mirrors how the flow runner passes it through). */
-  configOwnerUserId: string
+  configOwnerUserId: string;
 }
 
 /**
@@ -49,18 +63,18 @@ interface DispatchArgs {
  * window check is needed.
  */
 export async function dispatchInboundToAiReply(
-  args: DispatchArgs,
+  args: DispatchArgs
 ): Promise<void> {
-  const { accountId, conversationId, contactId, configOwnerUserId } = args
+  const { accountId, conversationId, contactId, configOwnerUserId } = args;
 
   try {
-    const db = supabaseAdmin()
+    const db = supabaseAdmin();
 
-    const account = await fetchAccountWithCategory(db, accountId)
-    if (!account?.ai_agents_enabled) return
+    const account = await fetchAccountWithCategory(db, accountId);
+    if (!account?.ai_agents_enabled) return;
 
-    const config = await loadAiConfig(db, accountId)
-    if (!config || !config.autoReplyEnabled) return
+    const config = await loadAiConfig(db, accountId);
+    if (!config || !config.autoReplyEnabled) return;
 
     // Deterministic, user-configured responders win over the LLM — the
     // caller already excludes messages a Flow consumed. Message-level
@@ -76,23 +90,23 @@ export async function dispatchInboundToAiReply(
       .eq('account_id', accountId)
       .eq('is_active', true)
       .in('trigger_type', ['new_message_received', 'keyword_match'])
-      .limit(1)
-    if (autoResponders && autoResponders.length > 0) return
+      .limit(1);
+    if (autoResponders && autoResponders.length > 0) return;
 
     const { data: conv, error: convErr } = await db
       .from('conversations')
       .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count')
       .eq('id', conversationId)
-      .maybeSingle()
-    if (convErr || !conv) return
-    if (conv.assigned_agent_id) return // a human owns this thread
-    if (conv.ai_autoreply_disabled) return // handed off / turned off here
+      .maybeSingle();
+    if (convErr || !conv) return;
+    if (conv.assigned_agent_id) return; // a human owns this thread
+    if (conv.ai_autoreply_disabled) return; // handed off / turned off here
     // Cheap early-out; the authoritative cap check is the atomic claim
     // below (this read can race a concurrent inbound).
-    if (conv.ai_reply_count >= config.autoReplyMaxPerConversation) return
+    if (conv.ai_reply_count >= config.autoReplyMaxPerConversation) return;
 
-    const messages = await buildConversationContext(db, conversationId)
-    if (messages.length === 0) return
+    const messages = await buildConversationContext(db, conversationId);
+    if (messages.length === 0) return;
 
     // Account-wide throttle on the shared BYO key. The per-conversation
     // cap bounds one thread; this bounds a burst across many threads (a
@@ -101,37 +115,50 @@ export async function dispatchInboundToAiReply(
     // the auto-reply; the inbound still sits in the inbox for a human.
     const acctLimit = checkRateLimit(
       `ai-autoreply:${accountId}`,
-      RATE_LIMITS.aiAutoReplyAccount,
-    )
+      RATE_LIMITS.aiAutoReplyAccount
+    );
     if (!acctLimit.success) {
       console.warn(
-        `[ai auto-reply] account ${accountId} hit the per-account rate limit — skipping this inbound.`,
-      )
-      return
+        `[ai auto-reply] account ${accountId} hit the per-account rate limit — skipping this inbound.`
+      );
+      return;
     }
 
-    const latestQuestion = latestUserMessage(messages)
-    const wantsProductCarousel = shouldOfferProductCarousel(messages)
-    const productSearchQuery = buildProductSearchQuery(messages)
+    const latestQuestion = latestUserMessage(messages);
+    const wantsProductCarousel = shouldOfferProductCarousel(messages);
+    const productSearchQuery = buildProductSearchQuery(messages);
+    const productPreferences = extractProductPreferences(messages);
 
-    const [knowledge, shopifyContext] = await Promise.all([
+    const [knowledge, shopifyContext, recommendationStore] = await Promise.all([
       retrieveKnowledge(db, accountId, config, latestQuestion),
-      retrieveShopifyContext(db, accountId, contactId),
-    ])
+      retrieveShopifyContext(db, accountId, contactId, {
+        refresh: shouldRefreshShopifyOrders(messages),
+      }),
+      wantsProductCarousel
+        ? loadRecommendationStore(db, accountId)
+        : Promise.resolve(null),
+    ]);
 
-    const recommendedProducts = wantsProductCarousel
-      ? await resolveRecommendedProducts(
-          db,
-          accountId,
-          productSearchQuery,
-          knowledge,
-        ).catch(() => [])
-      : []
+    const recommendedProducts =
+      wantsProductCarousel && recommendationStore
+        ? await resolveRecommendedProducts(
+            db,
+            accountId,
+            productSearchQuery,
+            knowledge,
+            undefined,
+            productPreferences
+          ).catch(() => [])
+        : [];
 
-    const hasCarouselProducts = recommendedProducts.length >= 2
-    const productRecommendations = hasCarouselProducts
-      ? formatProductRecommendationsForAi(recommendedProducts)
-      : null
+    const hasCarouselProducts = canDeliverProductCarousel(
+      recommendedProducts,
+      recommendationStore
+    );
+    const productRecommendations =
+      recommendedProducts.length > 0
+        ? formatProductRecommendationsForAi(recommendedProducts)
+        : null;
 
     const systemPrompt = buildSystemPrompt({
       userPrompt: config.systemPrompt,
@@ -139,14 +166,19 @@ export async function dispatchInboundToAiReply(
       knowledge,
       shopifyContext,
       productRecommendations,
-      productBrowseNoMatches: wantsProductCarousel && !hasCarouselProducts,
-    })
+      productDelivery: hasCarouselProducts ? 'carousel' : 'text',
+      productPreferences: wantsProductCarousel
+        ? formatProductPreferences(productPreferences)
+        : undefined,
+      productBrowseNoMatches:
+        wantsProductCarousel && recommendedProducts.length === 0,
+    });
 
     const { text, handoff, usage } = await generateReply({
       config,
       systemPrompt,
       messages,
-    })
+    });
 
     // Record token spend on the account's BYO key. Fire-and-forget so it
     // never adds latency to the customer-facing send: `logAiUsage`
@@ -160,7 +192,7 @@ export async function dispatchInboundToAiReply(
       provider: config.provider,
       model: config.model,
       usage,
-    })
+    });
 
     if (handoff || !text) {
       // The model can't (or shouldn't) answer — stop auto-replying on
@@ -173,18 +205,18 @@ export async function dispatchInboundToAiReply(
       const summary = buildHandoffSummary({
         messages,
         replyCount: conv.ai_reply_count ?? 0,
-      })
+      });
       const update: Record<string, unknown> = {
         ai_autoreply_disabled: true,
         ai_handoff_summary: summary,
-      }
+      };
       // Only set the assignee when a target is configured AND the thread
       // isn't already owned — never stomp an existing human assignment.
       if (config.handoffAgentId && !conv.assigned_agent_id) {
-        update.assigned_agent_id = config.handoffAgentId
+        update.assigned_agent_id = config.handoffAgentId;
       }
-      await db.from('conversations').update(update).eq('id', conversationId)
-      return
+      await db.from('conversations').update(update).eq('id', conversationId);
+      return;
     }
 
     // Atomically claim a reply slot: the cap check + increment happen in
@@ -197,19 +229,19 @@ export async function dispatchInboundToAiReply(
       {
         conversation_id: conversationId,
         max_replies: config.autoReplyMaxPerConversation,
-      },
-    )
+      }
+    );
     if (claimErr) {
       // A real error here (vs. losing the cap race) is almost always a
       // deploy issue — e.g. `claim_ai_reply_slot` not EXECUTE-able by the
       // service role, or the migration not applied. Log it loudly: a
       // silent return makes "auto-reply never fires" undiagnosable.
-      console.error('[ai auto-reply] claim_ai_reply_slot failed:', claimErr)
-      return
+      console.error('[ai auto-reply] claim_ai_reply_slot failed:', claimErr);
+      return;
     }
-    if (claimed !== true) return // lost the per-conversation cap race
+    if (claimed !== true) return; // lost the per-conversation cap race
 
-    if (recommendedProducts.length >= 2) {
+    if (hasCarouselProducts) {
       try {
         await sendShopifyProductCarousel({
           db,
@@ -219,17 +251,31 @@ export async function dispatchInboundToAiReply(
           contactId,
           bodyText: text,
           shopifyVariantIds: recommendedProducts.map(
-            (product) => product.shopify_variant_id,
+            (product) => product.shopify_variant_id
           ),
           skipAssigneeCheck: true,
           aiGenerated: true,
-        })
-        return
+        });
+        return;
       } catch (carouselErr) {
+        if (carouselErr instanceof ProductCarouselAlreadySentError) {
+          console.error(
+            '[ai auto-reply] carousel accepted by Meta but not persisted:',
+            carouselErr
+          );
+          return;
+        }
+        if (carouselErr instanceof ProductCarouselDeliveryUncertainError) {
+          console.error(
+            '[ai auto-reply] carousel delivery uncertain; skipping duplicate fallback:',
+            carouselErr
+          );
+          return;
+        }
         console.warn(
           '[ai auto-reply] product carousel failed, falling back to text:',
-          carouselErr,
-        )
+          carouselErr
+        );
       }
     }
 
@@ -238,10 +284,14 @@ export async function dispatchInboundToAiReply(
       userId: configOwnerUserId,
       conversationId,
       contactId,
-      text,
+      text: appendRecommendationText(
+        text,
+        recommendedProducts,
+        recommendationStore
+      ),
       aiGenerated: true,
-    })
+    });
   } catch (err) {
-    console.error('[ai auto-reply] dispatch failed:', err)
+    console.error('[ai auto-reply] dispatch failed:', err);
   }
 }

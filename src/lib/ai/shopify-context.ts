@@ -3,13 +3,18 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { hasShopifyOrdersTable } from '@/lib/inbox/tables';
 import { loadCachedOrdersForContact } from '@/lib/shopify/contact-orders';
 import type { ShopifyOrder } from '@/types';
+import { decrypt } from '@/lib/whatsapp/encryption';
+import { loadLiveAiOrders } from './live-orders';
+import { aiOrderPhoneMatches } from './order-identity';
 
 const DEFAULT_ORDER_LIMIT = 5;
 
 /** How many recent Shopify orders to inject into the AI prompt. */
 export function aiShopifyOrderLimit(): number {
   const raw = Number(process.env.AI_SHOPIFY_ORDER_LIMIT);
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_ORDER_LIMIT;
+  return Number.isFinite(raw) && raw > 0
+    ? Math.floor(raw)
+    : DEFAULT_ORDER_LIMIT;
 }
 
 function formatOrderDate(iso: string | null | undefined): string | null {
@@ -36,7 +41,9 @@ export function formatShopifyOrderForAi(order: ShopifyOrder): string {
 
   if (order.total_price) {
     const currency = order.currency?.trim();
-    lines.push(`- Total: ${order.total_price}${currency ? ` ${currency}` : ''}`);
+    lines.push(
+      `- Total: ${order.total_price}${currency ? ` ${currency}` : ''}`
+    );
   }
 
   if (order.payment_status) {
@@ -57,9 +64,17 @@ export function formatShopifyOrderForAi(order: ShopifyOrder): string {
   }
 
   if (order.tracking_number || order.tracking_url) {
-    const tracking = [order.tracking_number, order.tracking_url].filter(Boolean).join(' — ');
+    const tracking = [order.tracking_number, order.tracking_url]
+      .filter(Boolean)
+      .join(' — ');
     lines.push(`- Tracking: ${tracking}`);
   }
+
+  if (order.order_status_url) {
+    lines.push(`- Order status page: ${order.order_status_url}`);
+  }
+  if (order.updated_at)
+    lines.push(`- Last checked/synced: ${order.updated_at}`);
 
   if (order.shipping_address?.trim()) {
     lines.push(`- Ships to: ${order.shipping_address.replace(/\n+/g, ', ')}`);
@@ -86,17 +101,16 @@ export async function retrieveShopifyContext(
   db: SupabaseClient,
   accountId: string,
   contactId: string,
+  options?: { refresh?: boolean }
 ): Promise<string | null> {
   try {
     const { data: config } = await db
       .from('shopify_config')
-      .select('status')
+      .select('status, shop_domain, access_token')
       .eq('account_id', accountId)
       .maybeSingle();
 
     if (!config || config.status !== 'connected') return null;
-
-    if (!(await hasShopifyOrdersTable())) return null;
 
     const { data: contact, error: contactErr } = await db
       .from('contacts')
@@ -107,16 +121,51 @@ export async function retrieveShopifyContext(
 
     if (contactErr || !contact) return null;
 
+    if (
+      options?.refresh &&
+      contact.phone &&
+      config.shop_domain &&
+      config.access_token
+    ) {
+      try {
+        const live = await loadLiveAiOrders({
+          shopDomain: config.shop_domain,
+          accessToken: decrypt(config.access_token),
+          phone: contact.phone,
+          accountId,
+          contactId,
+        });
+        if (live.length)
+          return `Source: Shopify live lookup (phone verified).\n\n${formatShopifyOrdersForAi(live)}`;
+      } catch {
+        // Never log credentials, customer identity, or upstream response bodies.
+        console.warn(
+          '[ai shopify-context] live lookup unavailable; using synced orders'
+        );
+      }
+    }
+
+    if (!(await hasShopifyOrdersTable())) return null;
+
     const orders = await loadCachedOrdersForContact(
       db,
       accountId,
       contactId,
       contact.phone,
-      { linkContact: false },
+      { linkContact: false }
     );
 
-    const formatted = formatShopifyOrdersForAi(orders);
-    return formatted || null;
+    const verifiedOrders = orders.filter(
+      (order) =>
+        order.account_id === accountId &&
+        contact.phone &&
+        order.customer_phone &&
+        aiOrderPhoneMatches(order.customer_phone, contact.phone)
+    );
+    const formatted = formatShopifyOrdersForAi(verifiedOrders);
+    return formatted
+      ? `Source: synced Shopify orders. This is cached data; do not describe it as a live check.\n\n${formatted}`
+      : null;
   } catch (err) {
     console.warn('[ai shopify-context] retrieval failed:', err);
     return null;

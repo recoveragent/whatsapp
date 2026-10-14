@@ -13,6 +13,11 @@ import {
 import { buildShopifyCartCheckoutUrl } from './product-checkout-url';
 import { getShopifyCatalogProduct } from './product-store';
 import {
+  ProductCarouselAlreadySentError,
+  ProductCarouselDeliveryUncertainError,
+} from './product-delivery-error';
+import { MetaCarouselRejectedError } from '@/lib/whatsapp/carousel-errors';
+import {
   buildProductCardBodyText,
   formatShopifyProductPrice,
 } from './send-product-card';
@@ -42,13 +47,11 @@ export interface SendShopifyProductCarouselResult {
 }
 
 export async function sendShopifyProductCarousel(
-  args: SendShopifyProductCarouselArgs,
+  args: SendShopifyProductCarouselArgs
 ): Promise<SendShopifyProductCarouselResult> {
   const uniqueVariantIds = [
     ...new Set(
-      args.shopifyVariantIds
-        .map((id) => String(id).trim())
-        .filter(Boolean),
+      args.shopifyVariantIds.map((id) => String(id).trim()).filter(Boolean)
     ),
   ].slice(0, MAX_CAROUSEL_CARDS);
 
@@ -63,16 +66,17 @@ export async function sendShopifyProductCarousel(
           db: args.db,
           accountId: args.accountId,
           shopifyVariantId: variantId,
-        }),
-      ),
+        })
+      )
     )
-  ).filter(
-    (product): product is NonNullable<typeof product> =>
-      Boolean(product?.in_stock && product.image_url?.trim()),
+  ).filter((product): product is NonNullable<typeof product> =>
+    Boolean(product?.in_stock && product.image_url?.trim())
   );
 
   if (products.length < 2) {
-    throw new Error('Need at least 2 in-stock products with images for a carousel.');
+    throw new Error(
+      'Need at least 2 in-stock products with images for a carousel.'
+    );
   }
 
   const { data: shopifyConfig, error: shopifyConfigError } = await args.db
@@ -105,17 +109,21 @@ export async function sendShopifyProductCarousel(
   }
 
   if (!args.flowRunId && !args.skipAssigneeCheck) {
-    const assigneeId = (conversation.assigned_agent_id as string | null) ?? null;
+    const assigneeId =
+      (conversation.assigned_agent_id as string | null) ?? null;
     if (!assigneeId || assigneeId !== args.userId) {
       throw new Error(
         assigneeId
           ? 'This chat is assigned to someone else — reassign it to yourself before sending'
-          : 'Self-assign this chat before sending',
+          : 'Self-assign this chat before sending'
       );
     }
   }
 
-  const contact = conversation.contact as { id?: string; phone?: string } | null;
+  const contact = conversation.contact as {
+    id?: string;
+    phone?: string;
+  } | null;
   if (!contact?.phone) {
     throw new Error('Contact phone number not found');
   }
@@ -135,7 +143,10 @@ export async function sendShopifyProductCarousel(
     throw new Error('WhatsApp is not configured for this workspace.');
   }
 
-  const buttonLabel = (args.buttonLabel?.trim() || DEFAULT_BUTTON_LABEL).slice(0, 20);
+  const buttonLabel = (args.buttonLabel?.trim() || DEFAULT_BUTTON_LABEL).slice(
+    0,
+    20
+  );
   const shopDomain = shopifyConfig.shop_domain as string;
   const accessToken = decrypt(whatsappConfig.access_token as string);
 
@@ -183,70 +194,85 @@ export async function sendShopifyProductCarousel(
       break;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      if (!isRecipientNotAllowedError(message)) throw err;
+      if (!isRecipientNotAllowedError(message)) {
+        if (
+          err instanceof MetaCarouselRejectedError &&
+          err.status >= 400 &&
+          err.status < 500
+        )
+          throw err;
+        throw new ProductCarouselDeliveryUncertainError(err);
+      }
       lastError = err;
     }
   }
 
   if (lastError) throw lastError;
 
-  if (workingPhone !== sanitizedPhone && contact.id) {
-    await args.db
-      .from('contacts')
-      .update({
-        phone: contactPhoneAfterSuccessfulSend(sanitizedPhone, workingPhone),
+  try {
+    if (workingPhone !== sanitizedPhone && contact.id) {
+      await args.db
+        .from('contacts')
+        .update({
+          phone: contactPhoneAfterSuccessfulSend(sanitizedPhone, workingPhone),
+        })
+        .eq('id', contact.id);
+    }
+
+    const previewTitles = products.map((product) => product.title).join(', ');
+    const contentPayload = {
+      type: 'product_carousel',
+      button_label: buttonLabel,
+      products: products.map((product) => ({
+        title: product.title,
+        shopify_variant_id: product.shopify_variant_id,
+        price: product.price,
+        currency: product.currency,
+        image_url: product.image_url,
+        formatted_price: formatShopifyProductPrice(
+          product.price,
+          product.currency
+        ),
+      })),
+    };
+
+    const { data: messageRecord, error: messageError } = await args.db
+      .from('messages')
+      .insert({
+        conversation_id: args.conversationId,
+        sender_type: args.flowRunId || args.aiGenerated ? 'bot' : 'agent',
+        sender_id: args.flowRunId || args.aiGenerated ? null : args.userId,
+        content_type: 'interactive',
+        content_text: args.bodyText.trim(),
+        content_payload: contentPayload,
+        message_id: waMessageId,
+        status: 'sent',
+        ai_generated: Boolean(args.aiGenerated),
       })
-      .eq('id', contact.id);
+      .select('id')
+      .single();
+
+    if (messageError || !messageRecord?.id) {
+      throw new Error(
+        `Carousel sent to Meta but failed to save to DB: ${messageError?.message ?? 'unknown error'}`
+      );
+    }
+
+    await args.db
+      .from('conversations')
+      .update({
+        last_message_text: `${previewTitles.slice(0, 80)} · carousel`,
+        last_message_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', args.conversationId);
+
+    return {
+      message_id: messageRecord.id as string,
+      whatsapp_message_id: waMessageId,
+      product_count: products.length,
+    };
+  } catch (err) {
+    throw new ProductCarouselAlreadySentError(waMessageId, err);
   }
-
-  const previewTitles = products.map((product) => product.title).join(', ');
-  const contentPayload = {
-    type: 'product_carousel',
-    button_label: buttonLabel,
-    products: products.map((product) => ({
-      title: product.title,
-      shopify_variant_id: product.shopify_variant_id,
-      price: product.price,
-      currency: product.currency,
-      image_url: product.image_url,
-      formatted_price: formatShopifyProductPrice(product.price, product.currency),
-    })),
-  };
-
-  const { data: messageRecord, error: messageError } = await args.db
-    .from('messages')
-    .insert({
-      conversation_id: args.conversationId,
-      sender_type: args.flowRunId || args.aiGenerated ? 'bot' : 'agent',
-      sender_id: args.flowRunId || args.aiGenerated ? null : args.userId,
-      content_type: 'interactive',
-      content_text: args.bodyText.trim(),
-      content_payload: contentPayload,
-      message_id: waMessageId,
-      status: 'sent',
-      ai_generated: Boolean(args.aiGenerated),
-    })
-    .select('id')
-    .single();
-
-  if (messageError || !messageRecord?.id) {
-    throw new Error(
-      `Carousel sent to Meta but failed to save to DB: ${messageError?.message ?? 'unknown error'}`,
-    );
-  }
-
-  await args.db
-    .from('conversations')
-    .update({
-      last_message_text: `${previewTitles.slice(0, 80)} · carousel`,
-      last_message_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', args.conversationId);
-
-  return {
-    message_id: messageRecord.id as string,
-    whatsapp_message_id: waMessageId,
-    product_count: products.length,
-  };
 }

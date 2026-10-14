@@ -9,15 +9,23 @@ import { AiUsageCard } from '@/components/agents/ai-usage';
 import { AiConfig } from '@/components/settings/ai-config';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
+import { AgentOnboarding } from '@/components/agents/agent-onboarding';
 
 type Tab = 'playground' | 'setup' | 'usage';
 
 export default function AgentsPage() {
   const router = useRouter();
-  const { accountRole, isAiAgentsEnabled, profileLoading } = useAuth();
+  const {
+    accountRole,
+    accountId,
+    isShopifyBrand,
+    isAiAgentsEnabled,
+    profileLoading,
+  } = useAuth();
   const canViewUsage = accountRole ? canEditSettings(accountRole) : false;
   const [tab, setTab] = useState<Tab>('playground');
   const [decided, setDecided] = useState(false);
+  const [introductory, setIntroductory] = useState(false);
 
   useEffect(() => {
     if (!profileLoading && !isAiAgentsEnabled) {
@@ -33,7 +41,10 @@ export default function AgentsPage() {
       try {
         const res = await fetch('/api/ai/config');
         const data = await res.json().catch(() => ({}));
-        if (!cancelled) setTab(data?.configured ? 'playground' : 'setup');
+        if (!cancelled) {
+          setTab(data?.configured ? 'playground' : 'setup');
+          setIntroductory(!data?.configured);
+        }
       } catch {
         if (!cancelled) setTab('setup');
       } finally {
@@ -43,7 +54,7 @@ export default function AgentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAiAgentsEnabled]);
+  }, [isAiAgentsEnabled, accountId]);
 
   if (profileLoading || !isAiAgentsEnabled) {
     return null;
@@ -52,50 +63,67 @@ export default function AgentsPage() {
   return (
     <div>
       <div className="flex items-center gap-2">
-        <Bot className="h-6 w-6 text-primary" />
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+        <Bot className="text-primary h-6 w-6" />
+        <h1 className="text-foreground text-2xl font-bold tracking-tight">
           AI Agents
         </h1>
       </div>
-      <p className="mt-1 text-sm text-muted-foreground">
+      <p className="text-muted-foreground mt-1 text-sm">
         Your bring-your-own-key AI agent — set it up, then test it in the
         playground before it replies to customers in the inbox.
       </p>
 
       {decided && (
-        <Tabs
-          value={tab}
-          onValueChange={(v) => setTab(v as Tab)}
-          className="mt-6"
-        >
-          <TabsList>
-            <TabsTrigger value="playground">
-              <Sparkles className="mr-1.5 h-4 w-4" /> Playground
-            </TabsTrigger>
-            <TabsTrigger value="setup">
-              <Settings2 className="mr-1.5 h-4 w-4" /> Setup
-            </TabsTrigger>
-            {canViewUsage && (
-              <TabsTrigger value="usage">
-                <BarChart3 className="mr-1.5 h-4 w-4" /> Usage
-              </TabsTrigger>
-            )}
-          </TabsList>
-
-          <TabsContent value="playground" className="mt-4">
-            <AiPlayground onGoToSetup={() => setTab('setup')} />
-          </TabsContent>
-
-          <TabsContent value="setup" className="mt-4">
-            <AiConfig />
-          </TabsContent>
-
-          {canViewUsage && (
-            <TabsContent value="usage" className="mt-4">
-              <AiUsageCard />
-            </TabsContent>
+        <>
+          {isShopifyBrand && (introductory || tab === 'setup') && (
+            <div className="mt-6">
+              <AgentOnboarding
+                key={accountId}
+                canEdit={canViewUsage}
+                introductory={introductory}
+                onGetStarted={() => {
+                  setIntroductory(false);
+                  setTab('setup');
+                }}
+              />
+            </div>
           )}
-        </Tabs>
+          {(!introductory || !isShopifyBrand) && (
+            <Tabs
+              value={tab}
+              onValueChange={(v) => setTab(v as Tab)}
+              className="mt-6"
+            >
+              <TabsList>
+                <TabsTrigger value="playground">
+                  <Sparkles className="mr-1.5 h-4 w-4" /> Playground
+                </TabsTrigger>
+                <TabsTrigger value="setup">
+                  <Settings2 className="mr-1.5 h-4 w-4" /> Setup
+                </TabsTrigger>
+                {canViewUsage && (
+                  <TabsTrigger value="usage">
+                    <BarChart3 className="mr-1.5 h-4 w-4" /> Usage
+                  </TabsTrigger>
+                )}
+              </TabsList>
+
+              <TabsContent value="playground" className="mt-4">
+                <AiPlayground onGoToSetup={() => setTab('setup')} />
+              </TabsContent>
+
+              <TabsContent value="setup" className="mt-4">
+                <AiConfig />
+              </TabsContent>
+
+              {canViewUsage && (
+                <TabsContent value="usage" className="mt-4">
+                  <AiUsageCard />
+                </TabsContent>
+              )}
+            </Tabs>
+          )}
+        </>
       )}
     </div>
   );

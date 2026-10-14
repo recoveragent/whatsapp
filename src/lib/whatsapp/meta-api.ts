@@ -9,6 +9,8 @@
  * instead of a runtime rejection from Meta.
  */
 
+import { MetaCarouselRejectedError } from './carousel-errors'
+
 const META_API_VERSION = 'v21.0'
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
 
@@ -1397,7 +1399,11 @@ export async function sendInteractiveMediaCarousel(
     body: JSON.stringify(body),
   })
   if (!response.ok) {
-    await throwMetaError(response, `Meta API error: ${response.status}`)
+    try {
+      await throwMetaError(response, `Meta API error: ${response.status}`)
+    } catch (err) {
+      throw new MetaCarouselRejectedError(err instanceof Error ? err.message : 'Meta rejected carousel', response.status)
+    }
   }
   const data = await response.json()
   return { messageId: data.messages[0].id }

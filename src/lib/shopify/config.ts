@@ -1,4 +1,7 @@
-import { getConfiguredSiteUrl, getServerRedirectOrigin } from '@/lib/auth/site-url';
+import {
+  getConfiguredSiteUrl,
+  getServerRedirectOrigin,
+} from '@/lib/auth/site-url';
 import { isLocalWebhookUrl } from './format-api-error';
 
 const DEFAULT_SCOPES = [
@@ -7,6 +10,7 @@ const DEFAULT_SCOPES = [
   'read_checkouts',
   'read_customers',
   'read_products',
+  'read_legal_policies',
 ].join(',');
 
 export const SHOPIFY_API_VERSION = '2025-01';
@@ -55,7 +59,7 @@ export function getShopifyWebhookUrl(request: Request): string {
   const origin = getShopifyPublicOrigin(request);
   if (!origin) {
     throw new Error(
-      'Set NEXT_PUBLIC_SITE_URL to your public HTTPS domain (e.g. https://wa.recoveragent.ai) before connecting Shopify. Local addresses like 0.0.0.0 cannot receive webhooks.',
+      'Set NEXT_PUBLIC_SITE_URL to your public HTTPS domain (e.g. https://wa.recoveragent.ai) before connecting Shopify. Local addresses like 0.0.0.0 cannot receive webhooks.'
     );
   }
   return `${origin}/api/shopify/webhook`;

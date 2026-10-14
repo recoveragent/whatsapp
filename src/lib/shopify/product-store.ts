@@ -14,7 +14,9 @@ export interface ShopifyCatalogProduct {
   in_stock: boolean;
 }
 
-function rowToCatalogProduct(row: Record<string, unknown>): ShopifyCatalogProduct {
+function rowToCatalogProduct(
+  row: Record<string, unknown>
+): ShopifyCatalogProduct {
   const inventoryQuantity =
     typeof row.inventory_quantity === 'number' ? row.inventory_quantity : null;
 
@@ -45,7 +47,7 @@ export async function searchShopifyProducts(args: {
   let request = args.db
     .from('shopify_products')
     .select(
-      'id, shopify_product_id, shopify_variant_id, title, variant_title, price, compare_at_price, currency, image_url, inventory_quantity',
+      'id, shopify_product_id, shopify_variant_id, title, variant_title, price, compare_at_price, currency, image_url, inventory_quantity'
     )
     .eq('account_id', args.accountId)
     .eq('status', 'active')
@@ -55,9 +57,15 @@ export async function searchShopifyProducts(args: {
 
   const query = args.query?.trim();
   if (query) {
-    const escaped = query.replace(/[%_,]/g, '');
+    // This value is interpolated into PostgREST's filter grammar. Product
+    // hints can come from imported docs, so remove grammar metacharacters.
+    const escaped = query
+      .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!escaped) return [];
     request = request.or(
-      `title.ilike.%${escaped}%,variant_title.ilike.%${escaped}%`,
+      `title.ilike.%${escaped}%,variant_title.ilike.%${escaped}%`
     );
   }
 
@@ -65,7 +73,7 @@ export async function searchShopifyProducts(args: {
   if (error) throw new Error(error.message);
 
   const products = (data ?? []).map((row) =>
-    rowToCatalogProduct(row as Record<string, unknown>),
+    rowToCatalogProduct(row as Record<string, unknown>)
   );
 
   if (args.inStockOnly === false) return products;
@@ -80,7 +88,7 @@ export async function getShopifyCatalogProduct(args: {
   const { data, error } = await args.db
     .from('shopify_products')
     .select(
-      'id, shopify_product_id, shopify_variant_id, title, variant_title, price, compare_at_price, currency, image_url, inventory_quantity',
+      'id, shopify_product_id, shopify_variant_id, title, variant_title, price, compare_at_price, currency, image_url, inventory_quantity'
     )
     .eq('account_id', args.accountId)
     .eq('shopify_variant_id', Number(args.shopifyVariantId))
