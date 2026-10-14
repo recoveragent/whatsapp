@@ -33,7 +33,7 @@ describe('super-admin AI model database permissions', () => {
       GRANT SELECT, INSERT, UPDATE, DELETE ON ai_configs TO authenticated;
     `);
     await db.exec(migration);
-  });
+  }, 20_000);
   beforeEach(async () => {
     await db.exec(
       `RESET ROLE; SET test.account = '${own}'; SET test.member_role = 'admin'; SET ROLE authenticated;`

@@ -10,8 +10,9 @@ import { AiConfig } from '@/components/settings/ai-config';
 import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
 import { AgentOnboarding } from '@/components/agents/agent-onboarding';
+import { AgentTraining } from '@/components/agents/agent-training';
 
-type Tab = 'playground' | 'setup' | 'usage';
+type Tab = 'playground' | 'train' | 'setup' | 'usage';
 
 export default function AgentsPage() {
   const router = useRouter();
@@ -33,7 +34,7 @@ export default function AgentsPage() {
     }
   }, [profileLoading, isAiAgentsEnabled, router]);
 
-  // Land first-time users on Setup, returning users on the Playground.
+  // Land first-time users on training, returning users on the Playground.
   useEffect(() => {
     if (!isAiAgentsEnabled) return;
     let cancelled = false;
@@ -42,7 +43,7 @@ export default function AgentsPage() {
         const res = await fetch('/api/ai/config');
         const data = await res.json().catch(() => ({}));
         if (!cancelled) {
-          setTab(data?.configured ? 'playground' : 'setup');
+          setTab(data?.configured ? 'playground' : 'train');
           setIntroductory(!data?.configured);
         }
       } catch {
@@ -83,46 +84,51 @@ export default function AgentsPage() {
                 introductory={introductory}
                 onGetStarted={() => {
                   setIntroductory(false);
-                  setTab('setup');
+                  setTab('train');
                 }}
               />
             </div>
           )}
-          {(!introductory || !isShopifyBrand) && (
-            <Tabs
-              value={tab}
-              onValueChange={(v) => setTab(v as Tab)}
-              className="mt-6"
-            >
-              <TabsList>
-                <TabsTrigger value="playground">
-                  <Sparkles className="mr-1.5 h-4 w-4" /> Playground
-                </TabsTrigger>
-                <TabsTrigger value="setup">
-                  <Settings2 className="mr-1.5 h-4 w-4" /> Setup
-                </TabsTrigger>
-                {canViewUsage && (
-                  <TabsTrigger value="usage">
-                    <BarChart3 className="mr-1.5 h-4 w-4" /> Usage
-                  </TabsTrigger>
-                )}
-              </TabsList>
-
-              <TabsContent value="playground" className="mt-4">
-                <AiPlayground onGoToSetup={() => setTab('setup')} />
-              </TabsContent>
-
-              <TabsContent value="setup" className="mt-4">
-                <AiConfig />
-              </TabsContent>
-
+          <Tabs
+            value={tab}
+            onValueChange={(v) => setTab(v as Tab)}
+            className="mt-6"
+          >
+            <TabsList className="h-auto flex-wrap justify-start">
+              <TabsTrigger value="train">
+                <Bot className="mr-1.5 h-4 w-4" /> Train Agent
+              </TabsTrigger>
+              <TabsTrigger value="playground">
+                <Sparkles className="mr-1.5 h-4 w-4" /> Playground
+              </TabsTrigger>
+              <TabsTrigger value="setup">
+                <Settings2 className="mr-1.5 h-4 w-4" /> Setup
+              </TabsTrigger>
               {canViewUsage && (
-                <TabsContent value="usage" className="mt-4">
-                  <AiUsageCard />
-                </TabsContent>
+                <TabsTrigger value="usage">
+                  <BarChart3 className="mr-1.5 h-4 w-4" /> Usage
+                </TabsTrigger>
               )}
-            </Tabs>
-          )}
+            </TabsList>
+
+            <TabsContent value="train" className="mt-4">
+              <AgentTraining key={accountId} canEdit={canViewUsage} />
+            </TabsContent>
+
+            <TabsContent value="playground" className="mt-4">
+              <AiPlayground onGoToSetup={() => setTab('setup')} />
+            </TabsContent>
+
+            <TabsContent value="setup" className="mt-4">
+              <AiConfig />
+            </TabsContent>
+
+            {canViewUsage && (
+              <TabsContent value="usage" className="mt-4">
+                <AiUsageCard />
+              </TabsContent>
+            )}
+          </Tabs>
         </>
       )}
     </div>
