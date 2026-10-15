@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { gzipSync, deflateSync, brotliCompressSync } from 'node:zlib';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({
   lookup: vi.fn(),
@@ -6,7 +7,8 @@ const h = vi.hoisted(() => ({
   status: 200,
   type: 'text/html',
   location: '',
-  body: '<p>Brand facts.</p>',
+  encoding: '',
+  body: Buffer.from('<p>Brand facts.</p>'),
 }));
 vi.mock('node:dns/promises', () => ({ lookup: h.lookup }));
 vi.mock('node:https', () => ({ request: h.request }));
@@ -16,7 +18,8 @@ beforeEach(() => {
   h.status = 200;
   h.type = 'text/html';
   h.location = '';
-  h.body = '<p>Brand facts.</p>';
+  h.encoding = '';
+  h.body = Buffer.from('<p>Brand facts.</p>');
   h.request.mockImplementation((_url, _options, callback) => {
     const req = Object.assign(new EventEmitter(), {
       setTimeout: vi.fn(),
@@ -28,6 +31,7 @@ beforeEach(() => {
             headers: {
               'content-type': h.type,
               location: h.location || undefined,
+              'content-encoding': h.encoding || undefined,
             },
             resume: vi.fn(),
           });
@@ -48,7 +52,7 @@ describe('pinned website fetching', () => {
           AbortSignal.timeout(1000)
         )
       ).html
-    ).toBe(h.body);
+    ).toBe(h.body.toString());
     expect(h.lookup).toHaveBeenCalledTimes(1);
     const [url, options] = h.request.mock.calls[0];
     expect(url.hostname).toBe('gifts.example.com');
@@ -91,10 +95,10 @@ describe('pinned website fetching', () => {
         new URL('https://gifts.example.com'),
         AbortSignal.timeout(1000)
       )
-    ).rejects.toThrow('not readable');
+    ).rejects.toThrow('instead of readable HTML/text');
   });
   it('caps response buffering', async () => {
-    h.body = 'x'.repeat(1_000_001);
+    h.body = Buffer.alloc(1_000_001, 'x');
     await expect(
       fetchTrainingPage(
         new URL('https://gifts.example.com'),
@@ -102,6 +106,58 @@ describe('pinned website fetching', () => {
       )
     ).rejects.toThrow('1 MB');
   });
+  it.each([
+    ['gzip', gzipSync],
+    ['deflate', deflateSync],
+    ['br', brotliCompressSync],
+  ] as const)(
+    'reads %s compressed storefront HTML',
+    async (encoding, compress) => {
+      const html =
+        '<html><body>Published Shopify shipping and refund policies.</body></html>';
+      h.encoding = encoding;
+      h.body = compress(Buffer.from(html));
+      expect(
+        (
+          await fetchTrainingPage(
+            new URL('https://gifts.example.com'),
+            AbortSignal.timeout(1000)
+          )
+        ).html
+      ).toBe(html);
+    }
+  );
+  it('rejects decompression bombs without buffering their expanded output', async () => {
+    h.encoding = 'gzip';
+    h.body = gzipSync(Buffer.alloc(1_000_001, 'x'));
+    await expect(
+      fetchTrainingPage(
+        new URL('https://gifts.example.com'),
+        AbortSignal.timeout(1000)
+      )
+    ).rejects.toThrow('1 MB decompressed');
+  });
+  it('reports corrupt compression separately from an unreadable website', async () => {
+    h.encoding = 'gzip';
+    await expect(
+      fetchTrainingPage(
+        new URL('https://gifts.example.com'),
+        AbortSignal.timeout(1000)
+      )
+    ).rejects.toThrow('invalid compressed HTML');
+  });
+  it.each([403, 429, 503])(
+    'reports HTTP %s instead of calling the page unreadable',
+    async (status) => {
+      h.status = status;
+      await expect(
+        fetchTrainingPage(
+          new URL('https://gifts.example.com'),
+          AbortSignal.timeout(1000)
+        )
+      ).rejects.toThrow(`HTTP ${status}`);
+    }
+  );
   it('bounds even stalled DNS resolution with the scan deadline', async () => {
     h.lookup.mockImplementation(() => new Promise(() => {}));
     await expect(

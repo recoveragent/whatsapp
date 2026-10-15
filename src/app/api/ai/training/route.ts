@@ -91,6 +91,7 @@ export async function POST(request: Request) {
       );
     const config = await loadAiConfig(supabase, accountId, {
       requireActive: false,
+      purpose: 'training',
     });
     if (!config)
       return NextResponse.json(

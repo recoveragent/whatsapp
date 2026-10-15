@@ -146,4 +146,116 @@ describe('super-admin AI model endpoint', () => {
       })
     );
   });
+  it('saves and validates a separate training model without replacing chat selection', async () => {
+    expect(
+      (
+        await POST(
+          request({
+            provider: 'openai',
+            model: 'old-model',
+            training_model: 'gpt-6.1-sol',
+          }),
+          ctx
+        )
+      ).status
+    ).toBe(200);
+    expect(h.update).toHaveBeenCalledWith({
+      provider: 'openai',
+      model: 'old-model',
+      training_model: 'gpt-6.1-sol',
+    });
+    expect(h.validate).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'gpt-6.1-sol', apiKey: 'plaintext' })
+    );
+  });
+  it('tests chat and training models before saving either change', async () => {
+    expect(
+      (
+        await POST(
+          request({
+            provider: 'openai',
+            model: 'new-chat',
+            training_model: 'new-training',
+            test_only: true,
+          }),
+          ctx
+        )
+      ).status
+    ).toBe(200);
+    expect(h.validate).toHaveBeenCalledTimes(2);
+    expect(h.update).not.toHaveBeenCalled();
+  });
+  it('clears the separate model when explicitly set to blank', async () => {
+    h.existing = {
+      provider: 'openai',
+      model: 'old-model',
+      api_key: 'encrypted',
+      training_model: 'old-training',
+    };
+    expect(
+      (
+        await POST(
+          request({
+            provider: 'openai',
+            model: 'old-model',
+            training_model: '',
+          }),
+          ctx
+        )
+      ).status
+    ).toBe(200);
+    expect(h.update).toHaveBeenCalledWith({
+      provider: 'openai',
+      model: 'old-model',
+      training_model: null,
+    });
+  });
+  it('preserves the training model for older clients omitting the field', async () => {
+    h.existing = {
+      provider: 'openai',
+      model: 'old-model',
+      api_key: 'encrypted',
+      training_model: 'old-training',
+    };
+    expect(
+      (await POST(request({ provider: 'openai', model: 'old-model' }), ctx))
+        .status
+    ).toBe(200);
+    expect(h.update).toHaveBeenCalledWith({
+      provider: 'openai',
+      model: 'old-model',
+    });
+  });
+  it('clears a previous provider training model on provider change if omitted', async () => {
+    expect(
+      (
+        await POST(
+          request({
+            provider: 'anthropic',
+            model: 'claude-test',
+            api_key: 'new-key',
+          }),
+          ctx
+        )
+      ).status
+    ).toBe(200);
+    expect(h.update).toHaveBeenCalledWith(
+      expect.objectContaining({ training_model: null })
+    );
+  });
+  it('rejects invalid training model values before writing', async () => {
+    expect(
+      (
+        await POST(
+          request({
+            provider: 'openai',
+            model: 'old-model',
+            training_model: {},
+          }),
+          ctx
+        )
+      ).status
+    ).toBe(400);
+    expect(h.update).not.toHaveBeenCalled();
+  });
 });

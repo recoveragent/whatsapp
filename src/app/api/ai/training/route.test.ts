@@ -96,6 +96,19 @@ describe('brand training API', () => {
     expect(h.crawl).not.toHaveBeenCalled();
     expect(h.rpc).not.toHaveBeenCalled();
   });
+  it('selects training credentials independently of the assistant active switch', async () => {
+    expect(
+      (
+        await POST(
+          request({ website_url: 'https://gifts.example.com', revision: 0 })
+        )
+      ).status
+    ).toBe(200);
+    expect(h.config).toHaveBeenCalledWith(expect.anything(), 'brand-1', {
+      requireActive: false,
+      purpose: 'training',
+    });
+  });
   it('ignores client account IDs and creates only an authenticated brand draft', async () => {
     expect(
       (

@@ -19,7 +19,7 @@ export async function GET(_request: Request, ctx: Context) {
     const { brand } = await requireSuperAdminBrand(id);
     const { data, error } = await supabaseAdmin()
       .from('ai_configs')
-      .select('provider, model, api_key, embeddings_api_key')
+      .select('provider, model, training_model, api_key, embeddings_api_key')
       .eq('account_id', brand.id)
       .maybeSingle();
     if (error) throw error;
@@ -29,6 +29,7 @@ export async function GET(_request: Request, ctx: Context) {
             configured: true,
             provider: data.provider,
             model: data.model,
+            training_model: data.training_model ?? null,
             has_key: !!data.api_key,
             has_embeddings_key: !!data.embeddings_api_key,
           }
@@ -53,6 +54,28 @@ export async function POST(request: Request, ctx: Context) {
       );
     const provider = body.provider;
     const model = typeof body.model === 'string' ? body.model.trim() : '';
+    const hasTrainingModel = 'training_model' in body;
+    if (
+      hasTrainingModel &&
+      body.training_model !== null &&
+      typeof body.training_model !== 'string'
+    )
+      return NextResponse.json(
+        {
+          error:
+            'Training model must be a model ID or blank to use the chat model.',
+        },
+        { status: 400 }
+      );
+    const requestedTrainingModel =
+      typeof body.training_model === 'string'
+        ? body.training_model.trim() || null
+        : null;
+    if (requestedTrainingModel && requestedTrainingModel.length > 200)
+      return NextResponse.json(
+        { error: 'Training model ID is too long.' },
+        { status: 400 }
+      );
     if (
       (provider !== 'openai' && provider !== 'anthropic') ||
       !model ||
@@ -65,10 +88,15 @@ export async function POST(request: Request, ctx: Context) {
     const db = supabaseAdmin();
     const { data: existing, error: readError } = await db
       .from('ai_configs')
-      .select('provider, model, api_key')
+      .select('provider, model, training_model, api_key')
       .eq('account_id', brand.id)
       .maybeSingle();
     if (readError) throw readError;
+    const trainingModel = hasTrainingModel
+      ? requestedTrainingModel
+      : existing && existing.provider === provider
+        ? (existing.training_model ?? null)
+        : null;
     const rawKey = typeof body.api_key === 'string' ? body.api_key.trim() : '';
     if (!rawKey && existing?.provider !== provider)
       return NextResponse.json(
@@ -108,6 +136,34 @@ export async function POST(request: Request, ctx: Context) {
         embeddingsApiKey: null,
       });
     }
+    if (
+      trainingModel &&
+      trainingModel !== model &&
+      (body.test_only === true ||
+        rawKey ||
+        provider !== existing?.provider ||
+        trainingModel !== existing?.training_model)
+    ) {
+      try {
+        await validateAiCredentials({
+          provider,
+          model: trainingModel,
+          apiKey,
+          systemPrompt: null,
+          isActive: true,
+          autoReplyEnabled: false,
+          autoReplyMaxPerConversation: 3,
+          handoffAgentId: null,
+          embeddingsApiKey: null,
+        });
+      } catch (error) {
+        if (error instanceof AiError)
+          throw new AiError(`Training model: ${error.message}`, {
+            code: error.code,
+          });
+        throw error;
+      }
+    }
     const embeddingsKey =
       typeof body.embeddings_api_key === 'string'
         ? body.embeddings_api_key.trim()
@@ -115,6 +171,8 @@ export async function POST(request: Request, ctx: Context) {
     if (embeddingsKey) await embedTexts(embeddingsKey, ['ping']);
     if (body.test_only === true) return NextResponse.json({ success: true });
     const patch: Record<string, unknown> = { provider, model };
+    if (hasTrainingModel || (existing && existing.provider !== provider))
+      patch.training_model = trainingModel;
     if (rawKey) patch.api_key = encrypt(rawKey);
     if (embeddingsKey) patch.embeddings_api_key = encrypt(embeddingsKey);
     else if (body.embeddings_api_key === null) patch.embeddings_api_key = null;

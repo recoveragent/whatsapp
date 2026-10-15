@@ -33,6 +33,12 @@ describe('super-admin AI model database permissions', () => {
       GRANT SELECT, INSERT, UPDATE, DELETE ON ai_configs TO authenticated;
     `);
     await db.exec(migration);
+    await db.exec(
+      readFileSync(
+        'supabase/migrations/20261015095728_separate_ai_training_model.sql',
+        'utf8'
+      )
+    );
   }, 20_000);
   beforeEach(async () => {
     await db.exec(
@@ -49,16 +55,28 @@ describe('super-admin AI model database permissions', () => {
     );
     expect(result.rows).toEqual([{ model: 'old-model' }]);
   });
-  it.each(['model', 'provider', 'api_key', 'embeddings_api_key'])(
-    'denies direct brand writes to %s',
-    async (column) => {
-      await expect(
-        db.exec(
-          `UPDATE ai_configs SET ${column} = 'tampered' WHERE account_id = '${own}'`
+  it('preserves existing chat models with training fallback after migration', async () => {
+    expect(
+      (
+        await db.query(
+          `SELECT model, training_model FROM ai_configs WHERE account_id = '${own}'`
         )
-      ).rejects.toThrow(/permission denied/i);
-    }
-  );
+      ).rows
+    ).toEqual([{ model: 'old-model', training_model: null }]);
+  });
+  it.each([
+    'model',
+    'training_model',
+    'provider',
+    'api_key',
+    'embeddings_api_key',
+  ])('denies direct brand writes to %s', async (column) => {
+    await expect(
+      db.exec(
+        `UPDATE ai_configs SET ${column} = 'tampered' WHERE account_id = '${own}'`
+      )
+    ).rejects.toThrow(/permission denied/i);
+  });
   it('denies brand insertion and deletion despite old RLS policies', async () => {
     await expect(
       db.exec(
@@ -90,14 +108,16 @@ describe('super-admin AI model database permissions', () => {
   });
   it('permits the authorized service-role write path', async () => {
     await db.exec(
-      `RESET ROLE; SET ROLE service_role; UPDATE ai_configs SET model = 'super-admin-model' WHERE account_id = '${other}';`
+      `RESET ROLE; SET ROLE service_role; UPDATE ai_configs SET model = 'super-admin-model', training_model = 'training-model' WHERE account_id = '${other}';`
     );
     expect(
       (
         await db.query(
-          `SELECT model FROM ai_configs WHERE account_id = '${other}'`
+          `SELECT model, training_model FROM ai_configs WHERE account_id = '${other}'`
         )
       ).rows
-    ).toEqual([{ model: 'super-admin-model' }]);
+    ).toEqual([
+      { model: 'super-admin-model', training_model: 'training-model' },
+    ]);
   });
 });

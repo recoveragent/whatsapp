@@ -3,8 +3,53 @@ import type { LookupAddress } from 'node:dns';
 import { randomUUID } from 'node:crypto';
 import { request } from 'node:https';
 import { isIP } from 'node:net';
+import { promisify } from 'node:util';
+import { gunzip, inflate, brotliDecompress } from 'node:zlib';
 import { policyHtmlToText } from './storefront';
 import type { TrainingSource } from './training-types';
+
+const PAGE_BYTE_LIMIT = 1_000_000;
+const decompressGzip = promisify(gunzip);
+const decompressDeflate = promisify(inflate);
+const decompressBrotli = promisify(brotliDecompress);
+
+/** Bound decompressed output too: a small compressed response can expand enormously. */
+export async function decodeTrainingBody(
+  body: Buffer,
+  encoding: string
+): Promise<string> {
+  const normalized = encoding.trim().toLowerCase();
+  if (body.length > PAGE_BYTE_LIMIT)
+    throw new Error('Website page exceeds the 1 MB limit.');
+  if (!normalized || normalized === 'identity') return body.toString('utf8');
+  const decode =
+    normalized === 'gzip' || normalized === 'x-gzip'
+      ? decompressGzip
+      : normalized === 'deflate'
+        ? decompressDeflate
+        : normalized === 'br'
+          ? decompressBrotli
+          : null;
+  if (!decode)
+    throw new Error(
+      `Website uses unsupported content encoding: ${normalized.slice(0, 80)}.`
+    );
+  try {
+    const decoded = await decode(body, { maxOutputLength: PAGE_BYTE_LIMIT });
+    return decoded.toString('utf8');
+  } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === 'ERR_BUFFER_TOO_LARGE'
+    )
+      throw new Error('Website page exceeds the 1 MB decompressed limit.');
+    throw new Error(
+      'Website returned invalid compressed HTML. Retry the scan or use another public page.'
+    );
+  }
+}
 
 export function trainingUrl(raw: string): URL {
   let url: URL;
@@ -87,7 +132,7 @@ export async function fetchTrainingPage(
         headers: {
           'User-Agent': 'RecoverAgentTraining/1.0',
           Accept: 'text/html,text/plain',
-          'Accept-Encoding': 'identity',
+          'Accept-Encoding': 'gzip, deflate, br',
         },
         lookup: (_hostname, options, callback) => {
           if (typeof options === 'object' && options.all)
@@ -102,18 +147,27 @@ export async function fetchTrainingPage(
           resolve({ status, location: res.headers.location, html: '' });
           return;
         }
+        if (status !== 200) {
+          res.resume();
+          const reason =
+            status === 401 || status === 403
+              ? 'The website denied scanner access. Check storefront password or bot-protection settings.'
+              : status === 429
+                ? 'The website rate-limited this scan. Wait and retry.'
+                : 'The website could not serve this page. Check the URL and retry.';
+          reject(new Error(`Website returned HTTP ${status}. ${reason}`));
+          return;
+        }
+        const contentType = res.headers['content-type'] ?? '';
         if (
-          status !== 200 ||
-          !/^(text\/html|text\/plain)\b/i.test(
-            res.headers['content-type'] ?? ''
-          ) ||
-          (res.headers['content-encoding'] &&
-            res.headers['content-encoding'] !== 'identity')
+          !/^(text\/html|text\/plain|application\/xhtml\+xml)\b/i.test(
+            contentType
+          )
         ) {
           res.resume();
           reject(
             new Error(
-              'Website page is unavailable or is not readable HTML/text.'
+              `Website returned ${contentType.slice(0, 100) || 'no content type'} instead of readable HTML/text. Use a public website page URL.`
             )
           );
           return;
@@ -122,13 +176,16 @@ export async function fetchTrainingPage(
         let bytes = 0;
         res.on('data', (chunk: Buffer) => {
           bytes += chunk.length;
-          if (bytes > 1_000_000)
+          if (bytes > PAGE_BYTE_LIMIT)
             req.destroy(new Error('Website page exceeds the 1 MB limit.'));
           else chunks.push(chunk);
         });
-        res.on('end', () =>
-          resolve({ status, html: Buffer.concat(chunks).toString('utf8') })
-        );
+        res.on('end', () => {
+          void decodeTrainingBody(
+            Buffer.concat(chunks),
+            res.headers['content-encoding'] ?? ''
+          ).then((html) => resolve({ status, html }), reject);
+        });
         res.on('error', reject);
         res.on('aborted', () =>
           reject(new Error('Website page download was interrupted.'))

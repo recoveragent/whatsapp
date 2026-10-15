@@ -46,13 +46,16 @@ const request = (body: unknown) =>
     body: JSON.stringify(body),
   });
 describe('brand AI configuration boundary', () => {
-  it.each(['model', 'provider', 'api_key', 'embeddings_api_key'])(
-    'rejects brand changes to %s',
-    async (field) => {
-      expect((await POST(request({ [field]: 'tampered' }))).status).toBe(403);
-      expect(h.update).not.toHaveBeenCalled();
-    }
-  );
+  it.each([
+    'model',
+    'training_model',
+    'provider',
+    'api_key',
+    'embeddings_api_key',
+  ])('rejects brand changes to %s', async (field) => {
+    expect((await POST(request({ [field]: 'tampered' }))).status).toBe(403);
+    expect(h.update).not.toHaveBeenCalled();
+  });
   it('allows partial operational settings without replacing the model', async () => {
     expect(
       (

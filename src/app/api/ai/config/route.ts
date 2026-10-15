@@ -55,9 +55,13 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     if (
-      ['provider', 'model', 'api_key', 'embeddings_api_key'].some(
-        (field) => field in body
-      )
+      [
+        'provider',
+        'model',
+        'training_model',
+        'api_key',
+        'embeddings_api_key',
+      ].some((field) => field in body)
     )
       return NextResponse.json(
         {

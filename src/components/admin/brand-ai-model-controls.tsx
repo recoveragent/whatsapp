@@ -16,6 +16,7 @@ export function BrandAiModelControls({ brandId }: { brandId: string }) {
   const [configured, setConfigured] = useState(false);
   const [provider, setProvider] = useState<AiProvider>('openai');
   const [model, setModel] = useState(AI_PROVIDER_DEFAULT_MODEL.openai);
+  const [trainingModel, setTrainingModel] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [embeddingsKey, setEmbeddingsKey] = useState('');
   const [hasKey, setHasKey] = useState(false);
@@ -36,6 +37,7 @@ export function BrandAiModelControls({ brandId }: { brandId: string }) {
         if (data.configured) {
           setProvider(data.provider);
           setModel(data.model);
+          setTrainingModel(data.training_model ?? '');
         }
         setHasKey(!!data.has_key);
         setHasEmbeddingsKey(!!data.has_embeddings_key);
@@ -62,6 +64,7 @@ export function BrandAiModelControls({ brandId }: { brandId: string }) {
         body: JSON.stringify({
           provider,
           model: model.trim(),
+          training_model: trainingModel.trim() || null,
           api_key: apiKey.trim() || undefined,
           embeddings_api_key: clearEmbeddings
             ? null
@@ -107,6 +110,7 @@ export function BrandAiModelControls({ brandId }: { brandId: string }) {
       setHasEmbeddingsKey(false);
       setApiKey('');
       setEmbeddingsKey('');
+      setTrainingModel('');
       setClearEmbeddings(false);
       toast.success('AI model removed. Replies are disabled for this brand.');
     } catch (err) {
@@ -133,7 +137,7 @@ export function BrandAiModelControls({ brandId }: { brandId: string }) {
   return (
     <section className="border-border bg-muted/20 rounded-xl border p-4">
       <h3 className="flex items-center gap-2 text-sm font-semibold">
-        <Bot className="text-primary h-4 w-4" /> WhatsApp AI model
+        <Bot className="text-primary h-4 w-4" /> WhatsApp AI models
       </h3>
       <p className="text-muted-foreground mt-1 text-xs">
         Only super admin can change the provider, model and API keys. Brand
@@ -150,6 +154,7 @@ export function BrandAiModelControls({ brandId }: { brandId: string }) {
               const next = event.target.value as AiProvider;
               setProvider(next);
               setModel(AI_PROVIDER_DEFAULT_MODEL[next]);
+              setTrainingModel('');
               setApiKey('');
             }}
             className="border-input bg-background h-10 w-full rounded-md border px-3 text-sm"
@@ -159,13 +164,40 @@ export function BrandAiModelControls({ brandId }: { brandId: string }) {
           </select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`ai-model-${brandId}`}>Model ID</Label>
+          <Label htmlFor={`ai-model-${brandId}`}>Chat model ID</Label>
           <Input
             id={`ai-model-${brandId}`}
             value={model}
             disabled={busy}
             onChange={(event) => setModel(event.target.value)}
           />
+        </div>
+        <div className="space-y-2 sm:col-span-2">
+          <Label htmlFor={`ai-training-model-${brandId}`}>
+            Training model ID (optional)
+          </Label>
+          <Input
+            id={`ai-training-model-${brandId}`}
+            value={trainingModel}
+            disabled={busy}
+            onChange={(event) => setTrainingModel(event.target.value)}
+            placeholder="Leave blank to use the chat model"
+          />
+          <p className="text-muted-foreground text-xs">
+            Used for website FAQ generation and retraining. Customer chats,
+            inbox drafts and the playground use the chat model. Both models use
+            the selected provider and API key.
+          </p>
+          {provider === 'openai' && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => setTrainingModel('gpt-6.1-sol')}
+            >
+              Use GPT-6.1 Sol for training
+            </Button>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor={`ai-key-${brandId}`}>Provider API key</Label>
@@ -226,7 +258,7 @@ export function BrandAiModelControls({ brandId }: { brandId: string }) {
           disabled={busy || !model.trim()}
           onClick={() => void submit(true)}
         >
-          Test credentials
+          Test both models
         </Button>
         {configured && (
           <Button variant="ghost" disabled={busy} onClick={() => void remove()}>
