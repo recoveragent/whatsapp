@@ -77,6 +77,15 @@ export async function fetchShopInfo(
   return data.shop;
 }
 
+/** Full payloads for the flow variable sample browser, newest first. */
+export async function fetchRecentOrderPayloads(shopDomain: string, accessToken: string): Promise<ShopifyOrderPayload[]> {
+  const data = await shopifyFetch<{ orders: ShopifyOrderPayload[] }>(
+    shopDomain, accessToken, '/orders.json?status=any&limit=5&order=created_at%20desc',
+    { cache: 'no-store' },
+  );
+  return data.orders;
+}
+
 export async function exchangeOAuthCode(args: {
   shopDomain: string;
   code: string;

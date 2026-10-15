@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { shopifyPayloadVariables } from './shopify-payload-variables'
 
 import { ensureShopifyContact, ensureConversation, deleteConversationIfEmpty } from '@/lib/shopify/ensure-contact'
 import type { ShopifyEventContext } from '@/lib/shopify/types'
@@ -20,6 +21,7 @@ function shopifyCheckoutIdFromContext(ctx: ShopifyEventContext): string | undefi
 
 function contextToVars(ctx: ShopifyEventContext): Record<string, unknown> {
   return {
+    ...shopifyPayloadVariables(ctx.triggerPayload),
     customer_name: ctx.customerName,
     phone: ctx.phone,
     email: ctx.email,

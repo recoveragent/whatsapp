@@ -74,6 +74,8 @@ export interface ShopifyConfigRow {
 
 /** Runtime context extracted from a Shopify webhook payload. */
 export interface ShopifyEventContext {
+  /** Original resource payload for dynamic flow variables. */
+  triggerPayload?: unknown;
   /** Structured condition data; display variables remain unchanged. */
   conditionData?: Record<string, unknown>;
   shopifyOrderId?: string;

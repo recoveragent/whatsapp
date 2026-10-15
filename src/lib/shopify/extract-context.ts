@@ -207,6 +207,7 @@ export function contextFromOrder(
   return {
     customerName,
     conditionData: shopifyConditionData(order, 'order'),
+    triggerPayload: order,
     shopifyOrderId: order.id == null ? undefined : String(order.id),
     phone: extractOrderPhone(order),
     email: extractOrderEmail(order),
@@ -244,6 +245,7 @@ export function contextFromCheckout(
   return {
     customerName,
     conditionData: shopifyConditionData(checkout, 'checkout'),
+    triggerPayload: checkout,
     phone: extractPhone(checkout),
     email: checkout.email ?? checkout.customer?.email ?? null,
     orderNumber: null,

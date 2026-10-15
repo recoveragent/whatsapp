@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * Reusable field components shared across every per-node form.
@@ -21,12 +21,16 @@
  * (introduced in this PR) mount the exact same form components.
  */
 
-import { useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import type { TemplateVariableGroup } from '@/lib/flows/template-variables';
+import { TemplateVariablePicker } from '@/components/shared/template-variable-picker';
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+export const NodeVariableGroups = createContext<TemplateVariableGroup[]>([]);
+import { Plus, Trash2 } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -35,15 +39,15 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { resolveContactFieldLabel } from "@/lib/contact-fields";
-import { nodeMetaFor } from "../shared";
-import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
-import type { CustomField } from "@/types";
-import type { ContactFieldMapping } from "@/lib/flows/types";
-import { useTranslations } from "next-intl";
-import { type BuilderNode } from "../shared";
+} from '@/components/ui/select';
+import { resolveContactFieldLabel } from '@/lib/contact-fields';
+import { nodeMetaFor } from '../shared';
+import { cn } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
+import type { CustomField } from '@/types';
+import type { ContactFieldMapping } from '@/lib/flows/types';
+import { useTranslations } from 'next-intl';
+import { type BuilderNode } from '../shared';
 
 export function TextRow({
   label,
@@ -56,11 +60,29 @@ export function TextRow({
   onChange: (v: string) => void;
   rows?: number;
 }) {
+  const variableGroups = useContext(NodeVariableGroups);
+  const [showVariables, setShowVariables] = useState(false);
+  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const insertVariable = (token: string) => {
+    const field = inputRef.current;
+    const start = field?.selectionStart ?? value.length;
+    const end = field?.selectionEnd ?? start;
+    onChange(value.slice(0, start) + token + value.slice(end));
+    requestAnimationFrame(() => {
+      field?.focus();
+      field?.setSelectionRange(start + token.length, start + token.length);
+    });
+  };
   return (
     <div>
-      <label className="mb-1 block text-xs text-muted-foreground">{label}</label>
+      <label className="text-muted-foreground mb-1 block text-xs">
+        {label}
+      </label>
       {rows > 1 ? (
         <Textarea
+          ref={(field) => {
+            inputRef.current = field;
+          }}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           rows={rows}
@@ -68,10 +90,31 @@ export function TextRow({
         />
       ) : (
         <Input
+          ref={(field) => {
+            inputRef.current = field;
+          }}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className="bg-muted"
         />
+      )}
+      {variableGroups.length > 0 && (
+        <>
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground mt-1 text-[10px]"
+            onClick={() => setShowVariables(!showVariables)}
+          >
+            Trigger variables
+          </button>
+          {showVariables && (
+            <TemplateVariablePicker
+              groups={variableGroups}
+              onInsert={insertVariable}
+              className="mt-2"
+            />
+          )}
+        </>
       )}
     </div>
   );
@@ -92,13 +135,15 @@ export function NextNodeRow({
 }) {
   return (
     <div>
-      <label className="mb-1 block text-xs text-muted-foreground">{label}</label>
+      <label className="text-muted-foreground mb-1 block text-xs">
+        {label}
+      </label>
       <NodeKeySelect
         value={value || null}
         nodes={allNodes}
         excludeKey={currentKey}
-        onChange={(v) => onChange(v ?? "")}
-        placeholder={useTranslations("Flows.builder.form")("pickNextNode")}
+        onChange={(v) => onChange(v ?? '')}
+        placeholder={useTranslations('Flows.builder.form')('pickNextNode')}
       />
     </div>
   );
@@ -119,25 +164,25 @@ export function NodeKeySelect({
   placeholder?: string;
   className?: string;
 }) {
-  const t = useTranslations("Flows.builder.form");
+  const t = useTranslations('Flows.builder.form');
   const options = nodes.filter((n) => n.node_key !== excludeKey);
   return (
     <Select
-      value={value ?? "__none__"}
-      onValueChange={(v) => onChange(v === "__none__" ? null : v)}
+      value={value ?? '__none__'}
+      onValueChange={(v) => onChange(v === '__none__' ? null : v)}
     >
-      <SelectTrigger className={cn("bg-muted", className)}>
-        <SelectValue placeholder={placeholder ?? "—"} />
+      <SelectTrigger className={cn('bg-muted', className)}>
+        <SelectValue placeholder={placeholder ?? '—'} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="__none__">{t("none")}</SelectItem>
+        <SelectItem value="__none__">{t('none')}</SelectItem>
         {options.map((n) => {
           const meta = nodeMetaFor(n.node_type);
           const Icon = meta.icon;
           return (
             <SelectItem key={n.node_key} value={n.node_key}>
               <span className="inline-flex items-center gap-1.5">
-                <Icon className={cn("h-3 w-3", meta.color)} />
+                <Icon className={cn('h-3 w-3', meta.color)} />
                 {n.node_key}
               </span>
             </SelectItem>
@@ -148,7 +193,10 @@ export function NodeKeySelect({
   );
 }
 
-export function useCustomFields(): { customFields: CustomField[]; loading: boolean } {
+export function useCustomFields(): {
+  customFields: CustomField[];
+  loading: boolean;
+} {
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -158,9 +206,9 @@ export function useCustomFields(): { customFields: CustomField[]; loading: boole
       try {
         const supabase = createClient();
         const { data } = await supabase
-          .from("custom_fields")
-          .select("*")
-          .order("field_name");
+          .from('custom_fields')
+          .select('*')
+          .order('field_name');
         if (!cancelled) setCustomFields((data as CustomField[] | null) ?? []);
       } catch {
         // Custom fields unavailable — built-in columns still work.
@@ -184,7 +232,7 @@ export function ContactFieldSelect({
   onChange: (v: string) => void;
 }) {
   const { customFields, loading } = useCustomFields();
-  const customValue = value.startsWith("custom:") ? value : "";
+  const customValue = value.startsWith('custom:') ? value : '';
   const knownCustom =
     customValue &&
     customFields.some((field) => `custom:${field.id}` === customValue);
@@ -194,8 +242,8 @@ export function ContactFieldSelect({
 
   return (
     <Select
-      value={value || "name"}
-      onValueChange={(v) => onChange(v ?? "name")}
+      value={value || 'name'}
+      onValueChange={(v) => onChange(v ?? 'name')}
     >
       <SelectTrigger className="bg-muted w-full">
         <SelectValue placeholder="Pick a field…">{displayLabel}</SelectValue>
@@ -226,22 +274,22 @@ export function ContactFieldSelect({
 }
 
 export function normalizeContactFieldRows(
-  cfg: Record<string, unknown>,
+  cfg: Record<string, unknown>
 ): ContactFieldMapping[] {
   const fields = cfg.fields;
   if (Array.isArray(fields) && fields.length > 0) {
     return fields.map((entry) => {
       const row = entry as Partial<ContactFieldMapping>;
       return {
-        field: typeof row.field === "string" ? row.field : "name",
-        value: typeof row.value === "string" ? row.value : "",
+        field: typeof row.field === 'string' ? row.field : 'name',
+        value: typeof row.value === 'string' ? row.value : '',
       };
     });
   }
   return [
     {
-      field: typeof cfg.field === "string" ? cfg.field : "name",
-      value: typeof cfg.value === "string" ? cfg.value : "",
+      field: typeof cfg.field === 'string' ? cfg.field : 'name',
+      value: typeof cfg.value === 'string' ? cfg.value : '',
     },
   ];
 }
@@ -265,13 +313,13 @@ export function UpdateContactFieldsForm({
 
   function updateRow(index: number, patch: Partial<ContactFieldMapping>) {
     const nextRows = rows.map((row, i) =>
-      i === index ? { ...row, ...patch } : row,
+      i === index ? { ...row, ...patch } : row
     );
     setRows(nextRows);
   }
 
   function addRow() {
-    setRows([...rows, { field: "email", value: "" }]);
+    setRows([...rows, { field: 'email', value: '' }]);
   }
 
   function removeRow(index: number) {
@@ -284,10 +332,10 @@ export function UpdateContactFieldsForm({
       {rows.map((row, index) => (
         <div
           key={`${index}-${row.field}`}
-          className="space-y-2 rounded-md border border-border/70 bg-muted/20 p-3"
+          className="border-border/70 bg-muted/20 space-y-2 rounded-md border p-3"
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-medium text-muted-foreground">
+            <span className="text-muted-foreground text-[11px] font-medium">
               Field {index + 1}
             </span>
             {rows.length > 1 && (
@@ -295,7 +343,7 @@ export function UpdateContactFieldsForm({
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                className="text-muted-foreground hover:text-destructive h-7 w-7"
                 onClick={() => removeRow(index)}
                 aria-label={`Remove field ${index + 1}`}
               >
@@ -304,7 +352,7 @@ export function UpdateContactFieldsForm({
             )}
           </div>
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">
+            <label className="text-muted-foreground mb-1 block text-xs">
               Field
             </label>
             <ContactFieldSelect
@@ -313,8 +361,8 @@ export function UpdateContactFieldsForm({
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">
-              Value (supports {"{{ vars.x }}"})
+            <label className="text-muted-foreground mb-1 block text-xs">
+              Value (supports {'{{ vars.x }}'})
             </label>
             <Input
               value={row.value}

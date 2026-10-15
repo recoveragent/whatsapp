@@ -53,7 +53,7 @@ import {
   hasReplyTimeoutTiming,
   showReplyTimeoutHandle,
 } from "@/lib/flows/reply-timeout";
-import { NextNodeRow, NodeKeySelect, TextRow, UpdateContactFieldsForm } from "./fields";
+import { NextNodeRow, NodeKeySelect, TextRow, UpdateContactFieldsForm, NodeVariableGroups } from "./fields";
 import { SendTemplateFields } from "@/components/shared/send-template-fields";
 import { templateVariableGroupsForFlow } from "@/lib/flows/template-variables";
 import {
@@ -85,6 +85,7 @@ export function NodeConfigForm({
 }: NodeConfigFormProps) {
   return (
     <>
+      <NodeVariableGroups.Provider value={triggerType?.startsWith('shopify_') ? templateVariableGroupsForFlow(triggerType, triggerConfig) : []}>
       <NodeConfigBody
         node={node}
         allNodes={allNodes}
@@ -93,6 +94,7 @@ export function NodeConfigForm({
         triggerType={triggerType}
         triggerConfig={triggerConfig}
       />
+      </NodeVariableGroups.Provider>
       {nodeTypeHasReplyTimeoutSlot(node.node_type) ? (
         <ReplyTimeoutSection cfg={node.config} onUpdateConfig={onUpdateConfig} />
       ) : null}

@@ -3,6 +3,7 @@ import {
   formatWebhookScalar,
 } from '@/lib/automations/webhook-payload'
 import { splitPublicUrlForWhatsApp } from '@/lib/shopify/order-links'
+import { shopifyPayloadVariables } from './shopify-payload-variables'
 import { generateWebhookToken } from '@/lib/automations/webhook-token'
 import type { FlowWebhookTriggerConfig } from './webhook-config'
 import { shopifyConditionData } from '@/lib/shopify/condition-data'
@@ -158,7 +159,7 @@ export function enrichCheckoutAppWebhookVars(
   payload: unknown,
   vars: Record<string, unknown>
 ): Record<string, unknown> {
-  const next = { ...vars };
+  const next = { ...vars, ...shopifyPayloadVariables(payload) };
 
   if (!next.customer_name && !next.name) {
     const customerName = resolveCustomerName(payload);

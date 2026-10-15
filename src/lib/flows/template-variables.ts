@@ -24,6 +24,7 @@ export interface TemplateVariableGroup {
   id: string
   label: string
   options: TemplateVariableOption[]
+  recentShopifyOrders?: boolean
 }
 
 const CONTACT_OPTIONS: TemplateVariableOption[] = [
@@ -242,6 +243,7 @@ export function templateVariableGroupsForFlow(
       id: 'trigger',
       label: 'Trigger attributes',
       options: triggerOptions,
+      recentShopifyOrders: triggerType?.startsWith('shopify_'),
     })
   }
 
