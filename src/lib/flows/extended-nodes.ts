@@ -25,6 +25,7 @@ import {
 } from '@/lib/inbox/template-message-display'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
 import { templateConfigHasQuickReplies } from './template-buttons'
+import { parseReplyTimeout } from './reply-timeout'
 import {
   computeWaitRunAt,
   interpolateFlowVars,
@@ -318,7 +319,7 @@ export async function executeExtendedNode(
           node_key: node.node_key,
           payload: messageSentPayload,
         })
-        if (templateConfigHasQuickReplies(c)) {
+        if (templateConfigHasQuickReplies(c) || parseReplyTimeout(node.config)) {
           const { data: msg } = await db
             .from('messages')
             .select('id')

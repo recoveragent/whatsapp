@@ -34,6 +34,7 @@
  *     are routed to the run whose current node matches the message.
  */
 
+import { createHash } from "node:crypto";
 import {
   resolveSendProductVariantId,
   sendShopifyProductCard,
@@ -883,7 +884,7 @@ async function advanceFromNodeKey(
           reason: "lost_race_during_advance",
         });
       } else {
-        await maybeScheduleReplyTimeoutForNode(db, run, node, true);
+        await scheduleSuspendingNodePaths(db, run, node, true);
       }
       return finish("advanced");
     }
@@ -954,7 +955,7 @@ async function advanceFromNodeKey(
           reason: "lost_race_during_advance",
         });
       } else {
-        await maybeScheduleReplyTimeoutForNode(db, run, node, true);
+        await scheduleSuspendingNodePaths(db, run, node, true);
       }
       return finish("advanced");
     }
@@ -1025,7 +1026,7 @@ async function advanceFromNodeKey(
           reason: "lost_race_during_advance",
         });
       } else {
-        await maybeScheduleReplyTimeoutForNode(db, run, node, true);
+        await scheduleSuspendingNodePaths(db, run, node, true);
       }
       return finish("advanced");
     }
@@ -1141,7 +1142,7 @@ async function advanceFromNodeKey(
           reason: "lost_race_during_advance",
         });
       } else {
-        await maybeScheduleReplyTimeoutForNode(db, run, node, true);
+        await scheduleSuspendingNodePaths(db, run, node, true);
       }
       return finish("advanced");
     }
@@ -1167,7 +1168,7 @@ async function advanceFromNodeKey(
           reason: "lost_race_during_advance",
         });
       } else {
-        await maybeScheduleReplyTimeoutForNode(db, run, node, true);
+        await scheduleSuspendingNodePaths(db, run, node, true);
       }
       return finish("advanced");
     }
@@ -1201,7 +1202,7 @@ async function advanceFromNodeKey(
             reason: "lost_race_during_advance",
           });
         } else {
-          await maybeScheduleReplyTimeoutForNode(db, run, node, true);
+          await scheduleSuspendingNodePaths(db, run, node, true);
         }
         return finish("advanced");
       }
@@ -1266,7 +1267,7 @@ async function advanceCurrentNodeKey(
   return Array.isArray(data) && data.length > 0;
 }
 
-async function maybeScheduleReplyTimeoutForNode(
+async function scheduleSuspendingNodePaths(
   db: AdminClient,
   run: FlowRunRow,
   node: FlowNodeRow,
@@ -1274,8 +1275,72 @@ async function maybeScheduleReplyTimeoutForNode(
 ): Promise<void> {
   if (!advanced) return;
   const cfg = parseReplyTimeout(node.config as Record<string, unknown>);
-  if (!cfg) return;
-  await scheduleReplyTimeout(db, run, node.node_key, cfg);
+  if (cfg) await scheduleReplyTimeout(db, run, node.node_key, cfg);
+  await startIndependentNextStep(db, run, node);
+}
+
+/** A reply branch ending must not cancel the unconditional Next step path. */
+async function startIndependentNextStep(
+  db: AdminClient,
+  run: FlowRunRow,
+  node: FlowNodeRow
+): Promise<void> {
+  const next = node.config.next_node_key;
+  if (typeof next !== 'string' || !next.trim()) return;
+  const depth = run.external_idempotency_key?.startsWith('next_step:')
+    ? Number(run.external_idempotency_key.split(':')[1]) + 1
+    : 1;
+  if (depth > 64) {
+    await logEvent(db, run.id, 'error', node.node_key, {
+      reason: 'next_step_branch_limit',
+    });
+    return;
+  }
+  const { data: source } = await db
+    .from('flow_runs')
+    .select('*')
+    .eq('id', run.id)
+    .maybeSingle();
+  if (!source) return;
+  // Stable across concurrent attempts for the same prompt, including after
+  // the child completes (the existing external-key index only covers live runs).
+  const hash = createHash('sha256')
+    .update(
+      `${run.id}:${node.node_key}:${source.last_advanced_at}:${source.last_prompt_message_id}`
+    )
+    .digest('hex');
+  const id = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+  const { data: child, error } = await db
+    .from('flow_runs')
+    .insert({
+      id,
+      flow_id: run.flow_id,
+      account_id: run.account_id,
+      user_id: run.user_id,
+      contact_id: run.contact_id,
+      conversation_id: source.conversation_id,
+      status: 'active',
+      current_node_key: next.trim(),
+      vars: source.vars ?? {},
+      external_idempotency_key: `next_step:${depth}:${run.id}:${node.node_key}:${id}`,
+    })
+    .select('*')
+    .single();
+  if (error?.code === '23505') return;
+  if (error || !child) {
+    await logEvent(db, run.id, 'error', node.node_key, {
+      reason: 'next_step_start_failed',
+      detail: error?.message,
+    });
+    return;
+  }
+  await logEvent(db, child.id, 'started', next.trim(), {
+    source: 'next_step',
+    parent_run_id: run.id,
+    source_node_key: node.node_key,
+  });
+  const nodes = await loadAllNodes(db, run.flow_id);
+  await advanceFromNodeKey(db, child as FlowRunRow, next.trim(), nodes);
 }
 
 // ============================================================
@@ -1309,6 +1374,12 @@ export async function dispatchInboundToFlows(
       }
 
       const candidates = await buildInboundRunCandidates(db, activeRuns);
+
+      // Any customer response ends silence for all outstanding prompts,
+      // including independent Next step paths. Unconditional waits survive.
+      for (const activeRun of activeRuns) {
+        await cancelAllReplyTimeouts(db, activeRun.id);
+      }
 
       if (input.message.kind === "text") {
         const keywordExit = await applyFlowExitEventWithClient(db, {
@@ -1630,6 +1701,16 @@ async function handleReplyForActiveRun(
   }
 
   if (matched) {
+    // Input/form Next step already started when the prompt was sent.
+    // Capture the reply, but never execute that path a second time.
+    if (
+      ['collect_input', 'send_address', 'send_flow'].includes(
+        currentNode.node_type
+      )
+    ) {
+      await endRun(db, run.id, 'completed', 'input_received');
+      return { consumed: true, flow_run_id: run.id, outcome: 'completed' };
+    }
     // Reset reprompt count on a successful match. Skip the write when
     // already 0 — the collect_input capture branch above already
     // zeroed it, and interactive-reply matches against a fresh run
@@ -2006,6 +2087,17 @@ export async function resumeFlowPendingExecutions(): Promise<number> {
     };
 
     const kind = p.execution_kind ?? "wait";
+
+    // The due list is a snapshot. A reply may have cancelled a timeout,
+    // or another cron invocation may already have picked up this row.
+    const { data: claimed } = await db
+      .from('flow_pending_executions')
+      .update({ status: 'done' })
+      .eq('id', p.id)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle();
+    if (!claimed) continue;
 
     if (kind === "reply_timeout") {
       const { data: runRow } = await db

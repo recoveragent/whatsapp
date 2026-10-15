@@ -1,10 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import {
-  extractByPath,
-  flattenPayloadKeys,
-} from '@/lib/automations/webhook-payload';
+import { recentOrderVariableOptions } from '@/lib/flows/recent-order-variable-options';
 import { Input } from '@/components/ui/input';
 
 type SampleOrder = Record<string, unknown>;
@@ -42,20 +39,9 @@ export function RecentOrderVariables({
   }
 
   const fields = selected
-    ? flattenPayloadKeys(selected)
-        .map((path) => {
-          const value = extractByPath(selected, path);
-          return {
-            path,
-            value:
-              typeof value === 'object'
-                ? JSON.stringify(value)
-                : String(value ?? 'null'),
-          };
-        })
-        .filter(({ path, value }) =>
-          `${path} ${value}`.toLowerCase().includes(query.toLowerCase())
-        )
+    ? recentOrderVariableOptions(selected).filter(({ label, value }) =>
+        `${label} ${value}`.toLowerCase().includes(query.toLowerCase())
+      )
     : [];
 
   return (
@@ -132,15 +118,15 @@ export function RecentOrderVariables({
                   No matching fields.
                 </p>
               )}
-              {fields.map(({ path, value }) => (
+              {fields.map(({ path, label, value, token }) => (
                 <button
                   type="button"
                   key={path}
                   className="hover:bg-muted block w-full rounded px-2 py-1.5 text-left"
-                  onClick={() => onInsert(`{{ vars.shopify_order.${path} }}`)}
+                  onClick={() => onInsert(token)}
                 >
                   <span className="block font-mono text-[10px] break-all">
-                    {path}
+                    {label}
                   </span>
                   <span className="text-muted-foreground block text-xs break-all">
                     {value === '' ? '(empty string)' : value}
