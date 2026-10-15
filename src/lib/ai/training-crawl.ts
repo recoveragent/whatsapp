@@ -13,6 +13,15 @@ const decompressGzip = promisify(gunzip);
 const decompressDeflate = promisify(inflate);
 const decompressBrotli = promisify(brotliDecompress);
 
+export class WebsiteFetchError extends Error {
+  constructor(
+    message: string,
+    readonly upstreamStatus: number
+  ) {
+    super(message);
+  }
+}
+
 /** Bound decompressed output too: a small compressed response can expand enormously. */
 export async function decodeTrainingBody(
   body: Buffer,
@@ -155,7 +164,12 @@ export async function fetchTrainingPage(
               : status === 429
                 ? 'The website rate-limited this scan. Wait and retry.'
                 : 'The website could not serve this page. Check the URL and retry.';
-          reject(new Error(`Website returned HTTP ${status}. ${reason}`));
+          reject(
+            new WebsiteFetchError(
+              `Website returned HTTP ${status}. ${reason}`,
+              status
+            )
+          );
           return;
         }
         const contentType = res.headers['content-type'] ?? '';

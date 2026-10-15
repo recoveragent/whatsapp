@@ -6,7 +6,11 @@ import {
   RATE_LIMITS,
 } from '@/lib/rate-limit';
 import { loadAiConfig } from '@/lib/ai/config';
-import { crawlTrainingWebsite } from '@/lib/ai/training-crawl';
+import {
+  crawlTrainingWebsite,
+  WebsiteFetchError,
+} from '@/lib/ai/training-crawl';
+import { connectedShopifyTrainingSources } from '@/lib/ai/training-shopify';
 import { generateTrainingFaqs } from '@/lib/ai/training-generate';
 import { mergeTrainingFaqs, validateTrainingEdits } from '@/lib/ai/training';
 import type { TrainingSet } from '@/lib/ai/training-types';
@@ -98,7 +102,22 @@ export async function POST(request: Request) {
         { error: 'Ask super admin to configure the AI model first.' },
         { status: 409 }
       );
-    const scan = await crawlTrainingWebsite(body.website_url);
+    let scan;
+    try {
+      scan = await crawlTrainingWebsite(body.website_url);
+    } catch (error) {
+      if (
+        !(error instanceof WebsiteFetchError) ||
+        ![403, 429].includes(error.upstreamStatus)
+      )
+        throw error;
+      scan = await connectedShopifyTrainingSources(
+        supabase,
+        accountId,
+        body.website_url
+      );
+      if (!scan) throw error;
+    }
     const generated = await generateTrainingFaqs(config, scan.sources);
     const patch = {
       website_url: scan.websiteUrl,

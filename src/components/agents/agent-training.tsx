@@ -235,6 +235,16 @@ export function AgentTraining({ canEdit }: { canEdit: boolean }) {
             <h3 className="font-medium">
               Website sources ({training.sources.length})
             </h3>
+            {training.sources.some(
+              (source) => source.retrievedVia === 'shopify'
+            ) && (
+              <p className="text-muted-foreground mt-2 text-sm">
+                The public storefront blocked this scan. Sources came from
+                connected Shopify policies and published products. FAQ and about
+                pages were not scanned; review missing answers before
+                publishing.
+              </p>
+            )}
             <ul className="mt-2 space-y-1 text-sm">
               {training.sources.map((source) => (
                 <li key={source.id}>
@@ -248,6 +258,8 @@ export function AgentTraining({ canEdit }: { canEdit: boolean }) {
                   </a>
                   <span className="text-muted-foreground ml-2 text-xs">
                     {new Date(source.fetchedAt).toLocaleString()}
+                    {source.retrievedVia === 'shopify' &&
+                      ' · via connected Shopify'}
                   </span>
                 </li>
               ))}

@@ -4,6 +4,7 @@ export interface TrainingSource {
   title: string;
   text: string;
   fetchedAt: string;
+  retrievedVia?: 'website' | 'shopify';
 }
 
 export interface TrainingFaq {

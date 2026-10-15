@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({
   auth: vi.fn(),
   crawl: vi.fn(),
+  shopifySources: vi.fn(),
   generate: vi.fn(),
   config: vi.fn(),
   eq: vi.fn(),
@@ -16,7 +17,13 @@ vi.mock('@/lib/auth/account', () => ({
   requireAiAgentsAccount: h.auth,
   toErrorResponse: () => Response.json({ error: 'Forbidden' }, { status: 403 }),
 }));
-vi.mock('@/lib/ai/training-crawl', () => ({ crawlTrainingWebsite: h.crawl }));
+vi.mock('@/lib/ai/training-crawl', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/ai/training-crawl')>()),
+  crawlTrainingWebsite: h.crawl,
+}));
+vi.mock('@/lib/ai/training-shopify', () => ({
+  connectedShopifyTrainingSources: h.shopifySources,
+}));
 vi.mock('@/lib/ai/training-generate', () => ({
   generateTrainingFaqs: h.generate,
 }));
@@ -27,6 +34,7 @@ vi.mock('@/lib/rate-limit', () => ({
   rateLimitResponse: () => Response.json({}, { status: 429 }),
 }));
 import { POST, PATCH } from './route';
+import { WebsiteFetchError } from '@/lib/ai/training-crawl';
 import { POST as publish } from './publish/route';
 
 const request = (body: unknown) =>
@@ -36,6 +44,7 @@ const request = (body: unknown) =>
   });
 beforeEach(() => {
   h.stored = null;
+  h.shopifySources.mockResolvedValue(null);
   h.writeError = null;
   h.config.mockResolvedValue({ provider: 'openai' });
   h.crawl.mockResolvedValue({
@@ -81,6 +90,41 @@ beforeEach(() => {
 });
 
 describe('brand training API', () => {
+  it('uses authenticated Shopify sources when the public storefront rate-limits the scan', async () => {
+    h.crawl.mockRejectedValue(
+      new WebsiteFetchError('Website returned HTTP 429.', 429)
+    );
+    h.shopifySources.mockResolvedValue({
+      websiteUrl: 'https://gifts.example.com/',
+      sources: [],
+      warnings: ['Connected Shopify sources'],
+    });
+    expect(
+      (
+        await POST(
+          request({ website_url: 'https://gifts.example.com', revision: 0 })
+        )
+      ).status
+    ).toBe(200);
+    expect(h.shopifySources).toHaveBeenCalledWith(
+      expect.anything(),
+      'brand-1',
+      'https://gifts.example.com'
+    );
+  });
+  it('preserves the failure when the URL does not match the connected store', async () => {
+    h.crawl.mockRejectedValue(
+      new WebsiteFetchError('Website returned HTTP 429.', 429)
+    );
+    expect(
+      (
+        await POST(
+          request({ website_url: 'https://other.example.com', revision: 0 })
+        )
+      ).status
+    ).toBe(400);
+    expect(h.generate).not.toHaveBeenCalled();
+  });
   it('requires admin authorization before crawling or publishing', async () => {
     h.auth.mockRejectedValue(
       Object.assign(new Error('Forbidden'), { name: 'ForbiddenError' })
