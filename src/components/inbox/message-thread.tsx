@@ -407,6 +407,22 @@ export function MessageThread({
 
   const conversationId = conversation?.id;
   const hasUnread = (conversation?.unread_count ?? 0) > 0;
+  // Component-local and account-scoped: no chat content survives a reload.
+  const messageCacheRef = useRef(new Map<string, Message[]>());
+  const loadedMessageCacheKeyRef = useRef<string | null>(null);
+  const messageCacheKey = accountId && conversationId
+    ? `${accountId}:${conversationId}`
+    : null;
+
+  useEffect(() => {
+    // The parent clears messages when switching conversations. Do not let
+    // that transition erase a previously loaded history.
+    if (!messageCacheKey || loadedMessageCacheKeyRef.current !== messageCacheKey || messages.length === 0) return;
+    const cache = messageCacheRef.current;
+    cache.delete(messageCacheKey);
+    cache.set(messageCacheKey, messages);
+    if (cache.size > 20) cache.delete(cache.keys().next().value!);
+  }, [messageCacheKey, messages]);
 
   const mediaMessageId =
     openMedia && openMedia.conversationId === conversationId
@@ -432,7 +448,14 @@ export function MessageThread({
     let cancelled = false;
 
     (async () => {
-      setLoading(true);
+      const cached = messageCacheKey
+        ? messageCacheRef.current.get(messageCacheKey)
+        : undefined;
+      if (cached) {
+        loadedMessageCacheKeyRef.current = messageCacheKey;
+        onMessagesLoadedRef.current(cached);
+      }
+      setLoading(!cached);
 
       const { data, error } = await supabase
         .from("messages")
@@ -448,6 +471,13 @@ export function MessageThread({
       } else {
         // Display the available history immediately. Repairing missing bot
         // sends can scan automation logs and must not block opening a chat.
+        loadedMessageCacheKeyRef.current = messageCacheKey;
+        if (messageCacheKey) {
+          const cache = messageCacheRef.current;
+          cache.delete(messageCacheKey);
+          cache.set(messageCacheKey, data ?? []);
+          if (cache.size > 20) cache.delete(cache.keys().next().value!);
+        }
         onMessagesLoadedRef.current(data ?? []);
         setLoading(false);
         // Always reconcile flow/automation sends against message_sent
@@ -488,7 +518,7 @@ export function MessageThread({
     // the realtime channel reconnects or the tab regains focus —
     // realtime is best-effort and any message events sent while the WS
     // was disconnected or throttled are otherwise lost.
-  }, [conversationId, resyncToken]);
+  }, [conversationId, messageCacheKey, resyncToken]);
 
   // Reactions fetch — pulls the current state from the DB. Kept separate
   // from the channel subscription below so a `resyncToken` bump just
