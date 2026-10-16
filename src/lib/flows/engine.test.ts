@@ -136,8 +136,23 @@ describe("matchesKeywordTrigger", () => {
     expect(matchesKeywordTrigger("anything", { keywords: [] })).toBe(false);
   });
 
-  it("default match_type='contains' does case-insensitive substring", () => {
-    const cfg = { keywords: ["support"] };
+  it("defaults to exact matching and avoids the repeated No trigger", () => {
+    const cfg = { keywords: ["No", "I need some changes"] };
+    expect(matchesKeywordTrigger("NO", cfg)).toBe(true);
+    expect(matchesKeywordTrigger("I need some changes", cfg)).toBe(true);
+    for (const text of [
+      "Where is my parcel , not yet received",
+      "U are not understanding what I am trying to say",
+      "Will it be possible or not plzz tell me",
+      "I need my all original photo no change with photo",
+      "Now If u don't understand me plzzzz cancel this order",
+    ]) {
+      expect(matchesKeywordTrigger(text, cfg)).toBe(false);
+    }
+  });
+
+  it("explicit contains does case-insensitive substring matching", () => {
+    const cfg = { keywords: ["support"], match_type: "contains" as const };
     expect(matchesKeywordTrigger("I need SUPPORT please", cfg)).toBe(true);
     expect(matchesKeywordTrigger("Support is great", cfg)).toBe(true);
     expect(matchesKeywordTrigger("Help me", cfg)).toBe(false);
@@ -153,6 +168,7 @@ describe("matchesKeywordTrigger", () => {
   it("case_sensitive=true preserves case", () => {
     const cfg = {
       keywords: ["Support"],
+      match_type: "contains" as const,
       case_sensitive: true,
     };
     expect(matchesKeywordTrigger("I need Support", cfg)).toBe(true);
@@ -160,14 +176,14 @@ describe("matchesKeywordTrigger", () => {
   });
 
   it("matches any one of multiple keywords", () => {
-    const cfg = { keywords: ["help", "support", "issue"] };
+    const cfg = { keywords: ["help", "support", "issue"], match_type: "contains" as const };
     expect(matchesKeywordTrigger("I have an issue", cfg)).toBe(true);
     expect(matchesKeywordTrigger("I need Help!", cfg)).toBe(true);
     expect(matchesKeywordTrigger("nothing to see here", cfg)).toBe(false);
   });
 
   it("skips empty strings in the keywords array", () => {
-    const cfg = { keywords: ["", "support", ""] };
+    const cfg = { keywords: ["", "support", ""], match_type: "contains" as const };
     expect(matchesKeywordTrigger("support center", cfg)).toBe(true);
     expect(matchesKeywordTrigger("nope", cfg)).toBe(false);
   });

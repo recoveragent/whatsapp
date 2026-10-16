@@ -187,7 +187,7 @@ export function matchesKeywordTrigger(
   cfg: KeywordTriggerConfig,
 ): boolean {
   if (!text || !cfg.keywords?.length) return false;
-  const matchType = cfg.match_type ?? "contains";
+  const matchType = cfg.match_type ?? "exact";
   const haystack = cfg.case_sensitive ? text : text.toLowerCase();
   for (const raw of cfg.keywords) {
     if (!raw) continue;

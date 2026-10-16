@@ -411,6 +411,7 @@ export type FlowNodeType = FlowNodeConfig["node_type"];
 export interface KeywordTriggerConfig {
   /** One or more keywords. Match is case-insensitive by default. */
   keywords: string[];
+  /** Defaults to exact; contains must be explicitly selected. */
   match_type?: "exact" | "contains";
   case_sensitive?: boolean;
 }

@@ -238,7 +238,7 @@ export function TriggerPanel({
                 trigger_type: v as BuilderState["trigger_type"],
                 trigger_config:
                   v === "keyword"
-                    ? { keywords: [] }
+                    ? { keywords: [], match_type: "exact" }
                     : v === "webhook_received"
                       ? (defaultFlowWebhookConfig() as unknown as Record<string, unknown>)
                       : v === "google_sheet_row"
@@ -281,6 +281,34 @@ export function TriggerPanel({
             </SelectContent>
           </Select>
         </div>
+        {state.trigger_type === "keyword" && (
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              Match type
+            </label>
+            <Select
+              value={(state.trigger_config.match_type as string) ?? "exact"}
+              onValueChange={(match_type) =>
+                setState((s) => ({
+                  ...s,
+                  trigger_config: { ...s.trigger_config, match_type },
+                }))
+              }
+            >
+              <SelectTrigger className="bg-muted" aria-label="Keyword match type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="exact">Exactly matches</SelectItem>
+                <SelectItem value="contains">Contains</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              Exactly matches requires the whole message to match a keyword.
+              Contains also matches keywords inside words and longer messages.
+            </p>
+          </div>
+        )}
         {state.trigger_type === "keyword" && (
           <div>
             <label className="mb-1 block text-xs text-muted-foreground">
