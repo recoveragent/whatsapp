@@ -1028,6 +1028,7 @@ export function MessageThread({
       values: {
         body: string[];
         headerText?: string;
+        headerMediaUrl?: string;
         buttonParams?: Record<number, string>;
       },
     ) => {
@@ -1036,6 +1037,7 @@ export function MessageThread({
       const renderedBody = renderTemplateBody(template.body_text, values.body);
       const tempId = `temp-${Date.now()}`;
       const templateSnapshot = buildTemplateMessageSnapshot(template, {
+        headerMediaUrl: values.headerMediaUrl,
         headerText: values.headerText,
         buttonParams: values.buttonParams,
       });
@@ -1069,6 +1071,7 @@ export function MessageThread({
             // back if the template row isn't found locally.
             template_message_params: {
               body: values.body,
+              headerMediaUrl: values.headerMediaUrl,
               headerText: values.headerText,
               buttonParams: values.buttonParams,
             },

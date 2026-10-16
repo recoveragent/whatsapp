@@ -19,6 +19,7 @@ interface TemplateHeaderMediaFieldProps {
   headerFormat: MediaHeaderFormat;
   value: string;
   onChange: (url: string) => void;
+  onUploadingChange?: (uploading: boolean) => void;
   /** Brand-scoped upload (Settings → Templates). Default. */
   uploadScope?: 'brand' | 'admin';
   /** i18n strings — pass from useTranslations when available. */
@@ -62,6 +63,7 @@ export function TemplateHeaderMediaField({
   headerFormat,
   value,
   onChange,
+  onUploadingChange,
   uploadScope = 'brand',
   labels: labelOverrides,
   className,
@@ -83,13 +85,14 @@ export function TemplateHeaderMediaField({
       toast.error(
         labels.toastImageTooLarge!.replace(
           '{size}',
-          (file.size / 1024 / 1024).toFixed(1),
-        ),
+          (file.size / 1024 / 1024).toFixed(1)
+        )
       );
       return;
     }
 
     setUploading(true);
+    onUploadingChange?.(true);
     try {
       const { publicUrl } =
         uploadScope === 'admin'
@@ -100,10 +103,11 @@ export function TemplateHeaderMediaField({
       toast.success(labels.toastUploadSuccess);
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : labels.toastUploadFailed,
+        err instanceof Error ? err.message : labels.toastUploadFailed
       );
     } finally {
       setUploading(false);
+      onUploadingChange?.(false);
     }
   }
 
@@ -123,15 +127,17 @@ export function TemplateHeaderMediaField({
         />
 
         {trimmed ? (
-          <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/40 p-3">
+          <div className="border-border bg-muted/40 flex items-start gap-3 rounded-xl border p-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={trimmed}
               alt="Header preview"
-              className="size-16 shrink-0 rounded-lg border border-border object-cover"
+              className="border-border size-16 shrink-0 rounded-lg border object-cover"
             />
             <div className="min-w-0 flex-1 space-y-2">
-              <p className="truncate text-xs text-muted-foreground">{trimmed}</p>
+              <p className="text-muted-foreground truncate text-xs">
+                {trimmed}
+              </p>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
@@ -166,19 +172,19 @@ export function TemplateHeaderMediaField({
             disabled={uploading}
             onClick={() => fileRef.current?.click()}
             className={cn(
-              'flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center transition-colors',
-              'hover:border-primary/40 hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60',
+              'border-border bg-muted/30 flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-8 text-center transition-colors',
+              'hover:border-primary/40 hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60'
             )}
           >
             {uploading ? (
-              <Loader2 className="size-8 animate-spin text-primary" />
+              <Loader2 className="text-primary size-8 animate-spin" />
             ) : (
-              <ImageIcon className="size-8 text-muted-foreground" />
+              <ImageIcon className="text-muted-foreground size-8" />
             )}
-            <span className="text-sm font-medium text-foreground">
+            <span className="text-foreground text-sm font-medium">
               {labels.uploadImage}
             </span>
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-muted-foreground text-[11px]">
               {labels.uploadHint}
             </span>
           </button>
@@ -189,7 +195,7 @@ export function TemplateHeaderMediaField({
             type="button"
             variant="link"
             size="sm"
-            className="h-auto px-0 text-[11px] text-muted-foreground"
+            className="text-muted-foreground h-auto px-0 text-[11px]"
             onClick={() => setShowUrlInput((v) => !v)}
           >
             {showUrlInput ? labels.useUploadInstead : labels.pasteUrlInstead}
@@ -200,7 +206,7 @@ export function TemplateHeaderMediaField({
           <Input
             placeholder={labels.mediaUrlPlaceholder!.replace(
               '{format}',
-              headerFormat,
+              headerFormat
             )}
             value={value}
             onChange={(e) => onChange(e.target.value)}
@@ -208,7 +214,7 @@ export function TemplateHeaderMediaField({
           />
         ) : null}
 
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
+        <p className="text-muted-foreground text-[11px] leading-relaxed">
           {labels.imageHint}
         </p>
       </div>
@@ -218,12 +224,15 @@ export function TemplateHeaderMediaField({
   return (
     <div className={cn('space-y-2', className)}>
       <Input
-        placeholder={labels.mediaUrlPlaceholder!.replace('{format}', headerFormat)}
+        placeholder={labels.mediaUrlPlaceholder!.replace(
+          '{format}',
+          headerFormat
+        )}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
       />
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
+      <p className="text-muted-foreground text-[11px] leading-relaxed">
         {labels.mediaHint}
         {headerFormat === 'video' ? labels.videoHint : null}
         {headerFormat === 'document' ? labels.documentHint : null}

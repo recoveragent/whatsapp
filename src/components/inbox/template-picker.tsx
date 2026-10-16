@@ -20,12 +20,15 @@ import { ArrowLeft, ChevronRight, LayoutTemplate, Loader2 } from 'lucide-react';
 import { extractVariableIndices } from '@/lib/whatsapp/template-validators';
 import { normalizeTemplateButtons } from '@/lib/flows/template-buttons';
 import { TemplateMobilePreview } from '@/components/shared/template-mobile-preview';
+import { TemplateHeaderMediaField } from '@/components/shared/template-header-media-field';
+import { isMediaHeaderType } from '@/lib/inbox/template-message-display';
 import { cn } from '@/lib/utils';
 import { useTranslations } from 'next-intl';
 
 export interface TemplateSendValues {
   body: string[];
   headerText?: string;
+  headerMediaUrl?: string;
   buttonParams?: Record<number, string>;
 }
 
@@ -87,6 +90,8 @@ export function TemplatePicker({
   const [selected, setSelected] = useState<MessageTemplate | null>(null);
   const [params, setParams] = useState<string[]>([]);
   const [headerText, setHeaderText] = useState<string>('');
+  const [headerMediaUrl, setHeaderMediaUrl] = useState('');
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const [buttonParams, setButtonParams] = useState<Record<number, string>>({});
 
   useEffect(() => {
@@ -116,7 +121,10 @@ export function TemplatePicker({
       // an empty-string equality: it hides every approved template. When a
       // conversation is mapped, keep templates scoped to that config.
       if (whatsappConfigId) {
-        templatesQuery = templatesQuery.eq('whatsapp_config_id', whatsappConfigId);
+        templatesQuery = templatesQuery.eq(
+          'whatsapp_config_id',
+          whatsappConfigId
+        );
       }
 
       const { data, error } = await templatesQuery;
@@ -140,6 +148,8 @@ export function TemplatePicker({
     setSelected(null);
     setParams([]);
     setHeaderText('');
+    setHeaderMediaUrl('');
+    setUploadingMedia(false);
     setButtonParams({});
   }
 
@@ -153,6 +163,7 @@ export function TemplatePicker({
     const noInputsNeeded =
       slots.bodyVars.length === 0 &&
       slots.headerVarCount === 0 &&
+      !isMediaHeaderType(template.header_type) &&
       slots.urlButtonSlots.length === 0;
     if (noInputsNeeded) {
       onSelect(template, { body: [] });
@@ -160,6 +171,7 @@ export function TemplatePicker({
       return;
     }
     setSelected(template);
+    setHeaderMediaUrl(template.header_media_url ?? '');
     setParams(new Array(slots.bodyVars.length).fill(''));
     setHeaderText('');
     setButtonParams({});
@@ -169,6 +181,9 @@ export function TemplatePicker({
     if (!selected) return;
     const values: TemplateSendValues = { body: params };
     if (headerText.trim()) values.headerText = headerText.trim();
+    if (isMediaHeaderType(selected.header_type) && headerMediaUrl.trim()) {
+      values.headerMediaUrl = headerMediaUrl.trim();
+    }
     if (Object.keys(buttonParams).length > 0) {
       values.buttonParams = Object.fromEntries(
         Object.entries(buttonParams).map(([k, v]) => [Number(k), v.trim()])
@@ -185,6 +200,9 @@ export function TemplatePicker({
   const canConfirm =
     !!selected &&
     !!slots &&
+    !uploadingMedia &&
+    (!isMediaHeaderType(selected.header_type) ||
+      headerMediaUrl.trim().length > 0) &&
     slots.bodyVars.every((_, i) => (params[i] ?? '').trim().length > 0) &&
     (slots.headerVarCount === 0 || headerText.trim().length > 0) &&
     slots.urlButtonSlots.every(
@@ -276,6 +294,23 @@ export function TemplatePicker({
                   </p>
                 </div>
                 <div className="border-border bg-background/40 space-y-4 rounded-lg border p-4 shadow-sm">
+                  {isMediaHeaderType(selected.header_type) && (
+                    <div className="space-y-1.5">
+                      <Label className="text-popover-foreground text-xs font-medium">
+                        Header {selected.header_type}
+                      </Label>
+                      <TemplateHeaderMediaField
+                        headerFormat={selected.header_type}
+                        value={headerMediaUrl}
+                        onChange={setHeaderMediaUrl}
+                        onUploadingChange={setUploadingMedia}
+                        labels={{
+                          imageHint:
+                            'Upload a JPEG or PNG (up to 5 MB) to send with this template.',
+                        }}
+                      />
+                    </div>
+                  )}
                   {slots && slots.headerVarCount > 0 && (
                     <div className="space-y-1.5">
                       <Label className="text-popover-foreground text-xs font-medium">
@@ -363,7 +398,7 @@ export function TemplatePicker({
                       )
                     : null
                 }
-                headerMediaUrl={selected.header_media_url}
+                headerMediaUrl={headerMediaUrl}
                 footerText={selected.footer_text}
                 buttons={normalizeTemplateButtons(selected.buttons)}
               />
@@ -382,6 +417,7 @@ export function TemplatePicker({
               <Button
                 variant="outline"
                 onClick={resetSelection}
+                disabled={uploadingMedia}
                 className="border-border text-popover-foreground hover:bg-muted"
               >
                 <ArrowLeft className="h-4 w-4" />
