@@ -235,6 +235,11 @@ export function MessageComposer({
     useState<InteractiveMessagePayload>(blankButtonsPayload);
   const [savingQuickReply, setSavingQuickReply] = useState(false);
   const [quickReplyOpen, setQuickReplyOpen] = useState(false);
+  const [slashDismissed, setSlashDismissed] = useState(false);
+  const [slashItems, setSlashItems] = useState<QuickReply[]>([]);
+  const [slashLoading, setSlashLoading] = useState(false);
+  const [slashError, setSlashError] = useState(false);
+  const [slashIndex, setSlashIndex] = useState(0);
 
   // Media attachment state. `draft` holds an uploaded-but-not-yet-sent
   // attachment; `busy` covers the upload/transcode window.
@@ -280,6 +285,36 @@ export function MessageComposer({
   // Media (like free-form text) is only allowed inside the 24h window.
   const inputsDisabled = readOnly || sessionExpired || replyLocked;
   const canAttachImage = !inputsDisabled && !busy && !recording;
+  const slashOpen = text.startsWith("/") && !text.includes("\n") &&
+    !slashDismissed && !inputsDisabled && !busy && !draft && !recording &&
+    composerMode === "message";
+  const slashMatches = slashItems.filter((qr) =>
+    qr.title.toLocaleLowerCase().includes(text.slice(1).trim().toLocaleLowerCase()),
+  );
+
+  useEffect(() => {
+    if (!slashOpen) return;
+    const controller = new AbortController();
+    setSlashLoading(true);
+    setSlashError(false);
+    setSlashItems([]);
+    void (async () => {
+      try {
+        const res = await fetch("/api/quick-replies", {
+          cache: "no-store", signal: controller.signal,
+        });
+        if (!res.ok) throw new Error("Quick replies unavailable");
+        const data = await res.json();
+        if (!controller.signal.aborted) setSlashItems(data.quick_replies ?? []);
+      } catch {
+        if (!controller.signal.aborted) setSlashError(true);
+      } finally {
+        if (!controller.signal.aborted) setSlashLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [slashOpen, conversationId]);
+
 
   useEffect(() => {
     onComposerPendingChange?.(busy || !!draft || recording);
@@ -387,20 +422,12 @@ export function MessageComposer({
     }
   }, [text, sending, sessionExpired, onSend, replyTo?.id, conversationId]);
 
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
-    },
-    [handleSend]
-  );
-
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const value = e.target.value;
       setText(value);
+      setSlashDismissed(false);
+      setSlashIndex(0);
       saveComposerDraft(conversationId, value);
       adjustHeight();
     },
@@ -533,6 +560,42 @@ export function MessageComposer({
     },
     [openInteractiveBuilder, adjustHeight],
   );
+
+  const pickSlashReply = (qr: QuickReply) => {
+    setSlashDismissed(true);
+    setText("");
+    handlePickQuickReply(qr);
+    requestAnimationFrame(adjustHeight);
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing) return;
+    if (slashOpen) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSlashDismissed(true);
+        return;
+      }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const count = slashMatches.length;
+        if (count) setSlashIndex((index) =>
+          (index + (e.key === "ArrowDown" ? 1 : -1) + count) % count,
+        );
+        return;
+      }
+      if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+        e.preventDefault();
+        const reply = slashMatches[slashIndex];
+        if (!slashLoading && !slashError && reply) pickSlashReply(reply);
+        return;
+      }
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void handleSend();
+    }
+  };
 
   // Upload a captured file to chat-media and stage it as a draft.
   const stageUpload = useCallback(
@@ -938,6 +1001,38 @@ export function MessageComposer({
         }}
       />
 
+      {slashOpen && (
+        <div className="mb-2 rounded-xl border border-border bg-popover p-2 shadow-lg">
+          <p className="px-2 py-1 text-xs font-medium text-muted-foreground">{t("quickReplies")}</p>
+          {slashLoading ? (
+            <div role="status" className="flex justify-center p-4"><Loader2 className="h-4 w-4 animate-spin" /></div>
+          ) : slashError ? (
+            <p role="alert" className="p-2 text-sm text-muted-foreground">{t("quickReplyLoadError")}</p>
+          ) : slashMatches.length === 0 ? (
+            <p role="status" className="p-2 text-sm text-muted-foreground">{t(slashItems.length ? "quickRepliesNoMatch" : "quickRepliesEmpty")}</p>
+          ) : (
+            <div id="slash-quick-replies" role="listbox" aria-label={t("quickReplies")} className="max-h-60 overflow-y-auto">
+              {slashMatches.map((qr, index) => (
+                <button
+                  key={qr.id}
+                  id={`slash-reply-${index}`}
+                  type="button"
+                  role="option"
+                  aria-selected={index === slashIndex}
+                  ref={(node) => { if (index === slashIndex) node?.scrollIntoView({ block: "nearest" }); }}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pickSlashReply(qr)}
+                  className={cn("block w-full rounded-md px-3 py-2 text-left hover:bg-muted", index === slashIndex && "bg-muted")}
+                >
+                  <span className="block truncate text-sm font-medium">{qr.title}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{qr.content_text ?? t("interactiveMessage")}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {draft ? (
         <MediaDraftPreview
           draft={draft}
@@ -1088,6 +1183,9 @@ export function MessageComposer({
 
           <textarea
             ref={textareaRef}
+            aria-autocomplete="list"
+            aria-controls={slashOpen && slashMatches.length ? "slash-quick-replies" : undefined}
+            aria-activedescendant={slashOpen && slashMatches[slashIndex] ? `slash-reply-${slashIndex}` : undefined}
             value={text}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
