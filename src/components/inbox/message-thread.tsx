@@ -444,8 +444,12 @@ export function MessageThread({
 
       if (error) {
         console.error("Failed to fetch messages:", error);
+        setLoading(false);
       } else {
-        let rows = data ?? [];
+        // Display the available history immediately. Repairing missing bot
+        // sends can scan automation logs and must not block opening a chat.
+        onMessagesLoadedRef.current(data ?? []);
+        setLoading(false);
         // Always reconcile flow/automation sends against message_sent
         // audit rows — a thread can have later bot bubbles while an
         // earlier Meta-accepted send never landed in messages.
@@ -454,27 +458,27 @@ export function MessageThread({
             `/api/inbox/conversations/${conversationId}/repair-flow-prompt`,
             { method: "POST" },
           );
+          if (cancelled) return;
           if (res.ok) {
             const body = (await res.json()) as {
               repaired?: boolean;
               repaired_count?: number;
             };
+            if (cancelled) return;
             if (body.repaired || (body.repaired_count ?? 0) > 0) {
               const { data: refetched } = await supabase
                 .from("messages")
                 .select("*")
                 .eq("conversation_id", conversationId)
                 .order("created_at", { ascending: true });
-              if (refetched?.length) rows = refetched;
+              if (cancelled) return;
+              if (refetched?.length) onMessagesLoadedRef.current(refetched);
             }
           }
         } catch (repairErr) {
           console.warn("[inbox] repair flow prompt failed:", repairErr);
         }
-        onMessagesLoadedRef.current(rows);
       }
-
-      if (!cancelled) setLoading(false);
     })();
 
     return () => {
