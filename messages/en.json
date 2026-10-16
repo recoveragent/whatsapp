@@ -216,6 +216,8 @@
       "sendProduct": "Send product",
       "interactiveMessage": "Interactive message",
       "quickReplies": "Quick replies",
+      "quickRepliesNoMatch": "No quick replies match this title.",
+      "quickReplyLoadError": "Could not load quick replies. Try typing / again.",
       "quickRepliesEmpty": "No quick replies yet. Add some in Settings → Quick replies.",
       "saveAsQuickReply": "Save as quick reply",
       "send": "Send",
