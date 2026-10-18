@@ -1448,6 +1448,9 @@
       "saving": "저장 중…",
       "submitting": "제출 중…",
       "saveResubmit": "저장 & 재제출",
+      "saveDraft": "초안 저장",
+      "toastDraftSaved": "초안이 저장되었습니다",
+      "dialogDraftDesc": "초안을 수정한 후 저장하거나 승인을 위해 제출하세요.",
       "submitApproval": "승인 요청",
 
       "deleteDialogTitle": "템플릿을 삭제하시겠습니까?",

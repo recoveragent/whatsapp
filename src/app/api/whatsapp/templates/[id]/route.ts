@@ -20,7 +20,7 @@ import { ensureImageHeaderHandle } from '@/lib/whatsapp/template-header-handle'
 /**
  * Per-template lifecycle endpoint.
  *
- * PATCH  — edit an existing Meta-side template (and re-submit). Used
+ * PATCH  — save a local draft, or edit a Meta-side template (and re-submit). Used
  *          by the "Edit" action on APPROVED rows and the "Resubmit"
  *          action on REJECTED / PAUSED rows. Meta replaces components
  *          wholesale on edit and bumps status back to PENDING.
@@ -30,8 +30,7 @@ import { ensureImageHeaderHandle } from '@/lib/whatsapp/template-header-handle'
  *          the local row. Local-only rows skip the Meta call.
  *
  * Initial submission (DRAFT → PENDING) lives at the sibling
- * /submit endpoint — keep this route narrowly about lifecycle of
- * already-submitted templates.
+ * /submit endpoint. Draft edits here stay local until explicitly submitted.
  */
 
 const EDITABLE_STATUSES = new Set(['APPROVED', 'REJECTED', 'PAUSED'])
@@ -84,7 +83,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'Template not found.' }, { status: 404 })
     }
 
-    if (!existing.meta_template_id) {
+    const isDraft = existing.status === 'DRAFT' && !existing.meta_template_id
+
+    if (!existing.meta_template_id && !isDraft) {
       return NextResponse.json(
         {
           error:
@@ -94,7 +95,7 @@ export async function PATCH(
       )
     }
 
-    if (!EDITABLE_STATUSES.has(existing.status)) {
+    if (!isDraft && !EDITABLE_STATUSES.has(existing.status)) {
       return NextResponse.json(
         {
           error: `Templates in status ${existing.status} cannot be edited. Allowed: APPROVED, REJECTED, PAUSED.`,
@@ -120,6 +121,36 @@ export async function PATCH(
         { error: e instanceof Error ? e.message : 'Validation failed.' },
         { status: 400 },
       )
+    }
+
+    if (isDraft) {
+      const { data: row, error } = await supabase
+        .from('message_templates')
+        .update({
+          name: payload.name,
+          language: payload.language,
+          category: payload.category,
+          header_type: payload.header_type ?? null,
+          header_content: payload.header_content ?? null,
+          header_media_url: payload.header_media_url ?? null,
+          header_handle: payload.header_handle ?? null,
+          body_text: payload.body_text,
+          footer_text: payload.footer_text ?? null,
+          buttons: payload.buttons ?? null,
+          sample_values: payload.sample_values ?? null,
+          submission_error: null,
+          rejection_reason: null,
+        })
+        .eq('id', id)
+        .eq('account_id', accountId)
+        .eq('status', 'DRAFT')
+        .is('meta_template_id', null)
+        .select()
+        .single()
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 })
+      }
+      return NextResponse.json({ success: true, template: row, draft: true })
     }
 
     if (!isDryRun()) {

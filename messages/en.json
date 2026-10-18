@@ -1449,6 +1449,9 @@
       "saving": "Saving…",
       "submitting": "Submitting…",
       "saveResubmit": "Save & Resubmit",
+      "saveDraft": "Save draft",
+      "toastDraftSaved": "Draft saved",
+      "dialogDraftDesc": "Edit your draft, then save it or submit it for approval.",
       "submitApproval": "Submit for Approval",
 
       "deleteDialogTitle": "Delete template?",

@@ -170,6 +170,9 @@ export function TemplateManager() {
   // submit handler from POST /submit to PATCH /[id] and changes the
   // dialog title + CTA. Set to the template id to pre-fill from a row.
   const [editingId, setEditingId] = useState<string | null>(null);
+  const editingDraft = editingId !== null && templates.some(
+    (template) => template.id === editingId && template.status === 'DRAFT' && !template.meta_template_id,
+  );
   const [deletingId, setDeletingId] = useState<string | null>(null);
   // Template selected for the confirm-delete dialog. The destructive
   // action goes through this two-step so a slip on the trash icon
@@ -325,7 +328,7 @@ export function TemplateManager() {
     setDialogOpen(true);
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(saveDraftOnly = false) {
     // AUTHENTICATION is blocked by the persistent banner + disabled
     // submit button; this is a defensive second line of defense.
     if (form.category === 'Authentication') return;
@@ -335,12 +338,20 @@ export function TemplateManager() {
       const url = isEdit
         ? `/api/whatsapp/templates/${editingId}`
         : '/api/whatsapp/templates/submit';
-      const res = await fetch(url, {
+      let res = await fetch(url, {
         method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildSubmitPayload()),
       });
-      const data = await res.json();
+      let data = await res.json();
+      if (res.ok && editingDraft && !saveDraftOnly) {
+        res = await fetch('/api/whatsapp/templates/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildSubmitPayload()),
+        });
+        data = await res.json();
+      }
       if (!res.ok) {
         throw new Error(
           data?.error || `${isEdit ? 'Edit' : 'Submit'} failed (HTTP ${res.status})`,
@@ -350,7 +361,7 @@ export function TemplateManager() {
       // immediately should not show a stale list.
       if (accountId) await fetchTemplates(accountId);
       toast.success(
-        data.dry_run
+        data.draft ? t('toastDraftSaved') : data.dry_run
           ? isEdit
             ? t('toastSaveEditDry')
             : t('toastSaveNewDry')
@@ -673,7 +684,7 @@ export function TemplateManager() {
                     </div>
 
                     <div className="flex shrink-0 flex-col gap-0.5 opacity-100 sm:opacity-0 sm:transition-opacity sm:duration-150 sm:group-hover/card:opacity-100 sm:group-focus-within/card:opacity-100">
-                      {statusKey === 'APPROVED' && (
+                      {(statusKey === 'APPROVED' || (statusKey === 'DRAFT' && !template.meta_template_id)) && (
                         <Button
                           variant="ghost"
                           size="icon-sm"
@@ -754,7 +765,9 @@ export function TemplateManager() {
               {editingId ? t('dialogEditTitle') : t('dialogNewTitle')}
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              {editingId
+              {editingDraft
+                ? t('dialogDraftDesc')
+                : editingId
                 ? t('dialogEditDesc')
                 : t('dialogNewDesc')}
             </DialogDescription>
@@ -775,11 +788,11 @@ export function TemplateManager() {
                   placeholder={t('namePlaceholder')}
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  disabled={editingId !== null}
+                  disabled={editingId !== null && !editingDraft}
                   className="bg-muted border-border text-foreground placeholder:text-muted-foreground disabled:opacity-60 disabled:cursor-not-allowed"
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  {editingId
+                  {editingId && !editingDraft
                     ? t('nameFixed')
                     : t('nameHint')}
                 </p>
@@ -827,7 +840,7 @@ export function TemplateManager() {
                     onChange={(e) =>
                       setForm({ ...form, language: e.target.value })
                     }
-                    disabled={editingId !== null}
+                    disabled={editingId !== null && !editingDraft}
                     className="bg-muted border-border text-foreground placeholder:text-muted-foreground disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                   <datalist id="template-language-codes">
@@ -836,7 +849,7 @@ export function TemplateManager() {
                     ))}
                   </datalist>
                   <p className="text-[11px] text-muted-foreground">
-                    {editingId ? (
+                    {editingId && !editingDraft ? (
                       t('langFixed')
                     ) : (
                       <span>{t.rich('langHint', { code: (chunks) => <code>{chunks}</code> })}</span>
@@ -1196,8 +1209,17 @@ export function TemplateManager() {
             >
               {t('cancel')}
             </Button>
+            {editingDraft && (
+              <Button
+                variant="outline"
+                onClick={() => handleSubmit(true)}
+                disabled={submitting || form.category === 'Authentication'}
+              >
+                {t('saveDraft')}
+              </Button>
+            )}
             <Button
-              onClick={handleSubmit}
+              onClick={() => handleSubmit()}
               disabled={submitting || form.category === 'Authentication'}
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
@@ -1206,7 +1228,7 @@ export function TemplateManager() {
                   <Loader2 className="size-4 animate-spin" />
                   {editingId ? t('saving') : t('submitting')}
                 </>
-              ) : editingId ? (
+              ) : editingId && !editingDraft ? (
                 t('saveResubmit')
               ) : (
                 t('submitApproval')
