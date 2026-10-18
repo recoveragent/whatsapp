@@ -1039,7 +1039,7 @@ function NodeEditPanelBody({
 
   return (
     <>
-      <div className="border-b border-border px-5 py-4">
+      <div className="shrink-0 border-b border-border px-5 py-4">
         <div className="flex items-center gap-2 text-popover-foreground">
           <Icon className={cn("h-4 w-4 shrink-0", meta.color)} />
           <span className="font-heading text-base font-medium">{meta.label}</span>
@@ -1051,8 +1051,9 @@ function NodeEditPanelBody({
         />
       </div>
 
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
+      <div className="min-h-0 flex-1 overflow-x-auto">
         <NodeConfigForm
+          templateLayout
           node={node}
           allNodes={allNodes}
           showAdvanced={false}
@@ -1062,7 +1063,7 @@ function NodeEditPanelBody({
         />
       </div>
 
-      <div className="flex flex-col gap-2 border-t border-border px-5 py-3 sm:flex-row sm:items-center sm:justify-end">
+      <div className="flex shrink-0 flex-col gap-2 border-t border-border px-5 py-3 sm:flex-row sm:items-center sm:justify-end">
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="sm" onClick={onDuplicate}>
             <Copy className="h-3.5 w-3.5" />
@@ -1119,8 +1120,8 @@ function NodeEditSheet({
         <DialogContent
           showCloseButton
           className={cn(
-            "flex max-h-[90vh] w-[min(92vw,960px)] max-w-[min(92vw,960px)] flex-col gap-0 overflow-hidden p-0",
-            "sm:max-w-[min(92vw,960px)]",
+            "flex h-[90dvh] max-h-[900px] w-[min(96vw,1280px)] max-w-[min(96vw,1280px)] flex-col gap-0 overflow-hidden p-0",
+            "sm:max-w-[min(96vw,1280px)]",
           )}
         >
           <DialogHeader className="sr-only">

@@ -68,6 +68,7 @@ import { ConditionRuleFields } from "./condition-fields";
 import type { ConditionNodeConfig } from "@/lib/flows/types";
 
 interface NodeConfigFormProps {
+  templateLayout?: boolean;
   node: BuilderNode;
   allNodes: BuilderNode[];
   showAdvanced: boolean;
@@ -83,6 +84,7 @@ export function NodeConfigForm({
   onUpdateConfig,
   triggerType,
   triggerConfig,
+  templateLayout,
 }: NodeConfigFormProps) {
   return (
     <>
@@ -94,9 +96,10 @@ export function NodeConfigForm({
         onUpdateConfig={onUpdateConfig}
         triggerType={triggerType}
         triggerConfig={triggerConfig}
+        templateLayout={templateLayout}
       />
       </NodeVariableGroups.Provider>
-      {nodeTypeHasReplyTimeoutSlot(node.node_type) ? (
+      {nodeTypeHasReplyTimeoutSlot(node.node_type) && !(templateLayout && node.node_type === "send_template") ? (
         <ReplyTimeoutSection cfg={node.config} onUpdateConfig={onUpdateConfig} />
       ) : null}
     </>
@@ -110,6 +113,7 @@ function NodeConfigBody({
   onUpdateConfig,
   triggerType,
   triggerConfig,
+  templateLayout,
 }: NodeConfigFormProps) {
   const t = useTranslations("Flows.builder.form");
   const cfg = node.config;
@@ -302,6 +306,8 @@ function NodeConfigBody({
       return (
         <>
           <SendTemplateFields
+            flowLayout={templateLayout}
+            additionalFields={templateLayout ? <ReplyTimeoutSection cfg={cfg} onUpdateConfig={onUpdateConfig} /> : undefined}
             creationPurpose={triggerType && isShopifyFulfillmentFlowTrigger(triggerType) ? "tracking" : triggerType && isShopifyCheckoutAbandonmentFlowTrigger(triggerType) ? "checkout" : triggerType && isShopifyOrderFlowTrigger(triggerType) ? "order_status" : "custom"}
             templateName={(cfg as { template_name?: string }).template_name ?? ""}
             language={(cfg as { language?: string }).language ?? "en_US"}

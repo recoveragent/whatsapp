@@ -45,6 +45,8 @@ export interface SendTemplateFieldsValue {
 }
 
 interface SendTemplateFieldsProps {
+  flowLayout?: boolean;
+  additionalFields?: import("react").ReactNode;
   /** Payment collection templates cannot branch on customer quick replies. */
   allowQuickReplies?: boolean;
   creationPurpose?: CtaPurpose;
@@ -283,6 +285,8 @@ function useApprovedTemplates() {
 }
 
 export function SendTemplateFields({
+  flowLayout = false,
+  additionalFields,
   allowQuickReplies = true,
   creationPurpose = "custom",
   templateName,
@@ -573,36 +577,7 @@ export function SendTemplateFields({
     );
   }
 
-  return (
-    <div className="@container min-w-0 space-y-3">
-      {createTemplateLink}
-      <div>
-        <label className="mb-1 block text-xs text-muted-foreground">Template</label>
-        <TemplateSelectPicker
-          templates={templates}
-          value={currentValue}
-          orphanLabel={
-            currentValue && !hasMatch ? { name: templateName, lang } : undefined
-          }
-          onValueChange={(v) => {
-            if (!v) return;
-            const { name, lang: nextLang } = fromTemplateOptionValue(v);
-            const tpl = templates.find(
-              (t) => t.name === name && (t.language ?? "en_US") === nextLang,
-            );
-            onChange({
-              template_name: name,
-              language: nextLang,
-              variables: tpl ? seedCtaMappings(normalizeTemplateButtons(tpl.buttons), {}) : {},
-              buttons: tpl ? syncTemplateButtonConfig(buttons, tpl) : [],
-              next_node_key: nextNodeKey,
-            });
-          }}
-        />
-      </div>
-
-      {selectedTemplate && (
-        <>
+  const preview = selectedTemplate ? (
           <div className="rounded-md border border-border bg-muted/30 p-3">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <p className="text-xs font-medium text-foreground">Preview</p>
@@ -674,9 +649,43 @@ export function SendTemplateFields({
                 </div>
               )}
           </div>
+  ) : null;
+
+  return (
+    <div className={cn("@container min-w-0", flowLayout ? "grid h-full min-h-0 min-w-[900px] grid-cols-[minmax(0,1fr)_300px_240px]" : "space-y-3")}>
+      <div className={flowLayout ? "min-h-0 min-w-0 space-y-3 overflow-y-auto overscroll-contain p-5" : "space-y-3"}>
+      {createTemplateLink}
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">Template</label>
+        <TemplateSelectPicker
+          templates={templates}
+          value={currentValue}
+          orphanLabel={
+            currentValue && !hasMatch ? { name: templateName, lang } : undefined
+          }
+          onValueChange={(v) => {
+            if (!v) return;
+            const { name, lang: nextLang } = fromTemplateOptionValue(v);
+            const tpl = templates.find(
+              (t) => t.name === name && (t.language ?? "en_US") === nextLang,
+            );
+            onChange({
+              template_name: name,
+              language: nextLang,
+              variables: tpl ? seedCtaMappings(normalizeTemplateButtons(tpl.buttons), {}) : {},
+              buttons: tpl ? syncTemplateButtonConfig(buttons, tpl) : [],
+              next_node_key: nextNodeKey,
+            });
+          }}
+        />
+      </div>
+
+      {selectedTemplate && (
+        <>
+          {!flowLayout && preview}
 
           {placeholders.length > 0 && (
-            <div className={VARIABLE_FIELDS_LAYOUT}>
+            <div className={flowLayout ? "space-y-3" : VARIABLE_FIELDS_LAYOUT}>
               <div className="min-w-0 space-y-2">
                 <p className="text-[11px] text-muted-foreground">{variableHint}</p>
                 {placeholders.map((key) => (
@@ -768,7 +777,7 @@ export function SendTemplateFields({
                 ))}
               </div>
 
-              {variableGroups.length > 0 && (
+              {!flowLayout && variableGroups.length > 0 && (
                 <TemplateVariablePicker
                   groups={variableGroups}
                   onInsert={insertToken}
@@ -782,7 +791,7 @@ export function SendTemplateFields({
             selectedTemplate.header_type === "text" &&
             selectedTemplate.header_content &&
             extractVariableIndices(selectedTemplate.header_content).length > 0 && (
-              <div className={VARIABLE_FIELDS_LAYOUT}>
+              <div className={flowLayout ? "space-y-3" : VARIABLE_FIELDS_LAYOUT}>
                 <div className="min-w-0">
                   <label className="mb-1 block text-xs text-muted-foreground">
                     Header variable
@@ -801,7 +810,7 @@ export function SendTemplateFields({
                     active={activeField === "header_1"}
                   />
                 </div>
-                {variableGroups.length > 0 && (
+                {!flowLayout && variableGroups.length > 0 && (
                   <TemplateVariablePicker
                     groups={variableGroups}
                     onInsert={insertToken}
@@ -811,7 +820,7 @@ export function SendTemplateFields({
             )}
 
           {placeholders.length === 0 && mediaHeaderType && (
-            <div className={VARIABLE_FIELDS_LAYOUT}>
+            <div className={flowLayout ? "space-y-3" : VARIABLE_FIELDS_LAYOUT}>
               <div className="min-w-0">
                 <HeaderMediaField
                   mediaHeaderType={mediaHeaderType}
@@ -827,7 +836,7 @@ export function SendTemplateFields({
                   }
                 />
               </div>
-              {variableGroups.length > 0 && (
+              {!flowLayout && variableGroups.length > 0 && (
                 <TemplateVariablePicker
                   groups={variableGroups}
                   onInsert={insertToken}
@@ -837,7 +846,7 @@ export function SendTemplateFields({
           )}
 
           {placeholders.length === 0 && urlSuffixButtons.length > 0 && (
-            <div className={VARIABLE_FIELDS_LAYOUT}>
+            <div className={flowLayout ? "space-y-3" : VARIABLE_FIELDS_LAYOUT}>
               <div className="min-w-0 space-y-2">
                 {urlSuffixButtons.map((slot) => (
                   <div key={`button_${slot.index}`}>
@@ -867,7 +876,7 @@ export function SendTemplateFields({
                   </div>
                 ))}
               </div>
-              {variableGroups.length > 0 && (
+              {!flowLayout && variableGroups.length > 0 && (
                 <TemplateVariablePicker
                   groups={variableGroups}
                   onInsert={insertToken}
@@ -929,6 +938,18 @@ export function SendTemplateFields({
               waiting for a tap.
             </p>
           )}
+        </>
+      )}
+      {additionalFields}
+      </div>
+      {flowLayout && (
+        <>
+          <aside aria-label="Template preview" className="min-h-0 overflow-y-auto overscroll-contain border-l border-border bg-muted/30 p-3">
+            {preview ?? <p className="text-xs text-muted-foreground">Select a template to preview it.</p>}
+          </aside>
+          <aside aria-label="Template variables" className="min-h-0 overflow-y-auto overscroll-contain border-l border-border p-3">
+            <TemplateVariablePicker groups={variableGroups} onInsert={insertToken} />
+          </aside>
         </>
       )}
     </div>
