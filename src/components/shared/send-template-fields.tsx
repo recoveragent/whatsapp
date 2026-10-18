@@ -44,6 +44,8 @@ export interface SendTemplateFieldsValue {
 }
 
 interface SendTemplateFieldsProps {
+  /** Payment collection templates cannot branch on customer quick replies. */
+  allowQuickReplies?: boolean;
   templateName: string;
   language: string;
   variables?: Record<string, string>;
@@ -279,6 +281,7 @@ function useApprovedTemplates() {
 }
 
 export function SendTemplateFields({
+  allowQuickReplies = true,
   templateName,
   language,
   variables = {},
@@ -291,7 +294,13 @@ export function SendTemplateFields({
   variableGroups = [],
 }: SendTemplateFieldsProps) {
   const { accountId } = useAuth();
-  const { templates, loading, reload } = useApprovedTemplates();
+  const { templates: approvedTemplates, loading, reload } = useApprovedTemplates();
+  const templates = useMemo(
+    () => allowQuickReplies
+      ? approvedTemplates
+      : approvedTemplates.filter((t) => quickReplyButtonsFromTemplate(t).length === 0),
+    [approvedTemplates, allowQuickReplies],
+  );
   const lang = language || "en_US";
   const [activeField, setActiveField] = useState<string | null>(null);
   const [freshTemplate, setFreshTemplate] = useState<MessageTemplate | null>(null);
@@ -538,6 +547,14 @@ export function SendTemplateFields({
   }
 
   if (templates.length === 0) {
+    if (!allowQuickReplies) {
+      return (
+        <p className="text-xs text-muted-foreground">
+          No compatible approved templates found. Create a payment template without
+          quick-reply buttons in Settings → Templates, then sync templates.
+        </p>
+      );
+    }
     return (
       <div className="space-y-3">
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">

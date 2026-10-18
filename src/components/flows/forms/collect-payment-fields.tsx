@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CreditCard, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -166,10 +166,13 @@ export function CollectPaymentFields({
   onChange: (patch: Record<string, unknown>) => void;
 }) {
   const c = node.config as unknown as CollectPaymentNodeConfig;
-  const groups = [
-    ...templateVariableGroupsForFlow().filter((g) => g.id !== 'payment'),
-    PAYMENT_VARIABLE_GROUP,
-  ];
+  const groups = useMemo(
+    () => [
+      ...templateVariableGroupsForFlow().filter((g) => g.id !== 'payment'),
+      PAYMENT_VARIABLE_GROUP,
+    ],
+    []
+  );
   return (
     <div className="space-y-5">
       <RazorpayConnection />
@@ -224,6 +227,8 @@ export function CollectPaymentFields({
           payment link into its body or URL button.
         </p>
         <SendTemplateFields
+          allowQuickReplies={false}
+          buttons={c.request_template?.buttons}
           templateName={c.request_template?.template_name ?? ''}
           language={c.request_template?.language ?? 'en_US'}
           variables={c.request_template?.variables ?? {}}
@@ -272,6 +277,8 @@ export function CollectPaymentFields({
         </p>
         {c.max_reminders > 0 && (
           <SendTemplateFields
+            allowQuickReplies={false}
+            buttons={c.reminder_template?.buttons}
             templateName={c.reminder_template?.template_name ?? ''}
             language={c.reminder_template?.language ?? 'en_US'}
             variables={c.reminder_template?.variables ?? {}}
