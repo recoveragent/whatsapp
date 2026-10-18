@@ -8,6 +8,8 @@ import {
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
 import type { TemplateButton, TemplateSampleValues } from '@/types'
+import { preserveCtaPurposes } from '@/lib/whatsapp/template-cta'
+import { normalizeTemplateButtons } from '@/lib/flows/template-buttons'
 
 /**
  * Sync message templates from Meta → local message_templates table.
@@ -244,7 +246,7 @@ export async function POST() {
 
       const { data: existing, error: lookupErr } = await supabase
         .from('message_templates')
-        .select('id')
+        .select('id, buttons')
         .eq('account_id', accountId)
         .eq('whatsapp_config_id', config.id)
         .eq('name', t.name)
@@ -261,6 +263,7 @@ export async function POST() {
       }
 
       if (existing?.id) {
+        row.buttons = preserveCtaPurposes(parsedButtons, normalizeTemplateButtons(existing.buttons))
         const { error: updErr } = await supabase
           .from('message_templates')
           .update(row)

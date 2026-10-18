@@ -1,5 +1,6 @@
 import type { MessageTemplate, TemplateButton } from '@/types'
 import { extractVariableIndices } from '@/lib/whatsapp/template-validators'
+import { isCtaPurpose } from '@/lib/whatsapp/template-cta'
 
 export interface TemplateQuickReplyButton {
   reply_id: string
@@ -49,6 +50,7 @@ export function normalizeTemplateButtons(
         text,
         url: typeof row.url === 'string' ? row.url : '',
         example: typeof row.example === 'string' ? row.example : undefined,
+        ...(isCtaPurpose(row.url_purpose) ? { url_purpose: row.url_purpose } : {}),
       })
     } else if (type === 'PHONE_NUMBER' || type === 'PHONE') {
       out.push({

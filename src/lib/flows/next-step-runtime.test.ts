@@ -5,6 +5,7 @@ type Row = Record<string, unknown>;
 const h = vi.hoisted(() => ({
   tables: {} as Record<string, Row[]>,
   sends: [] as string[],
+  templateParams: [] as Array<Record<string, unknown>>,
   seq: 0,
 }));
 
@@ -111,8 +112,9 @@ vi.mock('./meta-send', () => ({
 }));
 vi.mock('@/lib/automations/meta-send', () => ({
   engineSendTemplate: vi.fn(
-    async ({ templateName }: { templateName: string }) => {
+    async ({ templateName, messageParams }: { templateName: string; messageParams: Record<string, unknown> }) => {
       h.sends.push(templateName);
+      h.templateParams.push(messageParams);
       return { whatsapp_message_id: `wamid.${h.sends.length}` };
     }
   ),
@@ -206,10 +208,29 @@ beforeEach(() => {
     ],
   };
   h.sends = [];
+  h.templateParams = [];
   h.seq = 0;
 });
 
 describe('independent Next step and no-response timeout', () => {
+  it('uses separate payment and courier URLs when a template contains both CTAs', async () => {
+    h.tables.flow_nodes[0] = node('confirmation', 'send_template', { next_node_key: 'end', variables: {} });
+    h.tables.message_templates = [{ id: 'tpl', user_id: 'user', account_id: 'account', name: 'confirmation', language: 'en_US', body_text: 'Order update.', buttons: [
+      { type: 'URL', text: 'Pay now', url: 'https://rzp.io/{{1}}', url_purpose: 'payment' },
+      { type: 'URL', text: 'Track order', url: 'https://crm.example.com/t/{{1}}', url_purpose: 'tracking' },
+    ] }];
+    await startFlowForExternalEvent({ flow, contactId: 'contact', conversationId: 'conversation', initialVars: { payment_url_suffix: 'rzp/deposit-link', tracking_url_redirect_suffix: 'tracking-token', order_status_url_suffix: 'orders/do-not-use' } });
+    expect(h.templateParams[0].buttonParams).toEqual({ 0: 'rzp/deposit-link', 1: 'tracking-token' });
+  });
+
+  it('does not substitute an order URL when a payment CTA has no payment link', async () => {
+    h.tables.flow_nodes[0] = node('confirmation', 'send_template', { next_node_key: 'end', variables: {} });
+    h.tables.message_templates = [{ id: 'tpl', user_id: 'user', account_id: 'account', name: 'confirmation', language: 'en_US', body_text: 'Advance payment.', buttons: [{ type: 'URL', text: 'Pay now', url: 'https://rzp.io/{{1}}', url_purpose: 'payment' }] }];
+    await startFlowForExternalEvent({ flow, contactId: 'contact', conversationId: 'conversation', initialVars: { order_status_url_suffix: 'orders/do-not-use' } });
+    expect(h.templateParams).toEqual([]);
+    expect(h.tables.flow_runs[0].status).toBe('failed');
+  });
+
   it('keeps a payment collection waiting when a customer says they paid', async () => {
     h.tables.flow_nodes.push(node('payment', 'collect_payment', {}));
     h.tables.flow_runs = [{ id: 'pay-run', account_id: 'account', flow_id: flow.id, user_id: 'user', contact_id: 'contact', conversation_id: 'conversation', current_node_key: 'payment', status: 'waiting', vars: {}, reprompt_count: 0 }];

@@ -61,7 +61,7 @@ import {
   resolveStageLabel,
 } from "@/lib/pipelines";
 import type { TemplateQuickReplyButton } from "@/lib/flows/template-buttons";
-import type { FlowTriggerType } from "@/lib/flows/trigger-types";
+import { isShopifyFulfillmentFlowTrigger, isShopifyCheckoutAbandonmentFlowTrigger, isShopifyOrderFlowTrigger, type FlowTriggerType } from "@/lib/flows/trigger-types";
 import { useAccountPipelines } from "./use-account-pipelines";
 import { CollectPaymentFields } from "./collect-payment-fields";
 import { ConditionRuleFields } from "./condition-fields";
@@ -302,6 +302,7 @@ function NodeConfigBody({
       return (
         <>
           <SendTemplateFields
+            creationPurpose={triggerType && isShopifyFulfillmentFlowTrigger(triggerType) ? "tracking" : triggerType && isShopifyCheckoutAbandonmentFlowTrigger(triggerType) ? "checkout" : triggerType && isShopifyOrderFlowTrigger(triggerType) ? "order_status" : "custom"}
             templateName={(cfg as { template_name?: string }).template_name ?? ""}
             language={(cfg as { language?: string }).language ?? "en_US"}
             variables={

@@ -24,7 +24,8 @@ import {
   templateDisplayPayload,
 } from '@/lib/inbox/template-message-display'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
-import { templateConfigHasQuickReplies } from './template-buttons'
+import { templateConfigHasQuickReplies, normalizeTemplateButtons } from './template-buttons'
+import { buttonCtaPurpose, seedCtaMappings } from '@/lib/whatsapp/template-cta'
 import { parseReplyTimeout } from './reply-timeout'
 import {
   computeWaitRunAt,
@@ -234,6 +235,16 @@ export async function executeExtendedNode(
           templateRowRaw && isMessageTemplate(templateRowRaw)
             ? templateRowRaw
             : null
+        if (templateRow) {
+          const templateButtons = normalizeTemplateButtons(templateRow.buttons)
+          const mappings = seedCtaMappings(templateButtons, c.variables ?? {})
+          templateButtons.forEach((button, index) => {
+            if (button.type !== 'URL' || !button.url.includes('{{1}}') || buttonCtaPurpose(button) === 'custom') return
+            const value = interpolate(mappings[`button_${index}`] ?? '').trim()
+            if (!value) throw new Error(`The ${button.text} button needs its ${buttonCtaPurpose(button)} URL in this flow. Check the trigger or preceding payment step.`)
+            messageParams.buttonParams = { ...messageParams.buttonParams, [index]: value }
+          })
+        }
         const shopifyOrderContext =
           typeof vars.order_number === 'string' && vars.order_number.trim() !== ''
         if (isMediaHeaderType(templateRow?.header_type) && shopifyOrderContext) {

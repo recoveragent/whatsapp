@@ -14,7 +14,8 @@ import {
   FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getWhatsAppTrackingButtonUrlTemplate } from '@/lib/shopify/tracking-redirect';
+import { TemplateCtaSuggestions } from './template-cta-suggestions';
+import { CTA_LABELS, buttonCtaPurpose, isCtaPurpose, type CtaPurpose } from '@/lib/whatsapp/template-cta';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
@@ -166,6 +167,14 @@ export function TemplateManager() {
   const [whatsappNumbers, setWhatsappNumbers] = useState<Array<{ id: string; reference_name: string; phone_number_id: string }>>([]);
   const [syncConfigId, setSyncConfigId] = useState('');
   const [form, setForm] = useState<TemplateFormData>(emptyForm);
+  const [creationPurpose, setCreationPurpose] = useState<CtaPurpose>('custom');
+  useEffect(() => {
+    const purpose = new URLSearchParams(window.location.search).get('templatePurpose');
+    if (isCtaPurpose(purpose)) {
+      setCreationPurpose(purpose);
+      setDialogOpen(true);
+    }
+  }, []);
   // Non-null when the dialog is editing an existing row — switches the
   // submit handler from POST /submit to PATCH /[id] and changes the
   // dialog title + CTA. Set to the template id to pre-fill from a row.
@@ -482,7 +491,7 @@ export function TemplateManager() {
           next[index] = {
             ...current,
             ...(patch.text !== undefined && { text: patch.text }),
-            ...(patch.url !== undefined && { url: patch.url }),
+            ...(patch.url !== undefined && { url: patch.url, url_purpose: 'custom' as const }),
             ...(patch.example !== undefined && { example: patch.example }),
           };
           break;
@@ -1031,6 +1040,12 @@ export function TemplateManager() {
                 />
               </div>
 
+              <TemplateCtaSuggestions
+                key={editingId ?? 'new'}
+                initialPurpose={creationPurpose}
+                buttons={form.buttons}
+                onChange={buttons => setForm(prev => ({ ...prev, buttons }))}
+              />
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="text-muted-foreground">{t('buttons')}</Label>
@@ -1142,21 +1157,10 @@ export function TemplateManager() {
                               />
                             )}
                             <p className="text-[10px] text-muted-foreground">
-                              Order fulfilled (any carrier): use the platform
-                              redirect URL, e.g.{' '}
-                              <span className="font-mono">
-                                {getWhatsAppTrackingButtonUrlTemplate()}
-                              </span>
-                              . In the flow, map button {`{{1}}`} to{' '}
-                              {`{{ vars.tracking_url_redirect_suffix }}`} — we
-                              redirect to the courier tracking link at send time.
-                              {extractVariableIndices(btn.url).length === 0 && (
-                                <>
-                                  {' '}
-                                  A static URL (no {`{{1}}`}) sends the same link
-                                  to every customer.
-                                </>
-                              )}
+                              {buttonCtaPurpose(btn) !== 'custom'
+                                ? `${CTA_LABELS[buttonCtaPurpose(btn)]}: the flow will suggest the matching URL variable.`
+                                : 'Custom URL: map its variable manually in the flow.'}
+                              {' '}A static URL sends the same link to every customer.
                             </p>
                           </div>
                         )}

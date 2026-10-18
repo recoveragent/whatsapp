@@ -512,7 +512,7 @@ export type MessageTemplateStatus =
 
 export type TemplateButton =
   | { type: 'QUICK_REPLY'; text: string }
-  | { type: 'URL'; text: string; url: string; example?: string }
+  | { type: 'URL'; text: string; url: string; example?: string; url_purpose?: import('@/lib/whatsapp/template-cta').CtaPurpose }
   | { type: 'PHONE_NUMBER'; text: string; phone_number: string }
   | { type: 'COPY_CODE'; text: string; example: string };
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { CTA_VARIABLES, buttonCtaPurpose, seedCtaMappings, type CtaPurpose } from "@/lib/whatsapp/template-cta";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -46,6 +47,7 @@ export interface SendTemplateFieldsValue {
 interface SendTemplateFieldsProps {
   /** Payment collection templates cannot branch on customer quick replies. */
   allowQuickReplies?: boolean;
+  creationPurpose?: CtaPurpose;
   templateName: string;
   language: string;
   variables?: Record<string, string>;
@@ -282,6 +284,7 @@ function useApprovedTemplates() {
 
 export function SendTemplateFields({
   allowQuickReplies = true,
+  creationPurpose = "custom",
   templateName,
   language,
   variables = {},
@@ -389,37 +392,11 @@ export function SendTemplateFields({
     [selectedTemplate],
   );
 
-  // Shopify fulfillment: platform tracking redirect for URL buttons.
-  // Other order triggers: Shopify order-status suffix. Only seed empty slots.
+  // Each CTA carries its own purpose; never seed all buttons from one trigger URL.
   useEffect(() => {
     if (!selectedTemplate || urlSuffixButtons.length === 0) return;
-    const hasTrackingRedirect = variableGroups.some((g) =>
-      g.options.some((o) => o.token.includes("vars.tracking_url_redirect_suffix")),
-    );
-    const hasStatusSuffix = variableGroups.some((g) =>
-      g.options.some((o) => o.token.includes("vars.order_status_url_suffix")),
-    );
-    const hasCheckoutSuffix = variableGroups.some((g) =>
-      g.options.some((o) => o.token.includes("vars.checkout_url_suffix")),
-    );
-    const preferredToken = hasTrackingRedirect
-      ? "{{ vars.tracking_url_redirect_suffix }}"
-      : hasStatusSuffix
-        ? "{{ vars.order_status_url_suffix }}"
-        : hasCheckoutSuffix
-          ? "{{ vars.checkout_url_suffix }}"
-          : null;
-    if (!preferredToken) return;
-
-    const next = { ...variables };
-    let changed = false;
-    for (const slot of urlSuffixButtons) {
-      const key = `button_${slot.index}`;
-      if (next[key]?.trim()) continue;
-      next[key] = preferredToken;
-      changed = true;
-    }
-    if (!changed) return;
+    const next = seedCtaMappings(normalizeTemplateButtons(selectedTemplate.buttons), variables);
+    if (Object.keys(next).every(key => next[key] === variables[key])) return;
     onChange({
       template_name: templateName,
       language: lang,
@@ -546,17 +523,20 @@ export function SendTemplateFields({
     );
   }
 
+  const createTemplateLink = <a href={`/settings?tab=templates&templatePurpose=${creationPurpose}`} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline">Create {creationPurpose === "custom" ? "a" : creationPurpose.replace('_', ' ')} template</a>;
+
   if (templates.length === 0) {
     if (!allowQuickReplies) {
       return (
-        <p className="text-xs text-muted-foreground">
+        <div className="space-y-2">{createTemplateLink}<p className="text-xs text-muted-foreground">
           No compatible approved templates found. Create a payment template without
           quick-reply buttons in Settings → Templates, then sync templates.
-        </p>
+        </p></div>
       );
     }
     return (
       <div className="space-y-3">
+        {createTemplateLink}
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           No approved templates found. Sync templates from Settings → Templates
           after approving them in Meta.
@@ -595,6 +575,7 @@ export function SendTemplateFields({
 
   return (
     <div className="@container min-w-0 space-y-3">
+      {createTemplateLink}
       <div>
         <label className="mb-1 block text-xs text-muted-foreground">Template</label>
         <TemplateSelectPicker
@@ -612,7 +593,7 @@ export function SendTemplateFields({
             onChange({
               template_name: name,
               language: nextLang,
-              variables: {},
+              variables: tpl ? seedCtaMappings(normalizeTemplateButtons(tpl.buttons), {}) : {},
               buttons: tpl ? syncTemplateButtonConfig(buttons, tpl) : [],
               next_node_key: nextNodeKey,
             });
@@ -671,10 +652,9 @@ export function SendTemplateFields({
               !normalizeTemplateButtons(selectedTemplate.buttons).length && (
                 <div className="mt-3 space-y-2">
                   <p className="text-[10px] text-muted-foreground">
-                    This template has no quick-reply buttons, so the flow can only
-                    continue to one next step after send. Pick a template with
-                    quick replies in the list above, or add them in Meta Business
-                    Manager and sync.
+                    {allowQuickReplies
+                      ? 'This template has no quick-reply buttons, so the flow continues after sending. Select a template with quick replies if you need reply branches.'
+                      : 'Payment confirmation comes from Razorpay. Use a payment URL button or map a body variable to the payment link.'}
                   </p>
                   <Button
                     type="button"
@@ -777,7 +757,7 @@ export function SendTemplateFields({
                           },
                         })
                       }
-                      placeholder="{{ vars.tracking_url_redirect_suffix }}"
+                      placeholder={(() => { const button = normalizeTemplateButtons(selectedTemplate.buttons)[slot.index]; const purpose = button ? buttonCtaPurpose(button) : "custom"; return purpose === "custom" ? "Select a URL variable" : CTA_VARIABLES[purpose]; })()}
                       active={activeField === `button_${slot.index}`}
                     />
                     <p className="mt-1 text-[10px] text-muted-foreground">
