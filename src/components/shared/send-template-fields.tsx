@@ -652,7 +652,7 @@ export function SendTemplateFields({
   ) : null;
 
   return (
-    <div className={cn("@container min-w-0", flowLayout ? "grid h-full min-h-0 min-w-[900px] grid-cols-[minmax(0,1fr)_300px_240px]" : "space-y-3")}>
+    <div className={cn("@container min-w-0", flowLayout ? "grid h-full min-h-0 min-w-[900px] grid-cols-[minmax(0,1fr)_240px_340px]" : "space-y-3")}>
       <div className={flowLayout ? "min-h-0 min-w-0 space-y-3 overflow-y-auto overscroll-contain p-5" : "space-y-3"}>
       {createTemplateLink}
       <div>
@@ -944,11 +944,11 @@ export function SendTemplateFields({
       </div>
       {flowLayout && (
         <>
-          <aside aria-label="Template preview" className="min-h-0 overflow-y-auto overscroll-contain border-l border-border bg-muted/30 p-3">
-            {preview ?? <p className="text-xs text-muted-foreground">Select a template to preview it.</p>}
-          </aside>
           <aside aria-label="Template variables" className="min-h-0 overflow-y-auto overscroll-contain border-l border-border p-3">
             <TemplateVariablePicker groups={variableGroups} onInsert={insertToken} />
+          </aside>
+          <aside aria-label="Template preview" className="min-h-0 overflow-y-auto overscroll-contain border-l border-border bg-muted/30 p-3">
+            {preview ?? <p className="text-xs text-muted-foreground">Select a template to preview it.</p>}
           </aside>
         </>
       )}
