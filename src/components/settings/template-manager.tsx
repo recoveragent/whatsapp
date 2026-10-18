@@ -611,6 +611,7 @@ export function TemplateManager() {
           {templates.map((template, index) => {
             const statusKey = template.status || 'DRAFT';
             const status = templateStatusConfig[statusKey];
+            const isLocalDraft = statusKey === 'DRAFT' && !template.meta_template_id;
             return (
               <Card
                 key={template.id}
@@ -681,10 +682,21 @@ export function TemplateManager() {
                           </span>
                         </div>
                       )}
+                      {isLocalDraft && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openEdit(template)}
+                          className={glassButtonOutline}
+                        >
+                          <Pencil className="size-3.5" />
+                          {t('editLabel')}
+                        </Button>
+                      )}
                     </div>
 
                     <div className="flex shrink-0 flex-col gap-0.5 opacity-100 sm:opacity-0 sm:transition-opacity sm:duration-150 sm:group-hover/card:opacity-100 sm:group-focus-within/card:opacity-100">
-                      {(statusKey === 'APPROVED' || (statusKey === 'DRAFT' && !template.meta_template_id)) && (
+                      {statusKey === 'APPROVED' && (
                         <Button
                           variant="ghost"
                           size="icon-sm"
