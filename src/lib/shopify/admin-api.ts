@@ -29,6 +29,13 @@ export interface ShopifyTokenResponse {
   scope: string;
 }
 
+export class ShopifyApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'ShopifyApiError';
+  }
+}
+
 function shopAdminBase(shopDomain: string): string {
   const normalized = normalizeShopDomain(shopDomain);
   if (!normalized) throw new Error('Invalid shop domain');
@@ -40,16 +47,23 @@ async function shopifyFetch<T>(
   accessToken: string,
   path: string,
   init?: RequestInit,
+  allowTokenRenewal = true,
 ): Promise<T> {
   const url = `${shopAdminBase(shopDomain)}${path}`;
-  const response = await fetch(url, {
+  const request = (token: string) => fetch(url, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      'X-Shopify-Access-Token': accessToken,
+      'X-Shopify-Access-Token': token,
       ...(init?.headers ?? {}),
     },
   });
+  let response = await request(accessToken);
+  if (response.status === 401 && allowTokenRenewal) {
+    const { renewStoredShopifyToken } = await import('./token-renewal');
+    const renewed = await renewStoredShopifyToken(shopDomain, accessToken);
+    if (renewed) response = await request(renewed);
+  }
 
   if (!response.ok) {
     let message = `Shopify API error: ${response.status}`;
@@ -59,7 +73,7 @@ async function shopifyFetch<T>(
     } catch {
       // keep fallback
     }
-    throw new Error(message);
+    throw new ShopifyApiError(message, response.status);
   }
   if (response.status === 204) return {} as T;
   return response.json() as Promise<T>;
@@ -68,11 +82,14 @@ async function shopifyFetch<T>(
 export async function fetchShopInfo(
   shopDomain: string,
   accessToken: string,
+  allowTokenRenewal = true,
 ): Promise<ShopifyShopInfo> {
   const data = await shopifyFetch<{ shop: ShopifyShopInfo }>(
     shopDomain,
     accessToken,
     '/shop.json',
+    undefined,
+    allowTokenRenewal,
   );
   return data.shop;
 }

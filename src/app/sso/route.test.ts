@@ -51,14 +51,9 @@ describe("SSO Shopify handoff", () => {
     );
   }
 
-  it.each([false, true])(
-    "preserves the inbox redirect and session when Shopify import fails: %s",
-    async (fails) => {
-      if (fails) {
-        mocks.importConnection.mockRejectedValue(
-          new Error("Could not verify store: Invalid API key or access token"),
-        );
-      }
+  it(
+    "preserves the inbox redirect and session after Shopify imports successfully",
+    async () => {
       const response = await GET(request());
       expect(response.status).toBe(307);
       expect(response.headers.get("location")).toBe(
@@ -72,6 +67,14 @@ describe("SSO Shopify handoff", () => {
       expect(mocks.importConnection).toHaveBeenCalledOnce();
     },
   );
+
+  it("blocks entry when the Shopify connection cannot be synchronized", async () => {
+    mocks.importConnection.mockRejectedValue(new Error("Shopify token renewal failed"));
+    const response = await GET(request());
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain("Shopify connection import failed");
+    expect(response.cookies.get("session")).toBeUndefined();
+  });
 
   it("still rejects failed authentication without importing Shopify", async () => {
     mocks.completeSsoLogin.mockRejectedValue(new SsoError("Expired ticket"));

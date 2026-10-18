@@ -3,7 +3,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { ensureAccountEcommercePlatform } from '@/lib/ecommerce/assert-platform';
 import { encrypt } from '@/lib/whatsapp/encryption';
-import { fetchShopInfo, registerShopifyWebhooks } from './admin-api';
+import { fetchShopInfo, registerShopifyWebhooks, ShopifyApiError } from './admin-api';
+import { requestShopifyClientToken } from './token-renewal';
 import { isLocalWebhookUrl } from './format-api-error';
 import { normalizeShopDomain } from './normalize-shop';
 import { seedDefaultCampaigns } from './send-campaign';
@@ -93,8 +94,15 @@ export async function persistShopifyConfig(
   }
 
   let shopInfo;
+  let accessToken = input.accessToken.trim();
   try {
-    shopInfo = await fetchShopInfo(shopDomain, input.accessToken.trim());
+    try {
+      shopInfo = await fetchShopInfo(shopDomain, accessToken, false);
+    } catch (err) {
+      if (!(err instanceof ShopifyApiError) || err.status !== 401 || !input.apiKey || !input.apiSecret) throw err;
+      accessToken = await requestShopifyClientToken(shopDomain, input.apiKey, input.apiSecret);
+      shopInfo = await fetchShopInfo(shopDomain, accessToken, false);
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Shopify API error';
     return { ok: false, status: 400, error: `Could not verify store: ${message}` };
@@ -103,7 +111,7 @@ export async function persistShopifyConfig(
   try {
     await registerShopifyWebhooks({
       shopDomain,
-      accessToken: input.accessToken.trim(),
+      accessToken,
       callbackUrl: input.webhookCallbackUrl,
     });
   } catch (err) {
@@ -117,7 +125,7 @@ export async function persistShopifyConfig(
       return { ok: false, status: 400, error: `Webhook setup failed: ${message}` };
     }
   }
-  const encryptedToken = encrypt(input.accessToken.trim());
+  const encryptedToken = encrypt(accessToken);
   const scopes = input.scopes ?? [];
 
   let existingCreds: { api_key: string | null; api_secret: string | null } | null = null;

@@ -93,9 +93,7 @@ export async function GET(request: NextRequest) {
           "[sso] Recover Agent Shopify import failed:",
           detail,
         );
-        // Shopify synchronization is optional after authentication. Keep the
-        // session cookies and inbox redirect even when the dashboard supplies
-        // stale store credentials; reconnecting Shopify must not block WhatsApp.
+        return errorResponse(`Shopify connection import failed: ${detail}`);
       }
     }
     return finalizeFrameHeaders(request, redirectResponse);
