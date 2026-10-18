@@ -4,7 +4,7 @@ Direct Send sends fully rendered utility content through the existing Cloud API 
 
 ## Implemented scope
 
-Inbox agents can explicitly select **Direct Send · Utility text**, including outside the 24-hour service window. Assignment, role and rate-limit checks remain active. Text is limited to 1024 characters. Drafts survive a failed send; errors appear on the failed message. Attachments and interactive actions are disabled in this mode. Ordinary replies do not opt into utility delivery.
+The inbox automatically uses **Direct Send · Utility text** when the 24-hour service window is closed. Inside the window, the composer sends regular service replies. A visible utility-only notice explains charges and content restrictions, and Templates remains available. Assignment, role and rate-limit checks remain active. Text is limited to 1024 characters. Drafts survive a failed send; errors appear on the failed message. Attachments and interactive actions are disabled in this mode. Replies inside the service window do not opt into utility delivery. API callers explicitly opt in with the category field.
 
 The dashboard `/api/whatsapp/send` accepts `category: "utility"` with `message_type: "text"` and `content_text`. The public `/api/v1/messages` accepts the same category with its existing `type: "text"` and `text` fields. Invalid categories or non-text payloads are rejected before contact/conversation creation. Sent records retain `{ direct_send: true, category: "utility" }` in `content_payload`.
 

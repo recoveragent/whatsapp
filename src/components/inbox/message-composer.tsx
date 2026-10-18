@@ -225,8 +225,7 @@ export function MessageComposer({
   const { isAiAgentsEnabled } = useAuth();
 
   const [text, setText] = useState('');
-  const [directSend, setDirectSend] = useState(false);
-  useEffect(() => setDirectSend(false), [conversationId]);
+  const directSend = sessionExpired;
   const [composerMode, setComposerMode] = useState<ComposerMode>('message');
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
@@ -1034,43 +1033,25 @@ export function MessageComposer({
           />
         </div>
       )}
-      {sessionExpired && (
-        <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
-          <p className="text-xs text-amber-400">
-                The 24-hour window is closed. Send a template or a utility
-                update with Direct Send.
+      {directSend && (
+        <div className="mb-2 rounded-lg border border-border bg-muted/30 p-3 text-xs" role="status">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium">Direct Send · Utility text</span>
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onOpenTemplates}>
+              <LayoutTemplate className="mr-1 h-3 w-3" />
+              {t('templates')}
+            </Button>
+          </div>
+          <p className="mt-1 text-muted-foreground">
+            For order updates, receipts and appointment reminders. No promotions or
+            authentication codes. Meta eligibility and utility charges apply.
+            Text only; links have no preview.
           </p>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs text-amber-400 hover:text-amber-300"
-            onClick={onOpenTemplates}
-          >
-            <LayoutTemplate className="mr-1 h-3 w-3" />
-                {t('templates')}
-          </Button>
+          <p className={cn("mt-1 text-muted-foreground", text.trim().length > 1024 && "text-destructive")}>
+            {text.trim().length}/1024 characters
+          </p>
         </div>
       )}
-
-          <div className="border-border mb-2 rounded-lg border p-3 text-xs">
-            <label className="flex cursor-pointer items-center gap-2 font-medium">
-              <input
-                type="checkbox"
-                checked={directSend}
-                disabled={readOnly || sending || Boolean(draft) || recording}
-                onChange={(e) => setDirectSend(e.target.checked)}
-              />
-              Direct Send · Utility text
-            </label>
-            {directSend && (
-              <p className="text-muted-foreground mt-2">
-                For order updates, receipts and appointment reminders. No
-                promotions or authentication codes. Meta eligibility and utility
-                charges apply. Text only; links have no preview.{' '}
-                {text.trim().length}/1024 characters.
-              </p>
-            )}
-          </div>
       {/* Hidden file inputs driven by the attach menu. */}
       <input
         ref={imageInputRef}
