@@ -867,70 +867,75 @@ function FlowCanvasInner() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selectedNodeKey, handleDuplicateSelected]);
 
-  if (builderNodes.length === 0) {
-    return (
-      <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-3 text-sm">
-        <p>{t('noNodesYet')}</p>
-        <CanvasAddNodeButton t={t} />
-      </div>
-    );
-  }
+  const hasTrigger = builderNodes.length > 0 || state.trigger_type !== 'keyword' ||
+    (Array.isArray(state.trigger_config.keywords) &&
+      state.trigger_config.keywords.some((keyword) => typeof keyword === 'string' && keyword.trim()));
 
   return (
     <>
-      <div className="h-full w-full overflow-hidden">
-        <ReactFlow
-          className="h-full w-full"
-          nodes={rfNodes}
-          edges={rfEdges}
-          nodeTypes={NODE_TYPES}
-          fitView
-          fitViewOptions={{ padding: 0.25, maxZoom: 1.1, minZoom: 0.45 }}
-          proOptions={{ hideAttribution: true }}
-          onNodesChange={handleNodesChange}
-          onEdgesChange={handleEdgesChange}
-          onNodeDragStop={handleNodeDragStop}
-          onNodeClick={handleNodeClick}
-          onConnect={handleConnect}
-          onNodesDelete={handleNodesDelete}
-          onEdgesDelete={handleEdgesDelete}
-          // Default is "Backspace" only — accept both so Mac users
-          // hitting Delete (Fn+Backspace) get the same behavior.
-          deleteKeyCode={['Backspace', 'Delete']}
-          nodesConnectable={true}
-          edgesFocusable={true}
-          elementsSelectable={true}
-          // Lower default min/max zoom than the lib's defaults; the
-          // tiles already truncate their summary at a reasonable
-          // size, so we don't need to zoom past 1.5x.
-          minZoom={0.25}
-          maxZoom={1.75}
-        >
-          {/* Dot grid, matching the design's faint canvas backdrop. */}
-          <Background
-            variant={BackgroundVariant.Dots}
-            gap={22}
-            size={1.4}
-            color="var(--border)"
-          />
-          <Controls
-            className="!border-border !bg-card [&_button]:!border-border [&_button]:!bg-card [&_button:hover]:!bg-muted [&_button_svg]:!fill-foreground !overflow-hidden !rounded-xl !border !shadow-[0_6px_20px_-8px_rgba(0,0,0,0.5)]"
-            showInteractive={false}
-          />
-          <MiniMap
-            pannable
-            zoomable
-            nodeColor={minimapNodeColor}
-            nodeStrokeWidth={0}
-            nodeBorderRadius={3}
-            maskColor="color-mix(in oklch, var(--background) 70%, transparent)"
-            className="!border-border !bg-card !rounded-xl !border !shadow-[0_6px_20px_-8px_rgba(0,0,0,0.5)]"
-          />
-          <Panel position="top-left" className="!top-4 !left-4">
-            <CanvasAddNodeButton t={t} />
-          </Panel>
-        </ReactFlow>
-      </div>
+      {!hasTrigger ? (
+        <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-3 text-sm">
+          <p>Add a trigger to start building your flow.</p>
+          <Button onClick={() => setSelectedNodeKey(TRIGGER_NODE_ID)}>
+            <Plus className="h-4 w-4" />
+            Add trigger
+          </Button>
+        </div>
+      ) : (
+        <div className="h-full w-full overflow-hidden">
+          <ReactFlow
+            className="h-full w-full"
+            nodes={rfNodes}
+            edges={rfEdges}
+            nodeTypes={NODE_TYPES}
+            fitView
+            fitViewOptions={{ padding: 0.25, maxZoom: 1.1, minZoom: 0.45 }}
+            proOptions={{ hideAttribution: true }}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={handleEdgesChange}
+            onNodeDragStop={handleNodeDragStop}
+            onNodeClick={handleNodeClick}
+            onConnect={handleConnect}
+            onNodesDelete={handleNodesDelete}
+            onEdgesDelete={handleEdgesDelete}
+            // Default is "Backspace" only — accept both so Mac users
+            // hitting Delete (Fn+Backspace) get the same behavior.
+            deleteKeyCode={['Backspace', 'Delete']}
+            nodesConnectable={true}
+            edgesFocusable={true}
+            elementsSelectable={true}
+            // Lower default min/max zoom than the lib's defaults; the
+            // tiles already truncate their summary at a reasonable
+            // size, so we don't need to zoom past 1.5x.
+            minZoom={0.25}
+            maxZoom={1.75}
+          >
+            {/* Dot grid, matching the design's faint canvas backdrop. */}
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={22}
+              size={1.4}
+              color="var(--border)"
+            />
+            <Controls
+              className="!border-border !bg-card [&_button]:!border-border [&_button]:!bg-card [&_button:hover]:!bg-muted [&_button_svg]:!fill-foreground !overflow-hidden !rounded-xl !border !shadow-[0_6px_20px_-8px_rgba(0,0,0,0.5)]"
+              showInteractive={false}
+            />
+            <MiniMap
+              pannable
+              zoomable
+              nodeColor={minimapNodeColor}
+              nodeStrokeWidth={0}
+              nodeBorderRadius={3}
+              maskColor="color-mix(in oklch, var(--background) 70%, transparent)"
+              className="!border-border !bg-card !rounded-xl !border !shadow-[0_6px_20px_-8px_rgba(0,0,0,0.5)]"
+            />
+            <Panel position="top-left" className="!top-4 !left-4">
+              <CanvasAddNodeButton t={t} />
+            </Panel>
+          </ReactFlow>
+        </div>
+      )}
 
       <TriggerEditSheet
         open={triggerSelected}
@@ -1004,6 +1009,9 @@ function TriggerEditSheet({
             embedded
           />
         </div>
+        <SheetFooter className="shrink-0 border-t border-border px-5 py-3">
+          <Button onClick={onClose}>Done</Button>
+        </SheetFooter>
       </SheetContent>
     </Sheet>
   );
