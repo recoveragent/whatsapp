@@ -5,6 +5,7 @@ import { Copy, ExternalLink, Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isMediaHeaderType } from "@/lib/inbox/template-message-display";
 import type { TemplateButton } from "@/types";
+import { WhatsAppFormattedText } from "./whatsapp-formatted-text";
 
 interface TemplateMobilePreviewProps {
   bodyText: string;
@@ -123,7 +124,7 @@ export function TemplateMobilePreview({
 
           <div className="px-2.5 py-2">
             <p className="whitespace-pre-wrap break-words text-[14px] leading-snug text-zinc-900">
-              {bodyText}
+              <WhatsAppFormattedText text={bodyText} />
             </p>
             {footerText && (
               <p className="mt-1.5 text-[11px] text-zinc-500">{footerText}</p>
