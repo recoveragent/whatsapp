@@ -1,3 +1,4 @@
+import { processPaymentCollections } from "@/lib/payments/collect-payment";
 import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
@@ -107,8 +108,9 @@ export async function GET(request: Request) {
     }
   }
 
+  const payments = await processPaymentCollections(supabaseAdmin())
   const resumed = await resumeFlowPendingExecutions()
-  return NextResponse.json({ swept, resumed })
+  return NextResponse.json({ swept, resumed, payments })
 }
 
 /** Also drain wait-node queue and time-based flow triggers. */
@@ -127,7 +129,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const payments = await processPaymentCollections(supabaseAdmin())
   const resumed = await resumeFlowPendingExecutions()
   const scheduled = await runTimeBasedFlowTriggers()
-  return NextResponse.json({ resumed, scheduled })
+  return NextResponse.json({ resumed, scheduled, payments })
 }

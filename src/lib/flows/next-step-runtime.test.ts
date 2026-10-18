@@ -210,6 +210,15 @@ beforeEach(() => {
 });
 
 describe('independent Next step and no-response timeout', () => {
+  it('keeps a payment collection waiting when a customer says they paid', async () => {
+    h.tables.flow_nodes.push(node('payment', 'collect_payment', {}));
+    h.tables.flow_runs = [{ id: 'pay-run', account_id: 'account', flow_id: flow.id, user_id: 'user', contact_id: 'contact', conversation_id: 'conversation', current_node_key: 'payment', status: 'waiting', vars: {}, reprompt_count: 0 }];
+    const result = await reply({ kind: 'text', text: 'I paid', meta_message_id: 'payment-claim' });
+    expect(result.outcome).toBe('no_match');
+    expect(h.tables.flow_runs[0]).toMatchObject({ status: 'waiting', reprompt_count: 0, current_node_key: 'payment' });
+    expect(h.sends).toEqual([]);
+  });
+
   it('supports timeout on a template with no quick-reply buttons', async () => {
     const config = h.tables.flow_nodes[0].config as Row;
     delete config.buttons;

@@ -383,6 +383,7 @@ export interface TimeBasedTriggerConfig {
  * Total union — every concrete node_type the engine understands.
  */
 export type FlowNodeConfig =
+  | { node_type: "collect_payment"; config: import("./payment-config").CollectPaymentNodeConfig }
   | { node_type: "start"; config: StartNodeConfig }
   | { node_type: "send_message"; config: SendMessageNodeConfig }
   | { node_type: "send_buttons"; config: SendButtonsNodeConfig }

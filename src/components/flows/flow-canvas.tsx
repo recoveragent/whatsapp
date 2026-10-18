@@ -1229,6 +1229,7 @@ function NodeEditSheet({
 // ============================================================
 
 const ADD_NODE_TYPES: NodeType[] = [
+  'collect_payment',
   'send_buttons',
   'send_list',
   'send_message',

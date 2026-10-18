@@ -38,6 +38,7 @@ import {
   CircleSlash,
   ClipboardList,
   ShoppingBag,
+  CreditCard,
 } from "lucide-react";
 import { resolveContactFieldLabel } from "@/lib/contact-fields";
 import { CONDITION_OPERATOR_LABELS, isShopifySubject, SHOPIFY_CONDITION_FIELDS } from '@/lib/flows/conditions';
@@ -61,6 +62,7 @@ import { cn } from "@/lib/utils";
 // ============================================================
 
 export type NodeType =
+  | "collect_payment"
   | "start"
   | "send_message"
   | "send_buttons"
@@ -128,6 +130,7 @@ export const NODE_META: Record<
     category: NodeCategory;
   }
 > = {
+  collect_payment: { label: 'Collect payment', icon: CreditCard, color: 'text-emerald-400', blurb: 'Collects a fixed advance with Razorpay and reminds unpaid customers', category: 'logic' },
   start: {
     label: 'Start',
     icon: PlayCircle,
@@ -327,6 +330,7 @@ const NODE_HUE: Record<NodeType, { l: number; c: number; h: number }> = {
   switch: { l: 0.68, c: 0.14, h: 290 },
   set_tag: { l: 0.65, c: 0.15, h: 350 },
   handoff: { l: 0.65, c: 0.17, h: 16 },
+  collect_payment: { l: 0.68, c: 0.15, h: 160 },
   wait: { l: 0.58, c: 0.02, h: 260 },
   send_webhook: { l: 0.68, c: 0.16, h: 45 },
   http_fetch: { l: 0.66, c: 0.14, h: 55 },
@@ -662,6 +666,8 @@ export function summarizeNode(
         ? `Template: ${truncate(name, 40)} · ${qr} button${qr === 1 ? "" : "s"}`
         : `Template: ${truncate(name, 50)}`;
     }
+    case "collect_payment":
+      return `Razorpay · ₹${cfg.amount ?? 0} · expires in ${cfg.expiry_hours ?? 24}h`;
     case "wait": {
       const amount = cfg.amount ?? 1;
       const unit = typeof cfg.unit === "string" ? cfg.unit : "hours";

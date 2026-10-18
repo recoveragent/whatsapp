@@ -63,6 +63,7 @@ import {
 import type { TemplateQuickReplyButton } from "@/lib/flows/template-buttons";
 import type { FlowTriggerType } from "@/lib/flows/trigger-types";
 import { useAccountPipelines } from "./use-account-pipelines";
+import { CollectPaymentFields } from "./collect-payment-fields";
 import { ConditionRuleFields } from "./condition-fields";
 import type { ConditionNodeConfig } from "@/lib/flows/types";
 
@@ -113,6 +114,8 @@ function NodeConfigBody({
   const t = useTranslations("Flows.builder.form");
   const cfg = node.config;
   switch (node.node_type) {
+    case "collect_payment":
+      return <CollectPaymentFields node={node} allNodes={allNodes} onChange={onUpdateConfig} />;
     case "start":
       return (
         <NextNodeRow

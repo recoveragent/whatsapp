@@ -73,7 +73,7 @@ export async function POST(
     const [{ data: flow }, { data: nodes }] = await Promise.all([
       admin
         .from('flows')
-        .select('name, trigger_type, trigger_config, exit_config, entry_node_id')
+        .select('name, account_id, trigger_type, trigger_config, exit_config, entry_node_id')
         .eq('id', id)
         .maybeSingle(),
       admin
@@ -98,6 +98,22 @@ export async function POST(
         config: Record<string, unknown>
       }>,
     )
+    const paymentNodes = (nodes ?? []).filter(n => n.node_type === 'collect_payment')
+    if (paymentNodes.length) {
+      const { data: connection, error: connectionError } = await admin.from('account_payment_connections').select('enabled').eq('account_id', flow.account_id).maybeSingle()
+      if (connectionError || !connection?.enabled) {
+        for (const n of paymentNodes) issues.push({ severity: 'error', scope: 'node', node_key: n.node_key, field: 'provider', message: 'Connect this brand’s Razorpay account before activating payment collection.' })
+      }
+      for (const n of paymentNodes) {
+        const config = n.config as Record<string, unknown>
+        for (const field of ['request_template', ...(Number(config.max_reminders) > 0 ? ['reminder_template'] : [])]) {
+          const template = config[field] as { template_name?: string; language?: string } | undefined
+          if (!template?.template_name) continue
+          const { data: approved } = await admin.from('message_templates').select('id').eq('account_id', flow.account_id).eq('name', template.template_name).eq('language', template.language || 'en_US').eq('status', 'APPROVED').maybeSingle()
+          if (!approved) issues.push({ severity: 'error', scope: 'node', node_key: n.node_key, field, message: 'Payment messages require an approved template belonging to this brand.' })
+        }
+      }
+    }
     const blockers = issues.filter((i) => i.severity === 'error')
     if (blockers.length > 0) {
       return NextResponse.json(

@@ -24,6 +24,7 @@
  *   - `timeout`           for no-reply timeout branch on suspending nodes
  */
 
+import { PAYMENT_BRANCHES } from "./payment-config";
 import type { BuilderNode } from "@/components/flows/shared";
 import {
   NEXT_STEP_LABEL,
@@ -95,6 +96,12 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
   for (const node of nodes) {
     const cfg = node.config;
     switch (node.node_type) {
+      case "collect_payment":
+        for (const b of PAYMENT_BRANCHES) {
+          const next = cfg[b.field];
+          if (typeof next === "string" && knownKeys.has(next)) edges.push({ id: `${node.node_key}--${b.id}--${next}`, source: node.node_key, target: next, sourceHandle: b.id, label: b.label });
+        }
+        break;
       case "start":
       case "send_message":
       case "send_media":
@@ -319,6 +326,8 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
   const cfg = node.config;
   let slots: OutgoingSlot[];
   switch (node.node_type) {
+    case "collect_payment":
+      return PAYMENT_BRANCHES.map(b => ({ id: b.id, label: b.label }));
     case "start":
     case "send_message":
     case "send_media":
@@ -458,6 +467,10 @@ export function applyEdgeConnection(
   }
 
   switch (node.node_type) {
+    case "collect_payment": {
+      const branch = PAYMENT_BRANCHES.find(b => b.id === sourceHandle);
+      return branch ? { [branch.field]: targetKey } : null;
+    }
     case "start":
     case "send_message":
     case "send_media":
@@ -646,6 +659,8 @@ function patchedConfigRenamedKeyInner(
 ): Record<string, unknown> | null {
   const cfg = node.config;
   switch (node.node_type) {
+    case "collect_payment":
+      return { ...cfg, ...Object.fromEntries(PAYMENT_BRANCHES.filter(b => cfg[b.field] === oldKey).map(b => [b.field, newKey])) };
     case "start":
     case "send_message":
     case "send_media":
@@ -797,6 +812,8 @@ function patchedConfigWithoutKeyInner(
 ): Record<string, unknown> | null {
   const cfg = node.config;
   switch (node.node_type) {
+    case "collect_payment":
+      return { ...cfg, ...Object.fromEntries(PAYMENT_BRANCHES.filter(b => cfg[b.field] === deletedKey).map(b => [b.field, ""])) };
     case "start":
     case "send_message":
     case "send_media":

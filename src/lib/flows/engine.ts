@@ -1,3 +1,4 @@
+import { beginPaymentCollection } from "@/lib/payments/collect-payment";
 /**
  * Flow runner.
  *
@@ -748,6 +749,18 @@ async function advanceFromNodeKey(
     if (node.node_type === "start") {
       currentKey = (node.config as unknown as StartNodeConfig).next_node_key;
       continue;
+    }
+    if (node.node_type === "collect_payment") {
+      try {
+        await beginPaymentCollection(db, run, node);
+        return finish("advanced");
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, { reason: err instanceof Error ? err.message : "Payment setup failed" });
+        run.vars = { ...run.vars, payment_collection_status: "failed" };
+        await db.from("flow_runs").update({ vars: run.vars }).eq("id", run.id);
+        currentKey = typeof node.config.failed_next === "string" ? node.config.failed_next : null;
+        continue;
+      }
     }
     if (node.node_type === "send_message") {
       const cfg = node.config as unknown as SendMessageNodeConfig;
@@ -1582,6 +1595,12 @@ async function handleReplyForActiveRun(
     return { consumed: true, flow_run_id: run.id, outcome: "no_match" };
   }
 
+  // Payment is confirmed only by the gateway. Questions and "I paid" replies
+  // must not exhaust the reply fallback policy or cancel unpaid reminders.
+  if (currentNode.node_type === "collect_payment") {
+    return { consumed: false, flow_run_id: run.id, outcome: "no_match" };
+  }
+
   // Ways a reply can advance:
   //   1. Interactive button/list tap on send_buttons/send_list/send_template.
   //   2. Text that matches a send_template quick-reply label (typed or quoted).
@@ -2064,15 +2083,12 @@ export async function startFlowForExternalEvent(input: {
 /**
  * Resume flow runs parked at wait nodes. Called from flows cron.
  */
-export async function resumeFlowPendingExecutions(): Promise<number> {
+export async function resumeFlowPendingExecutions(flowRunId?: string): Promise<number> {
   const db = supabaseAdmin();
   const now = new Date().toISOString();
-  const { data: pending } = await db
-    .from("flow_pending_executions")
-    .select("*")
-    .eq("status", "pending")
-    .lte("run_at", now)
-    .limit(50);
+  let pendingQuery = db.from("flow_pending_executions").select("*").eq("status", "pending").lte("run_at", now);
+  if (flowRunId) pendingQuery = pendingQuery.eq("flow_run_id", flowRunId);
+  const { data: pending } = await pendingQuery.limit(50);
 
   let resumed = 0;
   for (const row of pending ?? []) {
@@ -2162,16 +2178,14 @@ export async function resumeFlowPendingExecutions(): Promise<number> {
       continue;
     }
 
+    if (p.source_node_key && runRow.current_node_key !== p.source_node_key) continue;
     const run = { ...(runRow as FlowRunRow), vars: p.vars, status: "active" as const };
-    await db
-      .from("flow_runs")
-      .update({
-        status: "active",
-        vars: p.vars,
-        current_node_key: p.next_node_key,
-        last_advanced_at: now,
-      })
-      .eq("id", p.flow_run_id);
+    let resumeQuery = db.from("flow_runs").update({
+      status: "active", vars: p.vars, current_node_key: p.next_node_key, last_advanced_at: now,
+    }).eq("id", p.flow_run_id).eq("status", "waiting");
+    if (p.source_node_key) resumeQuery = resumeQuery.eq("current_node_key", p.source_node_key);
+    const { data: activated } = await resumeQuery.select("id").maybeSingle();
+    if (!activated) continue;
 
     const nodes = await loadAllNodes(db, p.flow_id);
     await advanceFromNodeKey(db, run, p.next_node_key, nodes);

@@ -23,6 +23,7 @@
  * `node_key`; trigger-scoped use `scope: 'trigger'`.
  */
 
+import { PAYMENT_BRANCHES, paymentConfigErrors } from "./payment-config";
 import { validateConditionPredicate, isShopifySubject } from "./conditions";
 import type { ConditionNodeConfig, ConditionPredicate } from "./types";
 import { INTERACTIVE_LIMITS } from "@/lib/whatsapp/meta-api";
@@ -681,6 +682,13 @@ function validateNode(
   const issues: ValidationIssue[] = [];
 
   switch (node.node_type) {
+    case "collect_payment": {
+      for (const issue of paymentConfigErrors(node.config)) issues.push({ ...issue, severity: "error", scope: "node", node_key: node.node_key });
+      for (const b of PAYMENT_BRANCHES) {
+        if (typeof node.config[b.field] !== "string" || !knownKeys.has(node.config[b.field] as string)) issues.push({ severity: "error", scope: "node", node_key: node.node_key, field: b.field, message: `Connect the ${b.label} branch.` });
+      }
+      break;
+    }
     case "start": {
       const cfg = node.config as { next_node_key?: string };
       if (!cfg.next_node_key) {
@@ -1664,6 +1672,8 @@ function outgoingEdges(node: NodeInput): string[] {
 
 function outgoingReplyEdges(node: NodeInput): string[] {
   switch (node.node_type) {
+    case "collect_payment":
+      return PAYMENT_BRANCHES.map(b => node.config[b.field]).filter((v): v is string => typeof v === "string" && !!v);
     case "start":
     case "send_message":
     case "send_media":

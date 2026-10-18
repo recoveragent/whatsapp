@@ -1,3 +1,4 @@
+import { PAYMENT_VARIABLE_GROUP } from "./payment-config";
 import {
   extractByPath,
   flattenPayloadKeys,
@@ -201,6 +202,7 @@ export function templateVariableGroupsForFlow(
 ): TemplateVariableGroup[] {
   const groups: TemplateVariableGroup[] = [
     { id: 'contact', label: 'User attributes', options: CONTACT_OPTIONS },
+    PAYMENT_VARIABLE_GROUP,
   ]
 
   const triggerOptions: TemplateVariableOption[] = []
