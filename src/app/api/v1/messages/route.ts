@@ -88,6 +88,7 @@ export async function POST(request: Request) {
         : null;
 
     validateSendMessageParams({
+      category: body.category,
       messageType: type,
       contentText: typeof body.text === 'string' ? body.text : null,
       mediaUrl: typeof body.media_url === 'string' ? body.media_url : null,
@@ -110,6 +111,7 @@ export async function POST(request: Request) {
       ctx.accountId,
       {
         conversationId: resolved.conversationId,
+        category: body.category,
         messageType: type,
         contentText: typeof body.text === 'string' ? body.text : null,
         mediaUrl: typeof body.media_url === 'string' ? body.media_url : null,

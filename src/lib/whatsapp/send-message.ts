@@ -75,6 +75,7 @@ export class SendMessageError extends Error {
 
 export interface SendMessageParams {
   conversationId: string;
+  category?: unknown;
   messageType: string;
   contentText?: string | null;
   mediaUrl?: string | null;
@@ -113,15 +114,35 @@ export interface SendMessageResult {
  * core calls this too, so validation can't be skipped.
  */
 export function validateSendMessageParams(params: {
+  category?: unknown;
   messageType: string;
   contentText?: string | null;
   mediaUrl?: string | null;
   templateName?: string | null;
   interactivePayload?: InteractiveMessagePayload | null;
 }): void {
-  const { messageType, contentText, mediaUrl, templateName, interactivePayload } =
-    params;
+  const {
+    messageType,
+    contentText,
+    mediaUrl,
+    templateName,
+    interactivePayload,
+  } = params;
 
+  if (
+    params.category != null &&
+    (params.category !== 'utility' ||
+      messageType !== 'text' ||
+      typeof contentText !== 'string' ||
+      !contentText.trim() ||
+      contentText.length > 1024)
+  ) {
+    throw new SendMessageError(
+      'bad_request',
+      'Direct Send accepts only category utility with 1–1024 characters of text',
+      400
+    );
+  }
   if (!messageType) {
     throw new SendMessageError('bad_request', 'message_type is required', 400);
   }
@@ -212,6 +233,7 @@ export async function sendMessageToConversation(
   }
 
   validateSendMessageParams({
+    category: params.category,
     messageType,
     contentText,
     mediaUrl,
@@ -258,7 +280,12 @@ export async function sendMessageToConversation(
     .eq('account_id', accountId)
     .single();
 
-  if (configError || !config || !config.access_token || config.status === 'disconnected') {
+  if (
+    configError ||
+    !config ||
+    !config.access_token ||
+    config.status === 'disconnected'
+  ) {
     throw new SendMessageError(
       'whatsapp_not_configured',
       'WhatsApp not configured. Please set up your WhatsApp integration first.',
@@ -397,6 +424,7 @@ export async function sendMessageToConversation(
       accessToken,
       to: phone,
       text: contentText!,
+      category: params.category === 'utility' ? 'utility' : undefined,
       contextMessageId,
     });
     return result.messageId;
@@ -475,6 +503,9 @@ export async function sendMessageToConversation(
       sender_type: 'agent',
       content_type: messageType,
       content_text: persistedText,
+      ...(params.category === 'utility'
+        ? { content_payload: { direct_send: true, category: 'utility' } }
+        : {}),
       media_url: mediaUrl || null,
       template_name: templateName || null,
       interactive_payload:

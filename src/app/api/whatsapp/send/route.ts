@@ -77,6 +77,7 @@ export async function POST(request: Request) {
       conversation_id: conversationIdInput,
       contact_id,
       whatsapp_config_id,
+      category,
       message_type,
       content_text,
       media_url,
@@ -104,6 +105,7 @@ export async function POST(request: Request) {
     // without leaving an orphan empty conversation behind.
     try {
       validateSendMessageParams({
+        category,
         messageType: message_type,
         contentText: content_text,
         mediaUrl: media_url,
@@ -218,6 +220,7 @@ export async function POST(request: Request) {
 
     if (
       message_type !== 'template' &&
+      category !== 'utility' &&
       !isServiceWindowOpen(
         conversation.last_customer_message_at as string | null | undefined
       )
@@ -446,6 +449,7 @@ export async function POST(request: Request) {
         accessToken,
         to: phone,
         text: content_text,
+        category: category === 'utility' ? 'utility' : undefined,
         contextMessageId,
       });
       return result.messageId;
@@ -529,7 +533,10 @@ export async function POST(request: Request) {
         content_text: content_text || null,
         media_url: media_url || null,
         template_name: template_name || null,
-        content_payload: templateContentPayload,
+        content_payload:
+          category === 'utility'
+            ? { direct_send: true, category: 'utility' }
+            : templateContentPayload,
         message_id: waMessageId,
         status: 'sent',
         reply_to_message_id: reply_to_message_id || null,

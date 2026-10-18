@@ -1,12 +1,6 @@
-"use client";
+'use client';
 
-import {
-  useState,
-  useRef,
-  useCallback,
-  useEffect,
-  KeyboardEvent,
-} from "react";
+import { useState, useRef, useCallback, useEffect, KeyboardEvent } from 'react';
 import {
   Send,
   LayoutTemplate,
@@ -27,55 +21,55 @@ import {
   MoreVertical,
   MessageSquareDashed,
   Zap,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { GatedButton } from "@/components/ui/gated-button";
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { GatedButton } from '@/components/ui/gated-button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from '@/components/ui/dropdown-menu';
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { useCan } from "@/hooks/use-can";
-import { useAuth } from "@/hooks/use-auth";
-import { cn } from "@/lib/utils";
-import { toast } from "sonner";
+} from '@/components/ui/dialog';
+import { useCan } from '@/hooks/use-can';
+import { useAuth } from '@/hooks/use-auth';
+import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import {
   uploadAccountMedia,
   deleteAccountMedia,
   MEDIA_MAX_BYTES_BY_KIND,
-} from "@/lib/storage/upload-media";
+} from '@/lib/storage/upload-media';
 import {
   clearComposerDraft,
   loadComposerDraft,
   saveComposerDraft,
-} from "@/lib/inbox/composer-drafts";
-import { ReplyQuote } from "./reply-quote";
-import { useTranslations } from "next-intl";
+} from '@/lib/inbox/composer-drafts';
+import { ReplyQuote } from './reply-quote';
+import { useTranslations } from 'next-intl';
 import {
   InteractiveBuilder,
   blankButtonsPayload,
-} from "@/components/interactive/interactive-builder";
-import { validateInteractivePayload } from "@/lib/whatsapp/interactive";
+} from '@/components/interactive/interactive-builder';
+import { validateInteractivePayload } from '@/lib/whatsapp/interactive';
 import type {
   ConversationPrivateNote,
   InteractiveMessagePayload,
   QuickReply,
-} from "@/types";
-import { QuickReplyPicker } from "./quick-reply-picker";
+} from '@/types';
+import { QuickReplyPicker } from './quick-reply-picker';
 
 /** Media content types an agent can send from the composer. */
-export type ComposerMediaKind = "image" | "video" | "document" | "audio";
+export type ComposerMediaKind = 'image' | 'video' | 'document' | 'audio';
 
 /** Supabase Storage bucket holding agent-sent chat attachments (migration 023). */
-export const CHAT_MEDIA_BUCKET = "chat-media";
+export const CHAT_MEDIA_BUCKET = 'chat-media';
 
 /** Meta caps media captions at 1024 chars. Enforced here and in the send route. */
 export const MEDIA_CAPTION_MAX = 1024;
@@ -108,19 +102,19 @@ interface ReplyDraft {
 // the file picker so unsupported files are rejected before upload rather
 // than failing with a confusing Storage error. Audio has no picker — it's
 // captured via the recorder.
-const PICKER_ACCEPT: Record<"image" | "video" | "document", string> = {
-  image: "image/png,image/jpeg,image/webp",
-  video: "video/mp4,video/3gpp",
+const PICKER_ACCEPT: Record<'image' | 'video' | 'document', string> = {
+  image: 'image/png,image/jpeg,image/webp',
+  video: 'video/mp4,video/3gpp',
   document:
-    "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain",
+    'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain',
 };
 
 const ACCEPTED_IMAGE_TYPES = new Set(
-  PICKER_ACCEPT.image.split(",").map((type) => type.trim()),
+  PICKER_ACCEPT.image.split(',').map((type) => type.trim())
 );
 
 function isFileDrag(e: React.DragEvent): boolean {
-  return Array.from(e.dataTransfer.types).includes("Files");
+  return Array.from(e.dataTransfer.types).includes('Files');
 }
 
 function pickAcceptedImageFile(files: Iterable<File>): File | null {
@@ -132,7 +126,10 @@ function pickAcceptedImageFile(files: Iterable<File>): File | null {
 
 function hasUnsupportedImageFile(files: Iterable<File>): boolean {
   for (const file of files) {
-    if (file.type.startsWith("image/") && !ACCEPTED_IMAGE_TYPES.has(file.type)) {
+    if (
+      file.type.startsWith('image/') &&
+      !ACCEPTED_IMAGE_TYPES.has(file.type)
+    ) {
       return true;
     }
   }
@@ -141,7 +138,11 @@ function hasUnsupportedImageFile(files: Iterable<File>): boolean {
 
 function normalizePastedImageFile(raw: File, mimeType: string): File {
   const ext =
-    mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
+    mimeType === 'image/png'
+      ? 'png'
+      : mimeType === 'image/webp'
+        ? 'webp'
+        : 'jpg';
   if (raw.name && !/^image\.(png|jpe?g|webp)$/i.test(raw.name)) return raw;
   return new File([raw], `pasted-${Date.now()}.${ext}`, { type: mimeType });
 }
@@ -158,9 +159,16 @@ interface MediaDraft {
 interface MessageComposerProps {
   conversationId: string;
   sessionExpired: boolean;
-  onSend: (text: string, replyToId?: string) => void;
+  onSend: (
+    text: string,
+    replyToId?: string,
+    category?: 'utility'
+  ) => void | Promise<boolean | undefined>;
   onSendMedia: (payload: SendMediaPayload) => void;
-  onSendInteractive: (payload: InteractiveMessagePayload, replyToId?: string) => void;
+  onSendInteractive: (
+    payload: InteractiveMessagePayload,
+    replyToId?: string
+  ) => void;
   onOpenTemplates: () => void;
   onOpenFlows: () => void;
   onOpenProducts?: () => void;
@@ -180,18 +188,18 @@ interface MessageComposerProps {
   selfAssigning?: boolean;
 }
 
-type ComposerMode = "message" | "note";
+type ComposerMode = 'message' | 'note';
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 /** Worker that encodes mic input to Ogg/Opus entirely in the browser
  *  (vendored from opus-recorder into /public). Recording client-side in a
  *  Meta-accepted format means no server ffmpeg / transcode step. */
-const OPUS_ENCODER_PATH = "/opus/encoderWorker.min.js";
+const OPUS_ENCODER_PATH = '/opus/encoderWorker.min.js';
 
 export function MessageComposer({
   conversationId,
@@ -213,12 +221,14 @@ export function MessageComposer({
   onSelfAssign,
   selfAssigning = false,
 }: MessageComposerProps) {
-  const t = useTranslations("Inbox.composer");
+  const t = useTranslations('Inbox.composer');
   const { isAiAgentsEnabled } = useAuth();
 
-  const [text, setText] = useState("");
-  const [composerMode, setComposerMode] = useState<ComposerMode>("message");
-  const [noteText, setNoteText] = useState("");
+  const [text, setText] = useState('');
+  const [directSend, setDirectSend] = useState(false);
+  useEffect(() => setDirectSend(false), [conversationId]);
+  const [composerMode, setComposerMode] = useState<ComposerMode>('message');
+  const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   const [sending, setSending] = useState(false);
   const [drafting, setDrafting] = useState(false);
@@ -268,14 +278,14 @@ export function MessageComposer({
   // (opus-recorder) so there's no server-side transcode.
   const [recording, setRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
-  const recorderRef = useRef<import("opus-recorder").default | null>(null);
+  const recorderRef = useRef<import('opus-recorder').default | null>(null);
   const cancelledRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Viewers (read-only role) can browse the inbox but never send.
   // For solo users this is always true — single-owner accounts pass
   // every capability — so the disabled branch is a no-op there.
-  const canSend = useCan("send-messages");
+  const canSend = useCan('send-messages');
   const readOnly = !canSend;
   const assignedToMe =
     !!currentUserId && !!assignedAgentId && assignedAgentId === currentUserId;
@@ -283,13 +293,22 @@ export function MessageComposer({
   /** Reply (WhatsApp) requires claiming the chat; private notes do not. */
   const replyLocked = canSend && !assignedToMe;
   // Media (like free-form text) is only allowed inside the 24h window.
-  const inputsDisabled = readOnly || sessionExpired || replyLocked;
+  const inputsDisabled =
+    readOnly || sessionExpired || replyLocked || directSend;
   const canAttachImage = !inputsDisabled && !busy && !recording;
-  const slashOpen = text.startsWith("/") && !text.includes("\n") &&
-    !slashDismissed && !inputsDisabled && !busy && !draft && !recording &&
-    composerMode === "message";
+  const slashOpen =
+    text.startsWith('/') &&
+    !text.includes('\n') &&
+    !slashDismissed &&
+    !inputsDisabled &&
+    !busy &&
+    !draft &&
+    !recording &&
+    composerMode === 'message';
   const slashMatches = slashItems.filter((qr) =>
-    qr.title.toLocaleLowerCase().includes(text.slice(1).trim().toLocaleLowerCase()),
+    qr.title
+      .toLocaleLowerCase()
+      .includes(text.slice(1).trim().toLocaleLowerCase())
   );
 
   useEffect(() => {
@@ -300,10 +319,11 @@ export function MessageComposer({
     setSlashItems([]);
     void (async () => {
       try {
-        const res = await fetch("/api/quick-replies", {
-          cache: "no-store", signal: controller.signal,
+        const res = await fetch('/api/quick-replies', {
+          cache: 'no-store',
+          signal: controller.signal,
         });
-        if (!res.ok) throw new Error("Quick replies unavailable");
+        if (!res.ok) throw new Error('Quick replies unavailable');
         const data = await res.json();
         if (!controller.signal.aborted) setSlashItems(data.quick_replies ?? []);
       } catch {
@@ -315,7 +335,6 @@ export function MessageComposer({
     return () => controller.abort();
   }, [slashOpen, conversationId]);
 
-
   useEffect(() => {
     onComposerPendingChange?.(busy || !!draft || recording);
   }, [busy, draft, recording, onComposerPendingChange]);
@@ -326,25 +345,30 @@ export function MessageComposer({
 
     setSavingNote(true);
     try {
-      const res = await fetch(`/api/inbox/conversations/${conversationId}/private-notes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch(
+        `/api/inbox/conversations/${conversationId}/private-notes`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ note_text: trimmed }),
-      });
-      const data = (await res.json()) as ConversationPrivateNote & { error?: string };
+        }
+      );
+      const data = (await res.json()) as ConversationPrivateNote & {
+        error?: string;
+      };
       if (!res.ok) {
-        toast.error(data.error ?? "Could not save note");
+        toast.error(data.error ?? 'Could not save note');
         return;
       }
       onPrivateNoteSaved?.(data);
-      setNoteText("");
-      setComposerMode("message");
+      setNoteText('');
+      setComposerMode('message');
       if (noteTextareaRef.current) {
-        noteTextareaRef.current.style.height = "auto";
+        noteTextareaRef.current.style.height = 'auto';
       }
-      toast.success("Private note saved");
+      toast.success('Private note saved');
     } catch {
-      toast.error("Could not save note");
+      toast.error('Could not save note');
     } finally {
       setSavingNote(false);
     }
@@ -373,7 +397,7 @@ export function MessageComposer({
   const adjustHeight = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
-    el.style.height = "auto";
+    el.style.height = 'auto';
     // Max 4 lines (~96px)
     el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
   }, []);
@@ -407,20 +431,43 @@ export function MessageComposer({
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed || sending || sessionExpired) return;
+    if (
+      !trimmed ||
+      sending ||
+      readOnly ||
+      replyLocked ||
+      (sessionExpired && !directSend) ||
+      (directSend && trimmed.length > 1024)
+    )
+      return;
 
     setSending(true);
     try {
-      onSend(trimmed, replyTo?.id);
-      setText("");
+      const sent = await onSend(
+        trimmed,
+        replyTo?.id,
+        directSend ? 'utility' : undefined
+      );
+      if (sent === false) return;
+      setText('');
       clearComposerDraft(conversationId);
       if (textareaRef.current) {
-        textareaRef.current.style.height = "auto";
+        textareaRef.current.style.height = 'auto';
       }
     } finally {
       setSending(false);
     }
-  }, [text, sending, sessionExpired, onSend, replyTo?.id, conversationId]);
+  }, [
+    text,
+    sending,
+    sessionExpired,
+    directSend,
+    readOnly,
+    replyLocked,
+    onSend,
+    replyTo?.id,
+    conversationId,
+  ]);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -441,21 +488,23 @@ export function MessageComposer({
     if (drafting) return;
     setDrafting(true);
     try {
-      const res = await fetch("/api/ai/draft", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/ai/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ conversation_id: conversationId }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (data.code === "ai_not_configured") {
-          toast.error("AI isn't set up yet — enable it in Settings → AI Assistant.");
+        if (data.code === 'ai_not_configured') {
+          toast.error(
+            "AI isn't set up yet — enable it in Settings → AI Assistant."
+          );
         } else {
           toast.error(data.error ?? "Couldn't draft a reply.");
         }
         return;
       }
-      const draftText = typeof data.draft === "string" ? data.draft.trim() : "";
+      const draftText = typeof data.draft === 'string' ? data.draft.trim() : '';
       if (!draftText) {
         toast.error("The assistant didn't return a reply.");
         return;
@@ -506,29 +555,27 @@ export function MessageComposer({
       toast.error(result.error);
       return;
     }
-    const title = window
-      .prompt(t("quickReplyNamePrompt"))
-      ?.trim();
+    const title = window.prompt(t('quickReplyNamePrompt'))?.trim();
     if (!title) return;
     setSavingQuickReply(true);
     try {
-      const res = await fetch("/api/quick-replies", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/quick-replies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title,
-          kind: "interactive",
+          kind: 'interactive',
           interactive_payload: interactivePayload,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(data.error ?? t("quickReplySaveError"));
+        toast.error(data.error ?? t('quickReplySaveError'));
         return;
       }
-      toast.success(t("quickReplySaved"));
+      toast.success(t('quickReplySaved'));
     } catch {
-      toast.error(t("quickReplySaveError"));
+      toast.error(t('quickReplySaveError'));
     } finally {
       setSavingQuickReply(false);
     }
@@ -539,11 +586,11 @@ export function MessageComposer({
   const handlePickQuickReply = useCallback(
     (qr: QuickReply) => {
       setQuickReplyOpen(false);
-      if (qr.kind === "interactive" && qr.interactive_payload) {
+      if (qr.kind === 'interactive' && qr.interactive_payload) {
         openInteractiveBuilder(qr.interactive_payload);
         return;
       }
-      const body = qr.content_text ?? "";
+      const body = qr.content_text ?? '';
       // Separate the snippet from any existing draft with a newline so the
       // words don't run together ("Thanks" + "we'll…" → "Thankswe'll…").
       setText((prev) =>
@@ -563,7 +610,7 @@ export function MessageComposer({
 
   const pickSlashReply = (qr: QuickReply) => {
     setSlashDismissed(true);
-    setText("");
+    setText('');
     handlePickQuickReply(qr);
     requestAnimationFrame(adjustHeight);
   };
@@ -571,27 +618,29 @@ export function MessageComposer({
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing) return;
     if (slashOpen) {
-      if (e.key === "Escape") {
+      if (e.key === 'Escape') {
         e.preventDefault();
         setSlashDismissed(true);
         return;
       }
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
         const count = slashMatches.length;
-        if (count) setSlashIndex((index) =>
-          (index + (e.key === "ArrowDown" ? 1 : -1) + count) % count,
+        if (count)
+          setSlashIndex(
+            (index) =>
+              (index + (e.key === 'ArrowDown' ? 1 : -1) + count) % count
         );
         return;
       }
-      if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+      if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
         e.preventDefault();
         const reply = slashMatches[slashIndex];
         if (!slashLoading && !slashError && reply) pickSlashReply(reply);
         return;
       }
     }
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
     }
@@ -614,12 +663,21 @@ export function MessageComposer({
       }
       setBusy(true);
       try {
-        const { publicUrl, path } = await uploadAccountMedia(CHAT_MEDIA_BUCKET, file);
+        const { publicUrl, path } = await uploadAccountMedia(
+          CHAT_MEDIA_BUCKET,
+          file
+        );
         // Replacing an existing draft? GC the previous object first.
         removeStaged(draftRef.current?.path);
-        setDraft({ kind, mediaUrl: publicUrl, path, filename: file.name, caption: "" });
+        setDraft({
+          kind,
+          mediaUrl: publicUrl,
+          path,
+          filename: file.name,
+          caption: '',
+        });
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Upload failed.");
+        toast.error(err instanceof Error ? err.message : 'Upload failed.');
       } finally {
         setBusy(false);
       }
@@ -628,7 +686,7 @@ export function MessageComposer({
   );
 
   const handlePicked = useCallback(
-    (kind: "image" | "video" | "document", file: File | undefined) => {
+    (kind: 'image' | 'video' | 'document', file: File | undefined) => {
       if (file) void stageUpload(kind, file);
     },
     [stageUpload],
@@ -643,7 +701,7 @@ export function MessageComposer({
 
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
-        if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+        if (item.kind !== 'file' || !item.type.startsWith('image/')) continue;
 
         const raw = item.getAsFile();
         if (!raw) continue;
@@ -651,11 +709,11 @@ export function MessageComposer({
         e.preventDefault();
 
         if (!ACCEPTED_IMAGE_TYPES.has(item.type)) {
-          toast.error("Only PNG, JPEG, and WebP images can be pasted.");
+          toast.error('Only PNG, JPEG, and WebP images can be pasted.');
           return;
         }
 
-        void stageUpload("image", normalizePastedImageFile(raw, item.type));
+        void stageUpload('image', normalizePastedImageFile(raw, item.type));
         return;
       }
     },
@@ -683,7 +741,7 @@ export function MessageComposer({
     (e: React.DragEvent<HTMLDivElement>) => {
       if (!canAttachImage || !isFileDrag(e)) return;
       e.preventDefault();
-      e.dataTransfer.dropEffect = "copy";
+      e.dataTransfer.dropEffect = 'copy';
     },
     [canAttachImage],
   );
@@ -702,12 +760,12 @@ export function MessageComposer({
       const image = pickAcceptedImageFile(files);
       if (!image) {
         if (hasUnsupportedImageFile(files)) {
-          toast.error("Only PNG, JPEG, and WebP images can be attached.");
+          toast.error('Only PNG, JPEG, and WebP images can be attached.');
         }
         return;
       }
 
-      void stageUpload("image", image);
+      void stageUpload('image', image);
     },
     [canAttachImage, stageUpload],
   );
@@ -720,21 +778,34 @@ export function MessageComposer({
     async (bytes: Uint8Array) => {
       // Uint8Array is a valid BlobPart at runtime; the cast sidesteps the
       // lib.dom ArrayBufferLike-vs-ArrayBuffer generic mismatch.
-      const file = new File([bytes as unknown as BlobPart], `voice-${Date.now()}.ogg`, {
-        type: "audio/ogg",
-      });
+      const file = new File(
+        [bytes as unknown as BlobPart],
+        `voice-${Date.now()}.ogg`,
+        {
+          type: 'audio/ogg',
+        }
+      );
       if (file.size === 0) return; // cancelled / empty take
       if (file.size > MEDIA_MAX_BYTES_BY_KIND.audio) {
-        toast.error("Recording is too long (over 16 MB).");
+        toast.error('Recording is too long (over 16 MB).');
         return;
       }
       setBusy(true);
       try {
-        const { publicUrl, path } = await uploadAccountMedia(CHAT_MEDIA_BUCKET, file);
+        const { publicUrl, path } = await uploadAccountMedia(
+          CHAT_MEDIA_BUCKET,
+          file
+        );
         removeStaged(draftRef.current?.path);
-        setDraft({ kind: "audio", mediaUrl: publicUrl, path, filename: file.name, caption: "" });
+        setDraft({
+          kind: 'audio',
+          mediaUrl: publicUrl,
+          path,
+          filename: file.name,
+          caption: '',
+        });
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Upload failed.");
+        toast.error(err instanceof Error ? err.message : 'Upload failed.');
       } finally {
         setBusy(false);
       }
@@ -744,14 +815,17 @@ export function MessageComposer({
 
   const startRecording = useCallback(async () => {
     if (inputsDisabled || busy || recording) return;
-    if (!navigator.mediaDevices?.getUserMedia || typeof AudioContext === "undefined") {
+    if (
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof AudioContext === 'undefined'
+    ) {
       toast.error("Voice recording isn't supported in this browser.");
       return;
     }
     try {
       // Lazy-load the encoder (≈400 KB worker) only when the user records,
       // keeping it out of the main bundle.
-      const { default: Recorder } = await import("opus-recorder");
+      const { default: Recorder } = await import('opus-recorder');
       const recorder = new Recorder({
         encoderPath: OPUS_ENCODER_PATH,
         numberOfChannels: 1,
@@ -768,11 +842,14 @@ export function MessageComposer({
       await recorder.start();
       setRecording(true);
       setRecordSeconds(0);
-      timerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
+      timerRef.current = setInterval(
+        () => setRecordSeconds((s) => s + 1),
+        1000
+      );
     } catch {
       void recorderRef.current?.stop().catch(() => {});
       recorderRef.current = null;
-      toast.error("Microphone access denied or unavailable.");
+      toast.error('Microphone access denied or unavailable.');
     }
   }, [inputsDisabled, busy, recording, finalizeRecording]);
 
@@ -808,8 +885,8 @@ export function MessageComposer({
       // Audio takes no caption (Meta rejects it). Everything else: the
       // trimmed caption, or undefined when blank.
       caption:
-        draft.kind === "audio" ? undefined : draft.caption.trim() || undefined,
-      filename: draft.kind === "document" ? draft.filename : undefined,
+        draft.kind === 'audio' ? undefined : draft.caption.trim() || undefined,
+      filename: draft.kind === 'document' ? draft.filename : undefined,
       replyToId: replyTo?.id,
     });
     // The object is now owned by the sent message — clear without GC.
@@ -830,28 +907,28 @@ export function MessageComposer({
   // ---- Render --------------------------------------------------------
 
   return (
-    <div className="border-t border-border bg-card p-3">
-      <div className="mb-2 flex gap-1 rounded-lg bg-muted p-0.5">
+    <div className="border-border bg-card border-t p-3">
+      <div className="bg-muted mb-2 flex gap-1 rounded-lg p-0.5">
         <button
           type="button"
-          onClick={() => setComposerMode("message")}
+          onClick={() => setComposerMode('message')}
           className={cn(
-            "flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-            composerMode === "message"
-              ? "bg-card text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
+            'flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+            composerMode === 'message'
+              ? 'bg-card text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
           )}
         >
           Reply
         </button>
         <button
           type="button"
-          onClick={() => setComposerMode("note")}
+          onClick={() => setComposerMode('note')}
           className={cn(
-            "flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-            composerMode === "note"
-              ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
+            'flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+            composerMode === 'note'
+              ? 'bg-amber-500/15 text-amber-700 shadow-sm dark:text-amber-300'
+              : 'text-muted-foreground hover:text-foreground'
           )}
         >
           <Lock className="h-3 w-3" />
@@ -859,10 +936,11 @@ export function MessageComposer({
         </button>
       </div>
 
-      {composerMode === "note" ? (
+      {composerMode === 'note' ? (
         <div className="space-y-2">
           <p className="text-[10px] text-amber-600 dark:text-amber-400">
-            Visible to your team only — appears in the chat timeline, not sent to the customer.
+            Visible to your team only — appears in the chat timeline, not sent
+            to the customer.
           </p>
           <div className="flex items-end gap-2">
             <textarea
@@ -870,7 +948,7 @@ export function MessageComposer({
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
+                if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   void handleSaveNote();
                 }
@@ -879,8 +957,8 @@ export function MessageComposer({
               disabled={readOnly}
               rows={2}
               className={cn(
-                "flex-1 resize-none rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-amber-500/50",
-                readOnly && "cursor-not-allowed opacity-50",
+                'text-foreground placeholder-muted-foreground flex-1 resize-none rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-2.5 text-sm transition-colors outline-none focus:border-amber-500/50',
+                readOnly && 'cursor-not-allowed opacity-50'
               )}
             />
             <GatedButton
@@ -900,11 +978,12 @@ export function MessageComposer({
           </div>
         </div>
       ) : replyLocked ? (
-        <div className="flex flex-col items-stretch gap-2 rounded-xl border border-border bg-muted/40 px-4 py-4">
+        <div className="border-border bg-muted/40 flex flex-col items-stretch gap-2 rounded-xl border px-4 py-4">
           {unassigned ? (
             <>
-              <p className="text-center text-xs text-muted-foreground">
-                Self-assign this chat to reply. Private notes are still available above.
+              <p className="text-muted-foreground text-center text-xs">
+                Self-assign this chat to reply. Private notes are still
+                available above.
               </p>
               <Button
                 type="button"
@@ -921,8 +1000,8 @@ export function MessageComposer({
               </Button>
             </>
           ) : (
-            <p className="text-center text-xs text-muted-foreground">
-              Assigned to {assigneeName?.trim() || "another agent"} — use Assign
+            <p className="text-muted-foreground text-center text-xs">
+              Assigned to {assigneeName?.trim() || 'another agent'} — use Assign
               in the header to take over.
             </p>
           )}
@@ -930,8 +1009,9 @@ export function MessageComposer({
       ) : (
         <div
           className={cn(
-            "relative rounded-xl transition-colors",
-            dragActive && "bg-primary/5 ring-2 ring-primary/40 ring-offset-2 ring-offset-card",
+            'relative rounded-xl transition-colors',
+            dragActive &&
+              'bg-primary/5 ring-primary/40 ring-offset-card ring-2 ring-offset-2'
           )}
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
@@ -939,8 +1019,10 @@ export function MessageComposer({
           onDrop={handleDrop}
         >
           {dragActive && (
-            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-primary/60 bg-primary/5">
-              <p className="text-sm font-medium text-primary">Drop image to attach</p>
+            <div className="border-primary/60 bg-primary/5 pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed">
+              <p className="text-primary text-sm font-medium">
+                Drop image to attach
+              </p>
             </div>
           )}
       {replyTo && (
@@ -955,7 +1037,8 @@ export function MessageComposer({
       {sessionExpired && (
         <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
           <p className="text-xs text-amber-400">
-            {t("sessionExpiredHint")}
+                The 24-hour window is closed. Send a template or a utility
+                update with Direct Send.
           </p>
           <Button
             variant="ghost"
@@ -964,11 +1047,30 @@ export function MessageComposer({
             onClick={onOpenTemplates}
           >
             <LayoutTemplate className="mr-1 h-3 w-3" />
-            {t("templates")}
+                {t('templates')}
           </Button>
         </div>
       )}
 
+          <div className="border-border mb-2 rounded-lg border p-3 text-xs">
+            <label className="flex cursor-pointer items-center gap-2 font-medium">
+              <input
+                type="checkbox"
+                checked={directSend}
+                disabled={readOnly || sending || Boolean(draft) || recording}
+                onChange={(e) => setDirectSend(e.target.checked)}
+              />
+              Direct Send · Utility text
+            </label>
+            {directSend && (
+              <p className="text-muted-foreground mt-2">
+                For order updates, receipts and appointment reminders. No
+                promotions or authentication codes. Meta eligibility and utility
+                charges apply. Text only; links have no preview.{' '}
+                {text.trim().length}/1024 characters.
+              </p>
+            )}
+          </div>
       {/* Hidden file inputs driven by the attach menu. */}
       <input
         ref={imageInputRef}
@@ -976,8 +1078,8 @@ export function MessageComposer({
         accept={PICKER_ACCEPT.image}
         className="hidden"
         onChange={(e) => {
-          handlePicked("image", e.target.files?.[0]);
-          e.target.value = "";
+              handlePicked('image', e.target.files?.[0]);
+              e.target.value = '';
         }}
       />
       <input
@@ -986,8 +1088,8 @@ export function MessageComposer({
         accept={PICKER_ACCEPT.video}
         className="hidden"
         onChange={(e) => {
-          handlePicked("video", e.target.files?.[0]);
-          e.target.value = "";
+              handlePicked('video', e.target.files?.[0]);
+              e.target.value = '';
         }}
       />
       <input
@@ -996,22 +1098,39 @@ export function MessageComposer({
         accept={PICKER_ACCEPT.document}
         className="hidden"
         onChange={(e) => {
-          handlePicked("document", e.target.files?.[0]);
-          e.target.value = "";
+              handlePicked('document', e.target.files?.[0]);
+              e.target.value = '';
         }}
       />
 
       {slashOpen && (
-        <div className="mb-2 rounded-xl border border-border bg-popover p-2 shadow-lg">
-          <p className="px-2 py-1 text-xs font-medium text-muted-foreground">{t("quickReplies")}</p>
+            <div className="border-border bg-popover mb-2 rounded-xl border p-2 shadow-lg">
+              <p className="text-muted-foreground px-2 py-1 text-xs font-medium">
+                {t('quickReplies')}
+              </p>
           {slashLoading ? (
-            <div role="status" className="flex justify-center p-4"><Loader2 className="h-4 w-4 animate-spin" /></div>
+                <div role="status" className="flex justify-center p-4">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                </div>
           ) : slashError ? (
-            <p role="alert" className="p-2 text-sm text-muted-foreground">{t("quickReplyLoadError")}</p>
+                <p role="alert" className="text-muted-foreground p-2 text-sm">
+                  {t('quickReplyLoadError')}
+                </p>
           ) : slashMatches.length === 0 ? (
-            <p role="status" className="p-2 text-sm text-muted-foreground">{t(slashItems.length ? "quickRepliesNoMatch" : "quickRepliesEmpty")}</p>
+                <p role="status" className="text-muted-foreground p-2 text-sm">
+                  {t(
+                    slashItems.length
+                      ? 'quickRepliesNoMatch'
+                      : 'quickRepliesEmpty'
+                  )}
+                </p>
           ) : (
-            <div id="slash-quick-replies" role="listbox" aria-label={t("quickReplies")} className="max-h-60 overflow-y-auto">
+                <div
+                  id="slash-quick-replies"
+                  role="listbox"
+                  aria-label={t('quickReplies')}
+                  className="max-h-60 overflow-y-auto"
+                >
               {slashMatches.map((qr, index) => (
                 <button
                   key={qr.id}
@@ -1019,13 +1138,23 @@ export function MessageComposer({
                   type="button"
                   role="option"
                   aria-selected={index === slashIndex}
-                  ref={(node) => { if (index === slashIndex) node?.scrollIntoView({ block: "nearest" }); }}
+                      ref={(node) => {
+                        if (index === slashIndex)
+                          node?.scrollIntoView({ block: 'nearest' });
+                      }}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => pickSlashReply(qr)}
-                  className={cn("block w-full rounded-md px-3 py-2 text-left hover:bg-muted", index === slashIndex && "bg-muted")}
+                      className={cn(
+                        'hover:bg-muted block w-full rounded-md px-3 py-2 text-left',
+                        index === slashIndex && 'bg-muted'
+                      )}
                 >
-                  <span className="block truncate text-sm font-medium">{qr.title}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{qr.content_text ?? t("interactiveMessage")}</span>
+                      <span className="block truncate text-sm font-medium">
+                        {qr.title}
+                      </span>
+                      <span className="text-muted-foreground block truncate text-xs">
+                        {qr.content_text ?? t('interactiveMessage')}
+                      </span>
                 </button>
               ))}
             </div>
@@ -1045,23 +1174,26 @@ export function MessageComposer({
         />
       ) : recording ? (
         // Recording bar — replaces the composer while the mic is live.
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-muted px-4 py-2.5">
+            <div className="border-border bg-muted flex items-center gap-3 rounded-xl border px-4 py-2.5">
           <span className="flex h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-red-500" />
-          <span className="flex-1 text-sm text-foreground">
-            {t("recording", { current: formatDuration(recordSeconds), max: formatDuration(MAX_RECORDING_SECONDS) })}
+              <span className="text-foreground flex-1 text-sm">
+                {t('recording', {
+                  current: formatDuration(recordSeconds),
+                  max: formatDuration(MAX_RECORDING_SECONDS),
+                })}
           </span>
           <button
             type="button"
             onClick={cancelRecording}
-            className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-card hover:text-foreground"
+                className="text-muted-foreground hover:bg-card hover:text-foreground rounded-md px-2 py-1 text-xs"
           >
-            {t("cancel")}
+                {t('cancel')}
           </button>
           <Button
             size="sm"
             onClick={stopRecording}
-            className="h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90"
-            title={t("stopAndAttach")}
+                className="bg-primary hover:bg-primary/90 h-9 w-9 shrink-0 p-0"
+                title={t('stopAndAttach')}
           >
             <Square className="h-4 w-4" />
           </Button>
@@ -1074,12 +1206,12 @@ export function MessageComposer({
               disabled={inputsDisabled || busy}
               title={
                 readOnly
-                  ? t("readOnlyTitle")
+                      ? t('readOnlyTitle')
                   : inputsDisabled
                     ? undefined
-                    : t("attachMedia")
+                        : t('attachMedia')
               }
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  className="text-muted-foreground hover:text-foreground inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -1087,22 +1219,31 @@ export function MessageComposer({
                 <Paperclip className="h-4 w-4" />
               )}
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="border-border bg-popover">
-              <DropdownMenuItem onClick={() => imageInputRef.current?.click()}>
+                <DropdownMenuContent
+                  align="start"
+                  className="border-border bg-popover"
+                >
+                  <DropdownMenuItem
+                    onClick={() => imageInputRef.current?.click()}
+                  >
                 <ImageIcon className="mr-2 h-4 w-4" />
-                {t("photo")}
+                    {t('photo')}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => videoInputRef.current?.click()}>
+                  <DropdownMenuItem
+                    onClick={() => videoInputRef.current?.click()}
+                  >
                 <Video className="mr-2 h-4 w-4" />
-                {t("video")}
+                    {t('video')}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => documentInputRef.current?.click()}>
+                  <DropdownMenuItem
+                    onClick={() => documentInputRef.current?.click()}
+                  >
                 <FileText className="mr-2 h-4 w-4" />
-                {t("document")}
+                    {t('document')}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => void startRecording()}>
                 <Mic className="mr-2 h-4 w-4" />
-                {t("voiceNote")}
+                    {t('voiceNote')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1112,8 +1253,8 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
-            title={readOnly ? undefined : t("sendTemplate")}
-            className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+                title={readOnly ? undefined : t('sendTemplate')}
+                className="text-muted-foreground hover:text-foreground h-9 w-9 shrink-0 p-0"
             onClick={onOpenTemplates}
           >
             <LayoutTemplate className="h-4 w-4" />
@@ -1123,41 +1264,44 @@ export function MessageComposer({
           <DropdownMenu>
             <DropdownMenuTrigger
               disabled={readOnly}
-              title={readOnly ? t("readOnlyTitle") : t("moreActions")}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  title={readOnly ? t('readOnlyTitle') : t('moreActions')}
+                  className="text-muted-foreground hover:text-foreground inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <MoreVertical className="h-4 w-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="border-border bg-popover">
+                <DropdownMenuContent
+                  align="start"
+                  className="border-border bg-popover"
+                >
               {showProductPicker && onOpenProducts ? (
                 <DropdownMenuItem
-                  disabled={readOnly || sessionExpired}
+                      disabled={readOnly || sessionExpired || directSend}
                   onClick={onOpenProducts}
                 >
                   <ShoppingBag className="mr-2 h-4 w-4" />
-                  {t("sendProduct")}
+                      {t('sendProduct')}
                 </DropdownMenuItem>
               ) : null}
               <DropdownMenuItem
-                disabled={readOnly || sessionExpired}
+                    disabled={readOnly || sessionExpired || directSend}
                 onClick={() => openInteractiveBuilder()}
               >
                 <MessageSquareDashed className="mr-2 h-4 w-4" />
-                {t("interactiveMessage")}
+                    {t('interactiveMessage')}
               </DropdownMenuItem>
               <DropdownMenuItem
-                disabled={readOnly || sessionExpired}
+                    disabled={readOnly || sessionExpired || directSend}
                 onClick={() => setQuickReplyOpen(true)}
               >
                 <Zap className="mr-2 h-4 w-4" />
-                {t("quickReplies")}
+                    {t('quickReplies')}
               </DropdownMenuItem>
               <DropdownMenuItem
-                disabled={readOnly || sessionExpired}
+                    disabled={readOnly || sessionExpired || directSend}
                 onClick={onOpenFlows}
               >
                 <Workflow className="mr-2 h-4 w-4" />
-                {t("startFlow")}
+                    {t('startFlow')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1169,8 +1313,8 @@ export function MessageComposer({
               canAct={!readOnly}
               gateReason="send messages"
               disabled={drafting}
-              title={readOnly ? undefined : t("draftWithAI")}
-              className="h-9 w-9 shrink-0 p-0 text-muted-foreground hover:text-primary"
+                  title={readOnly ? undefined : t('draftWithAI')}
+                  className="text-muted-foreground hover:text-primary h-9 w-9 shrink-0 p-0"
               onClick={handleDraft}
             >
               {drafting ? (
@@ -1184,28 +1328,37 @@ export function MessageComposer({
           <textarea
             ref={textareaRef}
             aria-autocomplete="list"
-            aria-controls={slashOpen && slashMatches.length ? "slash-quick-replies" : undefined}
-            aria-activedescendant={slashOpen && slashMatches[slashIndex] ? `slash-reply-${slashIndex}` : undefined}
+                aria-controls={
+                  slashOpen && slashMatches.length
+                    ? 'slash-quick-replies'
+                    : undefined
+                }
+                aria-activedescendant={
+                  slashOpen && slashMatches[slashIndex]
+                    ? `slash-reply-${slashIndex}`
+                    : undefined
+                }
             value={text}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder={
               readOnly
-                ? t("readOnlyPlaceholder")
-                : sessionExpired
-                  ? t("sessionExpiredPlaceholder")
-                  : t("typeMessagePlaceholder")
+                    ? t('readOnlyPlaceholder')
+                    : sessionExpired && !directSend
+                      ? t('sessionExpiredPlaceholder')
+                      : t('typeMessagePlaceholder')
             }
-            disabled={sessionExpired || readOnly}
+                disabled={(sessionExpired && !directSend) || readOnly}
             rows={1}
             // Textarea keeps its own inline title — the GatedButton
             // wrapping pattern doesn't apply to non-button inputs.
             // The placeholder text also surfaces the read-only state.
-            title={readOnly ? t("readOnlyTitle") : undefined}
+                title={readOnly ? t('readOnlyTitle') : undefined}
             className={cn(
-              "flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
-              (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
+                  'border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 flex-1 resize-none rounded-xl border px-4 py-2.5 text-sm transition-colors outline-none',
+                  ((sessionExpired && !directSend) || readOnly) &&
+                    'cursor-not-allowed opacity-50'
             )}
           />
 
@@ -1213,9 +1366,14 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
-            disabled={!text.trim() || sessionExpired || sending}
+                disabled={
+                  !text.trim() ||
+                  (sessionExpired && !directSend) ||
+                  sending ||
+                  (directSend && text.trim().length > 1024)
+                }
             onClick={handleSend}
-            className="h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40"
+                className="bg-primary hover:bg-primary/90 h-9 w-9 shrink-0 p-0 disabled:opacity-40"
           >
             <Send className="h-4 w-4" />
           </GatedButton>
@@ -1226,8 +1384,8 @@ export function MessageComposer({
           `items-end` buttons below the textarea. Indented to line up
           under the textarea left edge. */}
       {isAiAgentsEnabled && !draft && !recording && (
-        <p className="mt-1 pl-[5.5rem] text-[10px] text-muted-foreground">
-          {t("draftHint")}
+            <p className="text-muted-foreground mt-1 pl-[5.5rem] text-[10px]">
+              {t('draftHint')}
         </p>
       )}
         </div>
@@ -1237,7 +1395,7 @@ export function MessageComposer({
       <Dialog open={interactiveOpen} onOpenChange={setInteractiveOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{t("interactiveMessage")}</DialogTitle>
+            <DialogTitle>{t('interactiveMessage')}</DialogTitle>
           </DialogHeader>
           <div className="max-h-[70vh] overflow-y-auto">
             <InteractiveBuilder
@@ -1256,11 +1414,11 @@ export function MessageComposer({
               ) : (
                 <Zap className="mr-1 h-4 w-4" />
               )}
-              {t("saveAsQuickReply")}
+              {t('saveAsQuickReply')}
             </Button>
             <Button onClick={sendInteractive}>
               <Send className="mr-1 h-4 w-4" />
-              {t("send")}
+              {t('send')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1300,10 +1458,10 @@ function MediaDraftPreview({
   t: ReturnType<typeof useTranslations>;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-muted/40 p-3">
+    <div className="border-border bg-muted/40 rounded-xl border p-3">
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          {draft.kind === "image" && (
+          {draft.kind === 'image' && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={draft.mediaUrl}
@@ -1311,15 +1469,19 @@ function MediaDraftPreview({
               className="max-h-40 rounded-lg object-cover"
             />
           )}
-          {draft.kind === "video" && (
-            <video src={draft.mediaUrl} controls className="max-h-40 rounded-lg" />
+          {draft.kind === 'video' && (
+            <video
+              src={draft.mediaUrl}
+              controls
+              className="max-h-40 rounded-lg"
+            />
           )}
-          {draft.kind === "audio" && (
+          {draft.kind === 'audio' && (
             <audio src={draft.mediaUrl} controls className="w-full" />
           )}
-          {draft.kind === "document" && (
-            <div className="flex items-center gap-2 text-sm text-foreground">
-              <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
+          {draft.kind === 'document' && (
+            <div className="text-foreground flex items-center gap-2 text-sm">
+              <FileText className="text-muted-foreground h-5 w-5 shrink-0" />
               <span className="truncate">{draft.filename}</span>
             </div>
           )}
@@ -1327,27 +1489,27 @@ function MediaDraftPreview({
         <button
           type="button"
           onClick={onDiscard}
-          aria-label={t("removeAttachment")}
-          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+          aria-label={t('removeAttachment')}
+          className="text-muted-foreground hover:bg-muted hover:text-foreground rounded p-1"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
       <div className="mt-2 flex items-end gap-2">
-        {draft.kind !== "audio" && (
+        {draft.kind !== 'audio' && (
           <input
             value={draft.caption}
             maxLength={MEDIA_CAPTION_MAX}
             onChange={(e) => onCaptionChange(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 onSend();
               }
             }}
-            placeholder={t("addCaption")}
-            className="flex-1 rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50"
+            placeholder={t('addCaption')}
+            className="border-border bg-muted text-foreground placeholder-muted-foreground focus:border-primary/50 flex-1 rounded-xl border px-4 py-2.5 text-sm transition-colors outline-none"
           />
         )}
         <GatedButton
@@ -1357,8 +1519,8 @@ function MediaDraftPreview({
           disabled={busy}
           onClick={onSend}
           className={cn(
-            "h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40",
-            draft.kind === "audio" && "ml-auto",
+            'bg-primary hover:bg-primary/90 h-9 w-9 shrink-0 p-0 disabled:opacity-40',
+            draft.kind === 'audio' && 'ml-auto'
           )}
         >
           <Send className="h-4 w-4" />

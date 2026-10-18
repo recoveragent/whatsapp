@@ -1,12 +1,12 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/hooks/use-auth";
-import { usePresence } from "@/hooks/use-presence";
-import { PresenceDot } from "@/components/presence/presence-dot";
-import { presenceLabel } from "@/lib/presence";
-import { cn } from "@/lib/utils";
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { useAuth } from '@/hooks/use-auth';
+import { usePresence } from '@/hooks/use-presence';
+import { PresenceDot } from '@/components/presence/presence-dot';
+import { presenceLabel } from '@/lib/presence';
+import { cn } from '@/lib/utils';
 import type {
   Conversation,
   Message,
@@ -17,7 +17,7 @@ import type {
   Profile,
   ConversationPrivateNote,
   InteractiveMessagePayload,
-} from "@/types";
+} from '@/types';
 import {
   MessageSquare,
   ChevronDown,
@@ -27,51 +27,51 @@ import {
   ArrowLeft,
   RefreshCw,
   PanelRightOpen,
-} from "lucide-react";
+} from 'lucide-react';
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet";
-import { ContactSidebar } from "@/components/inbox/contact-sidebar";
-import { format, isToday, isYesterday, differenceInHours } from "date-fns";
-import { useTranslations } from "next-intl";
-import { Badge } from "@/components/ui/badge";
+} from '@/components/ui/sheet';
+import { ContactSidebar } from '@/components/inbox/contact-sidebar';
+import { format, isToday, isYesterday, differenceInHours } from 'date-fns';
+import { useTranslations } from 'next-intl';
+import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { MessageBubble } from "./message-bubble";
-import { MessageActions } from "./message-actions";
-import { MediaLightbox } from "./media-lightbox";
-import { collectMediaGallery } from "@/lib/media/gallery";
+} from '@/components/ui/dropdown-menu';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { MessageBubble } from './message-bubble';
+import { MessageActions } from './message-actions';
+import { MediaLightbox } from './media-lightbox';
+import { collectMediaGallery } from '@/lib/media/gallery';
 import {
   MessageComposer,
   CHAT_MEDIA_BUCKET,
   type SendMediaPayload,
-} from "./message-composer";
-import { deleteAccountMedia } from "@/lib/storage/upload-media";
-import { TemplatePicker } from "./template-picker";
-import { FlowPicker, type ManualFlowOption } from "./flow-picker";
+} from './message-composer';
+import { deleteAccountMedia } from '@/lib/storage/upload-media';
+import { TemplatePicker } from './template-picker';
+import { FlowPicker, type ManualFlowOption } from './flow-picker';
 import {
   ProductPicker,
   type ShopifyProductOption,
-} from "@/components/catalog/product-picker";
-import { PrivateNoteBubble } from "./private-note-bubble";
-import { AiThreadBanner } from "./ai-thread-banner";
-import { buildReplyPreview } from "./reply-quote";
+} from '@/components/catalog/product-picker';
+import { PrivateNoteBubble } from './private-note-bubble';
+import { AiThreadBanner } from './ai-thread-banner';
+import { buildReplyPreview } from './reply-quote';
 import {
   buildTemplateMessageSnapshot,
   resolveTemplateMessageDisplay,
   templateDisplayPayload,
-} from "@/lib/inbox/template-message-display";
-import { renderTemplateBody } from "@/lib/whatsapp/template-body";
-import { toast } from "sonner";
+} from '@/lib/inbox/template-message-display';
+import { renderTemplateBody } from '@/lib/whatsapp/template-body';
+import { toast } from 'sonner';
 
 interface ReplyDraft {
   id: string;
@@ -134,42 +134,49 @@ interface MessageThreadProps {
   onComposerPendingChange?: (pending: boolean) => void;
 }
 
-function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslations>): string {
+function formatDateSeparator(
+  dateStr: string,
+  t: ReturnType<typeof useTranslations>
+): string {
   const date = new Date(dateStr);
-  if (isToday(date)) return t("today");
-  if (isYesterday(date)) return t("yesterday");
-  return format(date, "MMMM d, yyyy");
+  if (isToday(date)) return t('today');
+  if (isYesterday(date)) return t('yesterday');
+  return format(date, 'MMMM d, yyyy');
 }
 
 type TimelineItem =
-  | { kind: "message"; created_at: string; message: Message }
-  | { kind: "note"; created_at: string; note: ConversationPrivateNote };
+  | { kind: 'message'; created_at: string; message: Message }
+  | { kind: 'note'; created_at: string; note: ConversationPrivateNote };
 
-function buildTimeline(messages: Message[], notes: ConversationPrivateNote[]): TimelineItem[] {
+function buildTimeline(
+  messages: Message[],
+  notes: ConversationPrivateNote[]
+): TimelineItem[] {
   const items: TimelineItem[] = [
     ...messages.map((message) => ({
-      kind: "message" as const,
+      kind: 'message' as const,
       created_at: message.created_at,
       message,
     })),
     ...notes.map((note) => ({
-      kind: "note" as const,
+      kind: 'note' as const,
       created_at: note.created_at,
       note,
     })),
   ];
 
   return items.sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    (a, b) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
 }
 
 function groupTimelineByDate(items: TimelineItem[]) {
   const groups: { date: string; items: TimelineItem[] }[] = [];
-  let currentDate = "";
+  let currentDate = '';
 
   for (const item of items) {
-    const day = format(new Date(item.created_at), "yyyy-MM-dd");
+    const day = format(new Date(item.created_at), 'yyyy-MM-dd');
     if (day !== currentDate) {
       currentDate = day;
       groups.push({ date: item.created_at, items: [item] });
@@ -182,10 +189,10 @@ function groupTimelineByDate(items: TimelineItem[]) {
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
-  open: "text-primary",
-  pending: "text-amber-400",
-  closed: "text-muted-foreground",
-  followup: "text-amber-500",
+  open: 'text-primary',
+  pending: 'text-amber-400',
+  closed: 'text-muted-foreground',
+  followup: 'text-amber-500',
 };
 
 /**
@@ -219,9 +226,9 @@ export function MessageThread({
   onOpenContact,
   onComposerPendingChange,
 }: MessageThreadProps) {
-  const t = useTranslations("Inbox.messageThread");
-  const tTimer = useTranslations("Inbox.sessionTimer");
-  const tQuote = useTranslations("Inbox.replyQuote");
+  const t = useTranslations('Inbox.messageThread');
+  const tTimer = useTranslations('Inbox.sessionTimer');
+  const tQuote = useTranslations('Inbox.replyQuote');
 
   const { user, accountId, isShopifyBrand } = useAuth();
   const { getPresence, getRow, now } = usePresence();
@@ -263,18 +270,20 @@ export function MessageThread({
     onOpenContact?.();
 
     if (
-      typeof window !== "undefined" &&
-      !window.matchMedia("(min-width: 1024px)").matches
+      typeof window !== 'undefined' &&
+      !window.matchMedia('(min-width: 1024px)').matches
     ) {
       setContactSheetOpen(true);
     }
   }, [onOpenContact]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
-  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(
-    null,
-  );
+  const [highlightedMessageId, setHighlightedMessageId] = useState<
+    string | null
+  >(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [privateNotes, setPrivateNotes] = useState<ConversationPrivateNote[]>([]);
+  const [privateNotes, setPrivateNotes] = useState<ConversationPrivateNote[]>(
+    []
+  );
   const [selfAssigning, setSelfAssigning] = useState(false);
   const [templatesByName, setTemplatesByName] = useState<
     Map<string, MessageTemplate>
@@ -291,9 +300,13 @@ export function MessageThread({
 
   const fetchPrivateNotes = useCallback(async (convId: string) => {
     try {
-      const res = await fetch(`/api/inbox/conversations/${convId}/private-notes`);
+      const res = await fetch(
+        `/api/inbox/conversations/${convId}/private-notes`
+      );
       if (res.ok) {
-        const data = (await res.json()) as { notes?: ConversationPrivateNote[] };
+        const data = (await res.json()) as {
+          notes?: ConversationPrivateNote[];
+        };
         setPrivateNotes(data.notes ?? []);
       } else {
         setPrivateNotes([]);
@@ -303,14 +316,18 @@ export function MessageThread({
     }
   }, []);
 
-  const handlePrivateNoteSaved = useCallback((note: ConversationPrivateNote) => {
+  const handlePrivateNoteSaved = useCallback(
+    (note: ConversationPrivateNote) => {
     setPrivateNotes((prev) => {
       const next = [...prev.filter((n) => n.id !== note.id), note];
       return next.sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+          (a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       );
     });
-  }, []);
+    },
+    []
+  );
 
   // Profiles are bounded by RLS to rows the current user is allowed to
   // see — today that's just the current user, but the dropdown keeps the
@@ -319,13 +336,13 @@ export function MessageThread({
     let cancelled = false;
     const supabase = createClient();
     supabase
-      .from("profiles")
-      .select("*")
-      .order("full_name")
+      .from('profiles')
+      .select('*')
+      .order('full_name')
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
-          console.error("Failed to fetch profiles:", error);
+          console.error('Failed to fetch profiles:', error);
           return;
         }
         setProfiles((data as Profile[]) ?? []);
@@ -344,13 +361,13 @@ export function MessageThread({
     let cancelled = false;
     const supabase = createClient();
     supabase
-      .from("message_templates")
-      .select("*")
-      .eq("account_id", accountId)
+      .from('message_templates')
+      .select('*')
+      .eq('account_id', accountId)
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
-          console.error("Failed to fetch templates:", error);
+          console.error('Failed to fetch templates:', error);
           setTemplatesByName(new Map());
           return;
         }
@@ -368,27 +385,31 @@ export function MessageThread({
 
   // 24-hour session timer
   const sessionInfo = useMemo(() => {
-    if (!messages.length) return { expired: false, remaining: "" };
+    if (!messages.length) return { expired: false, remaining: '' };
 
     // Find last customer message
     const lastCustomerMsg = [...messages]
       .reverse()
-      .find((m) => m.sender_type === "customer");
+      .find((m) => m.sender_type === 'customer');
 
-    if (!lastCustomerMsg) return { expired: true, remaining: tTimer("noCustomerMessages") };
+    if (!lastCustomerMsg)
+      return { expired: true, remaining: tTimer('noCustomerMessages') };
 
-    const hoursSince = differenceInHours(new Date(), new Date(lastCustomerMsg.created_at));
+    const hoursSince = differenceInHours(
+      new Date(),
+      new Date(lastCustomerMsg.created_at)
+    );
     const expired = hoursSince >= 24;
 
     if (expired) {
-      return { expired: true, remaining: tTimer("expired") };
+      return { expired: true, remaining: tTimer('expired') };
     }
 
     const hoursLeft = 24 - hoursSince;
     const remaining =
       hoursLeft >= 1
-        ? tTimer("xhRemaining", { hours: Math.floor(hoursLeft) })
-        : tTimer("xmRemaining", { minutes: Math.floor(hoursLeft * 60) });
+        ? tTimer('xhRemaining', { hours: Math.floor(hoursLeft) })
+        : tTimer('xmRemaining', { minutes: Math.floor(hoursLeft * 60) });
 
     return { expired, remaining };
   }, [messages, tTimer]);
@@ -410,14 +431,18 @@ export function MessageThread({
   // Component-local and account-scoped: no chat content survives a reload.
   const messageCacheRef = useRef(new Map<string, Message[]>());
   const loadedMessageCacheKeyRef = useRef<string | null>(null);
-  const messageCacheKey = accountId && conversationId
-    ? `${accountId}:${conversationId}`
-    : null;
+  const messageCacheKey =
+    accountId && conversationId ? `${accountId}:${conversationId}` : null;
 
   useEffect(() => {
     // The parent clears messages when switching conversations. Do not let
     // that transition erase a previously loaded history.
-    if (!messageCacheKey || loadedMessageCacheKeyRef.current !== messageCacheKey || messages.length === 0) return;
+    if (
+      !messageCacheKey ||
+      loadedMessageCacheKeyRef.current !== messageCacheKey ||
+      messages.length === 0
+    )
+      return;
     const cache = messageCacheRef.current;
     cache.delete(messageCacheKey);
     cache.set(messageCacheKey, messages);
@@ -458,15 +483,15 @@ export function MessageThread({
       setLoading(!cached);
 
       const { data, error } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true });
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
 
       if (cancelled) return;
 
       if (error) {
-        console.error("Failed to fetch messages:", error);
+        console.error('Failed to fetch messages:', error);
         setLoading(false);
       } else {
         // Display the available history immediately. Repairing missing bot
@@ -486,7 +511,7 @@ export function MessageThread({
         try {
           const res = await fetch(
             `/api/inbox/conversations/${conversationId}/repair-flow-prompt`,
-            { method: "POST" },
+            { method: 'POST' }
           );
           if (cancelled) return;
           if (res.ok) {
@@ -497,16 +522,16 @@ export function MessageThread({
             if (cancelled) return;
             if (body.repaired || (body.repaired_count ?? 0) > 0) {
               const { data: refetched } = await supabase
-                .from("messages")
-                .select("*")
-                .eq("conversation_id", conversationId)
-                .order("created_at", { ascending: true });
+                .from('messages')
+                .select('*')
+                .eq('conversation_id', conversationId)
+                .order('created_at', { ascending: true });
               if (cancelled) return;
               if (refetched?.length) onMessagesLoadedRef.current(refetched);
             }
           }
         } catch (repairErr) {
-          console.warn("[inbox] repair flow prompt failed:", repairErr);
+          console.warn('[inbox] repair flow prompt failed:', repairErr);
         }
       }
     })();
@@ -534,12 +559,12 @@ export function MessageThread({
 
     (async () => {
       const { data, error } = await supabase
-        .from("message_reactions")
-        .select("*")
-        .eq("conversation_id", conversationId);
+        .from('message_reactions')
+        .select('*')
+        .eq('conversation_id', conversationId);
       if (cancelled) return;
       if (error) {
-        console.error("Failed to fetch reactions:", error);
+        console.error('Failed to fetch reactions:', error);
         return;
       }
       setReactions((data as MessageReaction[]) ?? []);
@@ -560,11 +585,11 @@ export function MessageThread({
     const channel = supabase
       .channel(`reactions:${conversationId}`)
       .on(
-        "postgres_changes",
+        'postgres_changes',
         {
-          event: "INSERT",
-          schema: "public",
-          table: "message_reactions",
+          event: 'INSERT',
+          schema: 'public',
+          table: 'message_reactions',
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
@@ -575,7 +600,7 @@ export function MessageThread({
             // the pill doesn't double up after a successful POST.
             const tempIdx = prev.findIndex(
               (r) =>
-                r.id.startsWith("temp-") &&
+                r.id.startsWith('temp-') &&
                 r.message_id === row.message_id &&
                 r.actor_type === row.actor_type &&
                 r.actor_id === row.actor_id,
@@ -590,11 +615,11 @@ export function MessageThread({
         },
       )
       .on(
-        "postgres_changes",
+        'postgres_changes',
         {
-          event: "UPDATE",
-          schema: "public",
-          table: "message_reactions",
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'message_reactions',
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
@@ -603,11 +628,11 @@ export function MessageThread({
         },
       )
       .on(
-        "postgres_changes",
+        'postgres_changes',
         {
-          event: "DELETE",
-          schema: "public",
-          table: "message_reactions",
+          event: 'DELETE',
+          schema: 'public',
+          table: 'message_reactions',
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
@@ -658,11 +683,11 @@ export function MessageThread({
     if (!conversationId || !hasUnread) return;
     const supabase = createClient();
     supabase
-      .from("conversations")
+      .from('conversations')
       .update({ unread_count: 0 })
-      .eq("id", conversationId)
+      .eq('id', conversationId)
       .then(({ error }) => {
-        if (error) console.error("Failed to reset unread_count:", error);
+        if (error) console.error('Failed to reset unread_count:', error);
       });
   }, [conversationId, hasUnread]);
 
@@ -675,7 +700,7 @@ export function MessageThread({
   }, [messages, privateNotes]);
 
   const handleSend = useCallback(
-    async (text: string, replyToId?: string) => {
+    async (text: string, replyToId?: string, category?: 'utility') => {
       if (!conversation) return;
 
       const tempId = `temp-${Date.now()}`;
@@ -684,10 +709,10 @@ export function MessageThread({
       const optimisticMsg: Message = {
         id: tempId,
         conversation_id: conversation.id,
-        sender_type: "agent",
-        content_type: "text",
+        sender_type: 'agent',
+        content_type: 'text',
         content_text: text,
-        status: "sending",
+        status: 'sending',
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
       };
@@ -695,13 +720,14 @@ export function MessageThread({
       setReplyTo(null);
 
       try {
-        const res = await fetch("/api/whatsapp/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        const res = await fetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             conversation_id: conversation.id,
-            message_type: "text",
+            message_type: 'text',
             content_text: text,
+            category,
             reply_to_message_id: replyToId,
           }),
         });
@@ -710,22 +736,24 @@ export function MessageThread({
 
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
-          console.error("Failed to send message:", reason);
+          console.error('Failed to send message:', reason);
           toast.error(`Failed to send: ${reason}`);
           // Mark the optimistic bubble as failed so the user sees what happened
-          onUpdateMessage(tempId, { status: "failed", error_message: reason });
-          return;
+          onUpdateMessage(tempId, { status: 'failed', error_message: reason });
+          return false;
         }
 
         // Success — the realtime INSERT event will replace the temp bubble
         // with the real DB row. If realtime hasn't arrived yet, at least
         // flip status to 'sent' so the UI stops showing "sending".
-        onUpdateMessage(tempId, { status: "sent" });
+        onUpdateMessage(tempId, { status: 'sent' });
+        return true;
       } catch (err) {
-        console.error("Failed to send message:", err);
-        const reason = err instanceof Error ? err.message : "network error";
+        console.error('Failed to send message:', err);
+        const reason = err instanceof Error ? err.message : 'network error';
         toast.error(`Failed to send: ${reason}`);
-        onUpdateMessage(tempId, { status: "failed", error_message: reason });
+        onUpdateMessage(tempId, { status: 'failed', error_message: reason });
+        return false;
       }
     },
     [conversation, onNewMessage, onUpdateMessage]
@@ -739,19 +767,19 @@ export function MessageThread({
       // recipient as the Meta caption when no caption was typed); other
       // kinds use the caption as-is. Audio carries no caption.
       const contentText =
-        payload.kind === "document"
-          ? payload.caption || payload.filename || "Document"
+        payload.kind === 'document'
+          ? payload.caption || payload.filename || 'Document'
           : payload.caption;
 
       const tempId = `temp-${Date.now()}`;
       const optimisticMsg: Message = {
         id: tempId,
         conversation_id: conversation.id,
-        sender_type: "agent",
+        sender_type: 'agent',
         content_type: payload.kind,
         content_text: contentText,
         media_url: payload.mediaUrl,
-        status: "sending",
+        status: 'sending',
         created_at: new Date().toISOString(),
         reply_to_message_id: payload.replyToId,
       };
@@ -759,9 +787,9 @@ export function MessageThread({
       setReplyTo(null);
 
       try {
-        const res = await fetch("/api/whatsapp/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        const res = await fetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             conversation_id: conversation.id,
             message_type: payload.kind,
@@ -776,22 +804,26 @@ export function MessageThread({
 
         if (!res.ok) {
           const reason = data?.error || `HTTP ${res.status}`;
-          console.error("Failed to send media:", reason);
+          console.error('Failed to send media:', reason);
           toast.error(`Failed to send: ${reason}`);
-          onUpdateMessage(tempId, { status: "failed", error_message: reason });
+          onUpdateMessage(tempId, { status: 'failed', error_message: reason });
           // The upload never reached the recipient — GC the orphaned
           // object rather than leaving it in the public bucket forever.
-          void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
+          void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(
+            () => {}
+          );
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        onUpdateMessage(tempId, { status: 'sent' });
       } catch (err) {
-        console.error("Failed to send media:", err);
-        const reason = err instanceof Error ? err.message : "network error";
+        console.error('Failed to send media:', err);
+        const reason = err instanceof Error ? err.message : 'network error';
         toast.error(`Failed to send: ${reason}`);
-        onUpdateMessage(tempId, { status: "failed", error_message: reason });
-        void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(() => {});
+        onUpdateMessage(tempId, { status: 'failed', error_message: reason });
+        void deleteAccountMedia(CHAT_MEDIA_BUCKET, payload.path).catch(
+          () => {}
+        );
       }
     },
     [conversation, onNewMessage, onUpdateMessage],
@@ -807,23 +839,23 @@ export function MessageThread({
       const optimisticMsg: Message = {
         id: tempId,
         conversation_id: conversation.id,
-        sender_type: "agent",
-        content_type: "interactive",
+        sender_type: 'agent',
+        content_type: 'interactive',
         content_text: payload.body,
         interactive_payload: payload,
-        status: "sending",
+        status: 'sending',
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
       };
       onNewMessage(optimisticMsg);
 
       try {
-        const res = await fetch("/api/whatsapp/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        const res = await fetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             conversation_id: conversation.id,
-            message_type: "interactive",
+            message_type: 'interactive',
             interactive_payload: payload,
             reply_to_message_id: replyToId,
           }),
@@ -833,18 +865,18 @@ export function MessageThread({
 
         if (!res.ok) {
           const reason = data?.error || `HTTP ${res.status}`;
-          console.error("Failed to send interactive message:", reason);
+          console.error('Failed to send interactive message:', reason);
           toast.error(`Failed to send: ${reason}`);
-          onUpdateMessage(tempId, { status: "failed" });
+          onUpdateMessage(tempId, { status: 'failed' });
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        onUpdateMessage(tempId, { status: 'sent' });
       } catch (err) {
-        console.error("Failed to send interactive message:", err);
-        const reason = err instanceof Error ? err.message : "network error";
+        console.error('Failed to send interactive message:', err);
+        const reason = err instanceof Error ? err.message : 'network error';
         toast.error(`Failed to send: ${reason}`);
-        onUpdateMessage(tempId, { status: "failed" });
+        onUpdateMessage(tempId, { status: 'failed' });
       }
     },
     [conversation, onNewMessage, onUpdateMessage],
@@ -861,7 +893,7 @@ export function MessageThread({
   const handleToggleOpenClose = useCallback(() => {
     if (!conversation) return;
     const next: ConversationStatus =
-      conversation.status === "closed" ? "open" : "closed";
+      conversation.status === 'closed' ? 'open' : 'closed';
     void handleStatusChange(next);
   }, [conversation, handleStatusChange]);
 
@@ -890,7 +922,7 @@ export function MessageThread({
     }
 
     let cancelled = false;
-    void fetch("/api/shopify/sell-on-whatsapp", { cache: "no-store" })
+    void fetch('/api/shopify/sell-on-whatsapp', { cache: 'no-store' })
       .then(async (res) => {
         const payload = (await res.json().catch(() => ({}))) as {
           enabled?: boolean;
@@ -901,7 +933,7 @@ export function MessageThread({
         if (!res.ok) {
           setSellOnWhatsAppConfig(null);
           toast.error(
-            payload.error ?? "Could not load Sell on WhatsApp settings",
+            payload.error ?? 'Could not load Sell on WhatsApp settings'
           );
           return;
         }
@@ -913,7 +945,7 @@ export function MessageThread({
       .catch(() => {
         if (!cancelled) {
           setSellOnWhatsAppConfig(null);
-          toast.error("Could not load Sell on WhatsApp settings");
+          toast.error('Could not load Sell on WhatsApp settings');
         }
       });
 
@@ -930,20 +962,20 @@ export function MessageThread({
       const optimisticMsg: Message = {
         id: tempId,
         conversation_id: conversation.id,
-        sender_type: "agent",
-        content_type: "interactive",
+        sender_type: 'agent',
+        content_type: 'interactive',
         content_text: product.title,
         media_url: product.image_url ?? undefined,
-        status: "sending",
+        status: 'sending',
         created_at: new Date().toISOString(),
         content_payload: {
-          type: "product_card",
+          type: 'product_card',
           product_title: product.title,
           shopify_variant_id: product.shopify_variant_id,
           price: product.price,
           currency: product.currency,
           image_url: product.image_url,
-          button_label: "Buy now",
+          button_label: 'Buy now',
         },
       };
       onNewMessage(optimisticMsg);
@@ -952,8 +984,8 @@ export function MessageThread({
         const res = await fetch(
           `/api/inbox/conversations/${conversation.id}/send-product`,
           {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               shopify_variant_id: product.shopify_variant_id,
             }),
@@ -964,28 +996,28 @@ export function MessageThread({
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
           toast.error(`Failed to send product: ${reason}`);
-          onUpdateMessage(tempId, { status: "failed", error_message: reason });
+          onUpdateMessage(tempId, { status: 'failed', error_message: reason });
           return;
         }
 
         onUpdateMessage(tempId, {
-          status: "sent",
+          status: 'sent',
           content_text: payload.product_title ?? product.title,
           content_payload: {
-            type: "product_card",
+            type: 'product_card',
             product_title: payload.product_title ?? product.title,
             shopify_variant_id: product.shopify_variant_id,
             checkout_url: payload.checkout_url,
             price: product.price,
             currency: product.currency,
             image_url: product.image_url,
-            button_label: "Buy now",
+            button_label: 'Buy now',
           },
         });
       } catch (err) {
-        const reason = err instanceof Error ? err.message : "network error";
+        const reason = err instanceof Error ? err.message : 'network error';
         toast.error(`Failed to send product: ${reason}`);
-        onUpdateMessage(tempId, { status: "failed", error_message: reason });
+        onUpdateMessage(tempId, { status: 'failed', error_message: reason });
       }
     },
     [conversation, onNewMessage, onUpdateMessage],
@@ -997,8 +1029,8 @@ export function MessageThread({
 
       try {
         const res = await fetch(`/api/flows/${flow.id}/start`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ conversation_id: conversation.id }),
         });
 
@@ -1006,7 +1038,7 @@ export function MessageThread({
 
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
-          console.error("Failed to start flow:", reason);
+          console.error('Failed to start flow:', reason);
           toast.error(`Failed to start flow: ${reason}`);
           return;
         }
@@ -1014,8 +1046,8 @@ export function MessageThread({
         toast.success(`Started "${flow.name}"`);
         onRefresh?.();
       } catch (err) {
-        console.error("Failed to start flow:", err);
-        const reason = err instanceof Error ? err.message : "network error";
+        console.error('Failed to start flow:', err);
+        const reason = err instanceof Error ? err.message : 'network error';
         toast.error(`Failed to start flow: ${reason}`);
       }
     },
@@ -1045,24 +1077,24 @@ export function MessageThread({
       const optimisticMsg: Message = {
         id: tempId,
         conversation_id: conversation.id,
-        sender_type: "agent",
+        sender_type: 'agent',
         sender_id: user?.id,
-        content_type: "template",
+        content_type: 'template',
         content_text: renderedBody,
         template_name: template.name,
         content_payload: templateDisplayPayload(templateSnapshot),
-        status: "sending",
+        status: 'sending',
         created_at: new Date().toISOString(),
       };
       onNewMessage(optimisticMsg);
 
       try {
-        const res = await fetch("/api/whatsapp/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        const res = await fetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             conversation_id: conversation.id,
-            message_type: "template",
+            message_type: 'template',
             template_name: template.name,
             template_language: template.language,
             // Structured params drive the new send-builder path
@@ -1084,18 +1116,18 @@ export function MessageThread({
 
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
-          console.error("Failed to send template:", reason);
+          console.error('Failed to send template:', reason);
           toast.error(`Failed to send template: ${reason}`);
-          onUpdateMessage(tempId, { status: "failed", error_message: reason });
+          onUpdateMessage(tempId, { status: 'failed', error_message: reason });
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        onUpdateMessage(tempId, { status: 'sent' });
       } catch (err) {
-        console.error("Failed to send template:", err);
-        const reason = err instanceof Error ? err.message : "network error";
+        console.error('Failed to send template:', err);
+        const reason = err instanceof Error ? err.message : 'network error';
         toast.error(`Failed to send template: ${reason}`);
-        onUpdateMessage(tempId, { status: "failed", error_message: reason });
+        onUpdateMessage(tempId, { status: 'failed', error_message: reason });
       }
     },
     [conversation, onNewMessage, onUpdateMessage, user?.id],
@@ -1124,15 +1156,14 @@ export function MessageThread({
     return map;
   }, [reactions]);
 
-  const contactDisplayName = contact?.name || contact?.phone || "Customer";
+  const contactDisplayName = contact?.name || contact?.phone || 'Customer';
 
   // Author label for a quoted message: "You" when we sent the parent,
   // contact name when the customer sent it.
   const authorLabelFor = useCallback(
     (m: Message): string => {
-      const isAgentMsg =
-        m.sender_type === "agent" || m.sender_type === "bot";
-      return isAgentMsg ? "You" : contactDisplayName;
+      const isAgentMsg = m.sender_type === 'agent' || m.sender_type === 'bot';
+      return isAgentMsg ? 'You' : contactDisplayName;
     },
     [contactDisplayName],
   );
@@ -1143,7 +1174,7 @@ export function MessageThread({
       if (profile?.full_name?.trim()) return profile.full_name.trim();
       if (profile?.email?.trim()) {
         const email = profile.email.trim();
-        return email.split("@")[0] || email;
+        return email.split('@')[0] || email;
       }
       return null;
     },
@@ -1152,17 +1183,17 @@ export function MessageThread({
 
   const senderLabelFor = useCallback(
     (m: Message): string => {
-      if (m.sender_type === "customer") return contactDisplayName;
-      if (m.sender_type === "bot") return "Automation";
+      if (m.sender_type === 'customer') return contactDisplayName;
+      if (m.sender_type === 'bot') return 'Automation';
       if (m.sender_id) {
         const name = displayNameForUser(m.sender_id);
         if (name) return name;
       }
-      if (m.sender_type === "agent" && user?.id) {
+      if (m.sender_type === 'agent' && user?.id) {
         const name = displayNameForUser(user.id);
         if (name) return name;
       }
-      return "Agent";
+      return 'Agent';
     },
     [contactDisplayName, displayNameForUser, user?.id],
   );
@@ -1181,7 +1212,7 @@ export function MessageThread({
   const handleJumpToMessage = useCallback((messageId: string) => {
     const el = document.getElementById(`msg-${messageId}`);
     if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     setHighlightedMessageId(messageId);
     if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
     highlightTimerRef.current = setTimeout(() => {
@@ -1197,11 +1228,11 @@ export function MessageThread({
   const postReaction = useCallback(
     async (messageId: string, emoji: string) => {
       if (!user?.id || !conversation) {
-        console.warn("[reactions] missing user or conversation");
+        console.warn('[reactions] missing user or conversation');
         return;
       }
-      if (messageId.startsWith("temp-")) {
-        toast.error("Wait for the message to finish sending");
+      if (messageId.startsWith('temp-')) {
+        toast.error('Wait for the message to finish sending');
         return;
       }
 
@@ -1216,10 +1247,10 @@ export function MessageThread({
         const own = prev.find(
           (r) =>
             r.message_id === messageId &&
-            r.actor_type === "agent" &&
+            r.actor_type === 'agent' &&
             r.actor_id === userId,
         );
-        if (emoji === "") return own ? prev.filter((r) => r !== own) : prev;
+        if (emoji === '') return own ? prev.filter((r) => r !== own) : prev;
         if (own) return prev.map((r) => (r === own ? { ...own, emoji } : r));
         return [
           ...prev,
@@ -1227,7 +1258,7 @@ export function MessageThread({
             id: `temp-${Date.now()}`,
             message_id: messageId,
             conversation_id: convId,
-            actor_type: "agent",
+            actor_type: 'agent',
             actor_id: userId,
             emoji,
             created_at: new Date().toISOString(),
@@ -1236,9 +1267,9 @@ export function MessageThread({
       });
 
       try {
-        const res = await fetch("/api/whatsapp/react", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        const res = await fetch('/api/whatsapp/react', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message_id: messageId, emoji }),
         });
         if (!res.ok) {
@@ -1246,7 +1277,7 @@ export function MessageThread({
           throw new Error(payload?.error || `HTTP ${res.status}`);
         }
       } catch (err) {
-        const reason = err instanceof Error ? err.message : "network error";
+        const reason = err instanceof Error ? err.message : 'network error';
         toast.error(`Reaction failed: ${reason}`);
         setReactions(snapshot);
       }
@@ -1258,16 +1289,21 @@ export function MessageThread({
     async (agentId: string | null) => {
       if (!conversation) return;
 
-      const res = await fetch(`/api/inbox/conversations/${conversation.id}/assign`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch(
+        `/api/inbox/conversations/${conversation.id}/assign`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assigned_agent_id: agentId }),
-      });
+        }
+      );
 
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        console.error("Failed to update assignment:", body?.error);
-        toast.error(body?.error ?? "Failed to update assignment");
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        console.error('Failed to update assignment:', body?.error);
+        toast.error(body?.error ?? 'Failed to update assignment');
         return;
       }
 
@@ -1280,11 +1316,11 @@ export function MessageThread({
       }
 
       if (agentId && contact?.id && accountId) {
-        void fetch("/api/crm/triggers", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        void fetch('/api/crm/triggers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            trigger_type: "conversation_assigned",
+            trigger_type: 'conversation_assigned',
             contact_id: contact.id,
             conversation_id: conversation.id,
             agent_id: agentId,
@@ -1316,31 +1352,36 @@ export function MessageThread({
   // pattern under the user's eye.
   if (!conversation || !contact) {
     return (
-      <div className={cn("flex flex-1 flex-col items-center justify-center", DOODLE_BG_CLASSES)}>
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-          <MessageSquare className="h-8 w-8 text-muted-foreground" />
+      <div
+        className={cn(
+          'flex flex-1 flex-col items-center justify-center',
+          DOODLE_BG_CLASSES
+        )}
+      >
+        <div className="bg-muted flex h-16 w-16 items-center justify-center rounded-full">
+          <MessageSquare className="text-muted-foreground h-8 w-8" />
         </div>
-        <h3 className="mt-4 text-sm font-medium text-muted-foreground">
-          {t("selectConversation")}
+        <h3 className="text-muted-foreground mt-4 text-sm font-medium">
+          {t('selectConversation')}
         </h3>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {t("selectConversationHint")}
+        <p className="text-muted-foreground mt-1 text-xs">
+          {t('selectConversationHint')}
         </p>
       </div>
     );
   }
 
   const displayName = contact.name || contact.phone;
-  const isClosed = conversation.status === "closed";
-  const primaryStatusLabel = isClosed ? "Open" : "Close";
+  const isClosed = conversation.status === 'closed';
+  const primaryStatusLabel = isClosed ? 'Open' : 'Close';
   const primaryStatusColor = isClosed
     ? STATUS_COLORS.open
-    : STATUS_COLORS[conversation.status] ?? STATUS_COLORS.open;
+    : (STATUS_COLORS[conversation.status] ?? STATUS_COLORS.open);
   const assignedAgentId = conversation.assigned_agent_id ?? null;
   const currentAssignee = profiles.find((p) => p.user_id === assignedAgentId);
   const assignLabel = assignedAgentId
-    ? (currentAssignee?.full_name ?? t("assigned"))
-    : t("assign");
+    ? (currentAssignee?.full_name ?? t('assigned'))
+    : t('assign');
 
   return (
     // `min-w-0` is load-bearing: the page already puts min-w-0 on the
@@ -1351,10 +1392,15 @@ export function MessageThread({
     // clipped and the hover toolbar overlaps the Tags panel. Letting the
     // root shrink lets the bubbles' break-words / max-w caps apply.
     // Issue #257.
-    <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden", DOODLE_BG_CLASSES)}>
+    <div
+      className={cn(
+        'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
+        DOODLE_BG_CLASSES
+      )}
+    >
       {/* Header — solid card surface sits on top of the doodle so the
           name/avatar/dropdowns stay legible. */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-3 py-3 sm:px-4">
+      <div className="border-border bg-card flex shrink-0 items-center gap-2 border-b px-3 py-3 sm:px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           {/* Back-to-list button — mobile only. Hidden on lg+ where the
               conversation list is always visible next to the thread. */}
@@ -1362,10 +1408,10 @@ export function MessageThread({
             <button
               type="button"
               onClick={onBack}
-              aria-label={t("backToConversations")}
+              aria-label={t('backToConversations')}
               className={cn(
-                "flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground",
-                !showBackAlways && "lg:hidden",
+                'text-muted-foreground hover:bg-muted hover:text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-md',
+                !showBackAlways && 'lg:hidden'
               )}
             >
               <ArrowLeft className="h-5 w-5" />
@@ -1374,18 +1420,18 @@ export function MessageThread({
           <button
             type="button"
             onClick={handleOpenContact}
-            className="group relative z-10 flex min-w-0 flex-1 cursor-pointer items-center gap-2 overflow-hidden rounded-md text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-3 -ml-1 pl-1 pr-2 py-0.5"
+            className="group hover:bg-muted/60 focus-visible:ring-ring relative z-10 -ml-1 flex min-w-0 flex-1 cursor-pointer items-center gap-2 overflow-hidden rounded-md py-0.5 pr-2 pl-1 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none sm:gap-3"
             aria-label={`Open contact details for ${displayName}`}
             title="Open contact"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+            <div className="bg-muted text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-medium">
               {displayName.charAt(0).toUpperCase()}
             </div>
-            <div className="min-w-0 flex-1 pointer-events-none">
-              <h2 className="truncate text-sm font-semibold text-foreground underline-offset-2 group-hover:underline">
+            <div className="pointer-events-none min-w-0 flex-1">
+              <h2 className="text-foreground truncate text-sm font-semibold underline-offset-2 group-hover:underline">
                 {displayName}
               </h2>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="text-muted-foreground truncate text-xs">
                 {contact.phone}
               </p>
             </div>
@@ -1397,8 +1443,8 @@ export function MessageThread({
           <Badge
             variant="outline"
             className={cn(
-              "hidden shrink-0 gap-1 border-border text-[10px] sm:inline-flex",
-              sessionInfo.expired ? "text-red-400" : "text-primary"
+              'border-border hidden shrink-0 gap-1 text-[10px] sm:inline-flex',
+              sessionInfo.expired ? 'text-red-400' : 'text-primary'
             )}
           >
             <Clock className="h-3 w-3" />
@@ -1411,10 +1457,10 @@ export function MessageThread({
             <button
               type="button"
               onClick={onToggleContactPanel}
-              aria-label={t("showContactPanel")}
+              aria-label={t('showContactPanel')}
               aria-pressed={false}
-              title={t("showContact")}
-              className="hidden h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:inline-flex"
+              title={t('showContact')}
+              className="text-muted-foreground hover:bg-muted hover:text-foreground hidden h-7 w-7 items-center justify-center rounded-md transition-colors lg:inline-flex"
             >
               <PanelRightOpen className="h-4 w-4" />
             </button>
@@ -1430,25 +1476,25 @@ export function MessageThread({
               type="button"
               onClick={handleRefreshClick}
               disabled={isRefreshing}
-              aria-label={t("refreshConversation")}
-              title={t("refresh")}
+              aria-label={t('refreshConversation')}
+              title={t('refresh')}
               className={cn(
-                "inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60",
+                'text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors disabled:opacity-60'
               )}
             >
               <RefreshCw
-                className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")}
+                className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')}
               />
             </button>
           )}
 
           {/* Status: primary toggles open/closed; dropdown sets follow-up */}
-          <div className="inline-flex items-center rounded-md border border-border">
+          <div className="border-border inline-flex items-center rounded-md border">
             <button
               type="button"
               onClick={handleToggleOpenClose}
               className={cn(
-                "inline-flex h-7 items-center px-2.5 text-xs font-medium hover:bg-muted",
+                'hover:bg-muted inline-flex h-7 items-center px-2.5 text-xs font-medium',
                 primaryStatusColor,
               )}
             >
@@ -1457,8 +1503,8 @@ export function MessageThread({
             <DropdownMenu>
               <DropdownMenuTrigger
                 className={cn(
-                  "inline-flex h-7 w-7 items-center justify-center border-l border-border text-muted-foreground hover:bg-muted hover:text-foreground",
-                  conversation.status === "followup" && "text-amber-500",
+                  'border-border text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 w-7 items-center justify-center border-l',
+                  conversation.status === 'followup' && 'text-amber-500'
                 )}
                 aria-label="More status options"
               >
@@ -1469,8 +1515,8 @@ export function MessageThread({
                 className="border-border bg-popover"
               >
                 <DropdownMenuItem
-                  onClick={() => void handleStatusChange("followup")}
-                  className={cn("text-sm", STATUS_COLORS.followup)}
+                  onClick={() => void handleStatusChange('followup')}
+                  className={cn('text-sm', STATUS_COLORS.followup)}
                 >
                   Followup
                 </DropdownMenuItem>
@@ -1482,8 +1528,8 @@ export function MessageThread({
           <DropdownMenu>
             <DropdownMenuTrigger
               className={cn(
-                "inline-flex h-7 w-[6.75rem] items-center justify-center gap-1 rounded-md px-2 text-xs hover:bg-muted sm:w-[7.5rem]",
-                assignedAgentId ? "text-primary" : "text-muted-foreground"
+                'hover:bg-muted inline-flex h-7 w-[6.75rem] items-center justify-center gap-1 rounded-md px-2 text-xs sm:w-[7.5rem]',
+                assignedAgentId ? 'text-primary' : 'text-muted-foreground'
               )}
               title={assignLabel}
             >
@@ -1498,8 +1544,11 @@ export function MessageThread({
               className="border-border bg-popover"
             >
               {profiles.length === 0 ? (
-                <DropdownMenuItem disabled className="text-sm text-muted-foreground">
-                  {t("noTeammates")}
+                <DropdownMenuItem
+                  disabled
+                  className="text-muted-foreground text-sm"
+                >
+                  {t('noTeammates')}
                 </DropdownMenuItem>
               ) : (
                 profiles.map((p) => {
@@ -1510,8 +1559,8 @@ export function MessageThread({
                       key={p.id}
                       onClick={() => handleAssignChange(p.user_id)}
                       className={cn(
-                        "text-sm",
-                        isSelected ? "text-primary" : "text-popover-foreground"
+                        'text-sm',
+                        isSelected ? 'text-primary' : 'text-popover-foreground'
                       )}
                     >
                       <PresenceDot
@@ -1525,7 +1574,7 @@ export function MessageThread({
                       />
                       <span className="flex-1">
                         {p.full_name}
-                        {p.user_id === user?.id ? t("me") : ""}
+                        {p.user_id === user?.id ? t('me') : ''}
                       </span>
                       {isSelected && <Check className="ml-2 h-3 w-3" />}
                     </DropdownMenuItem>
@@ -1537,9 +1586,9 @@ export function MessageThread({
                   <DropdownMenuSeparator className="bg-border" />
                   <DropdownMenuItem
                     onClick={() => handleAssignChange(null)}
-                    className="text-sm text-muted-foreground"
+                    className="text-muted-foreground text-sm"
                   >
-                    {t("unassign")}
+                    {t('unassign')}
                   </DropdownMenuItem>
                 </>
               )}
@@ -1552,13 +1601,15 @@ export function MessageThread({
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <div className="border-primary h-5 w-5 animate-spin rounded-full border-2 border-t-transparent" />
           </div>
         ) : timeline.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12">
-            <p className="text-sm text-muted-foreground">{t("noMessagesYet")}</p>
-            <p className="text-xs text-muted-foreground">
-              {t("sendTemplateHint")}
+            <p className="text-muted-foreground text-sm">
+              {t('noMessagesYet')}
+            </p>
+            <p className="text-muted-foreground text-xs">
+              {t('sendTemplateHint')}
             </p>
           </div>
         ) : (
@@ -1567,18 +1618,23 @@ export function MessageThread({
               <div key={group.date}>
                 {/* Date separator */}
                 <div className="mb-4 flex items-center justify-center">
-                  <span className="rounded-full bg-muted px-3 py-1 text-[10px] font-medium text-muted-foreground">
+                  <span className="bg-muted text-muted-foreground rounded-full px-3 py-1 text-[10px] font-medium">
                     {formatDateSeparator(group.date, t)}
                   </span>
                 </div>
                 <div className="space-y-2">
                   {group.items.map((item) => {
-                    if (item.kind === "note") {
-                      return <PrivateNoteBubble key={`note-${item.note.id}`} note={item.note} />;
+                    if (item.kind === 'note') {
+                      return (
+                        <PrivateNoteBubble
+                          key={`note-${item.note.id}`}
+                          note={item.note}
+                        />
+                      );
                     }
 
                     const msg = item.message;
-                    if (msg.content_type === "system") {
+                    if (msg.content_type === 'system') {
                       return <MessageBubble key={msg.id} message={msg} />;
                     }
 
@@ -1588,9 +1644,10 @@ export function MessageThread({
                     const reply = parent
                       ? {
                           authorLabel:
-                            parent.sender_type === "agent" || parent.sender_type === "bot"
-                              ? t("me") 
-                              : contact?.name || contact?.phone || "Unknown",
+                            parent.sender_type === 'agent' ||
+                            parent.sender_type === 'bot'
+                              ? t('me')
+                              : contact?.name || contact?.phone || 'Unknown',
                           preview: buildReplyPreview(parent, tQuote),
                         }
                       : null;
@@ -1598,10 +1655,9 @@ export function MessageThread({
                     const handlePillToggle = (emoji: string) => {
                       const own = msgReactions?.find(
                         (r) =>
-                          r.actor_type === "agent" &&
-                          r.actor_id === user?.id,
+                          r.actor_type === 'agent' && r.actor_id === user?.id
                       );
-                      const next = own?.emoji === emoji ? "" : emoji;
+                      const next = own?.emoji === emoji ? '' : emoji;
                       void postReaction(msg.id, next);
                     };
                     return (
@@ -1627,7 +1683,7 @@ export function MessageThread({
                           onToggleReaction={handlePillToggle}
                           senderLabel={senderLabelFor(msg)}
                           templateDisplay={
-                            msg.content_type === "template"
+                            msg.content_type === 'template'
                               ? resolveTemplateMessageDisplay(
                                   msg,
                                   msg.template_name
@@ -1650,8 +1706,11 @@ export function MessageThread({
 
       <div className="shrink-0">
       {conversation.whatsapp_config && (
-        <div className="border-b border-border bg-muted/30 px-4 py-1.5 text-xs text-muted-foreground">
-          Sending from <span className="font-medium text-foreground">{conversation.whatsapp_config.reference_name}</span>
+          <div className="border-border bg-muted/30 text-muted-foreground border-b px-4 py-1.5 text-xs">
+            Sending from{' '}
+            <span className="text-foreground font-medium">
+              {conversation.whatsapp_config.reference_name}
+            </span>
         </div>
       )}
       {/* AI auto-reply banner — take over an active bot, or resume it
@@ -1664,7 +1723,7 @@ export function MessageThread({
         assignedAgentId={assignedAgentId}
         currentUserId={user?.id}
         onChange={(patch) => {
-          if ("assigned_agent_id" in patch) {
+            if ('assigned_agent_id' in patch) {
             onAssignChange(conversation.id, patch.assigned_agent_id ?? null);
           }
         }}
@@ -1718,10 +1777,7 @@ export function MessageThread({
           <SheetHeader className="sr-only">
             <SheetTitle>{displayName}</SheetTitle>
           </SheetHeader>
-          <ContactSidebar
-            contact={contact}
-            conversationId={conversation.id}
-          />
+          <ContactSidebar contact={contact} conversationId={conversation.id} />
         </SheetContent>
       </Sheet>
 

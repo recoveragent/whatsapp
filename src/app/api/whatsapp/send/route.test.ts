@@ -357,3 +357,57 @@ describe('POST /api/whatsapp/send — role enforcement', () => {
     expect(sendTemplateMessage).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Direct Send outside the service window', () => {
+  beforeEach(() => {
+    messageInserts.length = 0;
+    createdConversation = null;
+    callerRole = 'agent';
+    contactRow = CONTACT;
+    existingConversation = {
+      id: 'conv-existing',
+      account_id: 'acct-1',
+      whatsapp_config_id: 'cfg-1',
+      assigned_agent_id: 'user-1',
+      contact: CONTACT,
+      last_customer_message_at: null,
+    };
+    supabaseMock = makeSupabaseMock();
+  });
+  it('sends explicit utility text and persists delivery metadata', async () => {
+    const { sendTextMessage } = await import('@/lib/whatsapp/meta-api');
+    vi.mocked(sendTextMessage).mockResolvedValueOnce({
+      messageId: 'wamid-direct',
+    });
+    const res = await postContactTemplate({
+      message_type: 'text',
+      content_text: 'Your order shipped.',
+      category: 'utility',
+    });
+    expect(res.status).toBe(200);
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: 'utility',
+        text: 'Your order shipped.',
+      })
+    );
+    expect(messageInserts[0]).toMatchObject({
+      content_payload: { direct_send: true, category: 'utility' },
+    });
+  });
+  it('keeps ordinary text blocked outside the window', async () => {
+    const res = await postContactTemplate({
+      message_type: 'text',
+      content_text: 'Hello',
+    });
+    expect(res.status).toBe(422);
+  });
+  it('rejects marketing category before sending', async () => {
+    const res = await postContactTemplate({
+      message_type: 'text',
+      content_text: 'Sale',
+      category: 'marketing',
+    });
+    expect(res.status).toBe(400);
+  });
+});

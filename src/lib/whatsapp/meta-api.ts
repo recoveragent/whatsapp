@@ -401,6 +401,7 @@ export interface SendTextMessageArgs {
   text: string
   /** Meta's message_id of the message being replied to. Adds a `context` field
    *  so WhatsApp renders the new message as a reply with a quote preview. */
+  category?: 'utility'
   contextMessageId?: string
 }
 
@@ -411,7 +412,8 @@ export interface SendTextMessageArgs {
 export async function sendTextMessage(
   args: SendTextMessageArgs
 ): Promise<MetaSendResult> {
-  const { phoneNumberId, accessToken, to, text, contextMessageId } = args
+  const { phoneNumberId, accessToken, to, text, contextMessageId, category } = args
+  if (category && (!text.trim() || text.length > 1024)) throw new Error('Direct Send requires 1–1024 characters of utility text')
   const url = `${META_API_BASE}/${phoneNumberId}/messages`
   const body: Record<string, unknown> = {
     messaging_product: 'whatsapp',
@@ -419,6 +421,7 @@ export async function sendTextMessage(
     to,
     type: 'text',
     text: { body: text },
+    ...(category ? { category } : {}),
   }
   if (contextMessageId) {
     body.context = { message_id: contextMessageId }
