@@ -183,7 +183,7 @@ function HeaderMediaField({
 
 /** Side-by-side variable inputs + picker when the panel is wide enough. */
 const VARIABLE_FIELDS_LAYOUT =
-  "grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_min(100%,240px)]";
+  "grid grid-cols-1 gap-3 @min-[36rem]:grid-cols-[minmax(0,1fr)_240px]";
 
 function variableInputClass(active: boolean) {
   return cn(
@@ -594,7 +594,7 @@ export function SendTemplateFields({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="@container min-w-0 space-y-3">
       <div>
         <label className="mb-1 block text-xs text-muted-foreground">Template</label>
         <TemplateSelectPicker
@@ -792,7 +792,7 @@ export function SendTemplateFields({
                 <TemplateVariablePicker
                   groups={variableGroups}
                   onInsert={insertToken}
-                  className="lg:sticky lg:top-0"
+                  className="@min-[36rem]:sticky @min-[36rem]:top-0"
                 />
               )}
             </div>

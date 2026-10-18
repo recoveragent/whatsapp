@@ -1145,7 +1145,7 @@ function NodeEditSheet({
   if (!node) {
     return (
       <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-        <SheetContent side="right" className="w-full sm:max-w-md" />
+        <SheetContent side="right" className="data-[side=right]:w-full data-[side=right]:sm:max-w-none data-[side=right]:lg:w-[40vw]" />
       </Sheet>
     );
   }
@@ -1157,12 +1157,12 @@ function NodeEditSheet({
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent
         side="right"
-        className="border-border bg-popover flex w-full flex-col gap-0 border-l p-0 sm:max-w-md"
+        className="border-border bg-popover flex min-w-0 flex-col gap-0 overflow-hidden border-l p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-none data-[side=right]:lg:w-[40vw]"
       >
-        <SheetHeader className="border-border flex-row items-center gap-3 space-y-0 border-b px-5 py-4">
+        <SheetHeader className="border-border shrink-0 flex-row items-center gap-3 space-y-0 border-b px-4 py-4 pr-12 sm:pl-5">
           <NodeIconChip type={resolvedType} size={36} iconSize={18} />
           <div className="min-w-0 flex-1">
-            <SheetTitle className="flex items-center gap-2 text-[11px] font-semibold tracking-wider uppercase">
+            <SheetTitle className="flex flex-wrap items-center gap-2 text-[11px] font-semibold tracking-wider uppercase">
               <span style={{ color: c.text }}>{meta.label}</span>
               {isEntry && (
                 <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-emerald-300 uppercase">
@@ -1181,7 +1181,7 @@ function NodeEditSheet({
           </div>
         </SheetHeader>
 
-        <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4 sm:px-5">
           <NodeConfigForm
             node={node}
             allNodes={allNodes}
@@ -1192,8 +1192,8 @@ function NodeEditSheet({
           />
         </div>
 
-        <SheetFooter className="border-border border-t px-5 py-3 sm:flex-row sm:justify-between">
-          <div className="flex items-center gap-1">
+        <SheetFooter className="border-border shrink-0 border-t px-4 py-3 sm:flex-row sm:flex-wrap sm:justify-between sm:px-5">
+          <div className="flex flex-wrap items-center gap-1">
             {!isEntry ? (
               <Button variant="ghost" size="sm" onClick={onSetEntry}>
                 {t('setAsEntry')}
