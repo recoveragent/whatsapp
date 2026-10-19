@@ -194,6 +194,7 @@ export async function beginPaymentCollection(
                 link_currency: 'INR',
                 link_purpose: description,
                 link_expiry_time: expiresAt,
+                link_meta: { upi_intent: c.cashfree_checkout !== 'hosted' },
                 link_partial_payments: false,
                 link_auto_reminders: false,
                 link_notify: {

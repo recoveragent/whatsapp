@@ -49,3 +49,25 @@ it for both the payment request and reminders. Activation and collection setup
 reject mismatched payment buttons before creating a link. Runtime template
 lookups use APPROVED rows and fail on query errors; a pending draft with the same
 name cannot bypass URL checks.
+
+## Direct UPI checkout
+
+New Cashfree links now request `link_meta.upi_intent: true` by default. Under
+Collect payment → Cashfree → Checkout experience, choose **Direct UPI app** or
+**Hosted checkout page** (`upi_intent: false`). Existing links retain the behavior
+with which they were created. The choice is saved in node configuration and the
+collection snapshot, without a database migration.
+
+Cashfree documents UPI intent as a direct mobile UPI flow, with normal link
+checkout elsewhere. Device, browser and installed-app support still need a real
+phone test. This change does not activate WhatsApp's native payment sheet.
+Cashfree's WhatsApp channel requires merchant activation and a verified native
+integration. Merchant activation for Gifting Studio is currently unverified.
+
+Keep `send_whatsapp: false`: sending through Cashfree's separate delivery channel
+must not duplicate the CRM template or silently change the business sender.
+
+References:
+- [Cashfree link metadata](https://www.cashfree.com/docs/api-reference/payments/latest/payment-links/create-payment-link)
+- [Official SDK UPI intent description](https://github.com/cashfree/cashfree-pg-sdk-nodejs/blob/main/docs/PaymentLink.md)
+- [Cashfree WhatsApp activation requirements](https://www.cashfree.com/whatsapp-payment-links/)

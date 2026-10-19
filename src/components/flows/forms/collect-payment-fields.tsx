@@ -226,6 +226,31 @@ export function CollectPaymentFields({
           <Input value="INR (₹)" readOnly />
         </label>
       </div>
+      {c.provider === 'cashfree' && (
+        <section className="space-y-2">
+          <label className="block text-xs">
+            Checkout experience
+            <select
+              className="bg-background mt-1 w-full rounded border p-2"
+              value={c.cashfree_checkout ?? 'upi_intent'}
+              onChange={(e) => onChange({ cashfree_checkout: e.target.value })}
+            >
+              <option value="upi_intent">Direct UPI app (fewer steps)</option>
+              <option value="hosted">Hosted checkout page</option>
+            </select>
+          </label>
+          <p className="text-muted-foreground text-xs">
+            Direct UPI requests a handoff to a UPI app on supported phones.
+            Other devices use Cashfree checkout. Applies to newly generated
+            links.
+          </p>
+          <p className="text-muted-foreground text-xs">
+            WhatsApp’s native payment sheet requires separate Cashfree merchant
+            activation and integration; selecting Direct UPI enables the app
+            handoff.
+          </p>
+        </section>
+      )}
       <label className="block text-xs">
         Fixed amount (₹)
         <Input

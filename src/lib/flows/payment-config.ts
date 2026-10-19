@@ -2,6 +2,8 @@ import type { SendTemplateNodeConfig } from './types';
 
 export interface CollectPaymentNodeConfig {
   provider: 'razorpay' | 'cashfree';
+  /** Cashfree mobile checkout; omitted uses direct UPI for newly created links. */
+  cashfree_checkout?: 'upi_intent' | 'hosted';
   currency: 'INR';
   /** Rupees, converted to paise on the server. */
   amount: number;
@@ -33,6 +35,12 @@ export function paymentConfigErrors(
     c.currency !== 'INR'
   )
     add('provider', 'Select Razorpay or Cashfree and INR.');
+  if (
+    c.provider === 'cashfree' &&
+    c.cashfree_checkout !== undefined &&
+    !['upi_intent', 'hosted'].includes(String(c.cashfree_checkout))
+  )
+    add('cashfree_checkout', 'Select direct UPI or hosted checkout.');
   const paise = Number(c.amount) * 100;
   if (
     typeof c.amount !== 'number' ||

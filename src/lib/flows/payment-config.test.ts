@@ -42,6 +42,11 @@ const targets: BuilderNode[] = PAYMENT_BRANCHES.map((b) => ({
 }));
 
 describe('collect payment flow configuration', () => {
+  it('validates the optional Cashfree checkout choice', () => {
+    for (const cashfree_checkout of ['upi_intent', 'hosted']) expect(paymentConfigErrors({ ...config, provider: 'cashfree', cashfree_checkout })).toEqual([]);
+    expect(paymentConfigErrors({ ...config, provider: 'cashfree', cashfree_checkout: 'native' }).some(e => e.field === 'cashfree_checkout')).toBe(true);
+  });
+
   it('accepts Cashfree with the same flow settings', () => expect(paymentConfigErrors({ ...config, provider: 'cashfree' })).toEqual([]));
   it('accepts a fixed deposit with approved-template mappings and bounded reminders', () =>
     expect(paymentConfigErrors(config)).toEqual([]));

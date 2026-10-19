@@ -394,7 +394,7 @@ describe('Cashfree flow lifecycle', () => {
     }));
     return f;
   }
-  it('creates a Cashfree link and parks the run without using Razorpay', async () => {
+  it('defaults new Cashfree links to direct UPI and parks the run without using Razorpay', async () => {
     const f = cashfreeFixture();
     await beginPaymentCollection(f.db, f.run, f.node);
     expect(f.fetch.mock.calls[0][0]).toBe(
@@ -403,6 +403,7 @@ describe('Cashfree flow lifecycle', () => {
     const body = JSON.parse(f.fetch.mock.calls[0][1].body);
     expect(body).toMatchObject({
       link_amount: 199,
+      link_meta: { upi_intent: true },
       link_partial_payments: false,
       link_auto_reminders: false,
       customer_details: { customer_phone: '9000000000' },
@@ -411,6 +412,14 @@ describe('Cashfree flow lifecycle', () => {
     expect(f.tables.flow_runs[0].status).toBe('waiting');
     expect(f.tables.flow_payment_requests[0].config).toMatchObject({
       provider: 'cashfree',
+    });
+  });
+  it('keeps hosted checkout available when explicitly selected', async () => {
+    const f = cashfreeFixture();
+    f.node.config.cashfree_checkout = 'hosted';
+    await beginPaymentCollection(f.db, f.run, f.node);
+    expect(JSON.parse(f.fetch.mock.calls[0][1].body).link_meta).toEqual({
+      upi_intent: false,
     });
   });
   it('reconciles a paid Cashfree link through the shared resolver and stops reminders', async () => {
