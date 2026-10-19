@@ -51,6 +51,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useUpdateNodeInternals,
   type Connection,
   type Edge as RfEdge,
   type EdgeChange,
@@ -109,6 +110,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useFlowEditor } from './flow-editor-state';
+import { reconcileCanvasNodes } from './canvas-node-state';
 import { NodeConfigForm } from './forms/node-config-form';
 import { useCustomFields } from './forms/fields';
 import { useAccountPipelines } from './forms/use-account-pipelines';
@@ -212,7 +214,7 @@ function slotColor(nodeType: NodeType, slotId: string, fallback: string) {
   return fallback;
 }
 
-function FlowNodeCard({ data, selected }: NodeProps) {
+function FlowNodeCard({ id, data, selected }: NodeProps) {
   const t = useTranslations('Flows.builder');
   const {
     node,
@@ -233,6 +235,11 @@ function FlowNodeCard({ data, selected }: NodeProps) {
     t: tSummary,
   });
   const slots = outgoingSlots(node);
+  const updateNodeInternals = useUpdateNodeInternals();
+  const handleSignature = JSON.stringify(slots.map((slot) => slot.id));
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [id, handleSignature, updateNodeInternals]);
   // Start nodes are entry-only; nothing ever targets them, so they
   // don't need an incoming Handle. Every other node type accepts
   // incoming edges (including terminal handoff / end — they're the
@@ -352,9 +359,14 @@ interface TriggerNodeData extends Record<string, unknown> {
   handles: Array<{ id: string; label: string }>;
 }
 
-function TriggerNodeCard({ data, selected }: NodeProps) {
+function TriggerNodeCard({ id, data, selected }: NodeProps) {
   const { label, summary, isFlashed, handles } = data as TriggerNodeData;
   const slots = handles.length > 0 ? handles : [{ id: "next", label: "Next step" }];
+  const updateNodeInternals = useUpdateNodeInternals();
+  const handleSignature = JSON.stringify(slots.map((slot) => slot.id));
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [id, handleSignature, updateNodeInternals]);
   return (
     <div
       className={cn(
@@ -600,6 +612,7 @@ function FlowCanvasInner() {
   }, [
     builderNodes,
     customFields,
+    entryNodeId,
     pipelines,
     stages,
     flashKey,
@@ -614,7 +627,7 @@ function FlowCanvasInner() {
   const [rfNodes, setRfNodes] = useState<RfNode[]>(derivedRfNodes);
 
   useEffect(() => {
-    setRfNodes(derivedRfNodes);
+    setRfNodes((current) => reconcileCanvasNodes(current, derivedRfNodes));
   }, [derivedRfNodes]);
 
   // Edges are derived from node configs (next_node_key / button targets /
