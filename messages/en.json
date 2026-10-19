@@ -1087,6 +1087,7 @@
       "statusHandedOff": "Handed off",
       "statusTimedOut": "Timed out",
       "statusPaused": "Paused by agent",
+      "statusWaiting": "Waiting",
       "statusFailed": "Failed"
     },
     "builder": {

@@ -331,3 +331,74 @@ describe('unpaid reminder processing', () => {
     expect(h.send).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Cashfree flow lifecycle', () => {
+  function cashfreeFixture() {
+    const f = newCollectionFixture();
+    f.node.config.provider = 'cashfree';
+    f.tables.account_cashfree_connections = [
+      {
+        account_id: 'brand',
+        enabled: true,
+        client_id: 'app',
+        client_secret_encrypted: 'cashfree-secret',
+        environment: 'sandbox',
+      },
+    ];
+    f.fetch.mockImplementation(async (_url, init) => ({
+      ok: true,
+      json: async () => ({
+        link_id: JSON.parse(init.body).link_id,
+        link_url: 'https://payments-test.cashfree.com/links/test',
+        link_status: 'ACTIVE',
+        link_currency: 'INR',
+        link_amount: 199,
+        link_amount_paid: 0,
+      }),
+    }));
+    return f;
+  }
+  it('creates a Cashfree link and parks the run without using Razorpay', async () => {
+    const f = cashfreeFixture();
+    await beginPaymentCollection(f.db, f.run, f.node);
+    expect(f.fetch.mock.calls[0][0]).toBe(
+      'https://sandbox.cashfree.com/pg/links'
+    );
+    const body = JSON.parse(f.fetch.mock.calls[0][1].body);
+    expect(body).toMatchObject({
+      link_amount: 199,
+      link_partial_payments: false,
+      link_auto_reminders: false,
+      customer_details: { customer_phone: '9000000000' },
+    });
+    expect(f.run.vars.payment_url_suffix).toBe('links/test');
+    expect(f.tables.flow_runs[0].status).toBe('waiting');
+    expect(f.tables.flow_payment_requests[0].config).toMatchObject({
+      provider: 'cashfree',
+    });
+  });
+  it('reconciles a paid Cashfree link through the shared resolver and stops reminders', async () => {
+    const f = cashfreeFixture();
+    await beginPaymentCollection(f.db, f.run, f.node);
+    const row = f.tables.flow_payment_requests[0];
+    row.next_check_at = new Date(0).toISOString();
+    f.fetch.mockImplementation(async () => ({
+      ok: true,
+      json: async () => ({
+        link_id: row.id,
+        link_url: row.payment_url,
+        link_status: 'PAID',
+        link_currency: 'INR',
+        link_amount: 199,
+        link_amount_paid: 199,
+      }),
+    }));
+    h.send.mockClear();
+    await processPaymentCollections(f.db);
+    expect(f.rpc).toHaveBeenCalledWith('resolve_flow_payment', {
+      p_request_id: row.id,
+      p_outcome: 'paid',
+    });
+    expect(h.send).not.toHaveBeenCalled();
+  });
+});

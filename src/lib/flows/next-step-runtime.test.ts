@@ -213,6 +213,14 @@ beforeEach(() => {
 });
 
 describe('independent Next step and no-response timeout', () => {
+  it('rejects a Razorpay CTA for a Cashfree collection', async () => {
+    h.tables.flow_nodes[0] = node('confirmation', 'send_template', { next_node_key: 'end', variables: {} });
+    h.tables.message_templates = [{ id: 'tpl', user_id: 'user', account_id: 'account', name: 'confirmation', language: 'en_US', body_text: 'Advance.', buttons: [{ type: 'URL', text: 'Pay now', url: 'https://rzp.io/{{1}}', url_purpose: 'payment' }] }];
+    await startFlowForExternalEvent({ flow, contactId: 'contact', conversationId: 'conversation', initialVars: { payment_url: 'https://payments.cashfree.com/links/test', payment_url_suffix: 'links/test' } });
+    expect(h.templateParams).toEqual([]);
+    expect(h.tables.flow_runs[0].status).toBe('failed');
+  });
+
   it('uses separate payment and courier URLs when a template contains both CTAs', async () => {
     h.tables.flow_nodes[0] = node('confirmation', 'send_template', { next_node_key: 'end', variables: {} });
     h.tables.message_templates = [{ id: 'tpl', user_id: 'user', account_id: 'account', name: 'confirmation', language: 'en_US', body_text: 'Order update.', buttons: [

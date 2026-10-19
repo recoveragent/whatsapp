@@ -49,13 +49,24 @@ export function TemplateCtaSuggestions({
     }
     return '';
   });
+  const [gateway, setGateway] = useState<
+    'razorpay' | 'cashfree' | 'cashfree_sandbox'
+  >(
+    firstUrl?.type === 'URL' &&
+      firstUrl.url.includes('payments-test.cashfree.com')
+      ? 'cashfree_sandbox'
+      : firstUrl?.type === 'URL' &&
+          firstUrl.url.includes('payments.cashfree.com')
+        ? 'cashfree'
+        : 'razorpay'
+  );
   function apply() {
     if (purpose === 'custom') return;
     try {
       const site =
         getConfiguredSiteUrl() ||
         (typeof window !== 'undefined' ? window.location.origin : '');
-      const button = suggestedCta(purpose, site, storeUrl);
+      const button = suggestedCta(purpose, site, storeUrl, gateway);
       const index = buttons.findIndex((b) => b.type === 'URL');
       if (index < 0 && buttons.length >= 10)
         throw new Error('Remove a button before adding a suggested CTA.');
@@ -96,6 +107,20 @@ export function TemplateCtaSuggestions({
       </label>
       {purpose !== 'custom' && (
         <>
+          {purpose === 'payment' && (
+            <label className="block space-y-1 text-xs">
+              Payment gateway
+              <select
+                className="bg-background w-full rounded border p-2"
+                value={gateway}
+                onChange={(e) => setGateway(e.target.value as typeof gateway)}
+              >
+                <option value="razorpay">Razorpay</option>
+                <option value="cashfree">Cashfree</option>
+                <option value="cashfree_sandbox">Cashfree sandbox</option>
+              </select>
+            </label>
+          )}
           {['checkout', 'order_status'].includes(purpose) && (
             <label className="block space-y-1 text-xs">
               <span>Store / checkout website</span>

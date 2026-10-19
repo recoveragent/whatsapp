@@ -127,3 +127,15 @@ describe('purpose-based CTA suggestions', () => {
     expect(button).not.toHaveProperty('url_purpose');
   });
 });
+
+it('suggests separate Cashfree production and sandbox domains', () => {
+  expect(
+    suggestedCta('payment', 'https://app.example', '', 'cashfree')
+  ).toMatchObject({
+    url: 'https://payments.cashfree.com/{{1}}',
+    example: 'https://payments.cashfree.com/links/example-payment',
+  });
+  expect(
+    suggestedCta('payment', 'https://app.example', '', 'cashfree_sandbox').url
+  ).toBe('https://payments-test.cashfree.com/{{1}}');
+});

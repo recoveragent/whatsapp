@@ -260,7 +260,9 @@ function RunCard({
             <Badge variant="outline" className={cn('gap-1', meta.classes)}>
               <StatusIcon className="h-3 w-3" />
               {t(
-                run.status === 'active'
+                run.status === 'waiting'
+                  ? 'statusWaiting'
+                  : run.status === 'active'
                   ? 'statusActive'
                   : run.status === 'completed'
                     ? 'statusCompleted'

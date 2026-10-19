@@ -42,6 +42,7 @@ const targets: BuilderNode[] = PAYMENT_BRANCHES.map((b) => ({
 }));
 
 describe('collect payment flow configuration', () => {
+  it('accepts Cashfree with the same flow settings', () => expect(paymentConfigErrors({ ...config, provider: 'cashfree' })).toEqual([]));
   it('accepts a fixed deposit with approved-template mappings and bounded reminders', () =>
     expect(paymentConfigErrors(config)).toEqual([]));
   it('rejects unsafe amounts and reminder settings', () => {

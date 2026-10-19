@@ -53,6 +53,7 @@ export async function PUT(request: Request) {
       .from('flow_payment_requests')
       .select('id', { count: 'exact', head: true })
       .eq('account_id', accountId)
+      .or('config->>provider.eq.razorpay,config->>provider.is.null')
       .in('status', ['creating', 'pending']);
     if (pendingError) throw pendingError;
     if (count)

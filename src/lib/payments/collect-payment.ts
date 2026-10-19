@@ -1,4 +1,10 @@
 import 'server-only';
+import {
+  cashfreeRequest,
+  normalizeCashfreeLink,
+  type CashfreeCredentials,
+  type CashfreeLink,
+} from './cashfree';
 import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { decrypt } from '@/lib/whatsapp/encryption';
@@ -59,6 +65,28 @@ export async function paymentCredentials(
   };
 }
 
+export async function cashfreeCredentials(
+  db: SupabaseClient,
+  accountId: string
+): Promise<CashfreeCredentials> {
+  const { data, error } = await db
+    .from('account_cashfree_connections')
+    .select('*')
+    .eq('account_id', accountId)
+    .eq('enabled', true)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data)
+    throw new Error(
+      'Connect this brand’s Cashfree account before collecting payments.'
+    );
+  return {
+    client_id: data.client_id,
+    client_secret: decrypt(data.client_secret_encrypted),
+    environment: data.environment,
+  };
+}
+
 export async function sendPaymentTemplate(
   db: SupabaseClient,
   run: FlowRunRow,
@@ -82,7 +110,10 @@ export async function beginPaymentCollection(
   const invalid = paymentConfigErrors(node.config);
   if (invalid.length) throw new Error(invalid[0].message);
   if (!run.contact_id) throw new Error('Payment collection needs a contact.');
-  const credentials = await paymentCredentials(db, run.account_id);
+  const credentials =
+    c.provider === 'cashfree'
+      ? await cashfreeCredentials(db, run.account_id)
+      : await paymentCredentials(db, run.account_id);
   const { data: contact, error: contactError } = await db
     .from('contacts')
     .select('phone, name, email')
@@ -121,28 +152,58 @@ export async function beginPaymentCollection(
       'This run already has a payment request, or the request could not be saved.'
     );
   try {
-    const link = await razorpayRequest<PaymentLink>(
-      credentials,
-      'payment_links',
-      {
-        amount: Math.round(c.amount * 100),
-        currency: 'INR',
-        accept_partial: false,
-        description,
-        reference_id: id,
-        expire_by: Math.floor(Date.parse(expiresAt) / 1000),
-        customer: {
-          name: contact.name || undefined,
-          contact: contact.phone,
-          email: contact.email || undefined,
-        },
-        notify: { sms: false, email: false },
-        reminder_enable: false,
-        notes: { collection_id: id, flow_run_id: run.id },
-      }
-    );
+    const link =
+      c.provider === 'cashfree'
+        ? normalizeCashfreeLink(
+            await cashfreeRequest<CashfreeLink>(
+              credentials as CashfreeCredentials,
+              'links',
+              {
+                link_id: id,
+                link_amount: c.amount,
+                link_currency: 'INR',
+                link_purpose: description,
+                link_expiry_time: expiresAt,
+                link_partial_payments: false,
+                link_auto_reminders: false,
+                link_notify: {
+                  send_sms: false,
+                  send_email: false,
+                  send_whatsapp: false,
+                },
+                customer_details: {
+                  customer_name: contact.name || undefined,
+                  customer_phone: contact.phone
+                    .replace(/\D/g, '')
+                    .replace(/^91(?=\d{10}$)/, ''),
+                  customer_email: contact.email || undefined,
+                },
+              },
+              id
+            )
+          )
+        : await razorpayRequest<PaymentLink>(
+            credentials as RazorpayCredentials,
+            'payment_links',
+            {
+              amount: Math.round(c.amount * 100),
+              currency: 'INR',
+              accept_partial: false,
+              description,
+              reference_id: id,
+              expire_by: Math.floor(Date.parse(expiresAt) / 1000),
+              customer: {
+                name: contact.name || undefined,
+                contact: contact.phone,
+                email: contact.email || undefined,
+              },
+              notify: { sms: false, email: false },
+              reminder_enable: false,
+              notes: { collection_id: id, flow_run_id: run.id },
+            }
+          );
     if (!link.id || !link.short_url?.startsWith('https://'))
-      throw new Error('Razorpay did not return a payment link.');
+      throw new Error('The gateway did not return a payment link.');
     const vars = {
       ...run.vars,
       payment_url: link.short_url,
@@ -233,11 +294,18 @@ export async function reconcilePayment(
   db: SupabaseClient,
   row: CollectionRow
 ): Promise<PaymentLink> {
-  const credentials = await paymentCredentials(db, row.account_id);
-  const link = await razorpayRequest<PaymentLink>(
-    credentials,
-    `payment_links/${encodeURIComponent(row.provider_link_id)}`
-  );
+  const link =
+    row.config.provider === 'cashfree'
+      ? normalizeCashfreeLink(
+          await cashfreeRequest<CashfreeLink>(
+            await cashfreeCredentials(db, row.account_id),
+            `links/${encodeURIComponent(row.provider_link_id)}`
+          )
+        )
+      : await razorpayRequest<PaymentLink>(
+          await paymentCredentials(db, row.account_id),
+          `payment_links/${encodeURIComponent(row.provider_link_id)}`
+        );
   const outcome = verifiedLinkOutcome(link, row);
   if (outcome) {
     const { error } = await db.rpc('resolve_flow_payment', {

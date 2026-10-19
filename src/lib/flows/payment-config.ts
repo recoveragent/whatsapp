@@ -1,7 +1,7 @@
 import type { SendTemplateNodeConfig } from './types';
 
 export interface CollectPaymentNodeConfig {
-  provider: 'razorpay';
+  provider: 'razorpay' | 'cashfree';
   currency: 'INR';
   /** Rupees, converted to paise on the server. */
   amount: number;
@@ -28,8 +28,11 @@ export function paymentConfigErrors(
   const errors: Array<{ field: string; message: string }> = [];
   const add = (field: string, message: string) =>
     errors.push({ field, message });
-  if (c.provider !== 'razorpay' || c.currency !== 'INR')
-    add('provider', 'Select Razorpay and INR.');
+  if (
+    !['razorpay', 'cashfree'].includes(String(c.provider)) ||
+    c.currency !== 'INR'
+  )
+    add('provider', 'Select Razorpay or Cashfree and INR.');
   const paise = Number(c.amount) * 100;
   if (
     typeof c.amount !== 'number' ||
@@ -106,7 +109,7 @@ export const PAYMENT_VARIABLE_GROUP = {
   options: [
     { label: 'Payment link', token: '{{ vars.payment_url }}' },
     {
-      label: 'Payment URL suffix (https://rzp.io/)',
+      label: 'Payment URL suffix (match the gateway template domain)',
       token: '{{ vars.payment_url_suffix }}',
     },
     { label: 'Amount (rupees)', token: '{{ vars.payment_amount }}' },

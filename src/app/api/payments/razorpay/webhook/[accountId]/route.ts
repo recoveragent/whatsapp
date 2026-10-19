@@ -55,7 +55,7 @@ export async function POST(
       .eq('status', 'pending')
       .maybeSingle();
     if (error) throw error;
-    if (data) {
+    if (data && data.config?.provider !== 'cashfree') {
       await reconcilePayment(db, data as CollectionRow);
       await resumeFlowPendingExecutions(data.flow_run_id);
     }

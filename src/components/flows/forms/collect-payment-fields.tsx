@@ -15,7 +15,14 @@ import { templateVariableGroupsForFlow } from '@/lib/flows/template-variables';
 import type { BuilderNode } from '../shared';
 import { NextNodeRow, TextRow } from './fields';
 
-function RazorpayConnection() {
+function PaymentConnection({
+  provider,
+}: {
+  provider: 'razorpay' | 'cashfree';
+}) {
+  const cashfree = provider === 'cashfree';
+  const label = cashfree ? 'Cashfree' : 'Razorpay';
+  const [environment, setEnvironment] = useState('production');
   const [connection, setConnection] = useState<{
     connected: boolean;
     keyId: string;
@@ -28,7 +35,7 @@ function RazorpayConnection() {
   const [webhookSecret, setWebhookSecret] = useState('');
   useEffect(() => {
     let mounted = true;
-    fetch('/api/payments/razorpay')
+    fetch(`/api/payments/${provider}`)
       .then(async (r) => {
         const data = await r.json();
         if (!r.ok)
@@ -36,6 +43,7 @@ function RazorpayConnection() {
         if (mounted) {
           setConnection(data);
           setKeyId(data.keyId);
+          setEnvironment(data.environment ?? 'production');
         }
       })
       .catch((err) => {
@@ -44,15 +52,15 @@ function RazorpayConnection() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [provider]);
   async function connect() {
     setBusy(true);
     setError('');
     try {
-      const response = await fetch('/api/payments/razorpay', {
+      const response = await fetch(`/api/payments/${provider}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyId, keySecret, webhookSecret }),
+        body: JSON.stringify({ keyId, keySecret, webhookSecret, environment }),
       });
       const result = await response.json();
       if (!response.ok)
@@ -62,7 +70,7 @@ function RazorpayConnection() {
       );
       setKeySecret('');
       setWebhookSecret('');
-      toast.success('Razorpay connected for this brand.');
+      toast.success(`${label} connected for this brand.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Connection failed.');
     } finally {
@@ -73,7 +81,7 @@ function RazorpayConnection() {
     <div className="space-y-3 rounded-lg border p-3">
       <div className="flex items-center gap-2 text-sm font-medium">
         <CreditCard className="size-4" />
-        Razorpay{' '}
+        {label}{' '}
         <span className="text-muted-foreground ml-auto text-xs">
           {connection
             ? connection.connected
@@ -94,25 +102,24 @@ function RazorpayConnection() {
           <summary className="text-primary cursor-pointer text-xs">
             {connection.connected
               ? 'Manage connection'
-              : 'Connect your Razorpay account'}
+              : `Connect your ${label} account`}
           </summary>
           <div className="mt-3 space-y-3">
             <p className="text-muted-foreground text-xs">
-              An admin can connect this brand using API keys from Razorpay →
-              Account & settings → API keys. Collections settle to this Razorpay
-              account.
+              An admin can connect this brand using API keys from the {label}{' '}
+              dashboard. Collections settle to this {label} account.
             </p>
             <label className="block text-xs">
-              Key ID
+              {cashfree ? 'App ID' : 'Key ID'}
               <Input
                 value={keyId}
                 onChange={(e) => setKeyId(e.target.value)}
                 autoComplete="off"
-                placeholder="rzp_live_…"
+                placeholder={cashfree ? 'Cashfree App ID' : 'rzp_live_…'}
               />
             </label>
             <label className="block text-xs">
-              Key Secret
+              {cashfree ? 'Secret Key' : 'Key Secret'}
               <Input
                 type="password"
                 value={keySecret}
@@ -120,20 +127,35 @@ function RazorpayConnection() {
                 autoComplete="new-password"
               />
             </label>
-            <label className="block text-xs">
-              Webhook secret
-              <Input
-                type="password"
-                value={webhookSecret}
-                onChange={(e) => setWebhookSecret(e.target.value)}
-                autoComplete="new-password"
-                placeholder="At least 16 characters"
-              />
-            </label>
+            {cashfree && (
+              <label className="block text-xs">
+                Environment
+                <select
+                  className="bg-background mt-1 w-full rounded border p-2"
+                  value={environment}
+                  onChange={(e) => setEnvironment(e.target.value)}
+                >
+                  <option value="production">Production</option>
+                  <option value="sandbox">Sandbox (test payments)</option>
+                </select>
+              </label>
+            )}
+            {!cashfree && (
+              <label className="block text-xs">
+                Webhook secret
+                <Input
+                  type="password"
+                  value={webhookSecret}
+                  onChange={(e) => setWebhookSecret(e.target.value)}
+                  autoComplete="new-password"
+                  placeholder="At least 16 characters"
+                />
+              </label>
+            )}
             <p className="text-muted-foreground text-xs">
-              Add this URL in Razorpay Webhooks with the same webhook secret.
-              Subscribe to payment_link.paid, payment_link.expired and
-              payment_link.cancelled.
+              {cashfree
+                ? 'Add this URL in Cashfree Webhooks for Payment Link events (PAYMENT_LINK_EVENT). Signatures use your Cashfree Secret Key; no extra webhook secret is needed.'
+                : 'Add this URL in Razorpay Webhooks with the same webhook secret. Subscribe to payment_link.paid, payment_link.expired and payment_link.cancelled.'}
             </p>
             <p className="bg-muted rounded p-2 text-xs break-all select-all">
               {connection.webhookUrl}
@@ -142,7 +164,10 @@ function RazorpayConnection() {
               type="button"
               size="sm"
               disabled={
-                busy || !keyId || !keySecret || webhookSecret.length < 16
+                busy ||
+                !keyId ||
+                !keySecret ||
+                (!cashfree && webhookSecret.length < 16)
               }
               onClick={() => void connect()}
             >
@@ -175,7 +200,10 @@ export function CollectPaymentFields({
   );
   return (
     <div className="space-y-5">
-      <RazorpayConnection />
+      <PaymentConnection
+        key={c.provider}
+        provider={c.provider === 'cashfree' ? 'cashfree' : 'razorpay'}
+      />
       <p className="text-muted-foreground text-xs">
         Create a unique payment link for each customer. The flow waits here
         until payment or expiry. A failed payment attempt can be retried; the
@@ -184,7 +212,14 @@ export function CollectPaymentFields({
       <div className="grid grid-cols-2 gap-3">
         <label className="text-xs">
           Gateway
-          <Input value="Razorpay" readOnly />
+          <select
+            className="bg-background mt-1 w-full rounded border p-2"
+            value={c.provider ?? 'razorpay'}
+            onChange={(e) => onChange({ provider: e.target.value })}
+          >
+            <option value="razorpay">Razorpay</option>
+            <option value="cashfree">Cashfree</option>
+          </select>
         </label>
         <label className="text-xs">
           Currency
@@ -224,7 +259,9 @@ export function CollectPaymentFields({
         <h3 className="text-sm font-medium">Payment request message</h3>
         <p className="text-muted-foreground text-xs">
           Select an approved template without quick-reply buttons. Map the
-          payment link into its body or URL button.
+          payment link into its body or URL button. The button domain must match
+          the selected gateway (Cashfree production: payments.cashfree.com;
+          sandbox: payments-test.cashfree.com).
         </p>
         <SendTemplateFields
           allowQuickReplies={false}
@@ -279,7 +316,7 @@ export function CollectPaymentFields({
         {c.max_reminders > 0 && (
           <SendTemplateFields
             allowQuickReplies={false}
-          creationPurpose="payment"
+            creationPurpose="payment"
             buttons={c.reminder_template?.buttons}
             templateName={c.reminder_template?.template_name ?? ''}
             language={c.reminder_template?.language ?? 'en_US'}

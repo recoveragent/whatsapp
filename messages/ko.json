@@ -1086,6 +1086,7 @@
       "statusHandedOff": "인계됨",
       "statusTimedOut": "시간 초과",
       "statusPaused": "상담원이 일시 중지함",
+      "statusWaiting": "대기 중",
       "statusFailed": "실패"
     },
     "builder": {

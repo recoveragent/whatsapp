@@ -35,7 +35,8 @@ function httpsOrigin(value: string): string {
 export function suggestedCta(
   purpose: Exclude<CtaPurpose, 'custom'>,
   siteUrl: string,
-  storeUrl = ''
+  storeUrl = '',
+  paymentGateway: 'razorpay' | 'cashfree' | 'cashfree_sandbox' = 'razorpay'
 ): Extract<TemplateButton, { type: 'URL' }> {
   const label = {
     payment: 'Pay now',
@@ -45,12 +46,19 @@ export function suggestedCta(
   }[purpose];
   const base =
     purpose === 'payment'
-      ? 'https://rzp.io/'
+      ? paymentGateway === 'cashfree'
+        ? 'https://payments.cashfree.com/'
+        : paymentGateway === 'cashfree_sandbox'
+          ? 'https://payments-test.cashfree.com/'
+          : 'https://rzp.io/'
       : purpose === 'tracking'
         ? `${httpsOrigin(siteUrl)}/t/`
         : `${httpsOrigin(storeUrl)}/`;
   const example = {
-    payment: 'rzp/example-payment',
+    payment:
+      paymentGateway === 'razorpay'
+        ? 'rzp/example-payment'
+        : 'links/example-payment',
     tracking: 'example_tracking_token_123456',
     checkout: 'checkouts/example-checkout',
     order_status: 'orders/example-order',
@@ -68,7 +76,14 @@ export function buttonCtaPurpose(button: TemplateButton): CtaPurpose {
   if (button.type !== 'URL') return 'custom';
   if (isCtaPurpose(button.url_purpose)) return button.url_purpose;
   // Recognize safe legacy payment URLs. Do not guess the purpose of a store URL.
-  if (button.url === 'https://rzp.io/{{1}}') return 'payment';
+  if (
+    [
+      'https://rzp.io/{{1}}',
+      'https://payments.cashfree.com/{{1}}',
+      'https://payments-test.cashfree.com/{{1}}',
+    ].includes(button.url)
+  )
+    return 'payment';
   return 'custom';
 }
 

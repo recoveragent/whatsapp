@@ -242,6 +242,8 @@ export async function executeExtendedNode(
             if (button.type !== 'URL' || !button.url.includes('{{1}}') || buttonCtaPurpose(button) === 'custom') return
             const value = interpolate(mappings[`button_${index}`] ?? '').trim()
             if (!value) throw new Error(`The ${button.text} button needs its ${buttonCtaPurpose(button)} URL in this flow. Check the trigger or preceding payment step.`)
+            if (buttonCtaPurpose(button) === 'payment' && typeof vars.payment_url === 'string' && button.url.replace('{{1}}', value) !== vars.payment_url)
+              throw new Error('The payment template URL does not match the selected gateway. Choose a template with the correct payment domain.')
             messageParams.buttonParams = { ...messageParams.buttonParams, [index]: value }
           })
         }

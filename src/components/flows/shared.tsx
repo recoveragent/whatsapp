@@ -130,7 +130,7 @@ export const NODE_META: Record<
     category: NodeCategory;
   }
 > = {
-  collect_payment: { label: 'Collect payment', icon: CreditCard, color: 'text-emerald-400', blurb: 'Collects a fixed advance with Razorpay and reminds unpaid customers', category: 'logic' },
+  collect_payment: { label: 'Collect payment', icon: CreditCard, color: 'text-emerald-400', blurb: 'Collects a fixed advance with Razorpay or Cashfree and reminds unpaid customers', category: 'logic' },
   start: {
     label: 'Start',
     icon: PlayCircle,
@@ -667,7 +667,7 @@ export function summarizeNode(
         : `Template: ${truncate(name, 50)}`;
     }
     case "collect_payment":
-      return `Razorpay · ₹${cfg.amount ?? 0} · expires in ${cfg.expiry_hours ?? 24}h`;
+      return `${cfg.provider === 'cashfree' ? 'Cashfree' : 'Razorpay'} · ₹${cfg.amount ?? 0} · expires in ${cfg.expiry_hours ?? 24}h`;
     case "wait": {
       const amount = cfg.amount ?? 1;
       const unit = typeof cfg.unit === "string" ? cfg.unit : "hours";
