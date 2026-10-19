@@ -652,7 +652,7 @@ export function SendTemplateFields({
   ) : null;
 
   return (
-    <div className={cn("@container min-w-0", flowLayout ? "grid h-full min-h-0 min-w-[900px] grid-cols-[minmax(0,1fr)_240px_340px]" : "space-y-3")}>
+    <div className={cn("@container min-w-0", flowLayout ? "grid h-full min-h-0 min-w-[900px] grid-cols-[minmax(0,4fr)_minmax(0,3fr)_minmax(0,3fr)]" : "space-y-3")}>
       <div className={flowLayout ? "min-h-0 min-w-0 space-y-3 overflow-y-auto overscroll-contain p-5" : "space-y-3"}>
       {createTemplateLink}
       <div>
