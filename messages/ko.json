@@ -1378,6 +1378,8 @@
       "createFirst": "시작할 첫 메시지 템플릿을 만드세요.",
       "editTitle": "수정하면 Meta 재검토가 트리거되어 상태가 대기 중으로 바뀝니다.",
       "editLabel": "템플릿 수정",
+      "duplicateLabel": "템플릿 복제",
+      "duplicateTitle": "같은 내용으로 새 템플릿 만들기",
       "edit": "수정",
       "resubmitTitle": "템플릿을 수정해 Meta 검토를 위해 다시 제출하세요.",
       "resubmitLabel": "템플릿 수정 후 재제출",

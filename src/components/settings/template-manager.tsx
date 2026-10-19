@@ -10,6 +10,7 @@ import {
   AlertCircle,
   X,
   Pencil,
+  Copy,
   RotateCcw,
   FileText,
 } from 'lucide-react';
@@ -313,10 +314,21 @@ export function TemplateManager() {
     };
   }
 
-  function openEdit(template: MessageTemplate) {
-    setEditingId(template.id);
+  function openEdit(template: MessageTemplate, duplicate = false) {
+    let name = template.name;
+    if (duplicate) {
+      let suffix = '_copy';
+      let copyNumber = 2;
+      name = `${template.name.slice(0, 512 - suffix.length)}${suffix}`;
+      while (templates.some((existing) => existing.name === name)) {
+        suffix = `_copy_${copyNumber++}`;
+        name = `${template.name.slice(0, 512 - suffix.length)}${suffix}`;
+      }
+      setCreationPurpose('custom');
+    }
+    setEditingId(duplicate ? null : template.id);
     setForm({
-      name: template.name,
+      name,
       category: template.category,
       language: template.language || 'en_US',
       header_format: (template.header_type ?? 'none') as HeaderFormat,
@@ -324,9 +336,9 @@ export function TemplateManager() {
       header_media_url: template.header_media_url ?? '',
       header_sample: template.sample_values?.header?.[0] ?? '',
       body_text: template.body_text,
-      body_samples: template.sample_values?.body ?? [],
+      body_samples: [...(template.sample_values?.body ?? [])],
       footer_text: template.footer_text ?? '',
-      buttons: template.buttons ?? [],
+      buttons: (template.buttons ?? []).map((button) => ({ ...button })),
     });
     setDialogOpen(true);
   }
@@ -735,6 +747,19 @@ export function TemplateManager() {
                           <RotateCcw className="size-3.5" />
                         </Button>
                       )}
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => openEdit(template, true)}
+                        title={t('duplicateTitle')}
+                        aria-label={t('duplicateLabel')}
+                        className={cn(
+                          pressable,
+                          'rounded-full text-muted-foreground hover:bg-primary/10 hover:text-primary',
+                        )}
+                      >
+                        <Copy className="size-3.5" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon-sm"

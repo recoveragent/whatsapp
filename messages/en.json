@@ -1379,6 +1379,8 @@
       "createFirst": "Create your first message template to get started.",
       "editTitle": "Editing triggers Meta re-review — status flips to PENDING.",
       "editLabel": "Edit template",
+      "duplicateLabel": "Duplicate template",
+      "duplicateTitle": "Create a new template with the same content",
       "edit": "Edit",
       "resubmitTitle": "Edit the template and resubmit to Meta for review.",
       "resubmitLabel": "Edit and resubmit template",
