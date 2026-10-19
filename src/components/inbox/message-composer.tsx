@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect, KeyboardEvent } from 'react';
 import {
   Send,
+  CircleHelp,
   LayoutTemplate,
   Workflow,
   ShoppingBag,
@@ -23,6 +24,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { GatedButton } from '@/components/ui/gated-button';
 import {
   DropdownMenu,
@@ -1034,22 +1036,16 @@ export function MessageComposer({
         </div>
       )}
       {directSend && (
-        <div className="mb-2 rounded-lg border border-border bg-muted/30 p-3 text-xs" role="status">
-          <div className="flex items-center justify-between gap-2">
-            <span className="font-medium">Direct Send · Utility text</span>
-            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onOpenTemplates}>
-              <LayoutTemplate className="mr-1 h-3 w-3" />
-              {t('templates')}
-            </Button>
-          </div>
-          <p className="mt-1 text-muted-foreground">
-            For order updates, receipts and appointment reminders. No promotions or
-            authentication codes. Meta eligibility and utility charges apply.
-            Text only; links have no preview.
-          </p>
-          <p className={cn("mt-1 text-muted-foreground", text.trim().length > 1024 && "text-destructive")}>
-            {text.trim().length}/1024 characters
-          </p>
+        <div className="mb-2 flex h-7 items-center justify-between rounded-md border border-primary/25 bg-primary/5 px-2 text-xs text-primary">
+          <span className="flex items-center gap-1.5"><Send className="h-3 w-3" />Direct Send</span>
+          <Popover>
+            <PopoverTrigger aria-label="About Direct Send" title="About Direct Send" className="inline-flex h-6 w-6 items-center justify-center rounded-sm hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <CircleHelp className="h-3.5 w-3.5" />
+            </PopoverTrigger>
+            <PopoverContent side="top" align="end" className="text-xs">
+              <p>For order updates, receipts and appointment reminders. No promotions or authentication codes. Meta eligibility and utility charges apply. Text only; links have no preview.</p>
+            </PopoverContent>
+          </Popover>
         </div>
       )}
       {/* Hidden file inputs driven by the attach menu. */}
@@ -1326,8 +1322,8 @@ export function MessageComposer({
             placeholder={
               readOnly
                     ? t('readOnlyPlaceholder')
-                    : sessionExpired && !directSend
-                      ? t('sessionExpiredPlaceholder')
+                    : directSend
+                      ? 'Type a message — sent via Direct Send'
                       : t('typeMessagePlaceholder')
             }
                 disabled={(sessionExpired && !directSend) || readOnly}
@@ -1359,6 +1355,12 @@ export function MessageComposer({
             <Send className="h-4 w-4" />
           </GatedButton>
         </div>
+      )}
+
+      {directSend && text.trim().length > 0 && (
+        <p className={cn('mt-1 text-right text-[10px] text-muted-foreground', text.trim().length > 1024 && 'text-destructive')} aria-live="polite">
+          {text.trim().length}/1024
+        </p>
       )}
 
       {/* Hint sits outside the flex row so its height doesn't push
