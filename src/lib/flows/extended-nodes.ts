@@ -1,3 +1,4 @@
+import { paymentTemplateError } from '@/lib/payments/template-compatibility'
 /**
  * Automation-parity node executors for the flows engine.
  */
@@ -224,13 +225,16 @@ export async function executeExtendedNode(
         }
 
         const lang = c.language ?? 'en_US'
-        const { data: templateRowRaw } = await db
+        const { data: templateRowRaw, error: templateLookupError } = await db
           .from('message_templates')
           .select('*')
           .eq('account_id', run.account_id)
           .eq('name', c.template_name)
+          .eq('status', 'APPROVED')
           .eq('language', lang)
           .maybeSingle()
+        if (templateLookupError) throw new Error('Could not load the approved template. Re-sync templates and try again.')
+        if (typeof vars.payment_url === 'string' && (!templateRowRaw || !isMessageTemplate(templateRowRaw))) throw new Error('An approved template for this brand is required. Re-sync templates and try again.')
         const templateRow =
           templateRowRaw && isMessageTemplate(templateRowRaw)
             ? templateRowRaw
@@ -238,6 +242,10 @@ export async function executeExtendedNode(
         if (templateRow) {
           const templateButtons = normalizeTemplateButtons(templateRow.buttons)
           const mappings = seedCtaMappings(templateButtons, c.variables ?? {})
+          if (typeof vars.payment_url === 'string') {
+            const incompatible = paymentTemplateError(templateButtons, mappings, [new URL(vars.payment_url).origin])
+            if (incompatible) throw new Error(incompatible)
+          }
           templateButtons.forEach((button, index) => {
             if (button.type !== 'URL' || !button.url.includes('{{1}}') || buttonCtaPurpose(button) === 'custom') return
             const value = interpolate(mappings[`button_${index}`] ?? '').trim()

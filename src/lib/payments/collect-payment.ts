@@ -1,4 +1,5 @@
 import 'server-only';
+import { paymentTemplateError, paymentOrigins } from './template-compatibility';
 import {
   cashfreeRequest,
   normalizeCashfreeLink,
@@ -114,6 +115,35 @@ export async function beginPaymentCollection(
     c.provider === 'cashfree'
       ? await cashfreeCredentials(db, run.account_id)
       : await paymentCredentials(db, run.account_id);
+  const origins = paymentOrigins(
+    c.provider,
+    c.provider === 'cashfree'
+      ? (credentials as CashfreeCredentials).environment
+      : undefined
+  );
+  for (const template of [
+    c.request_template,
+    ...(c.max_reminders > 0 ? [c.reminder_template] : []),
+  ]) {
+    const { data, error } = await db
+      .from('message_templates')
+      .select('buttons')
+      .eq('account_id', run.account_id)
+      .eq('name', template.template_name)
+      .eq('language', template.language || 'en_US')
+      .eq('status', 'APPROVED')
+      .maybeSingle();
+    if (error || !data)
+      throw new Error(
+        'Select an approved payment template for this brand before collecting payments.'
+      );
+    const incompatible = paymentTemplateError(
+      data.buttons,
+      template.variables ?? {},
+      origins
+    );
+    if (incompatible) throw new Error(incompatible);
+  }
   const { data: contact, error: contactError } = await db
     .from('contacts')
     .select('phone, name, email')

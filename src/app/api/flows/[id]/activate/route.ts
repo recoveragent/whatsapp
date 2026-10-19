@@ -1,3 +1,4 @@
+import { paymentOrigins, paymentTemplateError } from '@/lib/payments/template-compatibility'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
@@ -100,17 +101,22 @@ export async function POST(
     )
     const paymentNodes = (nodes ?? []).filter(n => n.node_type === 'collect_payment')
     if (paymentNodes.length) {
-      const { data: connection, error: connectionError } = await admin.from('account_payment_connections').select('enabled').eq('account_id', flow.account_id).maybeSingle()
-      if (connectionError || !connection?.enabled) {
-        for (const n of paymentNodes) issues.push({ severity: 'error', scope: 'node', node_key: n.node_key, field: 'provider', message: 'Connect this brand’s Razorpay account before activating payment collection.' })
-      }
       for (const n of paymentNodes) {
         const config = n.config as Record<string, unknown>
+        const cashfree = config.provider === 'cashfree'
+        const { data: connection, error: connectionError } = cashfree
+          ? await admin.from('account_cashfree_connections').select('enabled,environment').eq('account_id', flow.account_id).maybeSingle()
+          : await admin.from('account_payment_connections').select('enabled').eq('account_id', flow.account_id).maybeSingle()
+        if (connectionError || !connection?.enabled) issues.push({ severity: 'error', scope: 'node', node_key: n.node_key, field: 'provider', message: `Connect this brand’s ${cashfree ? 'Cashfree' : 'Razorpay'} account before activating payment collection.` })
         for (const field of ['request_template', ...(Number(config.max_reminders) > 0 ? ['reminder_template'] : [])]) {
-          const template = config[field] as { template_name?: string; language?: string } | undefined
+          const template = config[field] as { template_name?: string; language?: string; variables?: Record<string, string> } | undefined
           if (!template?.template_name) continue
-          const { data: approved } = await admin.from('message_templates').select('id').eq('account_id', flow.account_id).eq('name', template.template_name).eq('language', template.language || 'en_US').eq('status', 'APPROVED').maybeSingle()
+          const { data: approved } = await admin.from('message_templates').select('id,buttons').eq('account_id', flow.account_id).eq('name', template.template_name).eq('language', template.language || 'en_US').eq('status', 'APPROVED').maybeSingle()
           if (!approved) issues.push({ severity: 'error', scope: 'node', node_key: n.node_key, field, message: 'Payment messages require an approved template belonging to this brand.' })
+          if (approved) {
+            const mismatch = paymentTemplateError(approved.buttons, template.variables ?? {}, paymentOrigins(String(config.provider), connection && 'environment' in connection ? String(connection.environment) : undefined))
+            if (mismatch) issues.push({ severity: 'error', scope: 'node', node_key: n.node_key, field, message: mismatch })
+          }
         }
       }
     }

@@ -160,6 +160,15 @@ beforeEach(() => {
 function newCollectionFixture() {
   const f = fixture();
   f.tables.flow_payment_requests = [];
+  f.tables.message_templates = [
+    {
+      account_id: 'brand',
+      name: 'collect',
+      language: 'en_US',
+      status: 'APPROVED',
+      buttons: [],
+    },
+  ];
   f.tables.contacts = [
     {
       id: 'contact',
@@ -333,6 +342,33 @@ describe('unpaid reminder processing', () => {
 });
 
 describe('Cashfree flow lifecycle', () => {
+  it('rejects a Razorpay template before creating a Cashfree link', async () => {
+    const f = newCollectionFixture();
+    f.node.config.provider = 'cashfree';
+    f.tables.account_cashfree_connections = [
+      {
+        account_id: 'brand',
+        enabled: true,
+        client_id: 'app',
+        client_secret_encrypted: 'secret',
+        environment: 'production',
+      },
+    ];
+    f.tables.message_templates[0].buttons = [
+      {
+        type: 'URL',
+        text: 'Pay now',
+        url: 'https://rzp.io/{{1}}',
+        url_purpose: 'payment',
+      },
+    ];
+    await expect(beginPaymentCollection(f.db, f.run, f.node)).rejects.toThrow(
+      'payments.cashfree.com'
+    );
+    expect(f.fetch).not.toHaveBeenCalled();
+    expect(f.tables.flow_payment_requests).toEqual([]);
+  });
+
   function cashfreeFixture() {
     const f = newCollectionFixture();
     f.node.config.provider = 'cashfree';

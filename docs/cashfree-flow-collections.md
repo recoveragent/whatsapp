@@ -40,3 +40,12 @@ References:
 - [Cashfree Create Payment Link](https://www.cashfree.com/docs/api-reference/payments/latest/payment-links/create-payment-link)
 - [Cashfree webhook signature verification](https://www.cashfree.com/docs/payments/online/webhooks/signature-verification)
 - [Cashfree official payment-link API reference](https://github.com/cashfree/cashfree-pg/blob/main/docs/PaymentLink.md)
+
+## Existing Razorpay templates
+
+An approved URL button keeps its original domain. Changing the flow gateway does
+not change an approved template. Create and approve a Cashfree version and select
+it for both the payment request and reminders. Activation and collection setup
+reject mismatched payment buttons before creating a link. Runtime template
+lookups use APPROVED rows and fail on query errors; a pending draft with the same
+name cannot bypass URL checks.

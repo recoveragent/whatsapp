@@ -1,5 +1,7 @@
 "use client";
 
+import { paymentTemplateError, paymentOrigins } from "@/lib/payments/template-compatibility";
+
 import { CTA_VARIABLES, buttonCtaPurpose, seedCtaMappings, type CtaPurpose } from "@/lib/whatsapp/template-cta";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCw, Upload } from "lucide-react";
@@ -50,6 +52,7 @@ interface SendTemplateFieldsProps {
   /** Payment collection templates cannot branch on customer quick replies. */
   allowQuickReplies?: boolean;
   creationPurpose?: CtaPurpose;
+  paymentProvider?: "razorpay" | "cashfree";
   templateName: string;
   language: string;
   variables?: Record<string, string>;
@@ -289,6 +292,7 @@ export function SendTemplateFields({
   additionalFields,
   allowQuickReplies = true,
   creationPurpose = "custom",
+  paymentProvider,
   templateName,
   language,
   variables = {},
@@ -682,6 +686,10 @@ export function SendTemplateFields({
 
       {selectedTemplate && (
         <>
+          {paymentProvider && (() => {
+            const issue = paymentTemplateError(selectedTemplate.buttons, variables, paymentOrigins(paymentProvider));
+            return issue ? <p role="alert" className="text-destructive rounded border border-destructive/30 p-3 text-xs">{issue}</p> : null;
+          })()}
           {!flowLayout && preview}
 
           {placeholders.length > 0 && (

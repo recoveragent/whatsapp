@@ -266,6 +266,7 @@ export function CollectPaymentFields({
         <SendTemplateFields
           allowQuickReplies={false}
           creationPurpose="payment"
+          paymentProvider={c.provider}
           buttons={c.request_template?.buttons}
           templateName={c.request_template?.template_name ?? ''}
           language={c.request_template?.language ?? 'en_US'}
@@ -317,6 +318,7 @@ export function CollectPaymentFields({
           <SendTemplateFields
             allowQuickReplies={false}
             creationPurpose="payment"
+            paymentProvider={c.provider}
             buttons={c.reminder_template?.buttons}
             templateName={c.reminder_template?.template_name ?? ''}
             language={c.reminder_template?.language ?? 'en_US'}

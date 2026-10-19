@@ -57,7 +57,7 @@ vi.mock('./admin-client', () => {
       },
       maybeSingle: async () => {
         const r = result();
-        return { ...r, data: r.data[0] ?? null };
+        return r.data.length > 1 ? { ...r, data: null, error: { code: 'PGRST116' } } : { ...r, data: r.data[0] ?? null };
       },
       single: async () => b.maybeSingle(),
       then: (resolve: (r: ReturnType<typeof result>) => unknown) =>
@@ -213,9 +213,19 @@ beforeEach(() => {
 });
 
 describe('independent Next step and no-response timeout', () => {
-  it('rejects a Razorpay CTA for a Cashfree collection', async () => {
+  it('uses the approved Cashfree template when a pending draft shares its name', async () => {
     h.tables.flow_nodes[0] = node('confirmation', 'send_template', { next_node_key: 'end', variables: {} });
-    h.tables.message_templates = [{ id: 'tpl', user_id: 'user', account_id: 'account', name: 'confirmation', language: 'en_US', body_text: 'Advance.', buttons: [{ type: 'URL', text: 'Pay now', url: 'https://rzp.io/{{1}}', url_purpose: 'payment' }] }];
+    const approved = { status: 'APPROVED', id: 'tpl', user_id: 'user', account_id: 'account', name: 'confirmation', language: 'en_US', body_text: 'Advance.', buttons: [{ type: 'URL', text: 'Pay now', url: 'https://payments.cashfree.com/{{1}}', url_purpose: 'payment' }] };
+    h.tables.message_templates = [approved, { ...approved, id: 'draft', status: 'PENDING' }];
+    await startFlowForExternalEvent({ flow, contactId: 'contact', conversationId: 'conversation', initialVars: { payment_url: 'https://payments.cashfree.com/links/test', payment_url_suffix: 'links/test' } });
+    expect(h.templateParams[0].buttonParams).toEqual({ 0: 'links/test' });
+    expect(h.tables.flow_runs[0].status).toBe('completed');
+  });
+
+  it('rejects a Razorpay CTA for a Cashfree collection even when an unapproved duplicate exists', async () => {
+    h.tables.flow_nodes[0] = node('confirmation', 'send_template', { next_node_key: 'end', variables: {} });
+    h.tables.message_templates = [{ status: 'APPROVED', id: 'tpl', user_id: 'user', account_id: 'account', name: 'confirmation', language: 'en_US', body_text: 'Advance.', buttons: [{ type: 'URL', text: 'Pay now', url: 'https://rzp.io/{{1}}', url_purpose: 'payment' }] }];
+    h.tables.message_templates.push({ ...h.tables.message_templates[0], id: 'draft', status: 'PENDING' });
     await startFlowForExternalEvent({ flow, contactId: 'contact', conversationId: 'conversation', initialVars: { payment_url: 'https://payments.cashfree.com/links/test', payment_url_suffix: 'links/test' } });
     expect(h.templateParams).toEqual([]);
     expect(h.tables.flow_runs[0].status).toBe('failed');
@@ -223,7 +233,7 @@ describe('independent Next step and no-response timeout', () => {
 
   it('uses separate payment and courier URLs when a template contains both CTAs', async () => {
     h.tables.flow_nodes[0] = node('confirmation', 'send_template', { next_node_key: 'end', variables: {} });
-    h.tables.message_templates = [{ id: 'tpl', user_id: 'user', account_id: 'account', name: 'confirmation', language: 'en_US', body_text: 'Order update.', buttons: [
+    h.tables.message_templates = [{ status: 'APPROVED', id: 'tpl', user_id: 'user', account_id: 'account', name: 'confirmation', language: 'en_US', body_text: 'Order update.', buttons: [
       { type: 'URL', text: 'Pay now', url: 'https://rzp.io/{{1}}', url_purpose: 'payment' },
       { type: 'URL', text: 'Track order', url: 'https://crm.example.com/t/{{1}}', url_purpose: 'tracking' },
     ] }];
@@ -233,7 +243,7 @@ describe('independent Next step and no-response timeout', () => {
 
   it('does not substitute an order URL when a payment CTA has no payment link', async () => {
     h.tables.flow_nodes[0] = node('confirmation', 'send_template', { next_node_key: 'end', variables: {} });
-    h.tables.message_templates = [{ id: 'tpl', user_id: 'user', account_id: 'account', name: 'confirmation', language: 'en_US', body_text: 'Advance payment.', buttons: [{ type: 'URL', text: 'Pay now', url: 'https://rzp.io/{{1}}', url_purpose: 'payment' }] }];
+    h.tables.message_templates = [{ status: 'APPROVED', id: 'tpl', user_id: 'user', account_id: 'account', name: 'confirmation', language: 'en_US', body_text: 'Advance payment.', buttons: [{ type: 'URL', text: 'Pay now', url: 'https://rzp.io/{{1}}', url_purpose: 'payment' }] }];
     await startFlowForExternalEvent({ flow, contactId: 'contact', conversationId: 'conversation', initialVars: { order_status_url_suffix: 'orders/do-not-use' } });
     expect(h.templateParams).toEqual([]);
     expect(h.tables.flow_runs[0].status).toBe('failed');
