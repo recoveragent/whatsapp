@@ -1,5 +1,8 @@
 "use client";
 
+import { DeliveryTimingDetails } from "@/components/flows/delivery-timing-details";
+import type { DeliveryEvent } from "@/lib/whatsapp/delivery-diagnostics";
+
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -309,7 +312,7 @@ function RunCard({
             {events.length === 0 ? (
               <p className="text-muted-foreground text-xs">{t('noEvents')}</p>
             ) : (
-              events.map((ev, ix) => <EventLine key={ix} ev={ev} />)
+              events.map((ev, ix) => <EventLine key={ix} ev={ev} runStartedAt={run.started_at} />)
             )}
           </div>
         </div>
@@ -330,7 +333,7 @@ const EVENT_COLOR: Record<string, string> = {
   completed: "text-emerald-300",
 };
 
-function EventLine({ ev }: { ev: EventRow }) {
+function EventLine({ ev, runStartedAt }: { ev: EventRow; runStartedAt: string }) {
   const cls = EVENT_COLOR[ev.event_type] ?? "text-muted-foreground";
   return (
     <div className="flex items-start gap-2 rounded-md px-2 py-1 text-xs">
@@ -347,6 +350,7 @@ function EventLine({ ev }: { ev: EventRow }) {
       )}
       {Object.keys(ev.payload ?? {}).length > 0 && (
         <div className="min-w-0 flex-1 text-[10px] text-muted-foreground">
+          {Array.isArray(ev.payload.delivery_timing) && <DeliveryTimingDetails events={ev.payload.delivery_timing as DeliveryEvent[]} runStartedAt={runStartedAt} />}
           <span className="block truncate">{summarizePayload(ev.payload ?? {})}</span>
           {typeof ev.payload.detail === 'string' && <p className="mt-1 break-words">{ev.payload.detail}</p>}
           {Array.isArray(ev.payload.condition_checks) && ev.payload.condition_checks.length > 0 && (

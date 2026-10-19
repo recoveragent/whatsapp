@@ -1,3 +1,4 @@
+import { recordDeliveryStatus } from '@/lib/whatsapp/delivery-diagnostics'
 import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
@@ -221,6 +222,7 @@ export async function GET(request: Request) {
 
 // POST - Receive messages
 export async function POST(request: Request) {
+  const deliveryWebhookReceivedAt = new Date().toISOString()
   // Read raw body first so we can HMAC-verify the exact bytes Meta
   // signed. request.json() would re-encode and break the signature.
   const rawBody = await request.text()
@@ -257,7 +259,7 @@ export async function POST(request: Request) {
   // maxDuration).
   after(async () => {
     try {
-      await processWebhook(body)
+      await processWebhook(body, deliveryWebhookReceivedAt)
     } catch (error) {
       console.error('Error processing webhook:', error)
     }
@@ -266,7 +268,7 @@ export async function POST(request: Request) {
   return NextResponse.json({ status: 'received' }, { status: 200 })
 }
 
-async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
+async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }, deliveryWebhookReceivedAt: string) {
   if (!body.entry) return
 
   for (const entry of body.entry) {
@@ -297,6 +299,7 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
       // Handle status updates
       if (value.statuses) {
         for (const status of value.statuses) {
+          await recordDeliveryStatus(supabaseAdmin(), value.metadata.phone_number_id, status, deliveryWebhookReceivedAt)
           await handleStatusUpdate(status)
         }
       }

@@ -1,3 +1,4 @@
+import { recordApiAcceptance } from '@/lib/whatsapp/delivery-diagnostics'
 import { sendTextMessage, sendTemplateMessage } from '@/lib/whatsapp/meta-api'
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body'
@@ -208,6 +209,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         messageParams: input.messageParams,
         params: input.params,
       })
+      await recordApiAcceptance(db, input.accountId, config.phone_number_id, r.messageId, r.deliveryTiming)
       return r.messageId
     }
     const r = await sendTextMessage({

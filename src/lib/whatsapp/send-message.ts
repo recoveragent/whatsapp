@@ -1,3 +1,4 @@
+import { recordApiAcceptance } from './delivery-diagnostics';
 // ============================================================
 // Outbound message send — the core that both the dashboard's
 // `/api/whatsapp/send` route and the public `/api/v1/messages`
@@ -376,6 +377,7 @@ export async function sendMessageToConversation(
         params: templateParams || [],
         contextMessageId,
       });
+      await recordApiAcceptance(db, accountId, config.phone_number_id, result.messageId, result.deliveryTiming);
       return result.messageId;
     }
     if (isMediaKind) {

@@ -9,6 +9,7 @@
  * instead of a runtime rejection from Meta.
  */
 
+import type { ApiDeliveryTiming } from './delivery-diagnostics'
 import { MetaCarouselRejectedError } from './carousel-errors'
 
 const META_API_VERSION = 'v21.0'
@@ -18,6 +19,7 @@ export { META_API_VERSION }
 
 export interface MetaSendResult {
   messageId: string
+  deliveryTiming?: ApiDeliveryTiming
 }
 
 export interface MetaPhoneInfo {
@@ -610,6 +612,8 @@ export async function sendTemplateMessage(
     body.context = { message_id: contextMessageId }
   }
 
+  const startedAt = new Date().toISOString()
+  const started = performance.now()
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -622,7 +626,10 @@ export async function sendTemplateMessage(
     await throwMetaError(response, `Meta API error: ${response.status}`)
   }
   const data = await response.json()
-  return { messageId: data.messages[0].id }
+  return { messageId: data.messages[0].id, deliveryTiming: {
+    started_at: startedAt, accepted_at: new Date().toISOString(), duration_ms: Math.round(performance.now() - started),
+    message_status: typeof data.messages[0].message_status === 'string' ? data.messages[0].message_status : null,
+  } }
 }
 
 // ============================================================

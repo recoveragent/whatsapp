@@ -1,3 +1,4 @@
+import type { DeliveryEvent } from '@/lib/whatsapp/delivery-diagnostics'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
@@ -34,7 +35,7 @@ export async function GET(
   // the run query — gives us a clean 404 instead of empty array.
   const { data: flow } = await supabase
     .from('flows')
-    .select('id, name')
+    .select('id, name, account_id')
     .eq('id', id)
     .maybeSingle()
   if (!flow) {
@@ -76,6 +77,17 @@ export async function GET(
     } else if (evs) {
       events = evs as typeof events
     }
+  }
+
+  const messageIds = [...new Set(events.map(e => e.payload?.whatsapp_message_id).filter((id): id is string => typeof id === 'string'))]
+  if (messageIds.length) {
+    const timings: DeliveryEvent[] = []
+    for (let offset = 0; offset < messageIds.length; offset += 50) {
+      const { data, error } = await supabase.from('message_delivery_events').select('message_id,event_type,occurred_at,received_at,details').eq('account_id', flow.account_id).in('message_id', messageIds.slice(offset, offset + 50)).order('occurred_at', { ascending: true })
+      if (error) console.error('[flows-runs] delivery timings unavailable:', error.code)
+      else if (data) timings.push(...data as DeliveryEvent[])
+    }
+    events = events.map(event => ({ ...event, payload: { ...event.payload, delivery_timing: timings.filter(t => t.message_id === event.payload?.whatsapp_message_id) } }))
   }
 
   return NextResponse.json({
