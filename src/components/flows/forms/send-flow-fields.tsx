@@ -123,8 +123,11 @@ export function SendFlowFields({
       <p className="text-muted-foreground text-[11px]">
         Sends a button that opens a WhatsApp Form. Build the form&apos;s
         questions (text boxes, radio buttons, checkboxes, dropdowns, dates)
-        in WhatsApp Manager → Account tools → Flows, then pick it here.
-        Answers are saved under{' '}
+        in{' '}
+        <a href="/flows/forms" target="_blank" rel="noreferrer" className="text-primary underline">
+          WhatsApp forms
+        </a>
+        , publish it, then pick it here. Answers are saved under{' '}
         <code className="bg-muted rounded px-1">{`{{vars.${varKey}.<field>}}`}</code>{' '}
         before the flow moves on.
       </p>
@@ -180,7 +183,9 @@ export function SendFlowFields({
             disabled={loadingList || loadingDetails}
           >
             <SelectTrigger className="bg-muted text-xs">
-              <SelectValue placeholder={loadingList ? 'Loading forms…' : 'Choose a form'} />
+              <SelectValue placeholder={loadingList ? 'Loading forms…' : 'Choose a form'}>
+                {flowId ? flows?.find((f) => f.id === flowId)?.name || cfg.flow_name || flowId : null}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {flowId && !knownFlow && (
@@ -199,6 +204,14 @@ export function SendFlowFields({
             <Loader2 className="h-3 w-3 animate-spin" /> Reading form from Meta…
           </p>
         )}
+        <a
+          href="/flows/forms"
+          target="_blank"
+          rel="noreferrer"
+          className="text-primary mt-1 inline-flex items-center gap-1 text-[11px] underline"
+        >
+          <Plus className="h-3 w-3" /> Create or edit forms
+        </a>
         {listError && (
           <p className="text-destructive mt-1 text-[11px]">
             {listError} — you can still enter the Flow ID manually.
