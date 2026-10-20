@@ -1143,7 +1143,12 @@ export function MessageThread({
 
   // Images + videos in the thread, in order — the set the media viewer
   // pages through with ← / →.
-  const mediaGallery = useMemo(() => collectMediaGallery(messages), [messages]);
+  const mediaGallery = useMemo(
+    () => collectMediaGallery(messages, (message) => resolveTemplateMessageDisplay(
+      message, message.template_name ? templatesByName.get(message.template_name) : null,
+    )),
+    [messages, templatesByName],
+  );
 
   // Bucket reactions by their target message_id for O(1) per-bubble lookup.
   const reactionsByMessageId = useMemo(() => {

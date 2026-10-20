@@ -16,7 +16,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, ChevronRight, LayoutTemplate, Loader2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  ChevronRight,
+  LayoutTemplate,
+  Loader2,
+  Search,
+} from 'lucide-react';
 import { extractVariableIndices } from '@/lib/whatsapp/template-validators';
 import { normalizeTemplateButtons } from '@/lib/flows/template-buttons';
 import { TemplateMobilePreview } from '@/components/shared/template-mobile-preview';
@@ -86,6 +92,13 @@ export function TemplatePicker({
   const { accountId } = useAuth();
   const t = useTranslations('Inbox.templatePicker');
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [search, setSearch] = useState('');
+  const filteredTemplates = templates.filter((template) =>
+    [template.name, template.body_text, template.category, template.language]
+      .join(' ')
+      .toLocaleLowerCase()
+      .includes(search.trim().toLocaleLowerCase())
+  );
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<MessageTemplate | null>(null);
   const [params, setParams] = useState<string[]>([]);
@@ -154,7 +167,10 @@ export function TemplatePicker({
   }
 
   function handleOpenChange(next: boolean) {
-    if (!next) resetSelection();
+    if (!next) {
+      resetSelection();
+      setSearch('');
+    }
     onOpenChange(next);
   }
 
@@ -234,52 +250,72 @@ export function TemplatePicker({
         </DialogHeader>
 
         {!selected ? (
-          <div className="max-h-[60vh] space-y-2 overflow-y-auto">
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="text-primary h-5 w-5 animate-spin" />
-              </div>
-            ) : templates.length === 0 ? (
-              <div className="border-border bg-background/50 rounded-md border p-6 text-center">
-                <p className="text-popover-foreground text-sm">
-                  {t('noApprovedTemplates')}
-                </p>
-                <p className="text-muted-foreground mt-1 text-xs">
-                  {t('noApprovedTemplatesHint')}
-                </p>
-              </div>
-            ) : (
-              templates.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => pickTemplate(t)}
-                  className="border-border bg-background/50 hover:border-primary/40 hover:bg-popover w-full rounded-md border p-3 text-left transition-colors"
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="text-muted-foreground pointer-events-none absolute top-2.5 left-3 h-4 w-4" />
+              <Input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={t('searchTemplates')}
+                aria-label={t('searchTemplates')}
+                className="pl-9"
+              />
+            </div>
+            <div className="max-h-[60vh] space-y-2 overflow-y-auto">
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="text-primary h-5 w-5 animate-spin" />
+                </div>
+              ) : templates.length === 0 ? (
+                <div className="border-border bg-background/50 rounded-md border p-6 text-center">
+                  <p className="text-popover-foreground text-sm">
+                    {t('noApprovedTemplates')}
+                  </p>
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    {t('noApprovedTemplatesHint')}
+                  </p>
+                </div>
+              ) : filteredTemplates.length === 0 ? (
+                <p
+                  className="text-muted-foreground py-6 text-center text-sm"
+                  role="status"
                 >
-                  <div className="flex items-start gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-popover-foreground truncate text-sm font-medium">
-                          {t.name}
+                  {t('noMatchingTemplates')}
+                </p>
+              ) : (
+                filteredTemplates.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => pickTemplate(t)}
+                    className="border-border bg-background/50 hover:border-primary/40 hover:bg-popover w-full rounded-md border p-3 text-left transition-colors"
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-popover-foreground truncate text-sm font-medium">
+                            {t.name}
+                          </p>
+                          <Badge className="border-primary/30 bg-primary/20 text-primary border text-[10px]">
+                            {t.category}
+                          </Badge>
+                          {t.language && (
+                            <span className="text-muted-foreground text-[10px] uppercase">
+                              {t.language}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
+                          {t.body_text}
                         </p>
-                        <Badge className="border-primary/30 bg-primary/20 text-primary border text-[10px]">
-                          {t.category}
-                        </Badge>
-                        {t.language && (
-                          <span className="text-muted-foreground text-[10px] uppercase">
-                            {t.language}
-                          </span>
-                        )}
                       </div>
-                      <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
-                        {t.body_text}
-                      </p>
+                      <ChevronRight className="text-muted-foreground h-4 w-4 flex-shrink-0" />
                     </div>
-                    <ChevronRight className="text-muted-foreground h-4 w-4 flex-shrink-0" />
-                  </div>
-                </button>
-              ))
-            )}
+                  </button>
+                ))
+              )}
+            </div>
           </div>
         ) : (
           <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-[minmax(0,1fr)_340px] md:overflow-hidden">

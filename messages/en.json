@@ -279,6 +279,8 @@
       "cancelReply": "Cancel reply"
     },
     "templatePicker": {
+      "searchTemplates": "Search templates...",
+      "noMatchingTemplates": "No matching templates",
       "sendTemplate": "Send template",
       "fillPlaceholders": "Fill in the placeholders to render this template. Meta requires every variable to be set.",
       "pickTemplate": "Pick an approved WhatsApp template to send to this contact.",

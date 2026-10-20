@@ -1,4 +1,8 @@
-import type { Message } from "@/types";
+import {
+  resolveTemplateMessageDisplay,
+  type TemplateMessageSnapshot,
+} from '@/lib/inbox/template-message-display';
+import type { Message } from '@/types';
 
 /**
  * The set of media in a thread that the lightbox can page through, built
@@ -11,7 +15,7 @@ import type { Message } from "@/types";
  * Meta has since expired, and both render as "unavailable" in the bubble.
  */
 
-export type MediaGalleryKind = "image" | "video";
+export type MediaGalleryKind = 'image' | 'video';
 
 export interface MediaGalleryItem {
   /** `messages.id` — the lightbox's identity for "which one is open". */
@@ -28,8 +32,8 @@ export interface MediaGalleryItem {
 }
 
 function galleryKind(message: Message): MediaGalleryKind | null {
-  if (message.content_type === "image") return "image";
-  if (message.content_type === "video") return "video";
+  if (message.content_type === 'image') return 'image';
+  if (message.content_type === 'video') return 'video';
   return null;
 }
 
@@ -37,9 +41,26 @@ function galleryKind(message: Message): MediaGalleryKind | null {
  * Viewable media in thread order. Order matters — it's what ← / → walk,
  * and the thread hands messages over already sorted by `created_at`.
  */
-export function collectMediaGallery(messages: Message[]): MediaGalleryItem[] {
+export function collectMediaGallery(
+  messages: Message[],
+  resolveTemplate: (
+    message: Message
+  ) => TemplateMessageSnapshot | null = resolveTemplateMessageDisplay
+): MediaGalleryItem[] {
   const items: MediaGalleryItem[] = [];
-  for (const message of messages) {
+  for (const original of messages) {
+    let message = original;
+    if (original.content_type === 'template') {
+      const display = resolveTemplate(original);
+      const kind = display?.header_type;
+      if (kind !== 'image' && kind !== 'video') continue;
+      message = {
+        ...original,
+        content_type: kind,
+        media_url:
+          display?.header_media_url?.trim() || original.media_url?.trim(),
+      };
+    }
     const kind = galleryKind(message);
     if (!kind || !message.media_url) continue;
     items.push({
@@ -48,7 +69,7 @@ export function collectMediaGallery(messages: Message[]): MediaGalleryItem[] {
       kind,
       caption: message.content_text || undefined,
       createdAt: message.created_at,
-      fromCustomer: message.sender_type === "customer",
+      fromCustomer: message.sender_type === 'customer',
       message,
     });
   }
@@ -58,7 +79,7 @@ export function collectMediaGallery(messages: Message[]): MediaGalleryItem[] {
 /** Index of a message in the gallery, or -1 when it isn't in it. */
 export function galleryIndexOf(
   items: MediaGalleryItem[],
-  messageId: string | null,
+  messageId: string | null
 ): number {
   if (!messageId) return -1;
   return items.findIndex((item) => item.messageId === messageId);

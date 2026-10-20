@@ -82,6 +82,28 @@ describe("collectMediaGallery", () => {
   });
 });
 
+describe("template media", () => {
+  it("opens snapshot images with a downloadable media row", () => {
+    const [item] = collectMediaGallery([msg("template-1", "template", {
+      content_payload: { template_display: { header_type: "image", header_media_url: "https://example.com/header.jpg" } },
+    })]);
+    expect(item.url).toBe("https://example.com/header.jpg");
+    expect(item.message.content_type).toBe("image");
+    expect(item.message.media_url).toBe(item.url);
+    expect(galleryIndexOf([item], "template-1")).toBe(0);
+  });
+
+  it("uses resolved legacy headers and falls back to the message media URL", () => {
+    const items = collectMediaGallery([
+      msg("legacy", "template", { media_url: "https://example.com/video.mp4" }),
+      msg("document", "template"),
+    ], (message) => ({ header_type: message.id === "legacy" ? "video" : "document" }));
+    expect(items.map((item) => [item.messageId, item.kind, item.url])).toEqual([
+      ["legacy", "video", "https://example.com/video.mp4"],
+    ]);
+  });
+});
+
 describe("galleryIndexOf", () => {
   const items = collectMediaGallery([
     msg("i1", "image", { media_url: "/api/whatsapp/media/1" }),

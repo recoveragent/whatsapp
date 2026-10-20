@@ -49,6 +49,8 @@ export function MessageActions({
     message.sender_type === "agent" || message.sender_type === "bot";
 
   const handleContextMenu = (e: React.MouseEvent) => {
+    // Preserve native right-click actions for mouse users.
+    if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
     e.preventDefault();
     setTouchOpen(true);
   };
