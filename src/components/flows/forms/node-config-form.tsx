@@ -140,15 +140,7 @@ function NodeConfigBody({
     case "collect_payment":
       return <CollectPaymentFields node={node} allNodes={allNodes} onChange={onUpdateConfig} triggerType={triggerType} triggerConfig={triggerConfig} />;
     case "start":
-      return (
-        <NextNodeRow
-          value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
-          allNodes={allNodes}
-          currentKey={node.node_key}
-          onChange={(v) => onUpdateConfig({ next_node_key: v })}
-          label={t("advancesTo")}
-        />
-      );
+      return null;
 
     case "send_message":
       return (
@@ -158,13 +150,6 @@ function NodeConfigBody({
             value={(cfg as { text?: string }).text ?? ""}
             onChange={(v) => onUpdateConfig({ text: v })}
             rows={4}
-          />
-          <NextNodeRow
-            value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
-            allNodes={allNodes}
-            currentKey={node.node_key}
-            onChange={(v) => onUpdateConfig({ next_node_key: v })}
-            label={t("advancesTo")}
           />
         </>
       );
@@ -247,13 +232,6 @@ function NodeConfigBody({
               .
             </p>
           </div>
-          <NextNodeRow
-            value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
-            allNodes={allNodes}
-            currentKey={node.node_key}
-            onChange={(v) => onUpdateConfig({ next_node_key: v })}
-            label={t("advanceAfterCapture")}
-          />
         </>
       );
 
@@ -441,13 +419,6 @@ function NodeConfigBody({
               </p>
             </>
           )}
-          <NextNodeRow
-            value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
-            allNodes={allNodes}
-            currentKey={node.node_key}
-            onChange={(v) => onUpdateConfig({ next_node_key: v })}
-            label="Advances to after wait"
-          />
         </>
       );
     }
@@ -467,13 +438,6 @@ function NodeConfigBody({
             onChange={(v) => onUpdateConfig({ body_template: v })}
             rows={3}
           />
-          <NextNodeRow
-            value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
-            allNodes={allNodes}
-            currentKey={node.node_key}
-            onChange={(v) => onUpdateConfig({ next_node_key: v })}
-            label="Advances to"
-          />
         </>
       );
 
@@ -481,27 +445,12 @@ function NodeConfigBody({
       return (
         <>
           <UpdateContactFieldsForm cfg={cfg} onUpdateConfig={onUpdateConfig} />
-          <NextNodeRow
-            value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
-            allNodes={allNodes}
-            currentKey={node.node_key}
-            onChange={(v) => onUpdateConfig({ next_node_key: v })}
-            label="Advances to"
-          />
         </>
       );
 
     case "assign_conversation":
     case "close_conversation":
-      return (
-        <NextNodeRow
-          value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
-          allNodes={allNodes}
-          currentKey={node.node_key}
-          onChange={(v) => onUpdateConfig({ next_node_key: v })}
-          label="Advances to"
-        />
-      );
+      return null;
 
     case "create_deal":
       return (
@@ -1043,8 +992,6 @@ interface SendAddressCfg extends ReplyTimeoutCfg {
 
 function SendAddressForm({
   cfg,
-  allNodes,
-  currentKey,
   onUpdateConfig,
 }: {
   cfg: SendAddressCfg;
@@ -1140,13 +1087,6 @@ function SendAddressForm({
           </span>
         </span>
       </label>
-      <NextNodeRow
-        value={cfg.next_node_key ?? ""}
-        allNodes={allNodes}
-        currentKey={currentKey}
-        onChange={(v) => onUpdateConfig({ next_node_key: v })}
-        label="After address is submitted, advance to"
-      />
     </>
   );
 }
@@ -1404,8 +1344,6 @@ interface CreateDealCfg {
 
 function CreateDealForm({
   cfg,
-  allNodes,
-  currentKey,
   onUpdateConfig,
 }: {
   cfg: CreateDealCfg;
@@ -1544,13 +1482,6 @@ function CreateDealForm({
           className="bg-muted"
         />
       </div>
-      <NextNodeRow
-        value={cfg.next_node_key ?? ""}
-        allNodes={allNodes}
-        currentKey={currentKey}
-        onChange={(v) => onUpdateConfig({ next_node_key: v })}
-        label="Advances to"
-      />
     </>
   );
 }
@@ -1567,8 +1498,6 @@ interface SetTagCfg {
 
 function SetTagForm({
   cfg,
-  allNodes,
-  currentKey,
   onUpdateConfig,
   t,
 }: {
@@ -1628,13 +1557,6 @@ function SetTagForm({
           )}
         </div>
       </div>
-      <NextNodeRow
-        value={cfg.next_node_key ?? ""}
-        allNodes={allNodes}
-        currentKey={currentKey}
-        onChange={(v) => onUpdateConfig({ next_node_key: v })}
-        label={t("thenAdvanceTo")}
-      />
     </>
   );
 }
@@ -1692,8 +1614,6 @@ const FLOW_MEDIA_BUCKET = "flow-media";
 
 function SendMediaForm({
   cfg,
-  allNodes,
-  currentKey,
   onUpdateConfig,
   t,
 }: {
@@ -1855,13 +1775,6 @@ function SendMediaForm({
         </div>
       )}
 
-      <NextNodeRow
-        value={cfg.next_node_key ?? ""}
-        allNodes={allNodes}
-        currentKey={currentKey}
-        onChange={(v) => onUpdateConfig({ next_node_key: v })}
-        label={t("advanceAfterSending")}
-      />
     </>
   );
 }
@@ -1881,8 +1794,6 @@ interface SendProductCfg {
 
 function SendProductForm({
   cfg,
-  allNodes,
-  currentKey,
   onUpdateConfig,
 }: {
   cfg: SendProductCfg;
@@ -2072,13 +1983,6 @@ function SendProductForm({
         />
       </div>
 
-      <NextNodeRow
-        value={cfg.next_node_key ?? ""}
-        allNodes={allNodes}
-        currentKey={currentKey}
-        onChange={(v) => onUpdateConfig({ next_node_key: v })}
-        label="After sending, advance to"
-      />
     </>
   );
 }

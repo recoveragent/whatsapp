@@ -922,7 +922,7 @@ export function SendTemplateFields({
             </div>
           )}
 
-          {allNodes.length > 0 && (
+          {hasQuickReplies && allNodes.length > 0 && (
             <NextNodeRow
               value={nextNodeKey}
               allNodes={allNodes}
@@ -936,7 +936,7 @@ export function SendTemplateFields({
                   next_node_key: v,
                 })
               }
-              label={hasQuickReplies ? "Next step →" : "Advances to"}
+              label="Next step →"
             />
           )}
           {hasQuickReplies && (
