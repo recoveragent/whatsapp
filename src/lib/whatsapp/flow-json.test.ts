@@ -56,6 +56,48 @@ describe('summarizeFlowJson', () => {
     })
   })
 
+  it('reads choices and global screen references', () => {
+    const json = {
+      screens: [
+        {
+          id: 'STEP_A',
+          layout: {
+            children: [
+              {
+                type: 'RadioButtonsGroup',
+                name: 'plan',
+                label: 'Plan',
+                'data-source': [
+                  { id: 'basic', title: 'Basic' },
+                  { id: 'premium', title: 'Premium' },
+                ],
+              },
+              { type: 'Dropdown', name: 'city', label: 'City', 'data-source': '${data.cities}' },
+              {
+                type: 'Footer',
+                'on-click-action': {
+                  name: 'complete',
+                  payload: { plan: '${screen.STEP_A.form.plan}', city: '${form.city}' },
+                },
+              },
+            ],
+          },
+        },
+      ],
+    }
+    expect(summarizeFlowJson(json).fields).toEqual([
+      {
+        key: 'plan',
+        label: 'Plan',
+        options: [
+          { id: 'basic', title: 'Basic' },
+          { id: 'premium', title: 'Premium' },
+        ],
+      },
+      { key: 'city', label: 'City' },
+    ])
+  })
+
   it('falls back to input names and tolerates junk', () => {
     expect(summarizeFlowJson(null)).toEqual({ entry_screen: null, screen_ids: [], fields: [] })
     expect(

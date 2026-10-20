@@ -77,7 +77,7 @@ import { isShopifyFulfillmentFlowTrigger, isShopifyCheckoutAbandonmentFlowTrigge
 import { useAccountPipelines } from "./use-account-pipelines";
 import { CollectPaymentFields } from "./collect-payment-fields";
 import { SendFlowFields, type SendFlowCfg as SendFlowFieldsCfg } from "./send-flow-fields";
-import { formFieldVariableGroups } from "@/lib/flows/form-variables";
+import { formConditionSources, formFieldVariableGroups, type FormConditionSource } from "@/lib/flows/form-variables";
 import { ConditionRuleFields } from "./condition-fields";
 import type { ConditionNodeConfig } from "@/lib/flows/types";
 
@@ -1165,11 +1165,42 @@ function uniqueSwitchBranchId(
   return id;
 }
 
-function ConditionPredicateFields({ cfg, allNodes, onPatch, triggerType }: {
-  cfg: ConditionCfg; allNodes: BuilderNode[]; onPatch: (patch: Partial<ConditionCfg>) => void; triggerType?: FlowTriggerType;
+/** Latest field list per Meta Flow id, so older nodes pick up answer choices. */
+const formFieldsCache = new Map<string, Promise<FormConditionSource["fields"] | null>>();
+
+function useFormConditionSources(allNodes: BuilderNode[], currentKey: string): FormConditionSource[] {
+  const sources = formConditionSources(allNodes, currentKey);
+  const [fresh, setFresh] = useState<Record<string, FormConditionSource["fields"]>>({});
+  const flowIds = [...new Set(sources.map((s) => s.flow_id).filter((id): id is string => !!id))].join(",");
+  useEffect(() => {
+    let alive = true;
+    for (const id of flowIds ? flowIds.split(",") : []) {
+      if (!formFieldsCache.has(id)) {
+        formFieldsCache.set(
+          id,
+          fetch(`/api/whatsapp/flows/${encodeURIComponent(id)}`)
+            .then((res) => (res.ok ? res.json() : null))
+            .then((d: { fields?: FormConditionSource["fields"] } | null) => (Array.isArray(d?.fields) ? d.fields : null))
+            .catch(() => null),
+        );
+      }
+      void formFieldsCache.get(id)!.then((fields) => {
+        if (alive && fields?.length) setFresh((prev) => (prev[id] === fields ? prev : { ...prev, [id]: fields }));
+      });
+    }
+    return () => {
+      alive = false;
+    };
+  }, [flowIds]);
+  return sources.map((s) => (s.flow_id && fresh[s.flow_id] ? { ...s, fields: fresh[s.flow_id]! } : s));
+}
+
+function ConditionPredicateFields({ cfg, allNodes, currentKey, onPatch, triggerType }: {
+  cfg: ConditionCfg; allNodes: BuilderNode[]; currentKey: string; onPatch: (patch: Partial<ConditionCfg>) => void; triggerType?: FlowTriggerType;
 }) {
   const tags = useUserTags();
-  return <ConditionRuleFields cfg={cfg} onPatch={onPatch} triggerType={triggerType} tags={tags} varKeys={collectFlowVarKeys(allNodes)} />;
+  const forms = useFormConditionSources(allNodes, currentKey);
+  return <ConditionRuleFields cfg={cfg} onPatch={onPatch} triggerType={triggerType} tags={tags} varKeys={collectFlowVarKeys(allNodes)} forms={forms} />;
 }
 
 interface UserTag {
@@ -1199,6 +1230,7 @@ function ConditionForm({
         triggerType={triggerType}
         cfg={cfg}
         allNodes={allNodes}
+        currentKey={currentKey}
         onPatch={(patch) => onUpdateConfig(patch)}
       />
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1308,6 +1340,7 @@ function SwitchForm({
         triggerType={triggerType}
                 cfg={branch}
                 allNodes={allNodes}
+                currentKey={currentKey}
                 onPatch={(patch) => updateBranch(index, patch)}
               />
               <NextNodeRow

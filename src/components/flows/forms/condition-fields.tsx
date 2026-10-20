@@ -24,6 +24,7 @@ import type {
   ConditionSubject,
 } from '@/lib/flows/types';
 import { DEFAULT_COD_GATEWAYS } from '@/lib/shopify/condition-data';
+import type { FormConditionSource } from '@/lib/flows/form-variables';
 
 type Draft = Partial<ConditionNodeConfig>;
 type Choice = { value: string; label: string };
@@ -66,6 +67,14 @@ function Picker({
 }
 const choices = (values: readonly string[]) =>
   values.map((value) => ({ value, label: value.replaceAll('_', ' ') }));
+
+/** The form whose answers a `var` path like `form.plan` points at. */
+function formForPath(forms: FormConditionSource[], path: string | undefined) {
+  if (!path) return undefined;
+  return forms
+    .filter((f) => path === f.var_key || path.startsWith(`${f.var_key}.`))
+    .sort((a, b) => b.var_key.length - a.var_key.length)[0];
+}
 
 function CatalogSuggestions({
   kind,
@@ -174,15 +183,20 @@ function PredicateFields({
   triggerType,
   tags,
   varKeys,
+  forms = [],
 }: {
   cfg: Draft;
   onPatch: (patch: Draft) => void;
   triggerType?: string;
   tags: { id: string; name: string }[];
   varKeys: string[];
+  forms?: FormConditionSource[];
 }) {
   const variableListId = useId();
   const subject = cfg.subject ?? 'var';
+  const form = subject === 'var' ? formForPath(forms, cfg.subject_key) : undefined;
+  const formKey = form ? (cfg.subject_key ?? '').slice(form.var_key.length + 1) : '';
+  const formField = form?.fields.find((f) => f.key === formKey);
   const shopify = isShopifySubject(subject);
   const fields = shopifyConditionFields(subject);
   const field = shopify
@@ -202,6 +216,12 @@ function PredicateFields({
     { value: 'tag', label: 'Contact tag' },
     { value: 'contact_field', label: 'Contact field' },
   ];
+  subjectChoices.unshift(
+    ...forms.map((f) => ({
+      value: `form:${f.node_key}`,
+      label: `Form answer · ${f.name}`,
+    }))
+  );
   if (triggerType?.startsWith('shopify_'))
     subjectChoices.unshift({
       value: triggerType.includes('checkout')
@@ -219,7 +239,9 @@ function PredicateFields({
           ? 'Shopify payment status (legacy)'
           : subject.replaceAll('_', ' '),
     });
-  const keyChoices = shopify
+  const keyChoices = form
+    ? form.fields.map((f) => ({ value: f.key, label: f.label || f.key }))
+    : shopify
     ? fields.map((f) => ({ value: f.key, label: f.label }))
     : subject === 'tag'
       ? tags.map((t) => ({ value: t.id, label: t.name }))
@@ -227,6 +249,21 @@ function PredicateFields({
         ? choices(['name', 'email', 'phone', 'company'])
         : [];
   const setSubject = (next: string) => {
+    const picked = next.startsWith('form:')
+      ? forms.find((f) => `form:${f.node_key}` === next)
+      : undefined;
+    if (picked) {
+      const firstField = picked.fields[0];
+      onPatch({
+        subject: 'var',
+        subject_key: `${picked.var_key}.${firstField?.key ?? ''}`,
+        operator: 'equals',
+        value: firstField?.options?.[0]?.id ?? '',
+        value_to: undefined,
+        data_source: 'snapshot',
+      });
+      return;
+    }
     const typed = next as ConditionSubject;
     const first = isShopifySubject(next)
       ? shopifyConditionFields(next)[0]!
@@ -242,8 +279,11 @@ function PredicateFields({
   };
   const statusOptions =
     subject === 'shopify_payment' ? PAYMENT_STATUSES : field?.options;
+  const textOperator = ['equals', 'not_equals', 'contains', 'not_contains'].includes(operator);
   const valueChoices =
-    field?.type === 'boolean'
+    formField?.options && textOperator
+      ? formField.options.map((o) => ({ value: o.id, label: o.title }))
+      : field?.type === 'boolean'
       ? choices(['true', 'false'])
       : ['equals', 'not_equals', 'contains', 'not_contains'].includes(
             operator
@@ -254,17 +294,27 @@ function PredicateFields({
     <div className="space-y-3">
       <Picker
         label="If"
-        value={subject}
+        value={form ? `form:${form.node_key}` : subject}
         choices={subjectChoices}
         onChange={setSubject}
       />
       {subject !== 'shopify_payment' &&
         (keyChoices.length ? (
           <Picker
-            label="Field"
-            value={cfg.subject_key ?? ''}
+            label={form ? 'Question' : 'Field'}
+            value={form ? formKey : (cfg.subject_key ?? '')}
             choices={keyChoices}
             onChange={(key) => {
+              if (form) {
+                const picked = form.fields.find((f) => f.key === key);
+                onPatch({
+                  subject_key: `${form.var_key}.${key}`,
+                  operator: 'equals',
+                  value: picked?.options?.[0]?.id ?? '',
+                  value_to: undefined,
+                });
+                return;
+              }
               const next = fields.find((f) => f.key === key);
               const op = next
                 ? operatorsForField(next.type)[0]!
@@ -461,6 +511,7 @@ export function ConditionRuleFields(props: {
   triggerType?: string;
   tags: { id: string; name: string }[];
   varKeys: string[];
+  forms?: FormConditionSource[];
 }) {
   const { cfg, onPatch } = props;
   if (!cfg.rules)

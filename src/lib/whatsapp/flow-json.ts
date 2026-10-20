@@ -14,6 +14,11 @@ export interface FlowFormField {
   key: string
   /** Label shown to the customer, when we could resolve it. */
   label?: string
+  /**
+   * Choices for radio / checkbox / dropdown fields. A submission carries
+   * the chosen `id`, so conditions compare against ids.
+   */
+  options?: Array<{ id: string; title: string }>
 }
 
 export interface FlowJsonSummary {
@@ -47,6 +52,7 @@ export function summarizeFlowJson(raw: unknown): FlowJsonSummary {
 
   const navigatedTo = new Set<string>()
   const labels = new Map<string, string>()
+  const options = new Map<string, Array<{ id: string; title: string }>>()
   const inputNames: string[] = []
   const payloadKeys: string[] = []
   const payloadSource = new Map<string, string>()
@@ -55,6 +61,14 @@ export function summarizeFlowJson(raw: unknown): FlowJsonSummary {
     if (typeof o.name === 'string' && typeof o.type === 'string' && o.type !== 'Form') {
       if (!inputNames.includes(o.name)) inputNames.push(o.name)
       if (typeof o.label === 'string') labels.set(o.name, o.label)
+      const source = o['data-source']
+      if (Array.isArray(source)) {
+        const opts = source
+          .filter(isObj)
+          .filter((d) => typeof d.id === 'string' && d.id)
+          .map((d) => ({ id: d.id as string, title: typeof d.title === 'string' ? d.title : (d.id as string) }))
+        if (opts.length > 0) options.set(o.name, opts)
+      }
     }
     const action = o['on-click-action']
     if (!isObj(action)) return
@@ -64,8 +78,8 @@ export function summarizeFlowJson(raw: unknown): FlowJsonSummary {
     if (action.name === 'complete' && isObj(action.payload)) {
       for (const [k, v] of Object.entries(action.payload)) {
         if (!payloadKeys.includes(k)) payloadKeys.push(k)
-        // `${form.full_name}` / `${data.x}` → component name for the label
-        const m = typeof v === 'string' ? /^\$\{(?:form|data)\.([\w-]+)\}$/.exec(v) : null
+        // `${form.full_name}` / `${data.x}` / `${screen.STEP_A.form.x}` → component name
+        const m = typeof v === 'string' ? /^\$\{(?:screen\.[\w-]+\.)?(?:form|data)\.([\w-]+)\}$/.exec(v) : null
         if (m) payloadSource.set(k, m[1]!)
       }
     }
@@ -76,8 +90,10 @@ export function summarizeFlowJson(raw: unknown): FlowJsonSummary {
     entry_screen: screenIds.find((id) => !navigatedTo.has(id)) ?? screenIds[0] ?? null,
     screen_ids: screenIds,
     fields: keys.map((key) => {
-      const label = labels.get(payloadSource.get(key) ?? key)
-      return label ? { key, label } : { key }
+      const source = payloadSource.get(key) ?? key
+      const label = labels.get(source)
+      const opts = options.get(source)
+      return { key, ...(label ? { label } : {}), ...(opts ? { options: opts } : {}) }
     }),
   }
 }

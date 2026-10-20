@@ -64,6 +64,10 @@ function asStringRecord(input: unknown): Record<string, string> {
       out[k] = String(v)
     } else if (typeof v === 'boolean') {
       out[k] = v ? 'true' : 'false'
+    } else if (Array.isArray(v)) {
+      // CheckboxGroup → chosen option ids, comma-separated for conditions.
+      const picked = v.filter((x): x is string | number => typeof x === 'string' || typeof x === 'number')
+      if (picked.length > 0) out[k] = picked.map(String).join(', ')
     }
   }
   return out
