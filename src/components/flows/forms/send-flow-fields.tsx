@@ -182,12 +182,12 @@ export function SendFlowFields({
             onValueChange={(id) => { if (id) void loadDetails(id); }}
             disabled={loadingList || loadingDetails}
           >
-            <SelectTrigger className="bg-muted text-xs">
+            <SelectTrigger className="bg-muted w-full text-xs">
               <SelectValue placeholder={loadingList ? 'Loading forms…' : 'Choose a form'}>
                 {flowId ? flows?.find((f) => f.id === flowId)?.name || cfg.flow_name || flowId : null}
               </SelectValue>
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="min-w-72">
               {flowId && !knownFlow && (
                 <SelectItem value={flowId}>{cfg.flow_name || flowId}</SelectItem>
               )}

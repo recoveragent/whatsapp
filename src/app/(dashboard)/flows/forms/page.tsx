@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -25,6 +26,13 @@ import { Button } from "@/components/ui/button";
 import { GatedButton } from "@/components/ui/gated-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -71,8 +79,6 @@ interface MetaValidationError {
   line_start?: number;
 }
 
-const selectClass =
-  "border-input bg-background h-9 w-full rounded-md border px-3 text-sm";
 
 const CATEGORY_LABELS: Record<string, string> = {
   LEAD_GENERATION: "Lead generation",
@@ -183,6 +189,7 @@ export default function WhatsAppFormsPage() {
   }
 
   const selected = forms.find((f) => f.id === selectedId) ?? null;
+  const [actionsEl, setActionsEl] = useState<HTMLDivElement | null>(null);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -200,14 +207,24 @@ export default function WhatsAppFormsPage() {
             <span className="font-medium text-foreground">Send WhatsApp Form</span> step.
           </p>
         </div>
-        <GatedButton canAct={canEdit} gateReason="create forms" onClick={handleCreate} disabled={creating}>
-          {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          New form
-        </GatedButton>
+        {/* The selected form's Save / Upload / Publish / Delete render here. */}
+        <div ref={setActionsEl} className="flex max-w-xl flex-col items-end gap-1" />
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <aside className="shrink-0 overflow-y-auto border-b p-3 md:w-64 md:border-r md:border-b-0">
+          <div className="mb-3 [&>span]:flex">
+            <GatedButton
+              canAct={canEdit}
+              gateReason="create forms"
+              onClick={handleCreate}
+              disabled={creating}
+              className="w-full"
+            >
+              {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              New form
+            </GatedButton>
+          </div>
           {loading ? (
             <Loader2 className="m-4 h-5 w-5 animate-spin text-muted-foreground" />
           ) : forms.length === 0 ? (
@@ -242,6 +259,7 @@ export default function WhatsAppFormsPage() {
               key={selected.id}
               form={selected}
               canEdit={canEdit}
+              actionsEl={actionsEl}
               onChange={(row) => setForms((cur) => cur.map((f) => (f.id === row.id ? row : f)))}
               onDeleted={(id) => {
                 setForms((cur) => cur.filter((f) => f.id !== id));
@@ -264,11 +282,14 @@ export default function WhatsAppFormsPage() {
 function FormEditor({
   form,
   canEdit,
+  actionsEl,
   onChange,
   onDeleted,
 }: {
   form: FormRow;
   canEdit: boolean;
+  /** Page-header slot the action buttons render into. */
+  actionsEl: HTMLElement | null;
   onChange: (row: FormRow) => void;
   onDeleted: (id: string) => void;
 }) {
@@ -397,22 +418,26 @@ function FormEditor({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="form-category">Category</Label>
-            <select
-              id="form-category"
-              className={selectClass}
+            <Select
               value={category}
               disabled={!canEdit}
-              onChange={(e) => {
-                setCategory(e.target.value);
+              onValueChange={(v) => {
+                if (!v) return;
+                setCategory(v);
                 setDirty(true);
               }}
             >
-              {FLOW_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {CATEGORY_LABELS[c] ?? c}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id="form-category" className="w-full">
+                <SelectValue>{CATEGORY_LABELS[category] ?? category}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {FLOW_CATEGORIES.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {CATEGORY_LABELS[c] ?? c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
             {statusBadge(form)}
@@ -495,43 +520,6 @@ function FormEditor({
           </div>
         )}
 
-        <div className="sticky bottom-0 -mx-6 flex flex-wrap items-center gap-2 border-t bg-background px-6 py-3">
-          <Button variant="outline" disabled={disabled || !dirty} onClick={() => void save()}>
-            {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Save
-          </Button>
-          <Button variant="outline" disabled={disabled} onClick={() => void upload(false)}>
-            {busy === "draft" ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-            Upload as draft
-          </Button>
-          <Button disabled={disabled} onClick={() => void upload(true)}>
-            {busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            {isPublished ? "Publish new version" : "Publish"}
-          </Button>
-          <Button
-            variant="ghost"
-            className="ml-auto text-muted-foreground hover:text-destructive"
-            disabled={disabled}
-            onClick={() => void remove()}
-          >
-            <Trash2 className="h-4 w-4" /> Delete
-          </Button>
-          {issues.length > 0 && (
-            <p className="w-full text-xs text-destructive">
-              {issues.length} issue{issues.length > 1 ? "s" : ""} to fix before uploading.
-            </p>
-          )}
-          {isPublished && (
-            <p className="w-full text-xs text-muted-foreground">
-              WhatsApp doesn&apos;t allow editing a published form, so publishing again creates a new version.
-              Flow steps that picked the old version keep sending it until you re-pick this form.
-            </p>
-          )}
-        </div>
-      </div>
-
-      <aside className="space-y-4">
-        <Preview def={def} screen={Math.min(previewScreen, def.screens.length - 1)} onScreen={setPreviewScreen} />
         <div className="rounded-lg border p-4 text-sm">
           <div className="flex items-center gap-2 font-medium">
             <CheckCircle2 className="h-4 w-4 text-emerald-500" /> Using this form
@@ -550,6 +538,46 @@ function FormEditor({
             ))}
           </div>
         </div>
+
+        {actionsEl && createPortal(<>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button variant="outline" disabled={disabled || !dirty} onClick={() => void save()}>
+            {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save
+          </Button>
+          <Button variant="outline" disabled={disabled} onClick={() => void upload(false)}>
+            {busy === "draft" ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+            Upload as draft
+          </Button>
+          <Button disabled={disabled} onClick={() => void upload(true)}>
+            {busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            {isPublished ? "Publish new version" : "Publish"}
+          </Button>
+          <Button
+            variant="ghost"
+            className="text-muted-foreground hover:text-destructive"
+            disabled={disabled}
+            onClick={() => void remove()}
+          >
+            <Trash2 className="h-4 w-4" /> Delete
+          </Button>
+        </div>
+          {issues.length > 0 && (
+            <p className="text-right text-xs text-destructive">
+              {issues.length} issue{issues.length > 1 ? "s" : ""} to fix before uploading.
+            </p>
+          )}
+          {isPublished && (
+            <p className="text-right text-xs text-muted-foreground">
+              WhatsApp doesn&apos;t allow editing a published form, so publishing again creates a new version.
+              Flow steps that picked the old version keep sending it until you re-pick this form.
+            </p>
+          )}
+        </>, actionsEl)}
+      </div>
+
+      <aside className="xl:sticky xl:top-6 xl:self-start">
+        <Preview def={def} screen={Math.min(previewScreen, def.screens.length - 1)} onScreen={setPreviewScreen} />
       </aside>
     </div>
   );
@@ -662,21 +690,23 @@ function ScreenEditor({
 
       {!disabled && (
         <div className="flex items-center gap-2">
-          <select
-            aria-label="Add a question"
-            className={cn(selectClass, "w-auto")}
-            value=""
-            onChange={(e) => {
-              if (e.target.value) onAddField(e.target.value as FormFieldType);
+          <Select
+            value={null}
+            onValueChange={(v) => {
+              if (v) onAddField(v as FormFieldType);
             }}
           >
-            <option value="">+ Add a question…</option>
-            {FORM_FIELD_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {FORM_FIELD_TYPE_LABELS[t]}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger aria-label="Add a question">
+              <SelectValue>+ Add a question…</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {FORM_FIELD_TYPES.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {FORM_FIELD_TYPE_LABELS[t]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
     </section>
@@ -712,13 +742,12 @@ function FieldEditor({
   return (
     <div className={cn("space-y-3 rounded-md border bg-muted/30 p-3", issues.length > 0 && "border-destructive/50")}>
       <div className="flex flex-wrap items-center gap-2">
-        <select
-          aria-label="Question type"
-          className={cn(selectClass, "w-auto")}
+        <Select
           value={field.type}
           disabled={disabled}
-          onChange={(e) => {
-            const type = e.target.value as FormFieldType;
+          onValueChange={(v) => {
+            if (!v) return;
+            const type = v as FormFieldType;
             onPatch({
               type,
               options: hasOptions(type)
@@ -729,12 +758,17 @@ function FieldEditor({
             });
           }}
         >
-          {FORM_FIELD_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {FORM_FIELD_TYPE_LABELS[t]}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger aria-label="Question type">
+            <SelectValue>{FORM_FIELD_TYPE_LABELS[field.type]}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {FORM_FIELD_TYPES.map((t) => (
+              <SelectItem key={t} value={t}>
+                {FORM_FIELD_TYPE_LABELS[t]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <label className="flex items-center gap-2 text-sm">
           <Switch
             checked={field.required}
@@ -836,7 +870,7 @@ function FieldEditor({
   );
 }
 
-/** Rough WhatsApp-style rendering of one screen. */
+/** WhatsApp-style phone rendering of one screen — stays in view while editing. */
 function Preview({
   def,
   screen,
@@ -849,9 +883,9 @@ function Preview({
   const s = def.screens[screen];
   if (!s) return null;
   return (
-    <div className="rounded-2xl border bg-card p-3 shadow-sm">
+    <div>
       <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-        <span>Preview</span>
+        <span>Preview on WhatsApp</span>
         {def.screens.length > 1 && (
           <div className="flex gap-1">
             {def.screens.map((_, i) => (
@@ -867,17 +901,39 @@ function Preview({
           </div>
         )}
       </div>
-      <div className="rounded-xl bg-background p-4">
-        <div className="mb-3 border-b pb-2 text-center text-sm font-semibold">{s.title || "Untitled"}</div>
-        <div className="space-y-3 text-sm">
-          {s.heading && <div className="text-base font-bold">{s.heading}</div>}
-          {s.body && <p className="whitespace-pre-wrap text-muted-foreground">{s.body}</p>}
-          {s.fields.map((f, i) => (
-            <PreviewField key={i} field={f} />
-          ))}
-        </div>
-        <div className="mt-4 rounded-full bg-emerald-600 py-2 text-center text-sm font-medium text-white">
-          {s.button_label || "Submit"}
+      {/* Phone bezel; the form sheet rises over a dimmed chat like in WhatsApp. */}
+      <div className="mx-auto w-full max-w-[300px] rounded-[2.25rem] border-[6px] border-neutral-900 bg-neutral-900 shadow-lg">
+        <div className="flex h-[min(600px,calc(100dvh-13rem))] min-h-[420px] flex-col overflow-hidden rounded-[1.85rem] bg-[#0b141a]">
+          <div className="flex items-center justify-between px-5 pt-2 pb-1 text-[10px] font-medium text-white/80">
+            <span>9:41</span>
+            <span className="h-3.5 w-16 rounded-full bg-black" />
+            <span>100%</span>
+          </div>
+          <div className="h-8 shrink-0" />
+          <div className="flex min-h-0 flex-1 flex-col rounded-t-2xl bg-white text-neutral-900">
+            <div className="flex shrink-0 items-center gap-2 border-b border-neutral-200 px-3 py-2.5">
+              <X className="h-4 w-4 text-neutral-600" />
+              <div className="min-w-0 flex-1 truncate text-center text-sm font-semibold">
+                {s.title || "Untitled"}
+              </div>
+              <span className="text-base leading-none text-neutral-500">⋮</span>
+            </div>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3 text-sm">
+              {s.heading && <div className="text-base font-bold">{s.heading}</div>}
+              {s.body && <p className="whitespace-pre-wrap text-neutral-600">{s.body}</p>}
+              {s.fields.map((f, i) => (
+                <PreviewField key={i} field={f} />
+              ))}
+            </div>
+            <div className="shrink-0 border-t border-neutral-200 px-4 pt-2.5 pb-3">
+              <div className="rounded-full bg-[#1daa61] py-2 text-center text-sm font-medium text-white">
+                {s.button_label || "Submit"}
+              </div>
+              <div className="mt-1.5 text-center text-[10px] text-neutral-500">
+                Managed by the business. <span className="text-[#1daa61]">Learn more</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -889,7 +945,7 @@ function PreviewField({ field }: { field: FormField }) {
   if (field.type === "optin") {
     return (
       <div className="flex items-start gap-2">
-        <span className="mt-0.5 h-4 w-4 shrink-0 rounded border" />
+        <span className="mt-0.5 h-4 w-4 shrink-0 rounded border border-neutral-400" />
         <span>{label}</span>
       </div>
     );
@@ -900,7 +956,7 @@ function PreviewField({ field }: { field: FormField }) {
         <div className="mb-1 font-medium">{label}</div>
         {(field.options ?? []).map((o) => (
           <div key={o.id} className="flex items-center gap-2 py-0.5">
-            <span className={cn("h-4 w-4 shrink-0 border", field.type === "radio" ? "rounded-full" : "rounded")} />
+            <span className={cn("h-4 w-4 shrink-0 border border-neutral-400", field.type === "radio" ? "rounded-full" : "rounded")} />
             {o.title}
           </div>
         ))}
@@ -909,12 +965,12 @@ function PreviewField({ field }: { field: FormField }) {
   }
   return (
     <div>
-      <div className="rounded-md border px-3 py-2 text-muted-foreground">
+      <div className="rounded-md border border-neutral-300 px-3 py-2 text-neutral-500">
         {label}
         {field.type === "date" && " 📅"}
         {field.type === "dropdown" && " ▾"}
       </div>
-      {field.helper_text && <div className="mt-0.5 text-xs text-muted-foreground">{field.helper_text}</div>}
+      {field.helper_text && <div className="mt-0.5 text-xs text-neutral-500">{field.helper_text}</div>}
     </div>
   );
 }
