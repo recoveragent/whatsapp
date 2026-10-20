@@ -147,3 +147,15 @@ describe('normalizeReferral', () => {
     })
   })
 })
+
+describe('parseFlowNfmReply flow_token', () => {
+  it('keeps the token out of values but returns it for routing', () => {
+    const parsed = parseFlowNfmReply({
+      type: 'nfm_reply',
+      nfm_reply: { name: 'flow', response_json: JSON.stringify({ flow_token: 'run:node:1', full_name: 'Asha' }) },
+    })
+    expect(parsed?.flow_token).toBe('run:node:1')
+    expect(parsed?.values).toEqual({ full_name: 'Asha' })
+  })
+})
+

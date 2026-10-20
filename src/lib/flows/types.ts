@@ -189,10 +189,15 @@ export interface SendFlowNodeConfig {
   flow_cta: string;
   /** Flow message version — Meta currently expects "3". */
   flow_message_version?: string;
-  /** First screen id when flow_action is navigate. */
+  /** Screen the CTA opens — required by Meta for flow_action navigate. */
   flow_screen?: string;
   /** Optional initial data passed to the first screen. */
   flow_data?: Record<string, string>;
+  /** 'draft' sends an unpublished Flow — for testing before publishing. */
+  flow_mode?: "published" | "draft";
+  /** Display name + submission keys cached from Meta by the builder. */
+  flow_name?: string;
+  flow_fields?: Array<{ key: string; label?: string }>;
   /** Key under which to store the submission in flow_runs.vars. */
   var_key: string;
   next_node_key: string;
@@ -560,6 +565,8 @@ export type ParsedInbound =
       /** Flat field map from the WhatsApp Flow submission. */
       values: Record<string, string>;
       flow_id?: string;
+      /** Token from the send_flow message — `<run_id>:<node_key>:<ts>`. */
+      flow_token?: string;
       meta_message_id: string;
     };
 

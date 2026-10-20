@@ -592,6 +592,7 @@ interface SendFlowEngineArgs {
   footerText?: string
   flowScreen?: string
   flowData?: Record<string, string>
+  mode?: 'published' | 'draft'
 }
 
 /**
@@ -644,6 +645,7 @@ export async function engineSendFlowMessage(
       footerText: args.footerText,
       flowScreen: args.flowScreen,
       flowData: args.flowData,
+      mode: args.mode,
     })
     return r.messageId
   }

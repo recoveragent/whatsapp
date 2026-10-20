@@ -1555,6 +1555,8 @@ export interface SendFlowMessageArgs {
   flowScreen?: string
   /** Initial screen data. */
   flowData?: Record<string, string>
+  /** 'draft' sends an unpublished Flow (testing only). */
+  mode?: 'published' | 'draft'
   contextMessageId?: string
 }
 
@@ -1580,6 +1582,7 @@ export async function sendFlowMessage(
     footerText,
     flowScreen,
     flowData,
+    mode,
     contextMessageId,
   } = args
 
@@ -1595,6 +1598,11 @@ export async function sendFlowMessage(
   if (!flowToken.trim()) {
     throw new Error('Flow message requires a flow_token.')
   }
+  // flow_action "navigate" needs the screen to open (Meta rejects the
+  // message otherwise); endpoint-driven "data_exchange" Flows aren't supported.
+  if (!flowScreen?.trim()) {
+    throw new Error('Flow message requires the first screen ID (flow_screen).')
+  }
 
   const parameters: Record<string, unknown> = {
     flow_message_version: flowMessageVersion,
@@ -1604,14 +1612,11 @@ export async function sendFlowMessage(
     flow_action: 'navigate',
   }
 
-  if (flowScreen?.trim()) {
-    parameters.flow_action_payload = {
-      screen: flowScreen.trim(),
-      ...(flowData && Object.keys(flowData).length > 0 ? { data: flowData } : {}),
-    }
-  } else if (flowData && Object.keys(flowData).length > 0) {
-    parameters.flow_action_payload = { data: flowData }
+  parameters.flow_action_payload = {
+    screen: flowScreen.trim(),
+    ...(flowData && Object.keys(flowData).length > 0 ? { data: flowData } : {}),
   }
+  if (mode === 'draft') parameters.mode = 'draft'
 
   const interactive: Record<string, unknown> = {
     type: 'flow',
@@ -1647,6 +1652,68 @@ export async function sendFlowMessage(
   }
   const data = await response.json()
   return { messageId: data.messages[0].id }
+}
+
+export interface MetaFlowSummary {
+  id: string
+  name: string
+  /** DRAFT | PUBLISHED | DEPRECATED | BLOCKED | THROTTLED */
+  status: string
+  categories: string[]
+}
+
+/** List the WhatsApp Flows (forms) on a WABA. */
+export async function listWabaFlows(args: {
+  wabaId: string
+  accessToken: string
+}): Promise<MetaFlowSummary[]> {
+  const out: MetaFlowSummary[] = []
+  let next: string | null =
+    `${META_API_BASE}/${args.wabaId}/flows?fields=id,name,status,categories&limit=100`
+  for (let page = 0; next && page < 10; page++) {
+    const response: Response = await fetch(next, {
+      headers: { Authorization: `Bearer ${args.accessToken}` },
+    })
+    if (!response.ok) {
+      await throwMetaError(response, `Meta API error: ${response.status}`)
+    }
+    const data = (await response.json()) as {
+      data?: Array<Partial<MetaFlowSummary>>
+      paging?: { next?: string }
+    }
+    for (const f of data.data ?? []) {
+      if (!f.id) continue
+      out.push({
+        id: String(f.id),
+        name: String(f.name ?? f.id),
+        status: String(f.status ?? 'UNKNOWN'),
+        categories: Array.isArray(f.categories) ? f.categories.map(String) : [],
+      })
+    }
+    next = data.paging?.next ?? null
+  }
+  return out
+}
+
+/** Download a Flow's Flow JSON (screens + layout). */
+export async function getFlowJson(args: {
+  flowId: string
+  accessToken: string
+}): Promise<unknown> {
+  const response = await fetch(`${META_API_BASE}/${args.flowId}/assets`, {
+    headers: { Authorization: `Bearer ${args.accessToken}` },
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+  const data = (await response.json()) as {
+    data?: Array<{ asset_type?: string; download_url?: string }>
+  }
+  const asset = data.data?.find((a) => a.asset_type === 'FLOW_JSON')
+  if (!asset?.download_url) throw new Error('Flow has no Flow JSON asset.')
+  const json = await fetch(asset.download_url)
+  if (!json.ok) throw new Error(`Flow JSON download failed: ${json.status}`)
+  return json.json()
 }
 
 // ============================================================

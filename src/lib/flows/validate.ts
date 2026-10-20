@@ -1229,6 +1229,7 @@ function validateNode(
         header_text?: string;
         footer_text?: string;
         flow_screen?: string;
+        flow_mode?: string;
       };
       if (!cfg.body_text?.trim()) {
         issues.push({
@@ -1255,6 +1256,24 @@ function validateNode(
           node_key: node.node_key,
           field: "flow_cta",
           message: "WhatsApp Flow message needs a CTA button label.",
+        });
+      }
+      if (!cfg.flow_screen?.trim()) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "flow_screen",
+          message: "WhatsApp Flow message needs the first screen ID — pick the form again to fill it in.",
+        });
+      }
+      if (cfg.flow_mode === "draft") {
+        issues.push({
+          severity: "warning",
+          scope: "node",
+          node_key: node.node_key,
+          field: "flow_mode",
+          message: "WhatsApp Flow is sent in draft mode — publish it in WhatsApp Manager and switch to published before going live.",
         });
       }
       if (!cfg.var_key?.trim()) {

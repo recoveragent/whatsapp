@@ -6,6 +6,7 @@ const h = vi.hoisted(() => ({
   tables: {} as Record<string, Row[]>,
   sends: [] as string[],
   templateParams: [] as Array<Record<string, unknown>>,
+  flowTokens: [] as string[],
   seq: 0,
 }));
 
@@ -109,6 +110,11 @@ vi.mock('./meta-send', () => ({
     h.sends.push(text);
     return { whatsapp_message_id: `wamid.${h.sends.length}` };
   }),
+  engineSendFlowMessage: vi.fn(async ({ bodyText, flowToken }: { bodyText: string; flowToken: string }) => {
+    h.sends.push(bodyText);
+    h.flowTokens.push(flowToken);
+    return { whatsapp_message_id: `wamid.${h.sends.length}` };
+  }),
 }));
 vi.mock('@/lib/automations/meta-send', () => ({
   engineSendTemplate: vi.fn(
@@ -209,6 +215,7 @@ beforeEach(() => {
   };
   h.sends = [];
   h.templateParams = [];
+  h.flowTokens = [];
   h.seq = 0;
 });
 
@@ -277,24 +284,34 @@ describe('independent Next step and no-response timeout', () => {
     ).toBe('failed');
   });
 
-  it('captures input without executing its unconditional Next step twice', async () => {
+  it('waits for typed input before running Next step with the captured var', async () => {
+    h.tables.flow_nodes[0] = node('confirmation', 'collect_input', {
+      prompt_text: 'Your name?',
+      var_key: 'name',
+      next_node_key: 'greet',
+    });
+    h.tables.flow_nodes.push(node('greet', 'send_message', { text: 'Hi {{vars.name}}', next_node_key: 'end' }));
+    const root = await start();
+    expect(h.sends).toEqual(['Your name?']);
+    await reply({ kind: 'text', text: 'Ramya', meta_message_id: 'input-reply' });
+    expect(h.sends).toEqual(['Your name?', 'Hi Ramya']);
+    expect(h.tables.flow_runs).toHaveLength(1);
+    expect(h.tables.flow_runs.find((row) => row.id === root.flow_run_id)?.status).toBe('completed');
+  });
+
+  it('does not re-run Next step for a run whose Next step already started before the change', async () => {
     h.tables.flow_nodes[0] = node('confirmation', 'collect_input', {
       prompt_text: 'Your name?',
       var_key: 'name',
       next_node_key: 'reminder',
     });
-    const root = await start();
-    expect(h.sends).toEqual(['Your name?', 'Reminder']);
-    await reply({
-      kind: 'text',
-      text: 'Ramya',
-      meta_message_id: 'input-reply',
-    });
-    expect(h.sends).toEqual(['Your name?', 'Reminder']);
-    expect(
-      h.tables.flow_runs.find((row) => row.id === root.flow_run_id)?.vars
-    ).toEqual({ name: 'Ramya' });
+    h.tables.flow_runs = [{ id: 'legacy', account_id: 'account', flow_id: flow.id, user_id: 'user', contact_id: 'contact', conversation_id: 'conversation', current_node_key: 'confirmation', status: 'active', vars: {}, reprompt_count: 0 }];
+    h.tables.flow_run_events = [{ id: 'e1', flow_run_id: 'child', event_type: 'started', node_key: 'reminder', payload: { parent_run_id: 'legacy', source_node_key: 'confirmation' } }];
+    await reply({ kind: 'text', text: 'Ramya', meta_message_id: 'legacy-reply' });
+    expect(h.sends).toEqual([]);
+    expect(h.tables.flow_runs[0]).toMatchObject({ status: 'completed', vars: { name: 'Ramya' } });
   });
+
   it('schedules the 15-minute path immediately while keeping the first buttons active', async () => {
     const root = await start();
     expect(root.ok).toBe(true);
@@ -384,5 +401,56 @@ describe('independent Next step and no-response timeout', () => {
       meta_message_id: 'reply-4',
     });
     expect(h.sends).toEqual(['confirmation', 'Reminder', 'Thanks']);
+  });
+
+  describe('Send WhatsApp form', () => {
+    const RUN = '11111111-2222-4333-8444-555555555555';
+    const OTHER = '99999999-2222-4333-8444-555555555555';
+    function formNode() {
+      return node('form', 'send_flow', {
+        body_text: 'Fill this',
+        flow_id: '123',
+        flow_cta: 'Open',
+        flow_screen: 'DETAILS',
+        var_key: 'form',
+        next_node_key: 'greet',
+      });
+    }
+    function waitingRun(id: string, at: string) {
+      return { id, account_id: 'account', flow_id: flow.id, user_id: 'user', contact_id: 'contact', conversation_id: 'conversation', current_node_key: 'form', status: 'active', vars: {}, reprompt_count: 0, last_advanced_at: at };
+    }
+    function submit(token: string | undefined, id = 'form-reply') {
+      return reply({ kind: 'form_reply', formatted: 'Name: Asha', values: { full_name: 'Asha' }, flow_token: token, meta_message_id: id });
+    }
+    beforeEach(() => {
+      h.tables.flow_nodes = [
+        formNode(),
+        node('greet', 'send_message', { text: 'Thanks {{vars.form.full_name}}', next_node_key: 'end' }),
+        node('end', 'end', {}),
+      ];
+      h.tables.flows[0]!.entry_node_id = 'form';
+    });
+
+    it('waits for the submission, then runs Next step with the answers', async () => {
+      await startFlowForExternalEvent({ flow: { ...flow, entry_node_id: 'form' }, contactId: 'contact', conversationId: 'conversation' });
+      expect(h.sends).toEqual(['Fill this']);
+      await submit(h.flowTokens[0]);
+      expect(h.sends).toEqual(['Fill this', 'Thanks Asha']);
+    });
+
+    it('routes a submission to the run that sent the form, not the newest one', async () => {
+      h.tables.flow_runs = [waitingRun(OTHER, '2026-10-20T10:00:00Z'), waitingRun(RUN, '2026-10-20T09:00:00Z')];
+      await submit(`${RUN}:form:1`);
+      expect(h.tables.flow_runs.find((r) => r.id === RUN)).toMatchObject({ status: 'completed', vars: { form: { full_name: 'Asha', formatted: 'Name: Asha' } } });
+      expect(h.tables.flow_runs.find((r) => r.id === OTHER)?.status).toBe('active');
+    });
+
+    it('ignores a stale form whose run has moved on', async () => {
+      h.tables.flow_runs = [waitingRun(OTHER, '2026-10-20T10:00:00Z')];
+      const result = await submit(`${RUN}:form:1`);
+      expect(result.outcome).toBe('no_match');
+      expect(h.sends).toEqual([]);
+      expect(h.tables.flow_runs[0]).toMatchObject({ status: 'active', vars: {} });
+    });
   });
 });

@@ -32,6 +32,8 @@ export interface ParsedFlowFormReply {
   flow_id?: string
   /** nfm_reply.name — usually "flow". */
   form_name?: string
+  /** flow_token echoed from the send — identifies the originating run. */
+  flow_token?: string
 }
 
 export interface NfmFlowReplyInteractive {
@@ -69,7 +71,7 @@ function asStringRecord(input: unknown): Record<string, string> {
 
 function parseResponseJson(
   raw: string | Record<string, unknown> | undefined,
-): { values: Record<string, string>; flow_id?: string } {
+): { values: Record<string, string>; flow_id?: string; flow_token?: string } {
   if (!raw) return { values: {} }
   let parsed: Record<string, unknown>
   if (typeof raw === 'object') {
@@ -92,8 +94,12 @@ function parseResponseJson(
 
   const flow_id =
     typeof parsed.flow_id === 'string' ? parsed.flow_id : undefined
+  const flow_token =
+    typeof parsed.flow_token === 'string' && parsed.flow_token.trim()
+      ? parsed.flow_token.trim()
+      : undefined
 
-  return { values: flatValues, flow_id }
+  return { values: flatValues, flow_id, flow_token }
 }
 
 /** Turn `full_name` / `Email_Address` into readable labels. */
@@ -137,7 +143,7 @@ export function parseFlowNfmReply(
 
   if (!isFlow && reply.name) return null
 
-  const { values, flow_id } = parseResponseJson(reply.response_json)
+  const { values, flow_id, flow_token } = parseResponseJson(reply.response_json)
   const hasValues = Object.keys(values).length > 0
 
   if (!hasValues && !(typeof reply.body === 'string' && reply.body.trim())) {
@@ -156,6 +162,7 @@ export function parseFlowNfmReply(
     values,
     flow_id,
     form_name: reply.name,
+    ...(flow_token ? { flow_token } : {}),
   }
 }
 

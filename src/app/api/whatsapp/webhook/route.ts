@@ -1291,6 +1291,7 @@ async function parseMessageContent(
             values: flowForm.values,
             ...(flowForm.flow_id ? { flow_id: flowForm.flow_id } : {}),
             ...(flowForm.form_name ? { form_name: flowForm.form_name } : {}),
+            ...(flowForm.flow_token ? { flow_token: flowForm.flow_token } : {}),
           },
         }
       }
@@ -1391,6 +1392,10 @@ function buildParsedInbound(
       flow_id:
         typeof (contentPayload as { flow_id?: string }).flow_id === 'string'
           ? (contentPayload as { flow_id: string }).flow_id
+          : undefined,
+      flow_token:
+        typeof (contentPayload as { flow_token?: string }).flow_token === 'string'
+          ? (contentPayload as { flow_token: string }).flow_token
           : undefined,
       meta_message_id: metaMessageId,
     }

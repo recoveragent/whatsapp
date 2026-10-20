@@ -579,9 +579,10 @@ export function summarizeNode(
     case "send_flow": {
       const body = typeof cfg.body_text === "string" ? cfg.body_text : "";
       const flowId = typeof cfg.flow_id === "string" ? cfg.flow_id : "";
+      const flowName = typeof cfg.flow_name === "string" ? cfg.flow_name : "";
       const varKey = typeof cfg.var_key === "string" ? cfg.var_key : "";
       const bits = [
-        flowId ? `Flow ${truncate(flowId, 16)}` : null,
+        flowName ? truncate(flowName, 24) : flowId ? `Flow ${truncate(flowId, 16)}` : null,
         body ? truncate(body, 40) : null,
         varKey ? `→ vars.${varKey}` : null,
       ].filter(Boolean);

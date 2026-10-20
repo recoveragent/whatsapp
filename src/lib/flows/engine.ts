@@ -93,6 +93,7 @@ import {
   isExternalIdempotencyConflict,
 } from "./external-idempotency";
 import {
+  parseFlowFormToken,
   pickSuspendingRunForFallback,
   routeInboundToActiveRun,
   type InboundRunCandidate,
@@ -661,13 +662,18 @@ async function executeHandoff(
  * ("Thanks {{vars.name}}, what's your email?"). Missing vars render as
  * empty string — the same behavior as the automations engine.
  *
- * Address captures store an object with `formatted` plus field keys;
- * interpolating that var prefers `formatted` so messages stay readable.
+ * Address/form captures store an object with `formatted` plus field keys;
+ * interpolating that var prefers `formatted` so messages stay readable,
+ * and `{{vars.<key>.<field>}}` reads a single field.
  */
 function interpolateVars(template: string, vars: Record<string, unknown>): string {
   if (!template) return "";
-  return template.replace(/\{\{vars\.([a-zA-Z0-9_]+)\}\}/g, (_, key) => {
-    const v = vars[key];
+  // `{{vars.form.full_name}}` reads a field of a captured form/address.
+  return template.replace(/\{\{vars\.([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_-]+)*)\}\}/g, (_, path: string) => {
+    let v: unknown = vars;
+    for (const part of path.split(".")) {
+      v = v && typeof v === "object" ? (v as Record<string, unknown>)[part] : undefined;
+    }
     if (v === undefined || v === null) return "";
     if (typeof v === "object" && !Array.isArray(v)) {
       const obj = v as Record<string, unknown>;
@@ -986,6 +992,7 @@ async function advanceFromNodeKey(
           flowCta: interpolateVars(cfg.flow_cta, run.vars),
           flowToken,
           flowMessageVersion: cfg.flow_message_version ?? "3",
+          mode: cfg.flow_mode === "draft" ? "draft" : undefined,
           headerText: cfg.header_text
             ? interpolateVars(cfg.header_text, run.vars)
             : undefined,
@@ -1289,7 +1296,32 @@ async function scheduleSuspendingNodePaths(
   if (!advanced) return;
   const cfg = parseReplyTimeout(node.config as Record<string, unknown>);
   if (cfg) await scheduleReplyTimeout(db, run, node.node_key, cfg);
+  // Capture nodes advance on the customer's submission so Next step can
+  // read the captured vars; only reply-branch nodes fork immediately.
+  if (CAPTURE_NODE_TYPES.has(node.node_type)) return;
   await startIndependentNextStep(db, run, node);
+}
+
+/** Nodes whose Next step waits for the customer's reply. */
+const CAPTURE_NODE_TYPES = new Set(["collect_input", "send_address", "send_flow"]);
+
+/**
+ * Runs suspended before capture nodes waited for the reply already forked
+ * Next step when the prompt was sent — don't execute it a second time.
+ */
+async function nextStepAlreadyStarted(
+  db: AdminClient,
+  runId: string,
+  nodeKey: string,
+): Promise<boolean> {
+  const { data } = await db
+    .from("flow_run_events")
+    .select("id")
+    .eq("event_type", "started")
+    .filter("payload->>parent_run_id", "eq", runId)
+    .filter("payload->>source_node_key", "eq", nodeKey)
+    .limit(1);
+  return Array.isArray(data) && data.length > 0;
 }
 
 /** A reply branch ending must not cancel the unconditional Next step path. */
@@ -1428,7 +1460,14 @@ export async function dispatchInboundToFlows(
         return handleReplyForActiveRun(db, matchedRun, input, nodes);
       }
 
-      const fallbackRun = pickSuspendingRunForFallback(candidates);
+      // Stale submission of a form this engine sent: the run it belongs to
+      // is no longer waiting on it, so don't hand it to another run.
+      const staleForm =
+        input.message.kind === "form_reply" &&
+        parseFlowFormToken(input.message.flow_token) != null;
+      const fallbackRun = staleForm
+        ? null
+        : pickSuspendingRunForFallback(candidates);
       if (fallbackRun) {
         const nodes = await loadAllNodes(db, fallbackRun.flow_id);
         return handleReplyForActiveRun(db, fallbackRun, input, nodes);
@@ -1720,13 +1759,11 @@ async function handleReplyForActiveRun(
   }
 
   if (matched) {
-    // Input/form Next step already started when the prompt was sent.
-    // Capture the reply, but never execute that path a second time.
     if (
-      ['collect_input', 'send_address', 'send_flow'].includes(
-        currentNode.node_type
-      )
+      CAPTURE_NODE_TYPES.has(currentNode.node_type) &&
+      (await nextStepAlreadyStarted(db, run.id, currentNode.node_key))
     ) {
+      await cancelAllReplyTimeouts(db, run.id);
       await endRun(db, run.id, 'completed', 'input_received');
       return { consumed: true, flow_run_id: run.id, outcome: 'completed' };
     }
@@ -1846,6 +1883,7 @@ async function handleReplyForActiveRun(
           flowCta: interpolateVars(cfg.flow_cta, run.vars),
           flowToken,
           flowMessageVersion: cfg.flow_message_version ?? "3",
+          mode: cfg.flow_mode === "draft" ? "draft" : undefined,
           headerText: cfg.header_text
             ? interpolateVars(cfg.header_text, run.vars)
             : undefined,

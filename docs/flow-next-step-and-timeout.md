@@ -1,7 +1,7 @@
 # Next step and Timeout
 
 Next step starts as soon as the source node executes. It does not wait for a
-button click or typed response. A Wait node on this path delays subsequent
+button click or typed response (except on input and form nodes — see below). A Wait node on this path delays subsequent
 actions by its configured duration, regardless of customer replies.
 
 For nodes that wait for replies, the engine keeps the reply path active and
@@ -21,10 +21,16 @@ then to a softcopy template. Address confirmation replies do not cancel that
 softcopy send. Connect the softcopy's Timeout (4 hours) to a reminder to send the
 reminder only when the customer stays silent after the softcopy.
 
-Next step uses variables available when its path starts. For input and form
-nodes, values supplied later by the customer are captured on the original run;
-they are not available to actions that have already started independently.
-The reply does not execute Next step a second time.
+Next step uses variables available when its path starts.
+
+Input and form nodes (Collect input, Send address, Send WhatsApp form) are the
+exception: their Next step waits for the customer's answer, so it can use the
+captured values (`{{vars.form}}`, `{{vars.form.full_name}}`). Only a reply
+moves them on; the Timeout path covers customers who never answer. WhatsApp
+form submissions are matched to the run that sent the form via its flow
+token, so an old or duplicate form submission never advances another run.
+Runs that were already waiting when this changed keep the old behaviour: their
+Next step already started, so the answer is captured and the run completes.
 
 Independent paths appear as separate runs in flow history, with their started
 event recording the parent run and source node. Existing suspended runs are

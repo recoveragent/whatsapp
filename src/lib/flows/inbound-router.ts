@@ -54,6 +54,19 @@ export function inboundReplyMatchesNode(
 }
 
 /**
+ * Parse the token the engine attaches to send_flow messages
+ * (`<run_id>:<node_key>:<sent_at_ms>`). Tokens from other senders
+ * (CTWA lead forms, manual sends) return null.
+ */
+export function parseFlowFormToken(
+  token: string | undefined,
+): { runId: string; nodeKey: string } | null {
+  if (!token) return null
+  const m = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):(.+):(\d+)$/i.exec(token)
+  return m ? { runId: m[1]!, nodeKey: m[2]! } : null
+}
+
+/**
  * Pick the active run that should receive this inbound reply.
  * Candidates must be sorted newest `last_advanced_at` first.
  */
@@ -62,6 +75,22 @@ export function routeInboundToActiveRun(
   message: ParsedInbound,
   matchReplyId: MatchReplyIdFn,
 ): FlowRunRow | null {
+  // A form submission carrying our token belongs to exactly one run —
+  // the one that sent it, still waiting on that node. A stale form
+  // (run moved on or ended) must not advance some other run.
+  const target =
+    message.kind === 'form_reply' ? parseFlowFormToken(message.flow_token) : null
+  if (target) {
+    const hit = candidates.find(
+      ({ run, currentNode }) =>
+        run.id === target.runId &&
+        run.current_node_key === target.nodeKey &&
+        currentNode?.node_type === 'send_flow',
+    )
+    return hit && inboundReplyMatchesNode(message, hit.currentNode!, matchReplyId)
+      ? hit.run
+      : null
+  }
   for (const { run, currentNode } of candidates) {
     if (!currentNode || !run.current_node_key) continue
     if (inboundReplyMatchesNode(message, currentNode, matchReplyId)) {
