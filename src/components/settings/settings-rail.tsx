@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -35,17 +34,16 @@ function sectionHref(
  * behaviour). The active item auto-scrolls into view when the rail is
  * horizontal so a deep-linked section is never off-screen.
  *
- * Items are real links (not buttons + router.replace) so navigation stays
- * reliable even when a panel leaves a stacking-context / pointer trap
- * that would otherwise swallow click handlers.
+ * Real links support opening a section in another tab. Ordinary clicks
+ * update the local panel through the page's native history navigation.
  */
 export function SettingsRail({
   active,
+  onSelect,
   hints,
 }: {
   active: SettingsSection;
-  /** @deprecated Prefer link navigation; kept optional for call-site compat. */
-  onSelect?: (section: SettingsSection) => void;
+  onSelect: (section: SettingsSection) => void;
   hints?: Partial<Record<SettingsSection, ReactNode>>;
 }) {
   const t = useTranslations('Settings');
@@ -98,11 +96,15 @@ export function SettingsRail({
               const Icon = meta.icon;
               const isActive = s === active;
               return (
-                <Link
+                <a
                   key={s}
                   ref={isActive ? activeRef : undefined}
                   href={sectionHref(s, searchParams)}
-                  scroll={false}
+                  onClick={(event) => {
+                    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                    event.preventDefault();
+                    onSelect(s);
+                  }}
                   aria-current={isActive ? 'page' : undefined}
                   className={cn(
                     'flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium whitespace-nowrap transition-colors',
@@ -124,7 +126,7 @@ export function SettingsRail({
                       {hints[s]}
                     </span>
                   ) : null}
-                </Link>
+                </a>
               );
             })}
           </div>

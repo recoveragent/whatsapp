@@ -7,11 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SendTemplateFields } from '@/components/shared/send-template-fields';
 import {
+  DEFAULT_SHOPIFY_PAID_TAG,
   PAYMENT_BRANCHES,
   PAYMENT_VARIABLE_GROUP,
+  supportsCodToPrepaid,
   type CollectPaymentNodeConfig,
 } from '@/lib/flows/payment-config';
 import { templateVariableGroupsForFlow } from '@/lib/flows/template-variables';
+import type { FlowTriggerType } from '@/lib/flows/trigger-types';
 import type { BuilderNode } from '../shared';
 import { NextNodeRow, TextRow } from './fields';
 
@@ -185,18 +188,25 @@ export function CollectPaymentFields({
   node,
   allNodes,
   onChange,
+  triggerType,
+  triggerConfig,
 }: {
   node: BuilderNode;
   allNodes: BuilderNode[];
   onChange: (patch: Record<string, unknown>) => void;
+  triggerType?: FlowTriggerType;
+  triggerConfig?: Record<string, unknown>;
 }) {
   const c = node.config as unknown as CollectPaymentNodeConfig;
+  const cod = c.shopify_cod_to_prepaid === true;
   const groups = useMemo(
     () => [
-      ...templateVariableGroupsForFlow().filter((g) => g.id !== 'payment'),
+      ...templateVariableGroupsForFlow(triggerType, triggerConfig).filter(
+        (g) => g.id !== 'payment'
+      ),
       PAYMENT_VARIABLE_GROUP,
     ],
-    []
+    [triggerType, triggerConfig]
   );
   return (
     <div className="space-y-5">
@@ -251,20 +261,59 @@ export function CollectPaymentFields({
           </p>
         </section>
       )}
-      <label className="block text-xs">
-        Fixed amount (₹)
-        <Input
-          type="number"
-          min={1}
-          step="0.01"
-          value={c.amount ?? ''}
-          onChange={(e) =>
-            onChange({
-              amount: e.target.value === '' ? 0 : Number(e.target.value),
-            })
-          }
-        />
-      </label>
+      {(cod || supportsCodToPrepaid(triggerType)) && (
+        <section className="space-y-2 rounded-lg border p-3">
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={cod}
+              onChange={(e) =>
+                onChange({
+                  shopify_cod_to_prepaid: e.target.checked,
+                  ...(e.target.checked && c.shopify_paid_tag === undefined
+                    ? { shopify_paid_tag: DEFAULT_SHOPIFY_PAID_TAG }
+                    : {}),
+                })
+              }
+            />
+            COD to prepaid: collect the Shopify order amount
+          </label>
+          <p className="text-muted-foreground text-xs">
+            Charges the order’s outstanding balance. When payment is verified,
+            the Shopify order is marked as paid and tagged. Cancelled or
+            already-paid orders follow the Failed branch without a link.
+          </p>
+          {cod && !supportsCodToPrepaid(triggerType) && (
+            <p role="alert" className="text-destructive text-xs">
+              Use the “Shopify: order placed” or “Shopify: order updated”
+              trigger for COD to prepaid.
+            </p>
+          )}
+          {cod && (
+            <TextRow
+              label="Tag added to the paid order (optional)"
+              value={c.shopify_paid_tag ?? ''}
+              onChange={(shopify_paid_tag) => onChange({ shopify_paid_tag })}
+            />
+          )}
+        </section>
+      )}
+      {!cod && (
+        <label className="block text-xs">
+          Fixed amount (₹)
+          <Input
+            type="number"
+            min={1}
+            step="0.01"
+            value={c.amount ?? ''}
+            onChange={(e) =>
+              onChange({
+                amount: e.target.value === '' ? 0 : Number(e.target.value),
+              })
+            }
+          />
+        </label>
+      )}
       <TextRow
         label="Payment description"
         value={c.description ?? ''}

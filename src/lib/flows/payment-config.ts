@@ -5,8 +5,15 @@ export interface CollectPaymentNodeConfig {
   /** Cashfree mobile checkout; omitted uses direct UPI for newly created links. */
   cashfree_checkout?: 'upi_intent' | 'hosted';
   currency: 'INR';
-  /** Rupees, converted to paise on the server. */
+  /** Rupees, converted to paise on the server. Ignored for COD → prepaid. */
   amount: number;
+  /**
+   * COD → prepaid: charge the triggering Shopify order's outstanding balance and
+   * mark that order paid once the gateway confirms payment.
+   */
+  shopify_cod_to_prepaid?: boolean;
+  /** Tag added to the Shopify order after conversion. Empty adds no tag. */
+  shopify_paid_tag?: string;
   description: string;
   expiry_hours: number;
   reminder_minutes: number;
@@ -43,10 +50,18 @@ export function paymentConfigErrors(
     add('cashfree_checkout', 'Select direct UPI or hosted checkout.');
   const paise = Number(c.amount) * 100;
   if (
-    typeof c.amount !== 'number' ||
-    !Number.isSafeInteger(Math.round(paise)) ||
-    c.amount < 1 ||
-    Math.abs(paise - Math.round(paise)) > 0.00001
+    c.shopify_paid_tag !== undefined &&
+    (typeof c.shopify_paid_tag !== 'string' ||
+      c.shopify_paid_tag.length > 40 ||
+      c.shopify_paid_tag.includes(','))
+  )
+    add('shopify_paid_tag', 'Use a single tag of up to 40 characters.');
+  if (
+    c.shopify_cod_to_prepaid !== true &&
+    (typeof c.amount !== 'number' ||
+      !Number.isSafeInteger(Math.round(paise)) ||
+      c.amount < 1 ||
+      Math.abs(paise - Math.round(paise)) > 0.00001)
   )
     add(
       'amount',
@@ -110,6 +125,20 @@ export function paymentConfigErrors(
   }
   return errors;
 }
+
+/** COD → prepaid needs a live, uncancelled order from the run's trigger. */
+export const COD_TO_PREPAID_TRIGGERS = [
+  'shopify_order_placed',
+  'shopify_order_updated',
+] as const;
+
+export function supportsCodToPrepaid(triggerType: string | undefined): boolean {
+  return (COD_TO_PREPAID_TRIGGERS as readonly string[]).includes(
+    triggerType ?? ''
+  );
+}
+
+export const DEFAULT_SHOPIFY_PAID_TAG = 'cod-to-prepaid';
 
 export const PAYMENT_VARIABLE_GROUP = {
   id: 'payment',

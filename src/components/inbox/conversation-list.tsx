@@ -1,27 +1,27 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import {
   matchesContactFilters,
   normalizeConversations,
-} from "@/lib/inbox/conversations";
-import { cn } from "@/lib/utils";
-import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
-import { useTranslations } from "next-intl";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { NewMessageDialog } from "@/components/inbox/new-message-dialog";
+} from '@/lib/inbox/conversations';
+import { cn } from '@/lib/utils';
+import type { Conversation, ConversationStatus, Tag } from '@/types';
+import { Search, ChevronDown, X } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import { useTranslations } from 'next-intl';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { NewMessageDialog } from '@/components/inbox/new-message-dialog';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { ScrollArea } from "@/components/ui/scroll-area";
+} from '@/components/ui/dropdown-menu';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   shouldShowInInboxList,
   matchesInboxSearch,
@@ -30,7 +30,7 @@ import {
   getInboxActivityAt,
   type InboxFilter,
   type InboxSortOrder,
-} from "@/lib/inbox/conversation-list";
+} from '@/lib/inbox/conversation-list';
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -55,18 +55,18 @@ interface ConversationListProps {
 }
 
 const STATUS_COLORS: Record<ConversationStatus, string> = {
-  open: "bg-primary",
-  pending: "bg-amber-500",
-  closed: "bg-muted-foreground",
-  followup: "bg-amber-500",
+  open: 'bg-primary',
+  pending: 'bg-amber-500',
+  closed: 'bg-muted-foreground',
+  followup: 'bg-amber-500',
 };
 
 const SORT_OPTIONS: { label: string; value: InboxSortOrder }[] = [
-  { label: "Newest", value: "newest" },
-  { label: "Oldest", value: "oldest" },
+  { label: 'Newest', value: 'newest' },
+  { label: 'Oldest', value: 'oldest' },
 ];
 
-const WHATSAPP_FILTER_STORAGE_KEY = "wacrm:inbox:whatsapp-number-ids";
+const WHATSAPP_FILTER_STORAGE_KEY = 'wacrm:inbox:whatsapp-number-ids';
 const CONVERSATIONS_PER_PAGE = 30;
 type WhatsAppNumberOption = {
   id: string;
@@ -83,29 +83,29 @@ export function ConversationList({
   onConversationCreated,
   onListViewChange,
 }: ConversationListProps) {
-  const t = useTranslations("Inbox.conversationList");
+  const t = useTranslations('Inbox.conversationList');
 
   const PRIMARY_FILTERS: { label: string; value: InboxFilter }[] = useMemo(
     () => [
-      { label: t("filterOpen"), value: "open" },
-      { label: t("filterClosed"), value: "closed" },
+      { label: t('filterOpen'), value: 'open' },
+      { label: t('filterClosed'), value: 'closed' },
     ],
-    [t],
+    [t]
   );
 
   const OTHER_FILTERS: { label: string; value: InboxFilter }[] = useMemo(
     () => [
-      { label: "Followup", value: "followup" },
-      { label: t("filterPending"), value: "pending" },
-      { label: t("filterUnread"), value: "unread" },
-      { label: t("filterAll"), value: "all" },
+      { label: 'Followup', value: 'followup' },
+      { label: t('filterPending'), value: 'pending' },
+      { label: t('filterUnread'), value: 'unread' },
+      { label: t('filterAll'), value: 'all' },
     ],
-    [t],
+    [t]
   );
 
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<InboxFilter>("open");
-  const [sort, setSort] = useState<InboxSortOrder>("newest");
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<InboxFilter>('open');
+  const [sort, setSort] = useState<InboxSortOrder>('newest');
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -113,7 +113,9 @@ export function ConversationList({
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
-  const [whatsappNumbers, setWhatsappNumbers] = useState<WhatsAppNumberOption[]>([]);
+  const [whatsappNumbers, setWhatsappNumbers] = useState<
+    WhatsAppNumberOption[]
+  >([]);
   const [selectedWhatsappIds, setSelectedWhatsappIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -122,6 +124,8 @@ export function ConversationList({
 
   const onConversationsLoadedRef = useRef(onConversationsLoaded);
   const conversationsRef = useRef(conversations);
+  const moreRequestRef = useRef<AbortController | null>(null);
+  const listGenerationRef = useRef(0);
   useEffect(() => {
     onConversationsLoadedRef.current = onConversationsLoaded;
   });
@@ -131,90 +135,140 @@ export function ConversationList({
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+    const generation = ++listGenerationRef.current;
+    moreRequestRef.current?.abort();
+    moreRequestRef.current = null;
+    setLoadingMore(false);
 
-    (async () => {
-      setLoading(true);
-      setHasMore(false);
-      setNextCursor(null);
-      const params = new URLSearchParams({ sort, filter });
-      if (search.trim()) params.set("search", search.trim());
-      const response = await fetch(`/api/inbox/conversations/page?${params}`, {
-        cache: "no-store",
-      });
-      const body = (await response.json()) as {
-        conversations?: Conversation[];
-        hasMore?: boolean;
-        error?: string;
-      };
+    const load = async () => {
+      try {
+        setLoading(true);
+        setHasMore(false);
+        setNextCursor(null);
+        const params = new URLSearchParams({ sort, filter });
+        if (search.trim()) params.set('search', search.trim());
+        const response = await fetch(
+          `/api/inbox/conversations/page?${params}`,
+          {
+            cache: 'no-store',
+            signal: controller.signal,
+          }
+        );
+        const body = (await response.json()) as {
+          conversations?: Conversation[];
+          hasMore?: boolean;
+          error?: string;
+        };
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      if (!response.ok) {
-        console.error("Failed to fetch conversations:", body.error);
-        setLoading(false);
-        return;
+        if (!response.ok) {
+          console.error('Failed to fetch conversations:', body.error);
+          setLoading(false);
+          return;
+        }
+
+        const loaded = normalizeConversations(body.conversations ?? []);
+        conversationsRef.current = loaded;
+        onConversationsLoadedRef.current(loaded);
+        const cursor = loaded.at(-1)?.last_message_at ?? null;
+        setNextCursor(cursor);
+        setHasMore(Boolean(body.hasMore && cursor));
+      } catch (error) {
+        if (!cancelled) console.error('Failed to fetch conversations:', error);
+      } finally {
+        if (!cancelled && generation === listGenerationRef.current)
+          setLoading(false);
       }
-
-      const loaded = normalizeConversations(body.conversations ?? []);
-      conversationsRef.current = loaded;
-      onConversationsLoadedRef.current(loaded);
-      const cursor = loaded.at(-1)?.last_message_at ?? null;
-      setNextCursor(cursor);
-      setHasMore(Boolean(body.hasMore && cursor));
-      setLoading(false);
-    })();
+    };
+    // Superseded searches never reach the server while the agent is typing.
+    const timer = window.setTimeout(() => void load(), search.trim() ? 250 : 0);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
+      controller.abort();
+      moreRequestRef.current?.abort();
     };
   }, [filter, resyncToken, search, sort]);
 
-  const loadMoreConversations = useCallback(async (pageSize = CONVERSATIONS_PER_PAGE) => {
-    if (loadingMore || !hasMore || !nextCursor) return;
+  const loadMoreConversations = useCallback(
+    async (pageSize = CONVERSATIONS_PER_PAGE) => {
+      if (
+        loading ||
+        loadingMore ||
+        !hasMore ||
+        !nextCursor ||
+        moreRequestRef.current
+      )
+        return;
 
-    setLoadingMore(true);
-    const params = new URLSearchParams({
-      sort,
-      filter,
-      cursor: nextCursor,
-      pageSize: String(pageSize),
-    });
-    if (search.trim()) params.set("search", search.trim());
-    const response = await fetch(`/api/inbox/conversations/page?${params}`, {
-      cache: "no-store",
-    });
-    const body = (await response.json()) as {
-      conversations?: Conversation[];
-      hasMore?: boolean;
-      error?: string;
-    };
-    if (!response.ok) {
-      console.error("Failed to load more conversations:", body.error);
-      setLoadingMore(false);
-      return;
-    }
+      const controller = new AbortController();
+      moreRequestRef.current = controller;
+      const generation = listGenerationRef.current;
+      setLoadingMore(true);
+      try {
+        const params = new URLSearchParams({
+          sort,
+          filter,
+          cursor: nextCursor,
+          pageSize: String(pageSize),
+        });
+        if (search.trim()) params.set('search', search.trim());
+        const response = await fetch(
+          `/api/inbox/conversations/page?${params}`,
+          {
+            cache: 'no-store',
+            signal: controller.signal,
+          }
+        );
+        const body = (await response.json()) as {
+          conversations?: Conversation[];
+          hasMore?: boolean;
+          error?: string;
+        };
+        if (
+          controller.signal.aborted ||
+          generation !== listGenerationRef.current
+        )
+          return;
+        if (!response.ok) {
+          console.error('Failed to load more conversations:', body.error);
+          setLoadingMore(false);
+          return;
+        }
 
-    const loaded = normalizeConversations(body.conversations ?? []);
-    const existingIds = new Set(
-      conversationsRef.current.map((conversation) => conversation.id),
-    );
-    const merged = [
-      ...conversationsRef.current,
-      ...loaded.filter((conversation) => !existingIds.has(conversation.id)),
-    ];
-    conversationsRef.current = merged;
-    onConversationsLoadedRef.current(merged);
-    const cursor = loaded.at(-1)?.last_message_at ?? null;
-    setNextCursor(cursor);
-    setHasMore(Boolean(body.hasMore && cursor));
-    setLoadingMore(false);
-  }, [filter, hasMore, loadingMore, nextCursor, search, sort]);
+        const loaded = normalizeConversations(body.conversations ?? []);
+        const existingIds = new Set(
+          conversationsRef.current.map((conversation) => conversation.id)
+        );
+        const merged = [
+          ...conversationsRef.current,
+          ...loaded.filter((conversation) => !existingIds.has(conversation.id)),
+        ];
+        conversationsRef.current = merged;
+        onConversationsLoadedRef.current(merged);
+        const cursor = loaded.at(-1)?.last_message_at ?? null;
+        setNextCursor(cursor);
+        setHasMore(Boolean(body.hasMore && cursor));
+      } catch (error) {
+        if (!controller.signal.aborted)
+          console.error('Failed to load more conversations:', error);
+      } finally {
+        if (moreRequestRef.current === controller)
+          moreRequestRef.current = null;
+        if (generation === listGenerationRef.current) setLoadingMore(false);
+      }
+    },
+    [filter, hasMore, loading, loadingMore, nextCursor, search, sort]
+  );
 
   useEffect(() => {
     const supabase = createClient();
     let cancelled = false;
     (async () => {
-      const { data } = await supabase.from("tags").select("*").order("name");
+      const { data } = await supabase.from('tags').select('*').order('name');
       if (!cancelled && data) setTags(data as Tag[]);
     })();
     return () => {
@@ -226,9 +280,9 @@ export function ConversationList({
     const supabase = createClient();
     let cancelled = false;
     void supabase
-      .from("whatsapp_config")
-      .select("id, reference_name, phone_number_id")
-      .order("created_at", { ascending: true })
+      .from('whatsapp_config')
+      .select('id, reference_name, phone_number_id')
+      .order('created_at', { ascending: true })
       .then(({ data }) => {
         if (cancelled || !data) return;
         const options = data as WhatsAppNumberOption[];
@@ -240,10 +294,16 @@ export function ConversationList({
         } catch {
           // Best-effort device persistence.
         }
-        const validStored = stored?.filter((id) => options.some((item) => item.id === id));
-        setSelectedWhatsappIds(validStored?.length ? validStored : options.map((item) => item.id));
+        const validStored = stored?.filter((id) =>
+          options.some((item) => item.id === id)
+        );
+        setSelectedWhatsappIds(
+          validStored?.length ? validStored : options.map((item) => item.id)
+        );
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const toggleWhatsappNumber = useCallback((id: string) => {
@@ -278,7 +338,7 @@ export function ConversationList({
   const filtered = useMemo(() => {
     let result = sortInboxConversations(
       filterInboxConversations(conversations, filter, search),
-      sort,
+      sort
     );
 
     if (selectedTagIds.length > 0 || selectedCompany !== null) {
@@ -286,7 +346,7 @@ export function ConversationList({
         matchesContactFilters(c, {
           tagIds: selectedTagIds,
           company: selectedCompany,
-        }),
+        })
       );
     }
 
@@ -294,19 +354,29 @@ export function ConversationList({
       result = result.filter((conversation) =>
         Boolean(
           conversation.whatsapp_config_id &&
-            selectedWhatsappIds.includes(conversation.whatsapp_config_id),
-        ),
+          selectedWhatsappIds.includes(conversation.whatsapp_config_id)
+        )
       );
     }
 
     return result;
-  }, [conversations, filter, search, sort, selectedTagIds, selectedCompany, whatsappNumbers.length, selectedWhatsappIds]);
+  }, [
+    conversations,
+    filter,
+    search,
+    sort,
+    selectedTagIds,
+    selectedCompany,
+    whatsappNumbers.length,
+    selectedWhatsappIds,
+  ]);
 
   const canRefillPage =
     !search.trim() &&
     selectedTagIds.length === 0 &&
     selectedCompany === null &&
-    (whatsappNumbers.length < 2 || selectedWhatsappIds.length === whatsappNumbers.length);
+    (whatsappNumbers.length < 2 ||
+      selectedWhatsappIds.length === whatsappNumbers.length);
 
   // Closing a conversation removes it from the selected status tab. Keep the
   // current page full by fetching one replacement, without expanding the page.
@@ -324,10 +394,16 @@ export function ConversationList({
       void loadMoreConversations(1);
     }, 0);
     return () => window.clearTimeout(refillTimer);
-  }, [canRefillPage, filtered.length, hasMore, loadingMore, loadMoreConversations]);
+  }, [
+    canRefillPage,
+    filtered.length,
+    hasMore,
+    loadingMore,
+    loadMoreConversations,
+  ]);
 
   const hasSearchMatchesInAll = useMemo(() => {
-    if (!search.trim() || filter === "all") return false;
+    if (!search.trim() || filter === 'all') return false;
 
     return conversations
       .filter(shouldShowInInboxList)
@@ -336,7 +412,7 @@ export function ConversationList({
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
-      prev.includes(id) ? prev.filter((tagId) => tagId !== id) : [...prev, id],
+      prev.includes(id) ? prev.filter((tagId) => tagId !== id) : [...prev, id]
     );
   }, []);
 
@@ -352,42 +428,49 @@ export function ConversationList({
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearch(e.target.value);
     },
-    [],
+    []
   );
 
   const handleSelect = useCallback(
     (conv: Conversation) => {
       onSelect(conv);
     },
-    [onSelect],
+    [onSelect]
   );
 
   const handleSeeAllChats = useCallback(() => {
-    setFilter("all");
+    setFilter('all');
   }, []);
 
   const activeOtherFilter = OTHER_FILTERS.find((o) => o.value === filter);
   const activeSort = SORT_OPTIONS.find((o) => o.value === sort);
 
   return (
-    <div className="flex h-full w-full flex-col border-r border-border bg-surface lg:w-80">
-      <div className="space-y-2 border-b border-border p-3">
+    <div className="border-border bg-surface flex h-full w-full flex-col border-r lg:w-80">
+      <div className="border-border space-y-2 border-b p-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1">
-            <h2 className="font-cabinet text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">Inbox</h2>
+            <h2 className="font-cabinet text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+              Inbox
+            </h2>
             {whatsappNumbers.length > 1 && (
               <DropdownMenu>
-                <DropdownMenuTrigger className="inline-flex h-7 max-w-40 items-center gap-1 rounded-md px-2 text-xs font-medium text-foreground hover:bg-muted">
+                <DropdownMenuTrigger className="text-foreground hover:bg-muted inline-flex h-7 max-w-40 items-center gap-1 rounded-md px-2 text-xs font-medium">
                   <span className="truncate">
                     {selectedWhatsappIds.length === whatsappNumbers.length
-                      ? "All numbers"
+                      ? 'All numbers'
                       : selectedWhatsappIds.length === 1
-                        ? whatsappNumbers.find((item) => item.id === selectedWhatsappIds[0])?.reference_name
+                        ? whatsappNumbers.find(
+                            (item) => item.id === selectedWhatsappIds[0]
+                          )?.reference_name
                         : `${selectedWhatsappIds.length} numbers`}
                   </span>
                   <ChevronDown className="h-3 w-3 shrink-0" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56 border-border bg-popover">
+                <DropdownMenuContent
+                  align="start"
+                  className="border-border bg-popover w-56"
+                >
                   {whatsappNumbers.map((number) => (
                     <DropdownMenuCheckboxItem
                       key={number.id}
@@ -396,8 +479,12 @@ export function ConversationList({
                       onCheckedChange={() => toggleWhatsappNumber(number.id)}
                     >
                       <span className="min-w-0">
-                        <span className="block truncate">{number.reference_name}</span>
-                        <span className="block truncate text-[10px] text-muted-foreground">{number.phone_number_id}</span>
+                        <span className="block truncate">
+                          {number.reference_name}
+                        </span>
+                        <span className="text-muted-foreground block truncate text-[10px]">
+                          {number.phone_number_id}
+                        </span>
                       </span>
                     </DropdownMenuCheckboxItem>
                   ))}
@@ -410,28 +497,28 @@ export function ConversationList({
           )}
         </div>
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <Input
             value={search}
             onChange={handleSearchChange}
-            placeholder={t("searchPlaceholder")}
-            className="rounded-[10px] border-border bg-accent pl-9 text-sm text-foreground placeholder-muted-foreground focus-visible:border-border-lit focus-visible:ring-0"
+            placeholder={t('searchPlaceholder')}
+            className="border-border bg-accent text-foreground placeholder-muted-foreground focus-visible:border-border-lit rounded-[10px] pl-9 text-sm focus-visible:ring-0"
           />
         </div>
 
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-            <div className="flex shrink-0 items-center rounded-md bg-muted p-0.5">
+            <div className="bg-muted flex shrink-0 items-center rounded-md p-0.5">
               {PRIMARY_FILTERS.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
                   onClick={() => setFilter(opt.value)}
                   className={cn(
-                    "h-6 rounded-[5px] px-2.5 text-xs font-medium transition-colors",
+                    'h-6 rounded-[5px] px-2.5 text-xs font-medium transition-colors',
                     filter === opt.value
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
                   {opt.label}
@@ -442,14 +529,14 @@ export function ConversationList({
             <DropdownMenu>
               <DropdownMenuTrigger
                 className={cn(
-                  "inline-flex h-7 max-w-[7rem] shrink-0 items-center justify-center gap-1 rounded-md px-2 text-xs hover:bg-muted hover:text-foreground",
+                  'hover:bg-muted hover:text-foreground inline-flex h-7 max-w-[7rem] shrink-0 items-center justify-center gap-1 rounded-md px-2 text-xs',
                   activeOtherFilter
-                    ? "font-medium text-primary"
-                    : "text-muted-foreground",
+                    ? 'text-primary font-medium'
+                    : 'text-muted-foreground'
                 )}
               >
                 <span className="truncate">
-                  {activeOtherFilter?.label ?? "Others"}
+                  {activeOtherFilter?.label ?? 'Others'}
                 </span>
                 <ChevronDown className="h-3 w-3 shrink-0" />
               </DropdownMenuTrigger>
@@ -462,10 +549,10 @@ export function ConversationList({
                     key={opt.value}
                     onClick={() => setFilter(opt.value)}
                     className={cn(
-                      "text-sm",
+                      'text-sm',
                       filter === opt.value
-                        ? "text-primary"
-                        : "text-popover-foreground",
+                        ? 'text-primary'
+                        : 'text-popover-foreground'
                     )}
                   >
                     {opt.label}
@@ -478,15 +565,15 @@ export function ConversationList({
               <DropdownMenu>
                 <DropdownMenuTrigger
                   className={cn(
-                    "inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs hover:bg-muted",
+                    'hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs',
                     selectedTagIds.length > 0
-                      ? "text-primary"
-                      : "text-muted-foreground hover:text-foreground",
+                      ? 'text-primary'
+                      : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
-                  {t("tags")}
+                  {t('tags')}
                   {selectedTagIds.length > 0 && (
-                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                    <span className="bg-primary text-primary-foreground flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold">
                       {selectedTagIds.length}
                     </span>
                   )}
@@ -494,14 +581,14 @@ export function ConversationList({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="start"
-                  className="max-h-64 w-56 border-border bg-popover"
+                  className="border-border bg-popover max-h-64 w-56"
                 >
                   {tags.map((tag) => (
                     <DropdownMenuCheckboxItem
                       key={tag.id}
                       checked={selectedTagIds.includes(tag.id)}
                       onCheckedChange={() => toggleTag(tag.id)}
-                      className="text-sm text-popover-foreground"
+                      className="text-popover-foreground text-sm"
                     >
                       <span className="flex items-center gap-2">
                         <span
@@ -520,41 +607,41 @@ export function ConversationList({
               <DropdownMenu>
                 <DropdownMenuTrigger
                   className={cn(
-                    "inline-flex h-7 max-w-40 items-center justify-center gap-1 rounded-md px-2 text-xs hover:bg-muted",
+                    'hover:bg-muted inline-flex h-7 max-w-40 items-center justify-center gap-1 rounded-md px-2 text-xs',
                     selectedCompany
-                      ? "text-primary"
-                      : "text-muted-foreground hover:text-foreground",
+                      ? 'text-primary'
+                      : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
                   <span className="truncate">
-                    {selectedCompany ?? t("company")}
+                    {selectedCompany ?? t('company')}
                   </span>
                   <ChevronDown className="h-3 w-3 shrink-0" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="start"
-                  className="max-h-64 w-56 border-border bg-popover"
+                  className="border-border bg-popover max-h-64 w-56"
                 >
                   <DropdownMenuItem
                     onClick={() => setSelectedCompany(null)}
                     className={cn(
-                      "text-sm",
+                      'text-sm',
                       selectedCompany === null
-                        ? "text-primary"
-                        : "text-popover-foreground",
+                        ? 'text-primary'
+                        : 'text-popover-foreground'
                     )}
                   >
-                    {t("allCompanies")}
+                    {t('allCompanies')}
                   </DropdownMenuItem>
                   {companies.map((co) => (
                     <DropdownMenuItem
                       key={co}
                       onClick={() => setSelectedCompany(co)}
                       className={cn(
-                        "text-sm",
+                        'text-sm',
                         selectedCompany === co
-                          ? "text-primary"
-                          : "text-popover-foreground",
+                          ? 'text-primary'
+                          : 'text-popover-foreground'
                       )}
                     >
                       <span className="truncate">{co}</span>
@@ -566,8 +653,8 @@ export function ConversationList({
           </div>
 
           <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
-              {activeSort?.label ?? "Newest"}
+            <DropdownMenuTrigger className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md px-2 text-xs">
+              {activeSort?.label ?? 'Newest'}
               <ChevronDown className="h-3 w-3" />
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -579,10 +666,10 @@ export function ConversationList({
                   key={opt.value}
                   onClick={() => setSort(opt.value)}
                   className={cn(
-                    "text-sm",
+                    'text-sm',
                     sort === opt.value
-                      ? "text-primary"
-                      : "text-popover-foreground",
+                      ? 'text-primary'
+                      : 'text-popover-foreground'
                   )}
                 >
                   {opt.label}
@@ -600,16 +687,16 @@ export function ConversationList({
                 <button
                   key={id}
                   onClick={() => toggleTag(id)}
-                  className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground hover:bg-muted/70"
+                  className="bg-muted text-foreground hover:bg-muted/70 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px]"
                 >
                   <span
                     className="h-1.5 w-1.5 shrink-0 rounded-full"
                     style={{
-                      backgroundColor: tag?.color ?? "var(--muted-foreground)",
+                      backgroundColor: tag?.color ?? 'var(--muted-foreground)',
                     }}
                   />
                   <span className="max-w-24 truncate">
-                    {tag?.name ?? t("tags")}
+                    {tag?.name ?? t('tags')}
                   </span>
                   <X className="h-3 w-3" />
                 </button>
@@ -618,7 +705,7 @@ export function ConversationList({
             {selectedCompany && (
               <button
                 onClick={() => setSelectedCompany(null)}
-                className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground hover:bg-muted/70"
+                className="bg-muted text-foreground hover:bg-muted/70 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px]"
               >
                 <span className="max-w-24 truncate">{selectedCompany}</span>
                 <X className="h-3 w-3" />
@@ -626,9 +713,9 @@ export function ConversationList({
             )}
             <button
               onClick={clearContactFilters}
-              className="px-1 text-[11px] text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground px-1 text-[11px]"
             >
-              {t("clearAll")}
+              {t('clearAll')}
             </button>
           </div>
         )}
@@ -637,19 +724,19 @@ export function ConversationList({
       <ScrollArea className="min-h-0 flex-1">
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <div className="border-primary h-5 w-5 animate-spin rounded-full border-2 border-t-transparent" />
           </div>
         ) : filtered.length === 0 ? (
           <div className="px-4 py-12 text-center">
-            <p className="text-sm text-muted-foreground">
-              {t("noConversations")}
+            <p className="text-muted-foreground text-sm">
+              {t('noConversations')}
             </p>
             {hasSearchMatchesInAll && (
               <Button
                 variant="link"
                 size="sm"
                 onClick={handleSeeAllChats}
-                className="mt-2 text-primary"
+                className="text-primary mt-2"
               >
                 See all chats
               </Button>
@@ -674,7 +761,7 @@ export function ConversationList({
                   onClick={() => void loadMoreConversations()}
                   disabled={loadingMore}
                 >
-                  {loadingMore ? t("loadingMore") : t("loadMore")}
+                  {loadingMore ? t('loadingMore') : t('loadMore')}
                 </Button>
               </div>
             )}
@@ -699,7 +786,7 @@ function ConversationItem({
   t,
 }: ConversationItemProps) {
   const contact = conversation.contact;
-  const displayName = contact?.name || contact?.phone || t("unknown");
+  const displayName = contact?.name || contact?.phone || t('unknown');
   const initials = displayName.charAt(0).toUpperCase();
 
   const handleClick = useCallback(() => {
@@ -711,17 +798,17 @@ function ConversationItem({
     ? formatDistanceToNow(new Date(activityAt), {
         addSuffix: false,
       })
-    : "";
+    : '';
 
   return (
     <button
       onClick={handleClick}
       className={cn(
-        "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-accent/50",
-        isActive && "border-l-[3px] border-primary bg-primary/5",
+        'hover:bg-accent/50 flex w-full items-start gap-3 px-3 py-3 text-left transition-colors',
+        isActive && 'border-primary bg-primary/5 border-l-[3px]'
       )}
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+      <div className="bg-muted text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-medium">
         {contact?.avatar_url ? (
           <img
             src={contact.avatar_url}
@@ -735,27 +822,27 @@ function ConversationItem({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-medium text-foreground">
+          <span className="text-foreground truncate text-sm font-medium">
             {displayName}
           </span>
-          <span className="shrink-0 text-[10px] text-muted-foreground">
+          <span className="text-muted-foreground shrink-0 text-[10px]">
             {timeAgo}
           </span>
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2">
-          <p className="truncate text-xs text-muted-foreground">
-            {conversation.last_message_text || t("noMessagesYet")}
+          <p className="text-muted-foreground truncate text-xs">
+            {conversation.last_message_text || t('noMessagesYet')}
           </p>
           <div className="flex shrink-0 items-center gap-1.5">
             {conversation.unread_count > 0 && (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
+              <span className="bg-destructive flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white">
                 {conversation.unread_count}
               </span>
             )}
             <span
               className={cn(
-                "h-2 w-2 rounded-full",
-                STATUS_COLORS[conversation.status],
+                'h-2 w-2 rounded-full',
+                STATUS_COLORS[conversation.status]
               )}
               title={conversation.status}
             />

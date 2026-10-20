@@ -335,6 +335,32 @@ describe('inbound webhook: idempotent insert (#367)', () => {
 })
 
 describe('inbound webhook: atomic unread bump (#369)', () => {
+  it('publishes the inbox preview before slow flow actions and keeps reopen decisions flow-aware', async () => {
+    h.state.conversation.status = 'closed'
+    h.dispatchInboundToFlows.mockImplementationOnce(async () => {
+      expect(h.state.rpcCalls).toEqual([
+        expect.objectContaining({ name: 'bump_conversation_on_inbound' }),
+      ])
+      expect(h.state.conversationUpdates).not.toContainEqual(
+        expect.objectContaining({ status: 'open' }),
+      )
+      return { consumed: true, suppress_inbox_reopen: true }
+    })
+    await runWebhook()
+    expect(h.state.conversationUpdates).not.toContainEqual(
+      expect.objectContaining({ status: 'open' }),
+    )
+    expect(h.state.rpcCalls).toHaveLength(1)
+  })
+
+  it('does not lose the inbox preview when a flow action fails', async () => {
+    h.dispatchInboundToFlows.mockRejectedValueOnce(new Error('provider unavailable'))
+    await runWebhook()
+    expect(h.state.rpcCalls).toEqual([
+      expect.objectContaining({ name: 'bump_conversation_on_inbound' }),
+    ])
+  })
+
   it('increments unread through the DB-side RPC, not a read-modify-write', async () => {
     await runWebhook()
 

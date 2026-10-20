@@ -121,7 +121,7 @@ function NodeConfigBody({
   const cfg = node.config;
   switch (node.node_type) {
     case "collect_payment":
-      return <CollectPaymentFields node={node} allNodes={allNodes} onChange={onUpdateConfig} />;
+      return <CollectPaymentFields node={node} allNodes={allNodes} onChange={onUpdateConfig} triggerType={triggerType} triggerConfig={triggerConfig} />;
     case "start":
       return (
         <NextNodeRow

@@ -1,4 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MetaSendResult } from '@/lib/whatsapp/meta-api';
+
+vi.mock('next/server', async (importOriginal) => ({
+  ...await importOriginal<typeof import('next/server')>(),
+  after: vi.fn(),
+}));
 
 // ---------------------------------------------------------------------------
 // Tests for the `contact_id` send path (issue #296): sending an approved
@@ -189,7 +195,7 @@ vi.mock('@/lib/wallet/billing', () => ({
 }));
 
 const { sendTemplateMessage } = vi.hoisted(() => ({
-  sendTemplateMessage: vi.fn(async () => ({ messageId: 'wamid-1' })),
+  sendTemplateMessage: vi.fn(async (): Promise<MetaSendResult> => ({ messageId: 'wamid-1' })),
 }));
 vi.mock('@/lib/whatsapp/meta-api', () => ({
   sendTemplateMessage,
@@ -231,6 +237,31 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('persists and returns a Meta hold without retrying an accepted message', async () => {
+    sendTemplateMessage.mockResolvedValueOnce({
+      messageId: 'wamid-held',
+      deliveryTiming: {
+        started_at: '2026-10-20T08:00:00Z',
+        accepted_at: '2026-10-20T08:00:01Z',
+        duration_ms: 1000,
+        message_status: 'held_for_quality_assessment',
+      },
+    });
+    const res = await postContactTemplate();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      whatsapp_message_id: 'wamid-held',
+      meta_message_status: 'held_for_quality_assessment',
+    });
+    expect(sendTemplateMessage).toHaveBeenCalledTimes(1);
+    expect(messageInserts[0]).toMatchObject({
+      content_payload: {
+        meta_message_status: 'held_for_quality_assessment',
+        template_display: expect.any(Object),
+      },
+    });
   });
 
   it('creates a conversation for a contact with none, then sends the template', async () => {

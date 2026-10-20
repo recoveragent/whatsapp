@@ -3,6 +3,13 @@ import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
 import { encrypt } from '@/lib/whatsapp/encryption';
 import { razorpayRequest } from '@/lib/payments/razorpay';
+import { paymentSetupError } from '@/lib/payments/setup-errors';
+
+function connectionErrorResponse(error: unknown) {
+  const setupError = paymentSetupError(error);
+  if (setupError) return NextResponse.json({ error: setupError, code: 'payment_setup_required' }, { status: 503 });
+  return toErrorResponse(error);
+}
 
 export async function GET(request: Request) {
   try {
@@ -22,7 +29,7 @@ export async function GET(request: Request) {
       webhookUrl: `${origin}/api/payments/razorpay/webhook/${accountId}`,
     });
   } catch (err) {
-    return toErrorResponse(err);
+    return connectionErrorResponse(err);
   }
 }
 
@@ -94,6 +101,6 @@ export async function PUT(request: Request) {
     if (error) throw error;
     return NextResponse.json({ connected: true });
   } catch (err) {
-    return toErrorResponse(err);
+    return connectionErrorResponse(err);
   }
 }

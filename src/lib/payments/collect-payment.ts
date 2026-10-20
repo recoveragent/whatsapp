@@ -26,6 +26,11 @@ import {
   type PaymentLink,
   type RazorpayCredentials,
 } from './razorpay';
+import {
+  codOrderCollection,
+  processShopifyOrderSyncs,
+  syncShopifyOrderPayment,
+} from './shopify-order-sync';
 
 export interface CollectionRow {
   id: string;
@@ -42,6 +47,7 @@ export interface CollectionRow {
   reminders_sent: number;
   config: CollectPaymentNodeConfig;
   reminder_claimed_at: string | null;
+  shopify_sync_status?: string | null;
 }
 
 export async function paymentCredentials(
@@ -152,6 +158,11 @@ export async function beginPaymentCollection(
     .single();
   if (contactError || !contact?.phone)
     throw new Error('Payment contact is unavailable.');
+  // COD → prepaid charges the order's live outstanding balance, not a fixed amount.
+  const cod = c.shopify_cod_to_prepaid
+    ? await codOrderCollection(db, run)
+    : null;
+  const amount = cod?.amount ?? c.amount;
   const id = randomUUID();
   const now = Date.now();
   const reminderMinutes =
@@ -168,11 +179,16 @@ export async function beginPaymentCollection(
     account_id: run.account_id,
     flow_run_id: run.id,
     node_key: node.node_key,
-    amount_paise: Math.round(c.amount * 100),
+    amount_paise: Math.round(amount * 100),
     config: c,
     expires_at: expiresAt,
     reminder_at: new Date(now + reminderMinutes * 60_000).toISOString(),
     next_check_at: new Date(now + 60_000).toISOString(),
+    ...(cod && {
+      shopify_order_id: cod.orderId,
+      shopify_sync_status: 'pending',
+      shopify_sync_next_at: new Date(now).toISOString(),
+    }),
   });
   // Another invocation owns this run/node. It must finish parking or failing it;
   // the duplicate must not create a second link or follow the failure branch.
@@ -190,7 +206,7 @@ export async function beginPaymentCollection(
               'links',
               {
                 link_id: id,
-                link_amount: c.amount,
+                link_amount: amount,
                 link_currency: 'INR',
                 link_purpose: description,
                 link_expiry_time: expiresAt,
@@ -217,7 +233,7 @@ export async function beginPaymentCollection(
             credentials as RazorpayCredentials,
             'payment_links',
             {
-              amount: Math.round(c.amount * 100),
+              amount: Math.round(amount * 100),
               currency: 'INR',
               accept_partial: false,
               description,
@@ -239,7 +255,7 @@ export async function beginPaymentCollection(
       ...run.vars,
       payment_url: link.short_url,
       payment_url_suffix: new URL(link.short_url).pathname.slice(1),
-      payment_amount: c.amount.toFixed(2),
+      payment_amount: amount.toFixed(2),
       payment_currency: 'INR',
       payment_description: description,
       payment_reference: id,
@@ -344,6 +360,10 @@ export async function reconcilePayment(
       p_outcome: outcome,
     });
     if (error) throw error;
+    if (outcome === 'paid' && row.shopify_sync_status === 'pending') {
+      // Best effort: the flows cron retries anything this attempt cannot finish.
+      await syncShopifyOrderPayment(db, row.id).catch(() => undefined);
+    }
   }
   return link;
 }
@@ -461,6 +481,11 @@ export async function processPaymentCollections(
         .eq('id', row.id)
         .eq('status', 'pending');
     }
+  }
+  try {
+    await processShopifyOrderSyncs(db);
+  } catch {
+    // Order updates must not block payment reconciliation; the next sweep retries.
   }
   return processed;
 }

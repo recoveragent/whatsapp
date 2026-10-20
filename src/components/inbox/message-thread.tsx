@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { withMetaAcceptance } from '@/lib/inbox/delivery-hold';
+import { createRepairGate } from '@/lib/inbox/repair-gate';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { usePresence } from '@/hooks/use-presence';
@@ -430,6 +432,7 @@ export function MessageThread({
   const hasUnread = (conversation?.unread_count ?? 0) > 0;
   // Component-local and account-scoped: no chat content survives a reload.
   const messageCacheRef = useRef(new Map<string, Message[]>());
+  const repairGateRef = useRef(createRepairGate());
   const loadedMessageCacheKeyRef = useRef<string | null>(null);
   const messageCacheKey =
     accountId && conversationId ? `${accountId}:${conversationId}` : null;
@@ -505,14 +508,16 @@ export function MessageThread({
         }
         onMessagesLoadedRef.current(data ?? []);
         setLoading(false);
-        // Always reconcile flow/automation sends against message_sent
-        // audit rows — a thread can have later bot bubbles while an
-        // earlier Meta-accepted send never landed in messages.
+        // Reconcile missing sends, but do not rescan all audit history on
+        // every focus/reconnect. Ordinary history refreshes still run above.
+        if (!messageCacheKey || !repairGateRef.current.start(messageCacheKey)) return;
+        let repairSucceeded = false;
         try {
           const res = await fetch(
             `/api/inbox/conversations/${conversationId}/repair-flow-prompt`,
             { method: 'POST' }
           );
+          repairSucceeded = res.ok;
           if (cancelled) return;
           if (res.ok) {
             const body = (await res.json()) as {
@@ -532,6 +537,8 @@ export function MessageThread({
           }
         } catch (repairErr) {
           console.warn('[inbox] repair flow prompt failed:', repairErr);
+        } finally {
+          repairGateRef.current.finish(messageCacheKey, repairSucceeded);
         }
       }
     })();
@@ -1122,7 +1129,13 @@ export function MessageThread({
           return;
         }
 
-        onUpdateMessage(tempId, { status: 'sent' });
+        onUpdateMessage(tempId, {
+          status: 'sent',
+          content_payload: withMetaAcceptance(
+            templateDisplayPayload(templateSnapshot),
+            payload.meta_message_status,
+          ),
+        });
       } catch (err) {
         console.error('Failed to send template:', err);
         const reason = err instanceof Error ? err.message : 'network error';

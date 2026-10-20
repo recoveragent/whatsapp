@@ -375,7 +375,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           account_role: isAccountRole(data.account_role) ? data.account_role : null,
         });
         setAccount(accountRow);
-        if (!resolvedAccountId || !role) {
+        if (!orgMember?.organization_id && (!resolvedAccountId || !role)) {
           // The row exists but carries no tenancy. Migration 017 made
           // both columns NOT NULL for new signups, so this is a user
           // whose bootstrap didn't complete (handle_new_user swallows a
@@ -540,7 +540,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ? "loading"
       : !profile
         ? "error"
-        : derived.accountId && derived.accountRole
+        : isSuperAdmin || (derived.accountId && derived.accountRole)
           ? "ready"
           : "unlinked";
 

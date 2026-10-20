@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { paymentConfigErrors, PAYMENT_BRANCHES } from './payment-config';
+import {
+  paymentConfigErrors,
+  PAYMENT_BRANCHES,
+  supportsCodToPrepaid,
+} from './payment-config';
 import {
   applyEdgeConnection,
   deriveCanvasEdges,
@@ -128,5 +132,27 @@ describe('collect payment flow configuration', () => {
         ...targets,
       ]).some((i) => i.field === 'paid_next')
     ).toBe(true);
+  });
+});
+
+describe('COD to prepaid configuration', () => {
+  it('takes the amount from the Shopify order instead of a fixed amount', () => {
+    expect(
+      paymentConfigErrors({ ...config, amount: 0, shopify_cod_to_prepaid: true })
+    ).toEqual([]);
+    expect(paymentConfigErrors({ ...config, amount: 0 })).toContainEqual(
+      expect.objectContaining({ field: 'amount' })
+    );
+  });
+  it('accepts one Shopify tag', () => {
+    expect(
+      paymentConfigErrors({ ...config, shopify_paid_tag: 'a,b' })
+    ).toContainEqual(expect.objectContaining({ field: 'shopify_paid_tag' }));
+  });
+  it('is offered only for order placed and order updated triggers', () => {
+    expect(supportsCodToPrepaid('shopify_order_placed')).toBe(true);
+    expect(supportsCodToPrepaid('shopify_order_updated')).toBe(true);
+    expect(supportsCodToPrepaid('shopify_order_cancelled')).toBe(false);
+    expect(supportsCodToPrepaid(undefined)).toBe(false);
   });
 });

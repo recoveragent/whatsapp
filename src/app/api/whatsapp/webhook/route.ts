@@ -873,6 +873,27 @@ async function processMessage(
     return
   }
 
+  // Publish the inbound preview before external flow actions can block it.
+  // Keep this after the idempotent insert and leave flow-aware reopening below.
+  // Update conversation. The unread bump is done DB-side (migration 037's
+  // bump_conversation_on_inbound) rather than as a read-modify-write of the
+  // snapshot loaded above: two inbound messages for the same conversation
+  // can process concurrently, and computing `snapshot + 1` in the app let
+  // both reads see the same value and write the same increment, losing one
+  // (issue #369). The RPC increments in a single UPDATE and refreshes the
+  // last-message summary in the same statement.
+  const { error: convError } = await supabaseAdmin().rpc(
+    'bump_conversation_on_inbound',
+    {
+      p_conversation_id: conversation.id,
+      p_last_message_text: contentText || `[${message.type}]`,
+    },
+  )
+
+  if (convError) {
+    console.error('Error updating conversation:', convError)
+  }
+
   // Enrich contact profile from lead-form fields when columns are empty.
   if (
     contentPayload &&
@@ -912,25 +933,6 @@ async function processMessage(
     ),
     isFirstInboundMessage,
   })
-
-  // Update conversation. The unread bump is done DB-side (migration 037's
-  // bump_conversation_on_inbound) rather than as a read-modify-write of the
-  // snapshot loaded above: two inbound messages for the same conversation
-  // can process concurrently, and computing `snapshot + 1` in the app let
-  // both reads see the same value and write the same increment, losing one
-  // (issue #369). The RPC increments in a single UPDATE and refreshes the
-  // last-message summary in the same statement.
-  const { error: convError } = await supabaseAdmin().rpc(
-    'bump_conversation_on_inbound',
-    {
-      p_conversation_id: conversation.id,
-      p_last_message_text: contentText || `[${message.type}]`,
-    },
-  )
-
-  if (convError) {
-    console.error('Error updating conversation:', convError)
-  }
 
   // Recover Agent: track the 24-hour service window and flow-aware reopen.
   const reopened = shouldReopenConversationOnInbound({

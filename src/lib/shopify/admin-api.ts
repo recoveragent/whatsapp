@@ -356,6 +356,96 @@ async function shopifyGraphql<T>(
   return body;
 }
 
+export interface ShopifyOrderPaymentState {
+  cancelled: boolean;
+  financialStatus: string;
+  canMarkAsPaid: boolean;
+  /** Outstanding balance in the shop currency, as a decimal string. */
+  outstanding: string;
+  currency: string;
+}
+
+/** Live payment state used for COD → prepaid conversion; never the webhook snapshot. */
+export async function fetchOrderPaymentState(
+  shopDomain: string,
+  accessToken: string,
+  orderId: string,
+): Promise<ShopifyOrderPaymentState | null> {
+  const data = await shopifyGraphql<{
+    data?: {
+      order?: {
+        cancelledAt?: string | null;
+        displayFinancialStatus?: string | null;
+        canMarkAsPaid?: boolean;
+        totalOutstandingSet?: { shopMoney?: { amount?: string; currencyCode?: string } };
+      } | null;
+    };
+  }>(
+    shopDomain,
+    accessToken,
+    `query ($id: ID!) {
+      order(id: $id) {
+        cancelledAt
+        displayFinancialStatus
+        canMarkAsPaid
+        totalOutstandingSet { shopMoney { amount currencyCode } }
+      }
+    }`,
+    { id: `gid://shopify/Order/${orderId}` },
+  );
+  const order = data.data?.order;
+  if (!order) return null;
+  return {
+    cancelled: Boolean(order.cancelledAt),
+    financialStatus: order.displayFinancialStatus ?? '',
+    canMarkAsPaid: order.canMarkAsPaid === true,
+    outstanding: order.totalOutstandingSet?.shopMoney?.amount ?? '0',
+    currency: order.totalOutstandingSet?.shopMoney?.currencyCode ?? '',
+  };
+}
+
+type ShopifyUserErrors = { userErrors?: Array<{ message?: string }> } | null | undefined;
+
+function throwUserErrors(result: ShopifyUserErrors): void {
+  const message = result?.userErrors?.map((e) => e.message).filter(Boolean).join('; ');
+  if (message) throw new Error(message);
+}
+
+/** Records the outstanding balance as paid (requires the write_orders scope). */
+export async function markOrderAsPaid(
+  shopDomain: string,
+  accessToken: string,
+  orderId: string,
+): Promise<void> {
+  const data = await shopifyGraphql<{ data?: { orderMarkAsPaid?: ShopifyUserErrors } }>(
+    shopDomain,
+    accessToken,
+    `mutation ($input: OrderMarkAsPaidInput!) {
+      orderMarkAsPaid(input: $input) { userErrors { field message } }
+    }`,
+    { input: { id: `gid://shopify/Order/${orderId}` } },
+  );
+  throwUserErrors(data.data?.orderMarkAsPaid);
+}
+
+export async function addOrderTags(
+  shopDomain: string,
+  accessToken: string,
+  orderId: string,
+  tags: string[],
+): Promise<void> {
+  if (!tags.length) return;
+  const data = await shopifyGraphql<{ data?: { tagsAdd?: ShopifyUserErrors } }>(
+    shopDomain,
+    accessToken,
+    `mutation ($id: ID!, $tags: [String!]!) {
+      tagsAdd(id: $id, tags: $tags) { userErrors { field message } }
+    }`,
+    { id: `gid://shopify/Order/${orderId}`, tags },
+  );
+  throwUserErrors(data.data?.tagsAdd);
+}
+
 interface ShopifyCustomerSearchHit {
   id: number;
   phone?: string | null;

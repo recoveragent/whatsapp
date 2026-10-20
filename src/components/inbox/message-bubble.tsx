@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { hasReportedDeliveryHold } from "@/lib/inbox/delivery-hold";
 import type { Message, MessageReaction } from "@/types";
 import {
   MapPin,
@@ -611,7 +612,14 @@ export function MessageBubble({
             {format(new Date(message.created_at), "HH:mm")}
           </span>
           {isAgent && (
-            <MessageStatusLabel status={message.status} onPrimary={isAgent} />
+            hasReportedDeliveryHold(message) ? (
+              <span
+                className="text-[10px] font-medium text-primary-foreground/90"
+                title="Meta accepted this message and reported a quality assessment hold. Delivery may be delayed. Do not resend; wait for the delivery update."
+              >
+                Meta delivery hold reported
+              </span>
+            ) : <MessageStatusLabel status={message.status} onPrimary={isAgent} />
           )}
         </div>
       </div>

@@ -130,7 +130,7 @@ export const NODE_META: Record<
     category: NodeCategory;
   }
 > = {
-  collect_payment: { label: 'Collect payment', icon: CreditCard, color: 'text-emerald-400', blurb: 'Collects a fixed advance with Razorpay or Cashfree and reminds unpaid customers', category: 'logic' },
+  collect_payment: { label: 'Collect payment', icon: CreditCard, color: 'text-emerald-400', blurb: 'Collects an advance, or converts Shopify COD orders to prepaid, with Razorpay or Cashfree', category: 'logic' },
   start: {
     label: 'Start',
     icon: PlayCircle,

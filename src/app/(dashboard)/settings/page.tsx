@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useMemo, type ReactNode } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
 import { useAuth } from '@/hooks/use-auth';
@@ -48,7 +48,6 @@ export default function SettingsPage() {
 }
 
 function SettingsPageInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { defaultCurrency, brandCategory, ecommercePlatform } = useAuth();
   const { mode } = useTheme();
@@ -65,7 +64,9 @@ function SettingsPageInner() {
   const go = (next: SettingsSection) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set('tab', next);
-    router.replace(`/settings?${params.toString()}`, { scroll: false });
+    // Panels are already client-rendered. Keep tab changes local instead
+    // of fetching a new route (which can replay a cached auth redirect).
+    window.history.pushState(null, '', `/settings?${params.toString()}${window.location.hash}`);
   };
 
   // Cheap, fetch-free rail hints. The Overview landing carries the

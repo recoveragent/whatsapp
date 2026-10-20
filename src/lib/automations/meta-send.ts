@@ -1,4 +1,5 @@
-import { recordApiAcceptance } from '@/lib/whatsapp/delivery-diagnostics'
+import { recordApiAcceptance, type ApiDeliveryTiming } from '@/lib/whatsapp/delivery-diagnostics'
+import { withMetaAcceptance } from '@/lib/inbox/delivery-hold'
 import { sendTextMessage, sendTemplateMessage } from '@/lib/whatsapp/meta-api'
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body'
@@ -197,6 +198,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     await assertWalletCanSend(input.accountId, templateCategory)
   }
 
+  let deliveryTiming: ApiDeliveryTiming | undefined
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
       const r = await sendTemplateMessage({
@@ -209,7 +211,8 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         messageParams: input.messageParams,
         params: input.params,
       })
-      await recordApiAcceptance(db, input.accountId, config.phone_number_id, r.messageId, r.deliveryTiming)
+      deliveryTiming = r.deliveryTiming
+      await recordApiAcceptance(db, input.accountId, config.phone_number_id, r.messageId, deliveryTiming)
       return r.messageId
     }
     const r = await sendTextMessage({
@@ -293,7 +296,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     content_type,
     content_text,
     template_name,
-    content_payload,
+    content_payload: withMetaAcceptance(content_payload, deliveryTiming?.message_status),
     message_id: waMessageId,
     status: 'sent',
   }

@@ -6,6 +6,7 @@ import { defaultCheckoutAppTriggerConfig } from '@/lib/flows/checkout-app-webhoo
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { ensureFlowWebhookConfig } from '@/lib/flows/webhook-config'
 import { validateFlowForActivation } from '@/lib/flows/validate'
+import { supportsCodToPrepaid } from '@/lib/flows/payment-config'
 
 /**
  * POST /api/flows/[id]/activate
@@ -108,6 +109,11 @@ export async function POST(
           ? await admin.from('account_cashfree_connections').select('enabled,environment').eq('account_id', flow.account_id).maybeSingle()
           : await admin.from('account_payment_connections').select('enabled').eq('account_id', flow.account_id).maybeSingle()
         if (connectionError || !connection?.enabled) issues.push({ severity: 'error', scope: 'node', node_key: n.node_key, field: 'provider', message: `Connect this brand’s ${cashfree ? 'Cashfree' : 'Razorpay'} account before activating payment collection.` })
+        if (config.shopify_cod_to_prepaid === true) {
+          if (!supportsCodToPrepaid(flow.trigger_type)) issues.push({ severity: 'error', scope: 'node', node_key: n.node_key, field: 'shopify_cod_to_prepaid', message: 'COD to prepaid needs the “Shopify: order placed” or “Shopify: order updated” trigger.' })
+          const { data: shopify } = await admin.from('shopify_config').select('status').eq('account_id', flow.account_id).maybeSingle()
+          if (shopify?.status !== 'connected') issues.push({ severity: 'error', scope: 'node', node_key: n.node_key, field: 'shopify_cod_to_prepaid', message: 'Connect this brand’s Shopify store before activating COD to prepaid.' })
+        }
         for (const field of ['request_template', ...(Number(config.max_reminders) > 0 ? ['reminder_template'] : [])]) {
           const template = config[field] as { template_name?: string; language?: string; variables?: Record<string, string> } | undefined
           if (!template?.template_name) continue

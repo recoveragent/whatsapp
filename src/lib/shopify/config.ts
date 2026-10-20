@@ -6,6 +6,8 @@ import { isLocalWebhookUrl } from './format-api-error';
 
 const DEFAULT_SCOPES = [
   'read_orders',
+  // COD → prepaid conversion marks collected orders as paid.
+  'write_orders',
   'read_fulfillments',
   'read_checkouts',
   'read_customers',

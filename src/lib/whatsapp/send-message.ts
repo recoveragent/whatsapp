@@ -1,4 +1,5 @@
-import { recordApiAcceptance } from './delivery-diagnostics';
+import { recordApiAcceptance, type ApiDeliveryTiming } from './delivery-diagnostics';
+import { withMetaAcceptance } from '@/lib/inbox/delivery-hold';
 // ============================================================
 // Outbound message send — the core that both the dashboard's
 // `/api/whatsapp/send` route and the public `/api/v1/messages`
@@ -364,6 +365,7 @@ export async function sendMessageToConversation(
     sendLanguage = resolved.language;
   }
 
+  let deliveryTiming: ApiDeliveryTiming | undefined;
   const attempt = async (phone: string): Promise<string> => {
     if (messageType === 'template') {
       const result = await sendTemplateMessage({
@@ -377,7 +379,8 @@ export async function sendMessageToConversation(
         params: templateParams || [],
         contextMessageId,
       });
-      await recordApiAcceptance(db, accountId, config.phone_number_id, result.messageId, result.deliveryTiming);
+      deliveryTiming = result.deliveryTiming;
+      await recordApiAcceptance(db, accountId, config.phone_number_id, result.messageId, deliveryTiming);
       return result.messageId;
     }
     if (isMediaKind) {
@@ -507,7 +510,9 @@ export async function sendMessageToConversation(
       content_text: persistedText,
       ...(params.category === 'utility'
         ? { content_payload: { direct_send: true, category: 'utility' } }
-        : {}),
+        : deliveryTiming?.message_status
+          ? { content_payload: withMetaAcceptance(null, deliveryTiming.message_status) }
+          : {}),
       media_url: mediaUrl || null,
       template_name: templateName || null,
       interactive_payload:

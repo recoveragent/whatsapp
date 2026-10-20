@@ -6,8 +6,17 @@ import {
 } from './collect-payment';
 import type { FlowRunRow, FlowNodeRow } from '@/lib/flows/types';
 
-const h = vi.hoisted(() => ({ send: vi.fn() }));
+const h = vi.hoisted(() => ({
+  send: vi.fn(),
+  codOrder: vi.fn(),
+  syncOrder: vi.fn(),
+}));
 vi.mock('@/lib/flows/extended-nodes', () => ({ executeExtendedNode: h.send }));
+vi.mock('./shopify-order-sync', () => ({
+  codOrderCollection: h.codOrder,
+  syncShopifyOrderPayment: h.syncOrder,
+  processShopifyOrderSyncs: async () => 0,
+}));
 vi.mock('@/lib/whatsapp/encryption', () => ({ decrypt: (v: string) => v }));
 type Row = Record<string, unknown>;
 
@@ -156,6 +165,8 @@ function fixture() {
 beforeEach(() => {
   vi.unstubAllGlobals();
   h.send.mockReset().mockResolvedValue({ kind: 'continue', nextKey: '' });
+  h.codOrder.mockReset();
+  h.syncOrder.mockReset().mockResolvedValue('synced');
 });
 function newCollectionFixture() {
   const f = fixture();
@@ -251,6 +262,53 @@ describe('starting a payment collection', () => {
       last_error: 'Delivery unknown',
     });
     expect(f.tables.flow_runs[0].status).toBe('waiting');
+  });
+});
+
+describe('COD to prepaid', () => {
+  it('charges the Shopify order balance and tracks the order for sync', async () => {
+    const f = newCollectionFixture();
+    f.node.config.shopify_cod_to_prepaid = true;
+    h.codOrder.mockResolvedValue({ amount: 1499.5, orderId: '5551' });
+    await beginPaymentCollection(f.db, f.run, f.node);
+    expect(JSON.parse(f.fetch.mock.calls[0][1].body).amount).toBe(149950);
+    expect(f.tables.flow_payment_requests[0]).toMatchObject({
+      amount_paise: 149950,
+      shopify_order_id: '5551',
+      shopify_sync_status: 'pending',
+    });
+    expect(f.run.vars.payment_amount).toBe('1499.50');
+  });
+  it('creates no link when the order cannot be converted', async () => {
+    const f = newCollectionFixture();
+    f.node.config.shopify_cod_to_prepaid = true;
+    h.codOrder.mockRejectedValue(new Error('The Shopify order is cancelled'));
+    await expect(beginPaymentCollection(f.db, f.run, f.node)).rejects.toThrow(
+      'cancelled'
+    );
+    expect(f.fetch).not.toHaveBeenCalled();
+    expect(f.tables.flow_payment_requests).toEqual([]);
+  });
+  it('updates the Shopify order as soon as payment is verified', async () => {
+    const f = fixture();
+    f.row.shopify_sync_status = 'pending';
+    f.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...f.created, status: 'paid', amount_paid: 19900 }),
+    });
+    await processPaymentCollections(f.db);
+    expect(h.syncOrder).toHaveBeenCalledWith(f.db, 'request');
+  });
+  it('keeps a paid collection paid when the Shopify update throws', async () => {
+    const f = fixture();
+    f.row.shopify_sync_status = 'pending';
+    h.syncOrder.mockRejectedValue(new Error('database unavailable'));
+    f.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...f.created, status: 'paid', amount_paid: 19900 }),
+    });
+    await processPaymentCollections(f.db);
+    expect(f.row.status).toBe('paid');
   });
 });
 

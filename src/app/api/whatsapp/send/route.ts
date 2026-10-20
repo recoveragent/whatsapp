@@ -1,4 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
+import { supabaseAdmin } from '@/lib/automations/admin-client';
+import { recordApiAcceptance, type ApiDeliveryTiming } from '@/lib/whatsapp/delivery-diagnostics';
+import { withMetaAcceptance } from '@/lib/inbox/delivery-hold';
 import { createClient } from '@/lib/supabase/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import {
@@ -356,6 +359,7 @@ export async function POST(request: Request) {
     // format succeeds, we persist it back to the contact row so the
     // next send goes through on the first attempt.
     let waMessageId = '';
+    let deliveryTiming: ApiDeliveryTiming | undefined;
     let workingPhone = sanitizedPhone;
 
     // Load the template row from the conversation's WhatsApp number.
@@ -426,6 +430,7 @@ export async function POST(request: Request) {
           params: template_params || [],
           contextMessageId,
         });
+        deliveryTiming = result.deliveryTiming;
         return result.messageId;
       }
       if (isMediaKind) {
@@ -491,6 +496,16 @@ export async function POST(request: Request) {
       );
     }
 
+    // Diagnostics use the server role and must not delay inbox persistence
+    // or the response after Meta already accepted the message.
+    if (deliveryTiming) {
+      const acceptedTiming = deliveryTiming;
+      const acceptedMessageId = waMessageId;
+      after(() => recordApiAcceptance(
+        supabaseAdmin(), accountId, config.phone_number_id, acceptedMessageId, acceptedTiming,
+      ));
+    }
+
     // If a non-original variant succeeded, update the contact so future
     // sends go straight through. sanitizePhoneForMeta on workingPhone
     // will yield workingPhone itself, so re-storing preserves it.
@@ -536,7 +551,7 @@ export async function POST(request: Request) {
         content_payload:
           category === 'utility'
             ? { direct_send: true, category: 'utility' }
-            : templateContentPayload,
+            : withMetaAcceptance(templateContentPayload, deliveryTiming?.message_status),
         message_id: waMessageId,
         status: 'sent',
         reply_to_message_id: reply_to_message_id || null,
@@ -577,6 +592,7 @@ export async function POST(request: Request) {
       success: true,
       message_id: messageRecord.id,
       whatsapp_message_id: waMessageId,
+      meta_message_status: deliveryTiming?.message_status ?? null,
     });
   } catch (error) {
     // requireRole throws Unauthorized/Forbidden; toErrorResponse maps
