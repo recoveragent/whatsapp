@@ -193,22 +193,25 @@ export default function WhatsAppFormsPage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <header className="flex flex-wrap items-end justify-between gap-3 border-b px-6 py-4">
-        <div>
+      {/* One slim row so the editor gets the height. */}
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
+        <div className="flex min-w-0 items-center gap-2">
           <Link
             href="/flows"
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            aria-label="Back to Flows"
+            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
           >
-            <ArrowLeft className="h-3 w-3" /> Flows
+            <ArrowLeft className="h-4 w-4" />
           </Link>
-          <h1 className="text-2xl font-semibold text-foreground">WhatsApp forms</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Build the questions customers fill in inside WhatsApp, then send them with a{" "}
-            <span className="font-medium text-foreground">Send WhatsApp Form</span> step.
-          </p>
+          <h1
+            className="truncate text-lg font-semibold text-foreground"
+            title="Build the questions customers fill in inside WhatsApp, then send them with a Send WhatsApp Form step."
+          >
+            WhatsApp forms
+          </h1>
         </div>
         {/* The selected form's Save / Upload / Publish / Delete render here. */}
-        <div ref={setActionsEl} className="flex max-w-xl flex-col items-end gap-1" />
+        <div ref={setActionsEl} className="flex items-center gap-2" />
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
@@ -400,7 +403,7 @@ function FormEditor({
   const disabled = !canEdit || busy !== null;
 
   return (
-    <div className="grid gap-6 p-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="min-w-0 space-y-6">
         <section className="grid gap-4 rounded-lg border p-4 sm:grid-cols-2">
           <div className="space-y-1.5">
@@ -447,6 +450,12 @@ function FormEditor({
               </span>
             )}
             {dirty && <span className="text-xs text-amber-600 dark:text-amber-300">Unsaved changes</span>}
+            {isPublished && (
+              <p className="w-full text-xs text-muted-foreground">
+                WhatsApp doesn&apos;t allow editing a published form, so publishing again creates a new version.
+                Flow steps that picked the old version keep sending it until you re-pick this form.
+              </p>
+            )}
           </div>
         </section>
 
@@ -540,20 +549,26 @@ function FormEditor({
         </div>
 
         {actionsEl && createPortal(<>
+          {issues.length > 0 && (
+            <span className="text-xs text-destructive">
+              {issues.length} issue{issues.length > 1 ? "s" : ""} to fix
+            </span>
+          )}
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button variant="outline" disabled={disabled || !dirty} onClick={() => void save()}>
+          <Button size="sm" variant="outline" disabled={disabled || !dirty} onClick={() => void save()}>
             {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Save
           </Button>
-          <Button variant="outline" disabled={disabled} onClick={() => void upload(false)}>
+          <Button size="sm" variant="outline" disabled={disabled} onClick={() => void upload(false)}>
             {busy === "draft" ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
             Upload as draft
           </Button>
-          <Button disabled={disabled} onClick={() => void upload(true)}>
+          <Button size="sm" disabled={disabled} onClick={() => void upload(true)}>
             {busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             {isPublished ? "Publish new version" : "Publish"}
           </Button>
           <Button
+            size="sm"
             variant="ghost"
             className="text-muted-foreground hover:text-destructive"
             disabled={disabled}
@@ -562,21 +577,10 @@ function FormEditor({
             <Trash2 className="h-4 w-4" /> Delete
           </Button>
         </div>
-          {issues.length > 0 && (
-            <p className="text-right text-xs text-destructive">
-              {issues.length} issue{issues.length > 1 ? "s" : ""} to fix before uploading.
-            </p>
-          )}
-          {isPublished && (
-            <p className="text-right text-xs text-muted-foreground">
-              WhatsApp doesn&apos;t allow editing a published form, so publishing again creates a new version.
-              Flow steps that picked the old version keep sending it until you re-pick this form.
-            </p>
-          )}
         </>, actionsEl)}
       </div>
 
-      <aside className="xl:sticky xl:top-6 xl:self-start">
+      <aside className="xl:sticky xl:top-4 xl:self-start">
         <Preview def={def} screen={Math.min(previewScreen, def.screens.length - 1)} onScreen={setPreviewScreen} />
       </aside>
     </div>
@@ -903,7 +907,7 @@ function Preview({
       </div>
       {/* Phone bezel; the form sheet rises over a dimmed chat like in WhatsApp. */}
       <div className="mx-auto w-full max-w-[300px] rounded-[2.25rem] border-[6px] border-neutral-900 bg-neutral-900 shadow-lg">
-        <div className="flex h-[min(600px,calc(100dvh-13rem))] min-h-[420px] flex-col overflow-hidden rounded-[1.85rem] bg-[#0b141a]">
+        <div className="flex h-[min(620px,calc(100dvh-10rem))] min-h-[420px] flex-col overflow-hidden rounded-[1.85rem] bg-[#0b141a]">
           <div className="flex items-center justify-between px-5 pt-2 pb-1 text-[10px] font-medium text-white/80">
             <span>9:41</span>
             <span className="h-3.5 w-16 rounded-full bg-black" />
