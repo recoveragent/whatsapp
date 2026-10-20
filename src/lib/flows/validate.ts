@@ -852,6 +852,16 @@ function validateNode(
           message: "Quantity must be at least 1.",
         });
       }
+      const buttonLabel = (node.config as { button_label?: string }).button_label?.trim();
+      if (buttonLabel && buttonLabel.length > 20) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "button_label",
+          message: "Product button label must be 20 characters or fewer.",
+        });
+      }
       if (!cfg.next_node_key) {
         issues.push({
           severity: "error",

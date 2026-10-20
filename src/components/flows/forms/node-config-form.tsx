@@ -26,9 +26,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  AlertTriangle,
+  ExternalLink,
   Loader2,
   Paperclip,
   Plus,
+  RefreshCw,
+  ShoppingBag,
   Trash2,
   Upload,
   X,
@@ -46,6 +50,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { ProductPicker } from "@/components/catalog/product-picker";
 import { uploadAccountMedia, MEDIA_MAX_BYTES } from "@/lib/storage/upload-media";
 import { slugify, type BuilderNode } from "../shared";
 import {
@@ -1787,9 +1792,35 @@ interface SendProductCfg {
   product_source?: "fixed" | "variable";
   shopify_variant_id?: string | number;
   product_title?: string;
+  product_variant_title?: string | null;
+  product_price?: string;
+  product_currency?: string | null;
+  product_image_url?: string | null;
   variant_id_var?: string;
   quantity?: number;
+  message_text?: string;
+  button_label?: string;
   next_node_key?: string;
+}
+
+interface SellOnWhatsAppStatus {
+  connected: boolean;
+  enabled: boolean;
+  active_product_count: number;
+  products_last_synced_at: string | null;
+}
+
+const PRODUCT_BUTTON_MAX = 20;
+
+function formatProductPrice(price: string | undefined, currency: string | null | undefined) {
+  const normalized = price?.trim() || "0.00";
+  if (currency === "INR") return `₹${normalized}`;
+  return currency ? `${currency} ${normalized}` : normalized;
+}
+
+function productVariantLabel(variantTitle: string | null | undefined) {
+  const trimmed = variantTitle?.trim();
+  return trimmed && trimmed.toLowerCase() !== "default title" ? trimmed : null;
 }
 
 function SendProductForm({
@@ -1801,188 +1832,284 @@ function SendProductForm({
   currentKey: string;
   onUpdateConfig: (patch: Record<string, unknown>) => void;
 }) {
-  const [query, setQuery] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [products, setProducts] = useState<
-    Array<{
-      shopify_variant_id: number;
-      title: string;
-      variant_title: string | null;
-      price: string;
-      currency: string | null;
-    }>
-  >([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [status, setStatus] = useState<SellOnWhatsAppStatus | null>(null);
+  const [statusError, setStatusError] = useState("");
+  const [syncing, setSyncing] = useState(false);
 
   const source = cfg.product_source === "variable" ? "variable" : "fixed";
+  const hasProduct =
+    cfg.shopify_variant_id != null && String(cfg.shopify_variant_id).trim() !== "";
+  const variantLabel = productVariantLabel(cfg.product_variant_title);
+  const buttonLabel = cfg.button_label ?? "";
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/shopify/sell-on-whatsapp", { cache: "no-store" });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error ?? "Could not load Shopify status");
+      setStatus(payload as SellOnWhatsAppStatus);
+      setStatusError("");
+    } catch (err) {
+      setStatusError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
 
   useEffect(() => {
-    if (source !== "fixed") return;
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (query.trim()) params.set("q", query.trim());
-      params.set("limit", "50");
-      void fetch(`/api/shopify/products?${params.toString()}`, {
-        cache: "no-store",
-      })
-        .then(async (res) => {
-          const payload = await res.json().catch(() => ({}));
-          if (!res.ok || cancelled) return;
-          setProducts(
-            (payload.products ?? []) as Array<{
-              shopify_variant_id: number;
-              title: string;
-              variant_title: string | null;
-              price: string;
-              currency: string | null;
-            }>,
-          );
-        })
-        .catch(() => {
-          if (!cancelled) setProducts([]);
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-    }, query ? 250 : 0);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [source, query]);
+    void loadStatus();
+  }, [loadStatus]);
+
+  const syncCatalog = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/shopify/products/sync", { method: "POST" });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error ?? "Product sync failed");
+      toast.success(`Synced ${payload.upserted ?? 0} products from Shopify`);
+      await loadStatus();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Product sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const blocker = statusError
+    ? statusError
+    : status && !status.connected
+      ? "Shopify isn't connected for this workspace."
+      : status && !status.enabled
+        ? "Sell on WhatsApp is turned off, so product cards won't send until it's enabled."
+        : null;
 
   return (
     <>
+      <p className="text-[11px] text-muted-foreground">
+        Sends a product card from your Shopify catalog with a button that opens
+        checkout on your store with the item already in the cart. The flow then
+        moves straight on to the next step.
+      </p>
+
+      {blocker ? (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+          <p className="flex items-start gap-1.5">
+            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>{blocker}</span>
+          </p>
+          <a
+            href="/settings?tab=shopify"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 inline-flex items-center gap-1 underline"
+          >
+            Open Shopify settings <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+      ) : null}
+
       <div>
         <label className="mb-1 block text-xs text-muted-foreground">
           Product source
         </label>
         <Select
           value={source}
-          onValueChange={(v) =>
-            onUpdateConfig({
-              product_source: v as "fixed" | "variable",
-            })
-          }
+          onValueChange={(v) => {
+            if (v) onUpdateConfig({ product_source: v });
+          }}
         >
-          <SelectTrigger className="bg-muted">
-            <SelectValue />
+          <SelectTrigger className="w-full bg-muted text-xs">
+            <SelectValue>
+              {source === "fixed" ? "Pick from Shopify catalog" : "From a flow variable"}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="fixed">Pick from Shopify catalog</SelectItem>
-            <SelectItem value="variable">From flow variable</SelectItem>
+            <SelectItem value="variable">From a flow variable</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       {source === "fixed" ? (
-        <>
-          <div>
-            <label className="mb-1 block text-xs text-muted-foreground">
-              Search products
-            </label>
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search synced catalog..."
-              className="bg-muted text-xs"
-            />
+        <div>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="block text-xs text-muted-foreground">Product</label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-1 px-2 text-[11px]"
+              onClick={() => void syncCatalog()}
+              disabled={syncing}
+            >
+              <RefreshCw className={cn("h-3 w-3", syncing && "animate-spin")} />
+              Sync catalog
+            </Button>
           </div>
-          <div>
-            <label className="mb-1 block text-xs text-muted-foreground">
-              Product
-            </label>
-            {loading ? (
-              <p className="text-xs text-muted-foreground">Loading products…</p>
-            ) : (
-              <Select
-                value={
-                  cfg.shopify_variant_id != null
-                    ? String(cfg.shopify_variant_id)
-                    : ""
-                }
-                onValueChange={(value) => {
-                  const product = products.find(
-                    (item) => String(item.shopify_variant_id) === value,
-                  );
-                  onUpdateConfig({
-                    shopify_variant_id: value,
-                    product_title: product?.title ?? "",
-                  });
-                }}
+          {hasProduct ? (
+            <div className="flex items-center gap-3 rounded-md border border-border bg-muted/50 p-2">
+              <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded bg-muted">
+                {cfg.product_image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={cfg.product_image_url} alt="" className="size-full object-cover" />
+                ) : (
+                  <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium text-foreground">
+                  {cfg.product_title || `Variant ${cfg.shopify_variant_id}`}
+                </p>
+                {variantLabel ? (
+                  <p className="truncate text-[11px] text-foreground/80">{variantLabel}</p>
+                ) : null}
+                {cfg.product_price ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    {formatProductPrice(cfg.product_price, cfg.product_currency)}
+                  </p>
+                ) : null}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-[11px]"
+                onClick={() => setPickerOpen(true)}
               >
-                <SelectTrigger className="bg-muted">
-                  <SelectValue placeholder="Select a product" />
-                </SelectTrigger>
-                <SelectContent>
-                  {products.map((product) => {
-                    const variantLabel =
-                      product.variant_title &&
-                      product.variant_title.toLowerCase() !== "default title"
-                        ? product.variant_title
-                        : null;
-                    return (
-                    <SelectItem
-                      key={product.shopify_variant_id}
-                      value={String(product.shopify_variant_id)}
-                    >
-                      {variantLabel
-                        ? `${product.title} · ${variantLabel}`
-                        : product.title}
-                      {product.currency === "INR"
-                        ? ` · ₹${product.price}`
-                        : product.currency
-                          ? ` · ${product.currency} ${product.price}`
-                          : ` · ${product.price}`}
-                    </SelectItem>
-                  );
-                  })}
-                </SelectContent>
-              </Select>
-            )}
-            {cfg.product_title ? (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Selected: {cfg.product_title}
-              </p>
-            ) : null}
-          </div>
-        </>
+                Change
+              </Button>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-auto w-full justify-start gap-2 border-dashed py-3 text-xs"
+              onClick={() => setPickerOpen(true)}
+            >
+              <ShoppingBag className="h-4 w-4" />
+              Choose a product
+            </Button>
+          )}
+          {status ? (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {status.active_product_count} active product
+              {status.active_product_count === 1 ? "" : "s"} in your synced catalog
+              {status.products_last_synced_at
+                ? `, last synced ${new Date(status.products_last_synced_at).toLocaleString()}`
+                : ", never synced"}
+              . Out-of-stock items can&apos;t be picked.
+            </p>
+          ) : null}
+          <ProductPicker
+            open={pickerOpen}
+            onOpenChange={setPickerOpen}
+            onSelect={(product) =>
+              onUpdateConfig({
+                shopify_variant_id: String(product.shopify_variant_id),
+                product_title: product.title,
+                product_variant_title: product.variant_title,
+                product_price: product.price,
+                product_currency: product.currency,
+                product_image_url: product.image_url,
+              })
+            }
+          />
+        </div>
       ) : (
         <div>
           <label className="mb-1 block text-xs text-muted-foreground">
-            Variant id variable key
+            Variable holding the variant ID
           </label>
           <Input
             value={cfg.variant_id_var ?? "shopify_variant_id"}
-            onChange={(e) => onUpdateConfig({ variant_id_var: e.target.value })}
+            onChange={(e) =>
+              onUpdateConfig({
+                variant_id_var: e.target.value.replace(/[^a-zA-Z0-9_]/g, ""),
+              })
+            }
             placeholder="shopify_variant_id"
-            className="bg-muted text-xs"
+            className="bg-muted font-mono text-xs"
           />
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Reads <code className="text-foreground">vars.shopify_variant_id</code>{" "}
-            unless you set another key.
+            Reads{" "}
+            <code className="rounded bg-muted px-1 text-foreground">
+              {`{{vars.${cfg.variant_id_var || "shopify_variant_id"}}}`}
+            </code>{" "}
+            at run time, e.g. saved by an HTTP fetch or collect-input step. It
+            must be a Shopify variant ID from your synced catalog.
           </p>
         </div>
       )}
 
-      <div>
-        <label className="mb-1 block text-xs text-muted-foreground">
-          Quantity
-        </label>
-        <Input
-          type="number"
-          min={1}
-          value={cfg.quantity ?? 1}
-          onChange={(e) =>
-            onUpdateConfig({
-              quantity: Math.max(1, Number.parseInt(e.target.value || "1", 10)),
-            })
-          }
-          className="bg-muted text-xs"
-        />
+      <TextRow
+        label="Message above the product (optional)"
+        value={cfg.message_text ?? ""}
+        onChange={(v) => onUpdateConfig({ message_text: v })}
+        rows={3}
+      />
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="mb-1 block text-xs text-muted-foreground">Button label</label>
+          <Input
+            value={buttonLabel}
+            maxLength={PRODUCT_BUTTON_MAX}
+            onChange={(e) => onUpdateConfig({ button_label: e.target.value })}
+            placeholder="Buy now"
+            className="bg-muted text-xs"
+          />
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            {buttonLabel.length}/{PRODUCT_BUTTON_MAX}
+          </p>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-muted-foreground">Quantity in cart</label>
+          <Input
+            type="number"
+            min={1}
+            value={cfg.quantity ?? 1}
+            onChange={(e) =>
+              onUpdateConfig({
+                quantity: Math.max(1, Number.parseInt(e.target.value || "1", 10) || 1),
+              })
+            }
+            className="bg-muted text-xs"
+          />
+        </div>
       </div>
 
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">Preview</label>
+        <div className="max-w-64 overflow-hidden rounded-lg border border-border bg-background shadow-sm">
+          {source === "fixed" && cfg.product_image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={cfg.product_image_url} alt="" className="aspect-square w-full object-cover" />
+          ) : (
+            <div className="flex aspect-[2/1] w-full items-center justify-center bg-muted">
+              <ShoppingBag className="h-6 w-6 text-muted-foreground" />
+            </div>
+          )}
+          <div className="space-y-1 px-3 py-2 text-xs">
+            {cfg.message_text?.trim() ? (
+              <p className="whitespace-pre-wrap text-foreground">{cfg.message_text.trim()}</p>
+            ) : null}
+            <p className="font-medium text-foreground">
+              {source === "fixed"
+                ? (cfg.product_title || "Product title") +
+                  (variantLabel ? ` (${variantLabel})` : "")
+                : "Product from variable"}
+            </p>
+            <p className="text-muted-foreground">
+              {source === "fixed" && cfg.product_price
+                ? formatProductPrice(cfg.product_price, cfg.product_currency)
+                : "Price"}
+            </p>
+          </div>
+          <div className="flex items-center justify-center gap-1 border-t border-border py-2 text-xs font-medium text-sky-600 dark:text-sky-400">
+            <ExternalLink className="h-3 w-3" />
+            {buttonLabel.trim() || "Buy now"}
+          </div>
+        </div>
+      </div>
     </>
   );
 }
