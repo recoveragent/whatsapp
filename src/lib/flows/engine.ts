@@ -867,6 +867,10 @@ async function advanceFromNodeKey(
           shopifyVariantId: variantId,
           quantity: cfg.quantity,
           flowRunId: run.id,
+          introText: cfg.message_text
+            ? interpolateVars(cfg.message_text, varsFor(run))
+            : undefined,
+          buttonLabel: cfg.button_label,
         });
         await logMessageSent(db, run, node.node_key, {
           node_type: "send_product",

@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { BuilderNode } from '../shared';
-import { NextNodeRow, TextRow } from './fields';
+import { TextRow } from './fields';
 
 interface MetaFlow {
   id: string;
@@ -52,8 +52,6 @@ async function getJson<T>(url: string): Promise<T> {
 
 export function SendFlowFields({
   cfg,
-  allNodes,
-  currentKey,
   onUpdateConfig,
 }: {
   cfg: SendFlowCfg;
@@ -367,13 +365,6 @@ export function SendFlowFields({
         </p>
       ) : null}
 
-      <NextNodeRow
-        value={cfg.next_node_key ?? ''}
-        allNodes={allNodes}
-        currentKey={currentKey}
-        onChange={(v) => onUpdateConfig({ next_node_key: v })}
-        label="After form is submitted, advance to"
-      />
     </>
   );
 }

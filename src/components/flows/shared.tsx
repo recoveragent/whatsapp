@@ -534,8 +534,14 @@ export function summarizeNode(
           ? `Product from vars.${varKey}`
           : "Product from vars.shopify_variant_id";
       }
+      const price =
+        typeof cfg.product_price === "string" && cfg.product_price
+          ? cfg.product_currency === "INR"
+            ? `₹${cfg.product_price}`
+            : `${typeof cfg.product_currency === "string" ? `${cfg.product_currency} ` : ""}${cfg.product_price}`
+          : "";
       return title
-        ? truncate(title, 60)
+        ? truncate(price ? `${title} · ${price}` : title, 60)
         : variantId
           ? `Variant ${truncate(variantId, 24)}`
           : "No product selected";

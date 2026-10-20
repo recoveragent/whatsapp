@@ -77,6 +77,10 @@ export interface SendShopifyProductCardArgs {
   skipAssigneeCheck?: boolean;
   recoverySend?: boolean;
   skipRecoverySchedule?: boolean;
+  /** Text shown above the product title/price line. */
+  introText?: string;
+  /** CTA button label; defaults to "Buy now". */
+  buttonLabel?: string;
 }
 
 export interface SendShopifyProductCardResult {
@@ -177,12 +181,15 @@ export async function sendShopifyProductCard(
     },
   });
 
-  const bodyText = buildProductCardBodyText({
+  const productLine = buildProductCardBodyText({
     title: product.title,
     price: product.price,
     currency: product.currency,
     variantTitle: product.variant_title,
   });
+  const intro = args.introText?.trim();
+  const bodyText = intro ? `${intro}\n\n${productLine}` : productLine;
+  const buttonLabel = args.buttonLabel?.trim() || DEFAULT_BUTTON_LABEL;
 
   let contextMessageId: string | undefined;
   if (args.replyToMessageId) {
@@ -206,7 +213,7 @@ export async function sendShopifyProductCard(
       accessToken,
       to: phone,
       bodyText,
-      buttonLabel: DEFAULT_BUTTON_LABEL,
+      buttonLabel,
       url: checkoutUrl,
       headerImageUrl: product.image_url ?? undefined,
       headerText: product.image_url ? undefined : product.title,
@@ -246,7 +253,7 @@ export async function sendShopifyProductCard(
   const contentPayload = {
     type: 'product_card',
     checkout_url: checkoutUrl,
-    button_label: DEFAULT_BUTTON_LABEL,
+    button_label: buttonLabel,
     product_title: product.title,
     shopify_variant_id: product.shopify_variant_id,
     price: product.price,
@@ -280,7 +287,7 @@ export async function sendShopifyProductCard(
   await args.db
     .from('conversations')
     .update({
-      last_message_text: `${product.title} · ${DEFAULT_BUTTON_LABEL}`,
+      last_message_text: `${product.title} · ${buttonLabel}`,
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
