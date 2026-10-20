@@ -6,6 +6,13 @@ import type { WaitNodeConfig } from './extended-nodes'
 describe('computeWaitRunAt', () => {
   const now = Date.parse('2026-08-14T03:00:00.000Z')
 
+  it('schedules seconds without treating them as minutes', () => {
+    expect(computeWaitRunAt({ amount: 10, unit: 'seconds', next_node_key: 'next' }, {}, now)).toEqual({
+      runAt: '2026-08-14T03:00:10.000Z',
+      immediate: false,
+    })
+  })
+
   it('delay mode uses amount/unit from now', () => {
     const cfg: WaitNodeConfig = {
       mode: 'delay',

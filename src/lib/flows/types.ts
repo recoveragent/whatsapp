@@ -311,7 +311,7 @@ export interface SendTemplateNodeConfig {
 
 export interface WaitNodeConfig {
   amount: number;
-  unit: "minutes" | "hours" | "days";
+  unit: "seconds" | "minutes" | "hours" | "days";
   next_node_key: string;
   /** Relative delay from now (default). Absolute: wait until a datetime var. */
   mode?: "delay" | "until";

@@ -12,7 +12,7 @@ export interface WaitNodeConfig {
   /** Relative delay from now (default). Absolute: wait until a datetime var. */
   mode?: 'delay' | 'until'
   amount: number
-  unit: 'minutes' | 'hours' | 'days'
+  unit: 'seconds' | 'minutes' | 'hours' | 'days'
   next_node_key: string
   /** Var key holding an ISO datetime (e.g. meeting_start). Used when mode=until. */
   datetime_var?: string
@@ -45,7 +45,7 @@ export function resolveUpdateContactFieldEntries(
 
 function waitMs(cfg: WaitNodeConfig): number {
   const unitMs =
-    cfg.unit === 'days' ? 86_400_000 : cfg.unit === 'hours' ? 3_600_000 : 60_000
+    cfg.unit === 'seconds' ? 1_000 : cfg.unit === 'days' ? 86_400_000 : cfg.unit === 'hours' ? 3_600_000 : 60_000
   return Math.max(1_000, cfg.amount * unitMs)
 }
 

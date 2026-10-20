@@ -359,33 +359,38 @@ function NodeConfigBody({
             </Select>
           </div>
           {mode === "delay" ? (
-            <>
-              <TextRow
-                label="Amount"
-                value={String((cfg as { amount?: number }).amount ?? 1)}
-                onChange={(v) =>
-                  onUpdateConfig({ amount: Math.max(1, Number(v) || 1) })
-                }
-              />
-              <div>
-                <label className="mb-1 block text-xs text-muted-foreground">
-                  Unit
-                </label>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">
+                Wait for
+              </label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min={1}
+                  value={String((cfg as { amount?: number }).amount ?? 1)}
+                  onChange={(e) =>
+                    onUpdateConfig({
+                      amount: Math.max(1, Number(e.target.value) || 1),
+                    })
+                  }
+                  className="w-20 bg-muted"
+                />
                 <Select
                   value={(cfg as { unit?: string }).unit ?? "hours"}
                   onValueChange={(v) => onUpdateConfig({ unit: v })}
                 >
-                  <SelectTrigger className="bg-muted">
+                  <SelectTrigger className="w-[120px] bg-muted">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="seconds">Seconds</SelectItem>
                     <SelectItem value="minutes">Minutes</SelectItem>
                     <SelectItem value="hours">Hours</SelectItem>
                     <SelectItem value="days">Days</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-            </>
+            </div>
           ) : (
             <>
               <TextRow
