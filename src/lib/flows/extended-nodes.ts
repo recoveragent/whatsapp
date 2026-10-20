@@ -157,7 +157,7 @@ async function resolveFlowRunConversation(
   return conv.id
 }
 
-async function resolveFlowInterpolationVars(
+export async function resolveFlowInterpolationVars(
   db: AdminClient,
   run: FlowRunRow,
 ): Promise<Record<string, unknown>> {

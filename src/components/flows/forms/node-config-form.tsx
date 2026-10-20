@@ -69,6 +69,23 @@ import { formFieldVariableGroups } from "@/lib/flows/form-variables";
 import { ConditionRuleFields } from "./condition-fields";
 import type { ConditionNodeConfig } from "@/lib/flows/types";
 
+/**
+ * Variables offered in text fields. Shopify flows get their full trigger
+ * set; every flow gets contact attributes, fallbacks and captured form fields.
+ */
+function nodeVariableGroups(
+  allNodes: BuilderNode[],
+  currentKey: string,
+  triggerType?: FlowTriggerType,
+  triggerConfig?: Record<string, unknown>,
+) {
+  const base = templateVariableGroupsForFlow(triggerType, triggerConfig);
+  const groups = triggerType?.startsWith("shopify_")
+    ? base
+    : base.filter((g) => g.id === "contact" || g.id === "fallback");
+  return [...groups, ...formFieldVariableGroups(allNodes, currentKey)];
+}
+
 interface NodeConfigFormProps {
   templateLayout?: boolean;
   node: BuilderNode;
@@ -90,7 +107,7 @@ export function NodeConfigForm({
 }: NodeConfigFormProps) {
   return (
     <>
-      <NodeVariableGroups.Provider value={[...(triggerType?.startsWith('shopify_') ? templateVariableGroupsForFlow(triggerType, triggerConfig) : []), ...formFieldVariableGroups(allNodes, node.node_key)]}>
+      <NodeVariableGroups.Provider value={nodeVariableGroups(allNodes, node.node_key, triggerType, triggerConfig)}>
       <NodeConfigBody
         node={node}
         allNodes={allNodes}

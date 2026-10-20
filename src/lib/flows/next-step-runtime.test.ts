@@ -403,6 +403,27 @@ describe('independent Next step and no-response timeout', () => {
     expect(h.sends).toEqual(['confirmation', 'Reminder', 'Thanks']);
   });
 
+  it('fills contact attributes, spaced tokens and fallbacks in plain messages', async () => {
+    h.tables.contacts = [{ id: 'contact', name: 'Asha Rao', phone: '+919999999999' }];
+    h.tables.flow_nodes[0] = node('confirmation', 'send_message', {
+      text: 'Hi {{ vars.first_name }} ({{vars.name}}), city: {{ vars.city | "unknown" }}',
+      next_node_key: 'end',
+    });
+    await start();
+    expect(h.sends).toEqual(['Hi Asha (Asha Rao), city: unknown']);
+    expect(h.tables.flow_runs[0]!.vars).toEqual({});
+  });
+
+  it('uses the fallback when the contact has no name', async () => {
+    h.tables.contacts = [{ id: 'contact', name: null }];
+    h.tables.flow_nodes[0] = node('confirmation', 'send_message', {
+      text: 'Hi {{ vars.first_name | "there" }}',
+      next_node_key: 'end',
+    });
+    await start();
+    expect(h.sends).toEqual(['Hi there']);
+  });
+
   describe('Send WhatsApp form', () => {
     const RUN = '11111111-2222-4333-8444-555555555555';
     const OTHER = '99999999-2222-4333-8444-555555555555';

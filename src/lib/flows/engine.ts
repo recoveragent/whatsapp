@@ -84,6 +84,7 @@ import {
   executeExtendedNode,
   enqueueFlowWait,
   isExtendedNodeType,
+  resolveFlowInterpolationVars,
 } from "./extended-nodes";
 import {
   applyFlowExitEventWithClient,
@@ -668,20 +669,46 @@ async function executeHandoff(
  */
 function interpolateVars(template: string, vars: Record<string, unknown>): string {
   if (!template) return "";
-  // `{{vars.form.full_name}}` reads a field of a captured form/address.
-  return template.replace(/\{\{vars\.([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_-]+)*)\}\}/g, (_, path: string) => {
-    let v: unknown = vars;
-    for (const part of path.split(".")) {
-      v = v && typeof v === "object" ? (v as Record<string, unknown>)[part] : undefined;
-    }
-    if (v === undefined || v === null) return "";
-    if (typeof v === "object" && !Array.isArray(v)) {
-      const obj = v as Record<string, unknown>;
-      if (typeof obj.formatted === "string") return obj.formatted;
-      return JSON.stringify(v);
-    }
-    return String(v);
-  });
+  // `{{vars.form.full_name}}` reads a field of a captured form/address;
+  // `{{ vars.first_name | "there" }}` falls back when the value is empty.
+  return template.replace(
+    /\{\{\s*vars\.([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_-]+)*)\s*(?:\|\s*(?:"([^"]*)"|'([^']*)')\s*)?\}\}/g,
+    (_, path: string, dq?: string, sq?: string) => {
+      let v: unknown = vars;
+      for (const part of path.split(".")) {
+        v = v && typeof v === "object" ? (v as Record<string, unknown>)[part] : undefined;
+      }
+      let out = "";
+      if (v !== undefined && v !== null) {
+        if (typeof v === "object" && !Array.isArray(v)) {
+          const obj = v as Record<string, unknown>;
+          out = typeof obj.formatted === "string" ? obj.formatted : JSON.stringify(v);
+        } else {
+          out = String(v);
+        }
+      }
+      return out.trim() ? out : (dq ?? sq ?? out);
+    },
+  );
+}
+
+/**
+ * Contact attributes (name, first_name, phone, email, company) for the
+ * run's contact, loaded once per advance and never persisted into vars.
+ */
+const contactVarsByRun = new WeakMap<FlowRunRow, Record<string, unknown>>();
+
+async function primeContactVars(db: AdminClient, run: FlowRunRow): Promise<void> {
+  try {
+    contactVarsByRun.set(run, await resolveFlowInterpolationVars(db, run));
+  } catch {
+    // Interpolation falls back to run.vars alone.
+  }
+}
+
+/** Run vars layered over contact attributes — run vars win. */
+function varsFor(run: FlowRunRow): Record<string, unknown> {
+  return { ...(contactVarsByRun.get(run) ?? {}), ...(run.vars ?? {}) };
 }
 
 async function endRun(
@@ -723,6 +750,7 @@ async function advanceFromNodeKey(
 }> {
   let currentKey: string | null = startNodeKey;
   let closedConversation = false;
+  await primeContactVars(db, run);
   const finish = (
     outcome: "advanced" | "completed" | "handed_off",
   ): {
@@ -776,7 +804,7 @@ async function advanceFromNodeKey(
     userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          text: interpolateVars(cfg.text, run.vars),
+          text: interpolateVars(cfg.text, varsFor(run)),
         });
         await logMessageSent(db, run, node.node_key, {
           node_type: "send_message",
@@ -804,7 +832,7 @@ async function advanceFromNodeKey(
           kind: cfg.media_type,
           link: cfg.media_url,
           caption: cfg.caption
-            ? interpolateVars(cfg.caption, run.vars)
+            ? interpolateVars(cfg.caption, varsFor(run))
             : undefined,
           filename: cfg.filename,
         });
@@ -867,7 +895,7 @@ async function advanceFromNodeKey(
     userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          text: interpolateVars(cfg.prompt_text, run.vars),
+          text: interpolateVars(cfg.prompt_text, varsFor(run)),
         });
         await logMessageSent(db, run, node.node_key, {
           node_type: "collect_input",
@@ -926,13 +954,13 @@ async function advanceFromNodeKey(
           userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          bodyText: interpolateVars(cfg.body_text, run.vars),
+          bodyText: interpolateVars(cfg.body_text, varsFor(run)),
           country: cfg.country,
           headerText: cfg.header_text
-            ? interpolateVars(cfg.header_text, run.vars)
+            ? interpolateVars(cfg.header_text, varsFor(run))
             : undefined,
           footerText: cfg.footer_text
-            ? interpolateVars(cfg.footer_text, run.vars)
+            ? interpolateVars(cfg.footer_text, varsFor(run))
             : undefined,
           values: prefill.values,
           savedAddresses: prefill.savedAddresses,
@@ -987,26 +1015,26 @@ async function advanceFromNodeKey(
           userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          bodyText: interpolateVars(cfg.body_text, run.vars),
-          flowId: interpolateVars(cfg.flow_id, run.vars),
-          flowCta: interpolateVars(cfg.flow_cta, run.vars),
+          bodyText: interpolateVars(cfg.body_text, varsFor(run)),
+          flowId: interpolateVars(cfg.flow_id, varsFor(run)),
+          flowCta: interpolateVars(cfg.flow_cta, varsFor(run)),
           flowToken,
           flowMessageVersion: cfg.flow_message_version ?? "3",
           mode: cfg.flow_mode === "draft" ? "draft" : undefined,
           headerText: cfg.header_text
-            ? interpolateVars(cfg.header_text, run.vars)
+            ? interpolateVars(cfg.header_text, varsFor(run))
             : undefined,
           footerText: cfg.footer_text
-            ? interpolateVars(cfg.footer_text, run.vars)
+            ? interpolateVars(cfg.footer_text, varsFor(run))
             : undefined,
           flowScreen: cfg.flow_screen
-            ? interpolateVars(cfg.flow_screen, run.vars)
+            ? interpolateVars(cfg.flow_screen, varsFor(run))
             : undefined,
           flowData: cfg.flow_data
             ? Object.fromEntries(
                 Object.entries(cfg.flow_data).map(([k, v]) => [
                   k,
-                  interpolateVars(v, run.vars),
+                  interpolateVars(v, varsFor(run)),
                 ]),
               )
             : undefined,
@@ -1579,6 +1607,7 @@ async function handleReplyForActiveRun(
   nodes: Map<string, FlowNodeRow>,
 ): Promise<DispatchInboundResult> {
   const message = input.message;
+  await primeContactVars(db, run);
 
   // Any customer response ends the no-response timer, even without a branch match.
   await cancelAllReplyTimeouts(db, run.id);
@@ -1826,7 +1855,7 @@ async function handleReplyForActiveRun(
     userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          text: interpolateVars(cfg.prompt_text, run.vars),
+          text: interpolateVars(cfg.prompt_text, varsFor(run)),
         });
       } catch (err) {
         await logEvent(db, run.id, "error", currentNode.node_key, {
@@ -1852,13 +1881,13 @@ async function handleReplyForActiveRun(
           userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          bodyText: interpolateVars(cfg.body_text, run.vars),
+          bodyText: interpolateVars(cfg.body_text, varsFor(run)),
           country: cfg.country,
           headerText: cfg.header_text
-            ? interpolateVars(cfg.header_text, run.vars)
+            ? interpolateVars(cfg.header_text, varsFor(run))
             : undefined,
           footerText: cfg.footer_text
-            ? interpolateVars(cfg.footer_text, run.vars)
+            ? interpolateVars(cfg.footer_text, varsFor(run))
             : undefined,
           values: prefill.values,
           savedAddresses: prefill.savedAddresses,
@@ -1878,26 +1907,26 @@ async function handleReplyForActiveRun(
           userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          bodyText: interpolateVars(cfg.body_text, run.vars),
-          flowId: interpolateVars(cfg.flow_id, run.vars),
-          flowCta: interpolateVars(cfg.flow_cta, run.vars),
+          bodyText: interpolateVars(cfg.body_text, varsFor(run)),
+          flowId: interpolateVars(cfg.flow_id, varsFor(run)),
+          flowCta: interpolateVars(cfg.flow_cta, varsFor(run)),
           flowToken,
           flowMessageVersion: cfg.flow_message_version ?? "3",
           mode: cfg.flow_mode === "draft" ? "draft" : undefined,
           headerText: cfg.header_text
-            ? interpolateVars(cfg.header_text, run.vars)
+            ? interpolateVars(cfg.header_text, varsFor(run))
             : undefined,
           footerText: cfg.footer_text
-            ? interpolateVars(cfg.footer_text, run.vars)
+            ? interpolateVars(cfg.footer_text, varsFor(run))
             : undefined,
           flowScreen: cfg.flow_screen
-            ? interpolateVars(cfg.flow_screen, run.vars)
+            ? interpolateVars(cfg.flow_screen, varsFor(run))
             : undefined,
           flowData: cfg.flow_data
             ? Object.fromEntries(
                 Object.entries(cfg.flow_data).map(([k, v]) => [
                   k,
-                  interpolateVars(v, run.vars),
+                  interpolateVars(v, varsFor(run)),
                 ]),
               )
             : undefined,
