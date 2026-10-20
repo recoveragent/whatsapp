@@ -35,6 +35,8 @@ export interface SendShopifyProductCarouselArgs {
   bodyText: string;
   shopifyVariantIds: Array<string | number>;
   buttonLabel?: string;
+  /** Cart quantity for every card's checkout link. */
+  quantity?: number;
   flowRunId?: string;
   skipAssigneeCheck?: boolean;
   aiGenerated?: boolean;
@@ -163,6 +165,7 @@ export async function sendShopifyProductCarousel(
     url: buildShopifyCartCheckoutUrl({
       shopDomain,
       variantId: product.shopify_variant_id,
+      quantity: args.quantity,
       attributes: {
         source: 'wacrm',
         conversation_id: args.conversationId,
@@ -256,6 +259,24 @@ export async function sendShopifyProductCarousel(
       throw new Error(
         `Carousel sent to Meta but failed to save to DB: ${messageError?.message ?? 'unknown error'}`
       );
+    }
+
+    const { error: productSendError } = await args.db
+      .from('whatsapp_product_sends')
+      .insert(
+        products.map((product, index) => ({
+          account_id: args.accountId,
+          conversation_id: args.conversationId,
+          message_id: messageRecord.id,
+          shopify_variant_id: product.shopify_variant_id,
+          product_title: product.title,
+          checkout_url: cards[index].url,
+          sent_by_user_id: args.flowRunId || args.aiGenerated ? null : args.userId,
+          flow_run_id: args.flowRunId ?? null,
+        }))
+      );
+    if (productSendError) {
+      console.error('[shopify/product-carousel] product send audit failed:', productSendError);
     }
 
     await args.db

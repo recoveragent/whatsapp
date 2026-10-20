@@ -803,24 +803,62 @@ function validateNode(
 
     case "send_product": {
       const cfg = node.config as {
-        product_source?: "fixed" | "variable";
+        product_source?: "fixed" | "collection" | "variable";
         shopify_variant_id?: string | number;
+        products?: Array<{ shopify_variant_id?: string | number }>;
+        collection_id?: string;
+        max_products?: number;
         variant_id_var?: string;
         quantity?: number;
         next_node_key?: string;
       };
-      if (cfg.product_source !== "fixed" && cfg.product_source !== "variable") {
+      if (
+        cfg.product_source !== "fixed" &&
+        cfg.product_source !== "collection" &&
+        cfg.product_source !== "variable"
+      ) {
         issues.push({
           severity: "error",
           scope: "node",
           node_key: node.node_key,
           field: "product_source",
-          message: "Send-product node needs a product source (fixed or variable).",
+          message: "Send-product node needs a product source (products, collection or variable).",
         });
-      } else if (cfg.product_source === "fixed") {
+      } else if (cfg.product_source === "collection") {
+        if (!cfg.collection_id?.trim()) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: "collection_id",
+            message: "Pick a Shopify collection for this send-product node.",
+          });
+        }
         if (
-          cfg.shopify_variant_id == null ||
-          String(cfg.shopify_variant_id).trim() === ""
+          cfg.max_products != null &&
+          (!Number.isInteger(cfg.max_products) || cfg.max_products < 1 || cfg.max_products > 10)
+        ) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: "max_products",
+            message: "Products to show must be between 1 and 10.",
+          });
+        }
+      } else if (cfg.product_source === "fixed") {
+        if ((cfg.products?.length ?? 0) > 10) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: "products",
+            message: "A product carousel can show at most 10 products.",
+          });
+        }
+        if (
+          !cfg.products?.some((p) => String(p.shopify_variant_id ?? "").trim() !== "") &&
+          (cfg.shopify_variant_id == null || String(cfg.shopify_variant_id).trim() === "")
         ) {
           issues.push({
             severity: "error",

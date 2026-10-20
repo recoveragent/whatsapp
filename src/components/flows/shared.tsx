@@ -534,6 +534,24 @@ export function summarizeNode(
           ? `Product from vars.${varKey}`
           : "Product from vars.shopify_variant_id";
       }
+      if (cfg.product_source === "collection") {
+        const name =
+          typeof cfg.collection_title === "string" ? cfg.collection_title : "";
+        const count = typeof cfg.max_products === "number" ? cfg.max_products : 4;
+        return name
+          ? truncate(`Collection "${name}" · up to ${count} product${count === 1 ? "" : "s"}`, 60)
+          : "No collection selected";
+      }
+      const picked = Array.isArray(cfg.products)
+        ? (cfg.products as Array<{ title?: unknown }>)
+        : [];
+      if (picked.length > 1) {
+        const names = picked
+          .map((p) => (typeof p.title === "string" ? p.title : ""))
+          .filter(Boolean)
+          .join(", ");
+        return truncate(`Carousel · ${picked.length} products${names ? `: ${names}` : ""}`, 60);
+      }
       const price =
         typeof cfg.product_price === "string" && cfg.product_price
           ? cfg.product_currency === "INR"

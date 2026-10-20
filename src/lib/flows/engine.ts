@@ -36,10 +36,7 @@ import { beginPaymentCollection } from "@/lib/payments/collect-payment";
  */
 
 import { createHash } from "node:crypto";
-import {
-  resolveSendProductVariantId,
-  sendShopifyProductCard,
-} from "@/lib/shopify/send-product-card";
+import { sendProductNode } from "@/lib/shopify/send-product-node";
 import { supabaseAdmin } from "./admin-client";
 import { compareCondition } from "./conditions";
 import { createConditionEvaluator } from "./condition-runtime";
@@ -855,27 +852,25 @@ async function advanceFromNodeKey(
     if (node.node_type === "send_product") {
       const cfg = node.config as unknown as SendProductNodeConfig;
       try {
-        const variantId = resolveSendProductVariantId({
-          cfg,
-          vars: run.vars as Record<string, unknown>,
-        });
-        const result = await sendShopifyProductCard({
+        const result = await sendProductNode({
           db,
           accountId: run.account_id,
           userId: run.user_id,
           conversationId: run.conversation_id!,
-          shopifyVariantId: variantId,
-          quantity: cfg.quantity,
+          contactId: run.contact_id!,
           flowRunId: run.id,
+          cfg,
+          vars: run.vars as Record<string, unknown>,
           introText: cfg.message_text
             ? interpolateVars(cfg.message_text, varsFor(run))
             : undefined,
-          buttonLabel: cfg.button_label,
         });
         await logMessageSent(db, run, node.node_key, {
           node_type: "send_product",
           whatsapp_message_id: result.whatsapp_message_id,
-          shopify_variant_id: variantId,
+          mode: result.mode,
+          shopify_variant_id: result.shopify_variant_ids[0],
+          shopify_variant_ids: result.shopify_variant_ids,
           checkout_url: result.checkout_url,
         });
       } catch (err) {

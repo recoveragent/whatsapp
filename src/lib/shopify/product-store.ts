@@ -100,3 +100,42 @@ export async function getShopifyCatalogProduct(args: {
 
   return rowToCatalogProduct(data as Record<string, unknown>);
 }
+
+/**
+ * One cached variant per product, in the order of `productIds`. Prefers an
+ * in-stock variant with an image; products with nothing in stock are dropped.
+ */
+export async function getShopifyCatalogProductsForProductIds(args: {
+  db: SupabaseClient;
+  accountId: string;
+  productIds: number[];
+}): Promise<ShopifyCatalogProduct[]> {
+  if (args.productIds.length === 0) return [];
+
+  const { data, error } = await args.db
+    .from('shopify_products')
+    .select(
+      'id, shopify_product_id, shopify_variant_id, title, variant_title, price, compare_at_price, currency, image_url, inventory_quantity'
+    )
+    .eq('account_id', args.accountId)
+    .eq('status', 'active')
+    .in('shopify_product_id', args.productIds)
+    .order('shopify_variant_id', { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  const byProduct = new Map<number, ShopifyCatalogProduct>();
+  for (const row of data ?? []) {
+    const product = rowToCatalogProduct(row as Record<string, unknown>);
+    if (!product.in_stock) continue;
+    const current = byProduct.get(product.shopify_product_id);
+    if (!current || (!current.image_url && product.image_url)) {
+      byProduct.set(product.shopify_product_id, product);
+    }
+  }
+
+  return args.productIds.flatMap((id) => {
+    const product = byProduct.get(id);
+    return product ? [product] : [];
+  });
+}
