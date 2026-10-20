@@ -84,11 +84,22 @@ export interface SendListNodeConfig {
  * meaningful behavioural difference.
  */
 export interface SendProductNodeConfig {
-  /** Pick a catalog product at design time, or resolve variant id from flow vars. */
-  product_source: "fixed" | "variable";
-  /** Shopify variant id when product_source is fixed. */
+  /**
+   * fixed: products picked at design time. collection: products pulled from
+   * a Shopify collection at send time. variable: variant id(s) from flow vars.
+   * One product sends a single card; 2+ send a carousel.
+   */
+  product_source: "fixed" | "collection" | "variable";
+  /** Legacy single pick; mirrors products[0] when product_source is fixed. */
   shopify_variant_id?: string | number;
-  /** Flow var key when product_source is variable. Defaults to shopify_variant_id. */
+  /** Picked products (max 10) when product_source is fixed. */
+  products?: Array<{ shopify_variant_id: string | number; title?: string }>;
+  /** Shopify collection id when product_source is collection. */
+  collection_id?: string;
+  collection_title?: string;
+  /** How many collection products to show (1–10). */
+  max_products?: number;
+  /** Flow var key when product_source is variable. Defaults to shopify_variant_id. Comma-separated or array values send a carousel. */
   variant_id_var?: string;
   quantity?: number;
   /** Optional text above the product title/price. Supports {{vars}}. */

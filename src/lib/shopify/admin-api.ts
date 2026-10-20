@@ -762,3 +762,54 @@ export async function fetchProductsPage(
     shopCurrency: shopInfo?.currency ?? null,
   };
 }
+
+export interface ShopifyCollectionSummary {
+  id: number;
+  title: string;
+  handle: string | null;
+  kind: 'custom' | 'smart';
+}
+
+/** Manual (custom) and automated (smart) collections, merged and sorted by title. */
+export async function fetchCollections(
+  shopDomain: string,
+  accessToken: string,
+): Promise<ShopifyCollectionSummary[]> {
+  type Row = { id?: number; title?: string; handle?: string };
+  const [custom, smart] = await Promise.all([
+    shopifyFetch<{ custom_collections?: Row[] }>(
+      shopDomain,
+      accessToken,
+      '/custom_collections.json?limit=250&fields=id,title,handle',
+    ),
+    shopifyFetch<{ smart_collections?: Row[] }>(
+      shopDomain,
+      accessToken,
+      '/smart_collections.json?limit=250&fields=id,title,handle',
+    ),
+  ]);
+
+  const toSummary = (kind: 'custom' | 'smart') => (row: Row) =>
+    row.id != null
+      ? [{ id: row.id, title: row.title?.trim() || 'Untitled collection', handle: row.handle ?? null, kind }]
+      : [];
+
+  return [
+    ...(custom.custom_collections ?? []).flatMap(toSummary('custom')),
+    ...(smart.smart_collections ?? []).flatMap(toSummary('smart')),
+  ].sort((a, b) => a.title.localeCompare(b.title));
+}
+
+/** Product ids in a collection, in the collection's sort order. */
+export async function fetchCollectionProductIds(
+  shopDomain: string,
+  accessToken: string,
+  collectionId: string | number,
+): Promise<number[]> {
+  const data = await shopifyFetch<{ products?: Array<{ id?: number }> }>(
+    shopDomain,
+    accessToken,
+    `/collections/${encodeURIComponent(String(collectionId))}/products.json?limit=250&fields=id`,
+  );
+  return (data.products ?? []).flatMap((p) => (p.id != null ? [p.id] : []));
+}
