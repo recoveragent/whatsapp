@@ -17,6 +17,7 @@ import {
   HelpCircle,
   UserPlus,
   FileText,
+  ClipboardList,
 } from "lucide-react";
 
 import { useTranslations } from "next-intl";
@@ -234,14 +235,20 @@ export default function FlowsPage() {
             {t("description")}
           </p>
         </div>
-        <GatedButton
-          canAct={canCreate}
-          gateReason="create flows"
-          onClick={() => setCreateOpen(true)}
-        >
-          <Plus className="h-4 w-4" />
-          {t("newFlow")}
-        </GatedButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => router.push("/flows/forms")}>
+            <ClipboardList className="h-4 w-4" />
+            WhatsApp forms
+          </Button>
+          <GatedButton
+            canAct={canCreate}
+            gateReason="create flows"
+            onClick={() => setCreateOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+            {t("newFlow")}
+          </GatedButton>
+        </div>
       </header>
 
       {flows.length === 0 ? (
