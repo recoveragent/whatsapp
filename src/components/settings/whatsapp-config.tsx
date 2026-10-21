@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { DirectSendSettings } from './direct-send-settings';
 import { SettingsPanelHead } from './settings-panel-head';
 import {
   Accordion,
@@ -471,6 +472,7 @@ export function WhatsAppConfig({
               : 'Recover Agent ops only. API credentials and webhook configuration for this brand.'
         }
       />
+      <DirectSendSettings brandId={brandId} canEdit />
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-6">
           <Card>

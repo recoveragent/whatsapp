@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { withMetaAcceptance } from '@/lib/inbox/delivery-hold';
 import { createRepairGate } from '@/lib/inbox/repair-gate';
+import { normalizeDirectSendStatus, type DirectSendStatus } from '@/lib/whatsapp/direct-send';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { usePresence } from '@/hooks/use-presence';
@@ -234,6 +235,28 @@ export function MessageThread({
 
   const { user, accountId, isShopifyBrand } = useAuth();
   const { getPresence, getRow, now } = usePresence();
+  const [directSendAvailability, setDirectSendAvailability] = useState<{ key: string; status: DirectSendStatus } | null>(null);
+  const directSendConversationId = conversation?.id;
+  const directSendConfigId = conversation?.whatsapp_config_id;
+  const directSendKey = `${accountId}:${directSendConfigId ?? ''}`;
+  const directSendStatus = directSendAvailability?.key === directSendKey ? directSendAvailability.status : 'unknown';
+  useEffect(() => {
+    if (!accountId || !directSendConversationId) return;
+    let cancelled = false;
+    const query = directSendConfigId ? `?config_id=${encodeURIComponent(directSendConfigId)}` : '';
+    const load = async () => {
+      try {
+        const response = await fetch(`/api/whatsapp/direct-send${query}`, { cache: 'no-store' });
+        const data = response.ok ? await response.json() : null;
+        if (!cancelled) setDirectSendAvailability({ key: directSendKey, status: normalizeDirectSendStatus(data?.status) });
+      } catch {
+        if (!cancelled) setDirectSendAvailability({ key: directSendKey, status: 'unknown' });
+      }
+    };
+    void load();
+    window.addEventListener('focus', load);
+    return () => { cancelled = true; window.removeEventListener('focus', load); };
+  }, [accountId, directSendConversationId, directSendConfigId, directSendKey, resyncToken]);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
@@ -742,6 +765,9 @@ export function MessageThread({
         const payload = await res.json().catch(() => ({}));
 
         if (!res.ok) {
+          if (payload?.code === 'DIRECT_SEND_UNAVAILABLE') {
+            setDirectSendAvailability({ key: directSendKey, status: 'unavailable' });
+          }
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error('Failed to send message:', reason);
           toast.error(`Failed to send: ${reason}`);
@@ -763,7 +789,7 @@ export function MessageThread({
         return false;
       }
     },
-    [conversation, onNewMessage, onUpdateMessage]
+    [conversation, onNewMessage, onUpdateMessage, directSendKey]
   );
 
   const handleSendMedia = useCallback(
@@ -1751,6 +1777,7 @@ export function MessageThread({
       <MessageComposer
         conversationId={conversation.id}
         sessionExpired={sessionInfo.expired}
+        directSendStatus={directSendStatus}
         onSend={handleSend}
         onSendMedia={handleSendMedia}
         onSendInteractive={handleSendInteractive}
