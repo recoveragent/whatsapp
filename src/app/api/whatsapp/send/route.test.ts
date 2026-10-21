@@ -23,6 +23,7 @@ let contactRow: Record<string, unknown> | null = null;
 // The caller's role, as `requireRole` reads it off the profile. Sending
 // requires 'agent'; 'viewer' must be refused before anything reaches Meta.
 let callerRole: string = 'admin';
+let directSendStatus: string = 'enabled';
 // A conversation created during the request becomes retrievable by id —
 // the shared send core re-loads the conversation (with its contact) from
 // just the id, so the mock must model insert-then-select-by-id.
@@ -77,6 +78,7 @@ function makeSupabaseMock() {
           return {
             data: {
               id: 'cfg-1',
+              direct_send_status: directSendStatus,
               account_id: 'acct-1',
               phone_number_id: 'PNID-1',
               access_token: 'enc-token',
@@ -168,6 +170,8 @@ let supabaseMock = makeSupabaseMock();
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(async () => supabaseMock),
 }));
+
+vi.mock('@/lib/automations/admin-client', () => ({ supabaseAdmin: () => supabaseMock }));
 
 vi.mock('@/lib/flows/admin-client', () => ({
   supabaseAdmin: () => ({
@@ -380,6 +384,7 @@ describe('POST /api/whatsapp/send — role enforcement', () => {
   });
 
   it('allows an agent through', async () => {
+    directSendStatus = 'enabled';
     callerRole = 'agent';
 
     const res = await postContactTemplate();
@@ -393,6 +398,7 @@ describe('Direct Send outside the service window', () => {
   beforeEach(() => {
     messageInserts.length = 0;
     createdConversation = null;
+    directSendStatus = 'enabled';
     callerRole = 'agent';
     contactRow = CONTACT;
     existingConversation = {
@@ -425,6 +431,24 @@ describe('Direct Send outside the service window', () => {
     expect(messageInserts[0]).toMatchObject({
       content_payload: { direct_send: true, category: 'utility' },
     });
+  });
+  it.each(['unknown', 'unavailable'])('blocks %s access before reaching Meta', async (status) => {
+    directSendStatus = status;
+    const { sendTextMessage } = await import('@/lib/whatsapp/meta-api');
+    vi.mocked(sendTextMessage).mockClear();
+    const res = await postContactTemplate({ message_type: 'text', content_text: 'Your order shipped.', category: 'utility' });
+    expect(res.status).toBe(422);
+    expect((await res.json()).code).toBe('DIRECT_SEND_UNAVAILABLE');
+    expect(sendTextMessage).not.toHaveBeenCalled();
+  });
+  it('records a Meta eligibility rejection without retrying', async () => {
+    const { sendTextMessage } = await import('@/lib/whatsapp/meta-api');
+    vi.mocked(sendTextMessage).mockClear();
+    vi.mocked(sendTextMessage).mockRejectedValueOnce(new Error("The 'category' value requires Direct Send, which isn't enabled for this account. Use an approved message template instead."));
+    const res = await postContactTemplate({ message_type: 'text', content_text: 'Your order shipped.', category: 'utility' });
+    expect(res.status).toBe(422);
+    expect((await res.json()).code).toBe('DIRECT_SEND_UNAVAILABLE');
+    expect(sendTextMessage).toHaveBeenCalledTimes(1);
   });
   it('keeps ordinary text blocked outside the window', async () => {
     const res = await postContactTemplate({

@@ -92,7 +92,7 @@ export async function DELETE(request: Request) {
     }
     const { error } = await ctx.supabase
       .from('whatsapp_config')
-      .update({ access_token: '', verify_token: null, status: 'disconnected', connected_at: null, registered_at: null, last_registration_error: null })
+      .update({ direct_send_status: 'unknown', access_token: '', verify_token: null, status: 'disconnected', connected_at: null, registered_at: null, last_registration_error: null })
       .eq('account_id', ctx.accountId)
       .eq('id', configId);
 

@@ -161,6 +161,7 @@ interface MediaDraft {
 interface MessageComposerProps {
   conversationId: string;
   sessionExpired: boolean;
+  directSendStatus?: 'unknown' | 'enabled' | 'unavailable';
   onSend: (
     text: string,
     replyToId?: string,
@@ -206,6 +207,7 @@ const OPUS_ENCODER_PATH = '/opus/encoderWorker.min.js';
 export function MessageComposer({
   conversationId,
   sessionExpired,
+  directSendStatus = 'unknown',
   onSend,
   onSendMedia,
   onSendInteractive,
@@ -227,7 +229,7 @@ export function MessageComposer({
   const { isAiAgentsEnabled } = useAuth();
 
   const [text, setText] = useState('');
-  const directSend = sessionExpired;
+  const directSend = sessionExpired && directSendStatus === 'enabled';
   const [composerMode, setComposerMode] = useState<ComposerMode>('message');
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
@@ -1035,6 +1037,14 @@ export function MessageComposer({
           />
         </div>
       )}
+      {sessionExpired && !directSend && (
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
+          <span>{directSendStatus === 'unavailable' ? 'Direct Send unavailable. Use a template.' : 'Reply window closed. Use a template.'}</span>
+          <Button variant="ghost" size="sm" className="h-7 shrink-0 text-xs" onClick={onOpenTemplates}>
+            <LayoutTemplate className="mr-1 h-3 w-3" />{t('templates')}
+          </Button>
+        </div>
+      )}
       {directSend && (
         <div className="mb-2 flex h-7 items-center justify-between rounded-md border border-primary/25 bg-primary/5 px-2 text-xs text-primary">
           <span className="flex items-center gap-1.5"><Send className="h-3 w-3" />Direct Send</span>
@@ -1324,7 +1334,9 @@ export function MessageComposer({
                     ? t('readOnlyPlaceholder')
                     : directSend
                       ? 'Type a message — sent via Direct Send'
-                      : t('typeMessagePlaceholder')
+                      : sessionExpired
+                        ? t('sessionExpiredPlaceholder')
+                        : t('typeMessagePlaceholder')
             }
                 disabled={(sessionExpired && !directSend) || readOnly}
             rows={1}

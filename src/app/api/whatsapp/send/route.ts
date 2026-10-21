@@ -1,3 +1,5 @@
+import { DIRECT_SEND_UNAVAILABLE_MESSAGE } from '@/lib/whatsapp/direct-send';
+import { recordDirectSendRejection } from '@/lib/whatsapp/direct-send-store';
 import { NextResponse, after } from 'next/server';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { recordApiAcceptance, type ApiDeliveryTiming } from '@/lib/whatsapp/delivery-diagnostics';
@@ -300,6 +302,10 @@ export async function POST(request: Request) {
       );
     }
 
+    if (category === 'utility' && config.direct_send_status !== 'enabled') {
+      return NextResponse.json({ error: DIRECT_SEND_UNAVAILABLE_MESSAGE, code: 'DIRECT_SEND_UNAVAILABLE' }, { status: 422 });
+    }
+
     const accessToken = decrypt(config.access_token);
 
     // Self-heal legacy CBC-encrypted tokens. Fire-and-forget: we
@@ -489,6 +495,9 @@ export async function POST(request: Request) {
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Unknown Meta API error';
+      if (category === 'utility' && await recordDirectSendRejection(supabaseAdmin(), accountId, config.id, message)) {
+        return NextResponse.json({ error: DIRECT_SEND_UNAVAILABLE_MESSAGE, code: 'DIRECT_SEND_UNAVAILABLE' }, { status: 422 });
+      }
       console.error('Meta API send failed for all variants:', message);
       return NextResponse.json(
         { error: `Meta API error: ${message}` },

@@ -14,6 +14,7 @@ import {
   type WhatsAppConnectMode,
 } from '@/lib/whatsapp/connect-mode';
 import { SettingsPanelHead } from './settings-panel-head';
+import { DirectSendSettings } from './direct-send-settings';
 import { WhatsAppConfig } from './whatsapp-config';
 import { WhatsAppEmbeddedSignupPanel } from './whatsapp-embedded-signup-panel';
 import { WhatsAppWebhookSetupCard } from './whatsapp-webhook-setup-card';
@@ -232,6 +233,7 @@ export function WhatsAppBrandConnection() {
               )}
             </AlertDescription>
           </Alert>
+          {configured && <DirectSendSettings canEdit={Boolean(accountCtx?.canEditSettings)} />}
           {configured && connected && <WhatsAppWebhookSetupCard />}
         </div>
       </section>
@@ -328,6 +330,7 @@ export function WhatsAppBrandConnection() {
           </div>
         </Alert>
 
+        {configured && <DirectSendSettings canEdit={canEditSettings} />}
         {configured && connected && canEditSettings && <WhatsAppWebhookSetupCard />}
 
         {configured && (

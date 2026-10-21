@@ -440,6 +440,7 @@ export interface MessageReaction {
 }
 
 export interface WhatsAppConfig {
+  direct_send_status?: 'unknown' | 'enabled' | 'unavailable';
   id: string;
   user_id: string;
   phone_number_id: string;

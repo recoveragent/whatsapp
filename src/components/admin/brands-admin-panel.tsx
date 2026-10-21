@@ -77,6 +77,7 @@ export function BrandsAdminPanel() {
     null
   );
   const [categoryMigrationNeeded, setCategoryMigrationNeeded] = useState(false);
+  const [updatingPlatformId, setUpdatingPlatformId] = useState<string | null>(null);
   const didClearContext = useRef(false);
 
   const loadBrands = useCallback(async () => {
@@ -313,6 +314,27 @@ export function BrandsAdminPanel() {
     }
   };
 
+  const handlePlatformChange = async (brandId: string, platform: EcommercePlatform) => {
+    setUpdatingPlatformId(brandId);
+    try {
+      const res = await fetch(`/api/admin/brands/${brandId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ecommerce_platform: platform }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? 'Failed to update store platform');
+      setBrands((prev) => prev.map((brand) =>
+        brand.id === brandId ? { ...brand, ...body.brand } : brand
+      ));
+      toast.success(`Store platform updated to ${ECOMMERCE_PLATFORM_LABELS[platform]}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setUpdatingPlatformId(null);
+    }
+  };
+
   if (canClaimSuperAdmin) {
     return (
       <Card className="border-border max-w-lg">
@@ -514,7 +536,7 @@ export function BrandsAdminPanel() {
                             <select
                               aria-label={`Category for ${b.name}`}
                               value={b.brand_category ?? 'lead_gen'}
-                              disabled={updatingCategoryId === b.id}
+                              disabled={updatingCategoryId === b.id || updatingPlatformId === b.id}
                               onChange={(e) =>
                                 void handleCategoryChange(
                                   b.id,
@@ -530,6 +552,21 @@ export function BrandsAdminPanel() {
                                 {BRAND_CATEGORY_LABELS.ecommerce}
                               </option>
                             </select>
+                            {b.brand_category === 'ecommerce' && (
+                              <label className="text-muted-foreground flex items-center gap-2 text-xs">
+                                <span>Store platform</span>
+                                <select
+                                  aria-label={`Store platform for ${b.name}`}
+                                  value={b.ecommerce_platform ?? 'shopify'}
+                                  disabled={updatingPlatformId === b.id || updatingCategoryId === b.id}
+                                  onChange={(e) => void handlePlatformChange(b.id, e.target.value as EcommercePlatform)}
+                                  className="border-border bg-muted text-foreground focus:border-primary/50 h-7 rounded-md border px-2 text-xs outline-none disabled:opacity-50"
+                                >
+                                  <option value="shopify">Shopify</option>
+                                  <option value="woocommerce">WooCommerce</option>
+                                </select>
+                              </label>
+                            )}
                             <label className="text-muted-foreground flex items-center gap-2 text-xs">
                               <Bot className="size-3.5 shrink-0" aria-hidden />
                               <span>AI Agents</span>
@@ -542,6 +579,11 @@ export function BrandsAdminPanel() {
                               />
                             </label>
                           </div>
+                          {b.brand_category === 'ecommerce' && (
+                            <p className="text-muted-foreground mt-2 max-w-md text-xs">
+                              Connect the selected store using its setup button. Existing flows are not converted; review their triggers and actions after switching platforms.
+                            </p>
+                          )}
                           {b.admin_email ? (
                             <p className="text-muted-foreground text-sm">
                               {b.admin_email}

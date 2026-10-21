@@ -310,7 +310,7 @@ export function WooCommerceBrandConnection() {
                 {loadError ??
                   (connection?.message ??
                     (canEdit
-                      ? 'Create REST API keys with Read access for orders, then connect below.'
+                      ? 'Create REST API keys with Read/Write access so orders can sync and webhooks can be registered, then connect below.'
                       : 'Ask a workspace admin to connect WooCommerce.'))}
               </AlertDescription>
             </div>
@@ -330,7 +330,7 @@ export function WooCommerceBrandConnection() {
                 <p className="font-medium text-foreground">REST API setup</p>
                 <ol className="list-decimal pl-4 space-y-1">
                   <li>In WordPress admin, go to WooCommerce → Settings → Advanced → REST API.</li>
-                  <li>Create keys with Read permissions for orders and customers.</li>
+                  <li>Create keys with Read/Write permissions for order and customer sync and webhook registration.</li>
                   <li>
                     Webhooks are registered automatically to:
                     {webhookUrl ? (
