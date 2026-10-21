@@ -346,3 +346,22 @@ describe('sendMessageToConversation — template persistence (#483)', () => {
     expect(captured.conversation?.last_message_text).toBe('[template]');
   });
 });
+
+
+describe('shared send core Direct Send access', () => {
+  it.each(['unknown', 'unavailable', undefined])('refuses %s before token decryption or network access', async (status) => {
+    const db = {
+      from: (table: string) => {
+        const query = {
+          select: () => query,
+          eq: () => query,
+          single: async () => ({ data: table === 'conversations'
+            ? { contact: { phone: '15551234567' } }
+            : { id: 'config', access_token: 'not-an-encrypted-token', status: 'connected', direct_send_status: status }, error: null }),
+        };
+        return query;
+      },
+    } as unknown as SupabaseClient;
+    await expect(sendMessageToConversation(db, 'account', { conversationId: 'conversation', messageType: 'text', contentText: 'Order shipped', category: 'utility' })).rejects.toMatchObject({ code: 'DIRECT_SEND_UNAVAILABLE', status: 422 });
+  });
+});
