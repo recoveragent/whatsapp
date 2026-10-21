@@ -33,6 +33,20 @@ describe('enrichCheckoutAppWebhookVars', () => {
     expect(vars.product_image).toBe('https://cdn.shopify.com/boxer.jpg')
   })
 
+  it('reads Recover Agent shopify_order img_url from raw or flattened vars', () => {
+    const fromRaw = enrichCheckoutAppWebhookVars(
+      { shopify_order: { items: [{ img_url: 'https://cdn.shopify.com/coin.png' }] } },
+      {},
+    )
+    expect(fromRaw.product_image).toBe('https://cdn.shopify.com/coin.png')
+
+    const fromFlat = enrichCheckoutAppWebhookVars(
+      {},
+      { 'shopify_order.items.0.img_url': 'https://cdn.shopify.com/flat.png' },
+    )
+    expect(fromFlat.product_image).toBe('https://cdn.shopify.com/flat.png')
+  })
+
   it('reads customer lastname and landing page from GoKwik raw', () => {
     const vars = enrichCheckoutAppWebhookVars(
       {

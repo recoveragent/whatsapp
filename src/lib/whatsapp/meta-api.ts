@@ -586,7 +586,11 @@ export async function sendTemplateMessage(
       headerText: messageParams?.headerText,
       headerMediaUrl: messageParams?.headerMediaUrl,
       headerMediaId: messageParams?.headerMediaId,
+      // Without this, a mapped-but-empty header variable silently falls
+      // back to the template's approval sample image.
+      headerMediaRequired: messageParams?.headerMediaRequired,
       buttonParams: messageParams?.buttonParams,
+      defaultUrlButtonSuffix: messageParams?.defaultUrlButtonSuffix,
     })
     if (components.length > 0) {
       templatePayload.components = components

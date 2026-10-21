@@ -92,6 +92,13 @@ const IMAGE_PATHS = [
   'data.items.0.image',
   'products.0.image_url',
   'products.0.image',
+  // Recover Agent / dashboard checkout payloads
+  'shopify_order.items.0.img_url',
+  'shopify_order.img_url',
+  'line_items.0.img_url',
+  'items.0.img_url',
+  'data.items.0.img_url',
+  'img_url',
 ]
 
 const NAME_PATHS = [
@@ -212,7 +219,13 @@ export function enrichCheckoutAppWebhookVars(
   }
 
   if (!next.product_image) {
-    const imageUrl = firstStringAtPaths(payload, IMAGE_PATHS);
+    // Also check already-flattened vars (e.g. `event.flat` keys like
+    // "shopify_order.items.0.img_url") when the raw payload lacks them.
+    const imageUrl =
+      firstStringAtPaths(payload, IMAGE_PATHS) ??
+      IMAGE_PATHS.map((path) => next[path]).find(
+        (v): v is string => typeof v === 'string' && v.trim() !== '',
+      )?.trim();
     if (imageUrl) next.product_image = imageUrl;
   }
 
