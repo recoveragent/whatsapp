@@ -1,3 +1,5 @@
+import type { WooCommercePaymentType } from './payment-type';
+
 export interface WooCommerceConfigRow {
   account_id: string;
   user_id: string;
@@ -69,6 +71,11 @@ export interface WooCommerceOrderPayload {
   date_created_gmt?: string;
   payment_method?: string;
   payment_method_title?: string;
+  /** Set by WooCommerce when the order is marked paid (null until then). */
+  date_paid?: string | null;
+  date_paid_gmt?: string | null;
+  /** Gateway reference; not every gateway fills it. */
+  transaction_id?: string;
   billing?: WooCommerceBillingAddress;
   shipping?: WooCommerceBillingAddress;
   order_key?: string;
@@ -91,6 +98,10 @@ export interface WooCommerceEventContext {
   orderTotal: string | null;
   orderItems: string | null;
   paymentStatus: string | null;
+  /** Stable gateway id, e.g. "cod", "razorpay". */
+  paymentMethod: string | null;
+  paymentMethodTitle: string | null;
+  paymentType: WooCommercePaymentType;
   fulfillmentStatus: string | null;
   orderStatusUrl: string | null;
   storeName: string | null;
