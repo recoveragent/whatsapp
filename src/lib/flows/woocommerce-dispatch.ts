@@ -5,6 +5,7 @@ import {
   ensureConversation,
   ensureShopifyContact,
 } from '@/lib/shopify/ensure-contact';
+import { splitPublicUrlForWhatsApp } from '@/lib/shopify/order-links';
 import { runFlowsForTrigger, type FlowDispatchOutcome } from '@/lib/flows/dispatch-external';
 import type { FlowTriggerType } from '@/lib/flows/trigger-types';
 import type { WooCommerceEventContext } from '@/lib/woocommerce/types';
@@ -30,6 +31,7 @@ function contextToVars(ctx: WooCommerceEventContext): Record<string, unknown> {
     payment_type: ctx.paymentType,
     fulfillment_status: ctx.fulfillmentStatus,
     order_status_url: ctx.orderStatusUrl,
+    order_status_url_suffix: splitPublicUrlForWhatsApp(ctx.orderStatusUrl).suffix,
     shop_name: ctx.storeName,
     store_name: ctx.storeName,
     name: ctx.customerName,

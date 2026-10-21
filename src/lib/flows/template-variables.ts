@@ -45,6 +45,11 @@ const WOOCOMMERCE_OPTIONS: TemplateVariableOption[] = [
   { label: 'Order status', token: '{{ vars.payment_status }}', type: 'text' },
   { label: 'Fulfillment status', token: '{{ vars.fulfillment_status }}', type: 'text' },
   { label: 'Order status URL', token: '{{ vars.order_status_url }}', type: 'text' },
+  {
+    label: 'Order status URL suffix (View order button)',
+    token: '{{ vars.order_status_url_suffix }}',
+    type: 'text',
+  },
   { label: 'Store name', token: '{{ vars.store_name }}', type: 'text' },
 ]
 
