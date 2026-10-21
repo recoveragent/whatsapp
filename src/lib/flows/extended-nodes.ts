@@ -28,6 +28,7 @@ import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
 import { templateConfigHasQuickReplies, normalizeTemplateButtons } from './template-buttons'
 import { buttonCtaPurpose, seedCtaMappings } from '@/lib/whatsapp/template-cta'
 import { parseReplyTimeout } from './reply-timeout'
+import { sendFlowWebhook } from './webhook-node'
 import {
   computeWaitRunAt,
   interpolateFlowVars,
@@ -368,16 +369,7 @@ export async function executeExtendedNode(
       case 'send_webhook':
       case 'http_fetch': {
         const c = cfg as unknown as SendWebhookNodeConfig
-        if (!c.url) throw new Error('url required')
-        const body = c.body_template
-          ? interpolateFlowVars(c.body_template, vars, messageText)
-          : JSON.stringify({ vars, contact_id: run.contact_id })
-        const res = await fetch(c.url, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', ...(c.headers ?? {}) },
-          body,
-        })
-        if (!res.ok) throw new Error(`webhook returned ${res.status}`)
+        await sendFlowWebhook(c, vars, run.contact_id, messageText)
         return { kind: 'continue', nextKey: c.next_node_key }
       }
       case 'update_contact_field': {

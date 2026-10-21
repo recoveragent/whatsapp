@@ -65,7 +65,7 @@ import {
   hasReplyTimeoutTiming,
   showReplyTimeoutHandle,
 } from "@/lib/flows/reply-timeout";
-import { NextNodeRow, NodeKeySelect, TextRow, UpdateContactFieldsForm, NodeVariableGroups } from "./fields";
+import { NextNodeRow, NodeKeySelect, TextRow, UpdateContactFieldsForm, NodeVariableGroups, WebhookHeadersForm } from "./fields";
 import { SendTemplateFields } from "@/components/shared/send-template-fields";
 import { templateVariableGroupsForFlow } from "@/lib/flows/template-variables";
 import {
@@ -450,6 +450,15 @@ function NodeConfigBody({
             onChange={(v) => onUpdateConfig({ body_template: v })}
             rows={3}
           />
+          <WebhookHeadersForm
+            key={node.node_key}
+            headers={(cfg as { headers?: Record<string, string> }).headers}
+            onChange={(headers) => onUpdateConfig({ headers })}
+          />
+          <p className="text-muted-foreground text-[11px]">
+            Sent as a POST. Empty body sends all flow variables and the contact id.
+            Private or internal addresses are blocked.
+          </p>
         </>
       );
 

@@ -28,6 +28,7 @@ export function interpolateTemplateString(
   template: string,
   vars: Record<string, unknown>,
   messageText?: string,
+  encode: (value: string) => string = (value) => value,
 ): string {
   if (!template) return ''
 
@@ -36,14 +37,14 @@ export function interpolateTemplateString(
     (match, key: string, dq: string | undefined, sq: string | undefined) => {
       const fallback = dq ?? sq ?? ''
       const resolved = resolveTemplateVar(key, vars, messageText)
-      if (resolved !== undefined && resolved.trim() !== '') return resolved
-      return fallback
+      if (resolved !== undefined && resolved.trim() !== '') return encode(resolved)
+      return encode(fallback)
     },
   )
 
   return withFallback.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (match, key: string) => {
     const resolved = resolveTemplateVar(key, vars, messageText)
     if (resolved === undefined) return match
-    return resolved
+    return encode(resolved)
   })
 }

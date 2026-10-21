@@ -386,3 +386,89 @@ export function UpdateContactFieldsForm({
     </div>
   );
 }
+
+type HeaderRow = { name: string; value: string };
+
+export function WebhookHeadersForm({
+  headers,
+  onChange,
+}: {
+  headers: Record<string, string> | undefined;
+  onChange: (headers: Record<string, string>) => void;
+}) {
+  // Rows live locally so a header can be mid-edit (empty name, duplicate
+  // name) without the config dropping it; only named rows are saved.
+  const [rows, setRows] = useState<HeaderRow[]>(() =>
+    Object.entries(headers ?? {}).map(([name, value]) => ({ name, value }))
+  );
+
+  function commit(nextRows: HeaderRow[]) {
+    setRows(nextRows);
+    const next: Record<string, string> = {};
+    for (const row of nextRows) {
+      const name = row.name.trim();
+      if (name) next[name] = row.value;
+    }
+    onChange(next);
+  }
+
+  return (
+    <div>
+      <label className="text-muted-foreground mb-1 block text-xs">
+        Headers (values support {'{{ vars.x }}'})
+      </label>
+      <div className="space-y-2">
+        {rows.map((row, index) => (
+          <div key={index} className="flex items-center gap-2">
+            <Input
+              value={row.name}
+              onChange={(e) =>
+                commit(
+                  rows.map((r, i) =>
+                    i === index ? { ...r, name: e.target.value } : r
+                  )
+                )
+              }
+              placeholder="Authorization"
+              aria-label={`Header ${index + 1} name`}
+              className="bg-muted flex-1"
+            />
+            <Input
+              value={row.value}
+              onChange={(e) =>
+                commit(
+                  rows.map((r, i) =>
+                    i === index ? { ...r, value: e.target.value } : r
+                  )
+                )
+              }
+              placeholder="Bearer …"
+              aria-label={`Header ${index + 1} value`}
+              className="bg-muted flex-1"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-destructive h-7 w-7 shrink-0"
+              onClick={() => commit(rows.filter((_, i) => i !== index))}
+              aria-label={`Remove header ${index + 1}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ))}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={() => setRows([...rows, { name: '', value: '' }])}
+        >
+          <Plus className="mr-1.5 h-3.5 w-3.5" />
+          Add header
+        </Button>
+      </div>
+    </div>
+  );
+}
