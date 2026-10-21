@@ -12,6 +12,8 @@ export interface ShopifyCatalogProduct {
   image_url: string | null;
   inventory_quantity: number | null;
   in_stock: boolean;
+  /** Storefront handle for /products/<handle> links. */
+  handle?: string | null;
 }
 
 function rowToCatalogProduct(
@@ -32,6 +34,7 @@ function rowToCatalogProduct(
     image_url: (row.image_url as string | null) ?? null,
     inventory_quantity: inventoryQuantity,
     in_stock: inventoryQuantity == null || inventoryQuantity > 0,
+    handle: (row.handle as string | null) ?? null,
   };
 }
 
@@ -47,7 +50,7 @@ export async function searchShopifyProducts(args: {
   let request = args.db
     .from('shopify_products')
     .select(
-      'id, shopify_product_id, shopify_variant_id, title, variant_title, price, compare_at_price, currency, image_url, inventory_quantity'
+      'id, shopify_product_id, shopify_variant_id, title, variant_title, price, compare_at_price, currency, image_url, inventory_quantity, handle'
     )
     .eq('account_id', args.accountId)
     .eq('status', 'active')
@@ -88,7 +91,7 @@ export async function getShopifyCatalogProduct(args: {
   const { data, error } = await args.db
     .from('shopify_products')
     .select(
-      'id, shopify_product_id, shopify_variant_id, title, variant_title, price, compare_at_price, currency, image_url, inventory_quantity'
+      'id, shopify_product_id, shopify_variant_id, title, variant_title, price, compare_at_price, currency, image_url, inventory_quantity, handle'
     )
     .eq('account_id', args.accountId)
     .eq('shopify_variant_id', Number(args.shopifyVariantId))
@@ -115,7 +118,7 @@ export async function getShopifyCatalogProductsForProductIds(args: {
   const { data, error } = await args.db
     .from('shopify_products')
     .select(
-      'id, shopify_product_id, shopify_variant_id, title, variant_title, price, compare_at_price, currency, image_url, inventory_quantity'
+      'id, shopify_product_id, shopify_variant_id, title, variant_title, price, compare_at_price, currency, image_url, inventory_quantity, handle'
     )
     .eq('account_id', args.accountId)
     .eq('status', 'active')

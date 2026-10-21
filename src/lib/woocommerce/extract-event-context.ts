@@ -1,6 +1,7 @@
 import { normalizePhone } from '@/lib/whatsapp/phone-utils';
 import { buildWooCommerceOrderStatusUrl } from './admin-api';
 import { extractOrderEmail, extractOrderPhone } from './extract-context';
+import { classifyWooCommercePayment, normalizeWooCommerceGatewayId } from './payment-type';
 import type { WooCommerceEventContext, WooCommerceOrderPayload } from './types';
 
 function fullName(first?: string, last?: string): string {
@@ -50,6 +51,9 @@ export function contextFromOrder(
     orderTotal: formatMoney(order.total, order.currency),
     orderItems: formatLineItems(order.line_items),
     paymentStatus: order.status ?? null,
+    paymentMethod: normalizeWooCommerceGatewayId(order.payment_method),
+    paymentMethodTitle: order.payment_method_title?.trim() || null,
+    paymentType: classifyWooCommercePayment(order),
     fulfillmentStatus: mapFulfillmentStatus(order.status),
     orderStatusUrl: buildWooCommerceOrderStatusUrl(storeUrl, order.id, order.order_key),
     storeName,

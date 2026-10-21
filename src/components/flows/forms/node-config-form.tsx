@@ -58,6 +58,7 @@ import {
   DEFAULT_COLLECTION_PRODUCTS,
   MAX_SEND_PRODUCTS,
 } from "@/lib/shopify/send-product-constants";
+import { DEFAULT_PRODUCT_BUTTON_LABELS } from "@/lib/shopify/product-checkout-url";
 import { uploadAccountMedia, MEDIA_MAX_BYTES } from "@/lib/storage/upload-media";
 import { slugify, type BuilderNode } from "../shared";
 import {
@@ -1862,6 +1863,7 @@ interface SendProductCfg {
   quantity?: number;
   message_text?: string;
   button_label?: string;
+  link_target?: "checkout" | "product_page";
   next_node_key?: string;
 }
 
@@ -2069,13 +2071,16 @@ function SendProductForm({
         ? maxProducts > 1 && (collectionPreview === null || previewItems.length > 1)
         : false;
   const introText = cfg.message_text?.trim() || (isCarousel ? DEFAULT_CAROUSEL_INTRO : "");
-  const ctaLabel = buttonLabel.trim() || "Buy now";
+  const linkTarget = cfg.link_target === "product_page" ? "product_page" : "checkout";
+  const defaultLabel = DEFAULT_PRODUCT_BUTTON_LABELS[linkTarget];
+  const ctaLabel = buttonLabel.trim() || defaultLabel;
 
   return (
     <>
       <p className="text-[11px] text-muted-foreground">
-        Sends products from your Shopify catalog with a button that opens checkout
-        on your store with the item in the cart. One product goes out as a single
+        Sends products from your Shopify catalog with a button that opens either
+        checkout with the item in the cart or the product&apos;s page on your
+        store. One product goes out as a single
         card; 2–{MAX_SEND_PRODUCTS} go out as a swipeable carousel. The flow then
         moves straight on to the next step.
       </p>
@@ -2389,14 +2394,41 @@ function SendProductForm({
         ) : null}
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">Button opens</label>
+        <Select
+          value={linkTarget}
+          onValueChange={(v) => {
+            if (v) onUpdateConfig({ link_target: v });
+          }}
+        >
+          <SelectTrigger className="w-full bg-muted text-xs">
+            <SelectValue>
+              {linkTarget === "checkout"
+                ? "Checkout with the item in the cart"
+                : "The product page on your store"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="checkout">Checkout with the item in the cart</SelectItem>
+            <SelectItem value="product_page">The product page on your store</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {linkTarget === "checkout"
+            ? "Skips the store page: the customer lands on checkout ready to pay."
+            : "Opens the product page with the variant preselected, so customers can browse details, pick options and add to cart themselves."}
+        </p>
+      </div>
+
+      <div className={cn("grid gap-2", linkTarget === "checkout" ? "grid-cols-2" : "grid-cols-1")}>
         <div>
           <label className="mb-1 block text-xs text-muted-foreground">Button label</label>
           <Input
             value={buttonLabel}
             maxLength={PRODUCT_BUTTON_MAX}
             onChange={(e) => onUpdateConfig({ button_label: e.target.value })}
-            placeholder="Buy now"
+            placeholder={defaultLabel}
             className="bg-muted text-xs"
           />
           <p className="mt-1 text-[10px] text-muted-foreground">
@@ -2404,6 +2436,7 @@ function SendProductForm({
             {isCarousel ? " · same on every card" : ""}
           </p>
         </div>
+        {linkTarget === "checkout" ? (
         <div>
           <label className="mb-1 block text-xs text-muted-foreground">Quantity in cart</label>
           <Input
@@ -2418,6 +2451,7 @@ function SendProductForm({
             className="bg-muted text-xs"
           />
         </div>
+        ) : null}
       </div>
 
       <div>

@@ -10,7 +10,11 @@ import {
   sanitizePhoneForMeta,
 } from '@/lib/whatsapp/phone-utils';
 
-import { buildShopifyCartCheckoutUrl } from './product-checkout-url';
+import {
+  buildProductCardUrl,
+  DEFAULT_PRODUCT_BUTTON_LABELS,
+  type ProductLinkTarget,
+} from './product-checkout-url';
 import { getShopifyCatalogProduct } from './product-store';
 import {
   ProductCarouselAlreadySentError,
@@ -22,7 +26,6 @@ import {
   formatShopifyProductPrice,
 } from './send-product-card';
 
-const DEFAULT_BUTTON_LABEL = 'Buy now';
 const MAX_CAROUSEL_CARDS = 10;
 
 export interface SendShopifyProductCarouselArgs {
@@ -35,6 +38,8 @@ export interface SendShopifyProductCarouselArgs {
   bodyText: string;
   shopifyVariantIds: Array<string | number>;
   buttonLabel?: string;
+  /** checkout (default): cart permalink. product_page: storefront product page. */
+  linkTarget?: ProductLinkTarget;
   /** Cart quantity for every card's checkout link. */
   quantity?: number;
   flowRunId?: string;
@@ -145,7 +150,10 @@ export async function sendShopifyProductCarousel(
     throw new Error('WhatsApp is not configured for this workspace.');
   }
 
-  const buttonLabel = (args.buttonLabel?.trim() || DEFAULT_BUTTON_LABEL).slice(
+  const linkTarget = args.linkTarget ?? 'checkout';
+  const buttonLabel = (
+    args.buttonLabel?.trim() || DEFAULT_PRODUCT_BUTTON_LABELS[linkTarget]
+  ).slice(
     0,
     20
   );
@@ -162,9 +170,11 @@ export async function sendShopifyProductCarousel(
       variantTitle: product.variant_title,
     }),
     buttonLabel,
-    url: buildShopifyCartCheckoutUrl({
+    url: buildProductCardUrl({
+      linkTarget,
       shopDomain,
       variantId: product.shopify_variant_id,
+      handle: product.handle,
       quantity: args.quantity,
       attributes: {
         source: 'wacrm',

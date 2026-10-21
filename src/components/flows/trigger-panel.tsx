@@ -34,12 +34,16 @@ import {
   SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_MAX,
   WOOCOMMERCE_ORDER_STATUSES,
   WOOCOMMERCE_ORDER_STATUS_LABELS,
+  WOOCOMMERCE_PAYMENT_TYPE_FILTERS,
+  WOOCOMMERCE_PAYMENT_TYPE_LABELS,
+  woocommercePaymentTypeFilter,
   selectedShipmentStatuses,
   shipmentHandleId,
   shipmentStatusFilterLabel,
   type FlowTriggerType,
   type ShopifyPaymentStatus,
   type WooCommerceOrderStatus,
+  type WooCommercePaymentTypeFilter,
 } from "@/lib/flows/trigger-types";
 import {
   defaultFlowWebhookConfig,
@@ -164,6 +168,8 @@ export function summarizeTrigger(
         const base = FLOW_TRIGGER_LABELS[triggerType] ?? triggerType;
         const bits = [base];
         if (ps && ps !== "any") bits.push(WOOCOMMERCE_ORDER_STATUS_LABELS[ps]);
+        const pt = woocommercePaymentTypeFilter(triggerConfig);
+        if (pt !== "any") bits.push(WOOCOMMERCE_PAYMENT_TYPE_LABELS[pt]);
         return bits.join(" · ");
       }
       return FLOW_TRIGGER_LABELS[triggerType] ?? triggerType;
@@ -548,38 +554,72 @@ export function TriggerPanel({
           </div>
         )}
         {isWooCommerceOrderFlowTrigger(state.trigger_type) && (
-          <div>
-            <label className="mb-1 block text-xs text-muted-foreground">
-              Order status
-            </label>
-            <Select
-              value={
-                (state.trigger_config.payment_status as WooCommerceOrderStatus) ?? "any"
-              }
-              onValueChange={(v) =>
-                setState((s) => ({
-                  ...s,
-                  trigger_config: {
-                    ...s.trigger_config,
-                    payment_status: v as WooCommerceOrderStatus,
-                  },
-                }))
-              }
-            >
-              <SelectTrigger className="bg-muted">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {WOOCOMMERCE_ORDER_STATUSES.map((ps) => (
-                  <SelectItem key={ps} value={ps}>
-                    {WOOCOMMERCE_ORDER_STATUS_LABELS[ps]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="mt-1 text-[10px] text-muted-foreground">
-              Only run this flow when the order matches this WooCommerce status.
-            </p>
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">
+                Order status
+              </label>
+              <Select
+                value={
+                  (state.trigger_config.payment_status as WooCommerceOrderStatus) ?? "any"
+                }
+                onValueChange={(v) =>
+                  setState((s) => ({
+                    ...s,
+                    trigger_config: {
+                      ...s.trigger_config,
+                      payment_status: v as WooCommerceOrderStatus,
+                    },
+                  }))
+                }
+              >
+                <SelectTrigger className="bg-muted">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {WOOCOMMERCE_ORDER_STATUSES.map((ps) => (
+                    <SelectItem key={ps} value={ps}>
+                      {WOOCOMMERCE_ORDER_STATUS_LABELS[ps]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                Only run this flow when the order matches this WooCommerce status.
+              </p>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted-foreground">
+                Payment method
+              </label>
+              <Select
+                value={woocommercePaymentTypeFilter(state.trigger_config)}
+                onValueChange={(v) =>
+                  setState((s) => ({
+                    ...s,
+                    trigger_config: {
+                      ...s.trigger_config,
+                      payment_type: v as WooCommercePaymentTypeFilter,
+                    },
+                  }))
+                }
+              >
+                <SelectTrigger className="bg-muted">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {WOOCOMMERCE_PAYMENT_TYPE_FILTERS.map((pt) => (
+                    <SelectItem key={pt} value={pt}>
+                      {WOOCOMMERCE_PAYMENT_TYPE_LABELS[pt]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                COD matches the cod gateway. Prepaid matches online gateways with a
+                confirmed payment. Works together with Order status.
+              </p>
+            </div>
           </div>
         )}
         {isShopifyFulfillmentFlowTrigger(state.trigger_type) && (

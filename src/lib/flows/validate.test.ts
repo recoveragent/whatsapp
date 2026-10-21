@@ -775,3 +775,34 @@ describe("timeout branch reachability", () => {
     },
   );
 });
+
+describe("validateFlowForActivation — WooCommerce payment method", () => {
+  const wooFlow = (trigger_config: Record<string, unknown>) => ({
+    ...validFlow,
+    trigger_type: "woocommerce_order_placed" as const,
+    trigger_config,
+  });
+  const triggerIssues = (trigger_config: Record<string, unknown>) =>
+    validateFlowForActivation(wooFlow(trigger_config), validNodes).filter(
+      (i) => i.field === "trigger_config.payment_type",
+    );
+
+  it("accepts any, cod, prepaid, and a missing value", () => {
+    expect(triggerIssues({ payment_status: "any" })).toEqual([]);
+    for (const payment_type of ["any", "cod", "prepaid"]) {
+      expect(triggerIssues({ payment_status: "processing", payment_type })).toEqual([]);
+    }
+  });
+
+  it("rejects unknown payment methods", () => {
+    expect(triggerIssues({ payment_status: "any", payment_type: "Cash on delivery" })).toEqual([
+      expect.objectContaining({ severity: "error" }),
+    ]);
+  });
+
+  it("warns when Prepaid is paired with an unpaid order status", () => {
+    expect(triggerIssues({ payment_status: "pending", payment_type: "prepaid" })).toEqual([
+      expect.objectContaining({ severity: "warning" }),
+    ]);
+  });
+});

@@ -13,10 +13,12 @@ import {
 } from '@/lib/whatsapp/phone-utils';
 
 import { scheduleProductLinkRecovery } from './product-link-recovery';
-import { buildShopifyCartCheckoutUrl } from './product-checkout-url';
+import {
+  buildProductCardUrl,
+  DEFAULT_PRODUCT_BUTTON_LABELS,
+  type ProductLinkTarget,
+} from './product-checkout-url';
 import { getShopifyCatalogProduct } from './product-store';
-
-const DEFAULT_BUTTON_LABEL = 'Buy now';
 
 export function formatShopifyProductPrice(price: string, currency: string | null): string {
   const normalized = price.trim() || '0.00';
@@ -79,8 +81,10 @@ export interface SendShopifyProductCardArgs {
   skipRecoverySchedule?: boolean;
   /** Text shown above the product title/price line. */
   introText?: string;
-  /** CTA button label; defaults to "Buy now". */
+  /** CTA button label; defaults by link target ("Buy now" / "View product"). */
   buttonLabel?: string;
+  /** checkout (default): cart permalink. product_page: storefront product page. */
+  linkTarget?: ProductLinkTarget;
 }
 
 export interface SendShopifyProductCardResult {
@@ -171,9 +175,12 @@ export async function sendShopifyProductCard(
     throw new Error('WhatsApp is not configured for this workspace.');
   }
 
-  const checkoutUrl = buildShopifyCartCheckoutUrl({
+  const linkTarget = args.linkTarget ?? 'checkout';
+  const checkoutUrl = buildProductCardUrl({
+    linkTarget,
     shopDomain: shopifyConfig.shop_domain as string,
     variantId: product.shopify_variant_id,
+    handle: product.handle,
     quantity: args.quantity,
     attributes: {
       source: 'wacrm',
@@ -189,7 +196,7 @@ export async function sendShopifyProductCard(
   });
   const intro = args.introText?.trim();
   const bodyText = intro ? `${intro}\n\n${productLine}` : productLine;
-  const buttonLabel = args.buttonLabel?.trim() || DEFAULT_BUTTON_LABEL;
+  const buttonLabel = args.buttonLabel?.trim() || DEFAULT_PRODUCT_BUTTON_LABELS[linkTarget];
 
   let contextMessageId: string | undefined;
   if (args.replyToMessageId) {

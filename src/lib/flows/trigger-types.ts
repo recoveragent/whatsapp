@@ -438,6 +438,39 @@ export const WOOCOMMERCE_ORDER_STATUS_LABELS: Record<WooCommerceOrderStatus, str
   failed: 'Failed',
 }
 
+/**
+ * Payment-method filter for WooCommerce order triggers (`trigger_config.payment_type`).
+ * Matched against `vars.payment_type` from classifyWooCommercePayment.
+ */
+export const WOOCOMMERCE_PAYMENT_TYPE_FILTERS = ['any', 'cod', 'prepaid'] as const
+
+export type WooCommercePaymentTypeFilter =
+  (typeof WOOCOMMERCE_PAYMENT_TYPE_FILTERS)[number]
+
+export const WOOCOMMERCE_PAYMENT_TYPE_LABELS: Record<WooCommercePaymentTypeFilter, string> = {
+  any: 'Any payment method',
+  cod: 'Cash on Delivery (COD)',
+  prepaid: 'Prepaid / Online Payment',
+}
+
+/** Missing or unrecognised config falls back to "any" (pre-filter flows). */
+export function woocommercePaymentTypeFilter(
+  config: Record<string, unknown> | null | undefined,
+): WooCommercePaymentTypeFilter {
+  const raw = config?.payment_type
+  return (WOOCOMMERCE_PAYMENT_TYPE_FILTERS as readonly unknown[]).includes(raw)
+    ? (raw as WooCommercePaymentTypeFilter)
+    : 'any'
+}
+
+export function woocommercePaymentTypeMatches(
+  config: Record<string, unknown> | null | undefined,
+  actual: unknown,
+): boolean {
+  const want = woocommercePaymentTypeFilter(config)
+  return want === 'any' || actual === want
+}
+
 export function isWooCommerceOrderFlowTrigger(
   t: string,
 ): t is WooCommerceOrderFlowTrigger {
@@ -451,7 +484,7 @@ export function isStoreOrderFlowTrigger(t: string): boolean {
 export function defaultWooCommerceTriggerConfig(
   _triggerType: string,
 ): Record<string, unknown> {
-  return { payment_status: 'any' }
+  return { payment_status: 'any', payment_type: 'any' }
 }
 
 /** Map WooCommerce webhook topics to flow trigger types. */
