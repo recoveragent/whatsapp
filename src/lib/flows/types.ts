@@ -104,8 +104,10 @@ export interface SendProductNodeConfig {
   quantity?: number;
   /** Optional text above the product title/price. Supports {{vars}}. */
   message_text?: string;
-  /** CTA button label (max 20 chars). Defaults to "Buy now". */
+  /** CTA button label (max 20 chars). Defaults to "Buy now" / "View product". */
   button_label?: string;
+  /** checkout (default): cart permalink straight to checkout. product_page: the product's storefront page. */
+  link_target?: "checkout" | "product_page";
   next_node_key: string;
 }
 

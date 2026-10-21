@@ -115,6 +115,7 @@ export async function sendProductNode(args: {
         bodyText: args.introText?.trim() || DEFAULT_CAROUSEL_INTRO,
         shopifyVariantIds: carouselReady,
         buttonLabel: cfg.button_label,
+        linkTarget: cfg.link_target,
         quantity: cfg.quantity,
         flowRunId: args.flowRunId,
       });
@@ -138,6 +139,7 @@ export async function sendProductNode(args: {
     flowRunId: args.flowRunId,
     introText: args.introText,
     buttonLabel: cfg.button_label,
+    linkTarget: cfg.link_target,
   });
   return {
     whatsapp_message_id: result.whatsapp_message_id,
