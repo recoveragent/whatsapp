@@ -295,3 +295,104 @@ describe('runFlowsForTrigger — Shopify shipment filter', () => {
     )
   })
 })
+
+describe('runFlowsForTrigger — WooCommerce payment method filter', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    contactQuery.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'contact-1' } }),
+    })
+    startFlowForExternalEvent.mockResolvedValue({
+      ok: true,
+      flow_run_id: 'run-1',
+    })
+  })
+
+  const wooFlow = (trigger_config: Record<string, unknown>): FlowRow =>
+    baseFlow({
+      name: 'Woo order',
+      trigger_type: 'woocommerce_order_placed',
+      trigger_config,
+    })
+
+  const dispatchWoo = (vars: Record<string, unknown>) =>
+    runFlowsForTrigger({
+      accountId: 'acc-1',
+      triggerType: 'woocommerce_order_placed',
+      contactId: 'contact-1',
+      conversationId: 'conv-1',
+      context: { vars },
+    })
+
+  it('Processing + COD starts only for COD processing orders', async () => {
+    mockFlowsChain([wooFlow({ payment_status: 'processing', payment_type: 'cod' })])
+    const cod = await dispatchWoo({ payment_status: 'processing', payment_type: 'cod' })
+    expect(cod.started).toHaveLength(1)
+
+    const prepaid = await dispatchWoo({ payment_status: 'processing', payment_type: 'prepaid' })
+    expect(prepaid.started).toHaveLength(0)
+    expect(prepaid.skipped).toEqual([
+      expect.objectContaining({ reason: 'payment_type_mismatch', flow_name: 'Woo order' }),
+    ])
+  })
+
+  it('Processing + Prepaid starts only for paid online processing orders', async () => {
+    mockFlowsChain([wooFlow({ payment_status: 'processing', payment_type: 'prepaid' })])
+    expect(
+      (await dispatchWoo({ payment_status: 'processing', payment_type: 'prepaid' })).started,
+    ).toHaveLength(1)
+    expect(
+      (await dispatchWoo({ payment_status: 'processing', payment_type: 'unpaid_online' }))
+        .started,
+    ).toHaveLength(0)
+    expect(
+      (await dispatchWoo({ payment_status: 'processing', payment_type: 'offline' })).started,
+    ).toHaveLength(0)
+  })
+
+  it('Any status + COD starts for COD orders in any status', async () => {
+    mockFlowsChain([wooFlow({ payment_status: 'any', payment_type: 'cod' })])
+    expect((await dispatchWoo({ payment_status: 'on-hold', payment_type: 'cod' })).started)
+      .toHaveLength(1)
+    expect((await dispatchWoo({ payment_status: 'pending', payment_type: 'cod' })).started)
+      .toHaveLength(1)
+  })
+
+  it('status mismatch still skips even when payment type matches (AND)', async () => {
+    mockFlowsChain([wooFlow({ payment_status: 'processing', payment_type: 'cod' })])
+    const outcome = await dispatchWoo({ payment_status: 'pending', payment_type: 'cod' })
+    expect(outcome.started).toHaveLength(0)
+    expect(outcome.skipped).toEqual([
+      expect.objectContaining({ reason: 'payment_status_mismatch' }),
+    ])
+  })
+
+  it('both Any keeps existing behavior', async () => {
+    mockFlowsChain([wooFlow({ payment_status: 'any', payment_type: 'any' })])
+    expect((await dispatchWoo({ payment_status: 'failed', payment_type: 'unknown' })).started)
+      .toHaveLength(1)
+  })
+
+  it('older flows without payment_type default to any', async () => {
+    mockFlowsChain([wooFlow({ payment_status: 'processing' })])
+    expect((await dispatchWoo({ payment_status: 'processing', payment_type: 'offline' })).started)
+      .toHaveLength(1)
+  })
+
+  it('does not apply to Shopify order triggers', async () => {
+    // A stray payment_type on a Shopify flow must not filter anything.
+    mockFlowsChain([
+      baseFlow({ trigger_config: { payment_status: 'any', payment_type: 'cod' } }),
+    ])
+    const outcome = await runFlowsForTrigger({
+      accountId: 'acc-1',
+      triggerType: 'shopify_order_placed',
+      contactId: 'contact-1',
+      conversationId: 'conv-1',
+      context: { vars: { payment_status: 'paid' } },
+    })
+    expect(outcome.started).toHaveLength(1)
+  })
+})

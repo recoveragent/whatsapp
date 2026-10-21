@@ -28,6 +28,8 @@ import {
   resolveShipmentStatusKey,
   selectedShipmentStatuses,
   shipmentStatusFilterLabel,
+  woocommercePaymentTypeFilter,
+  woocommercePaymentTypeMatches,
   type FlowTriggerType,
 } from './trigger-types'
 import {
@@ -76,6 +78,7 @@ export interface FlowDispatchSkipped {
   flow_name: string
   reason:
     | 'payment_status_mismatch'
+    | 'payment_type_mismatch'
     | 'shipment_status_mismatch'
     | 'no_entry_node'
     | 'no_conversation'
@@ -123,6 +126,12 @@ function flowMatchesTrigger(
     }
   }
 
+  if (isWooCommerceOrderFlowTrigger(input.triggerType)) {
+    if (!woocommercePaymentTypeMatches(cfg, input.context?.vars?.payment_type)) {
+      return false
+    }
+  }
+
   if (isShopifyFulfillmentFlowTrigger(input.triggerType)) {
     if (!flowMatchesShipmentConfig(cfg, input.context?.vars?.shipment_status)) {
       return false
@@ -130,6 +139,17 @@ function flowMatchesTrigger(
   }
 
   return true
+}
+
+function woocommercePaymentTypeMismatchReason(
+  flow: FlowRow,
+  input: FlowDispatchInput,
+): string | null {
+  if (!isWooCommerceOrderFlowTrigger(input.triggerType)) return null
+  const cfg = flow.trigger_config as Record<string, unknown>
+  const actual = input.context?.vars?.payment_type
+  if (woocommercePaymentTypeMatches(cfg, actual)) return null
+  return `expected "${woocommercePaymentTypeFilter(cfg)}", got "${actual ?? 'null'}"`
 }
 
 function orderPaymentMismatchReason(
@@ -224,6 +244,16 @@ export async function runFlowsForTrigger(
           flow_id: flow.id,
           flow_name: flow.name,
           reason: 'payment_status_mismatch',
+        })
+        continue
+      }
+
+      const paymentTypeMismatch = woocommercePaymentTypeMismatchReason(flow, input)
+      if (paymentTypeMismatch) {
+        outcome.skipped.push({
+          flow_id: flow.id,
+          flow_name: flow.name,
+          reason: 'payment_type_mismatch',
         })
         continue
       }

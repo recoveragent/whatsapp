@@ -34,6 +34,7 @@ import {
   SHOPIFY_SHIPMENT_NONE_KEY,
   SHOPIFY_SHIPMENT_STATUS_LABELS,
   SHOPIFY_SHIPMENT_STATUSES,
+  WOOCOMMERCE_PAYMENT_TYPE_FILTERS,
 } from "./trigger-types";
 import {
   parseExitConfig,
@@ -452,6 +453,32 @@ function validateTrigger(
         field: "trigger_config.payment_status",
         message:
           "Order status must be any, pending, processing, on-hold, completed, cancelled, refunded, or failed.",
+      });
+    }
+    const pt = trigger_config.payment_type;
+    if (
+      pt !== undefined &&
+      pt !== null &&
+      !(WOOCOMMERCE_PAYMENT_TYPE_FILTERS as readonly unknown[]).includes(pt)
+    ) {
+      issues.push({
+        severity: "error",
+        scope: "trigger",
+        field: "trigger_config.payment_type",
+        message: "Payment method must be any, cod, or prepaid.",
+      });
+    }
+    // Prepaid requires proof of payment, which unpaid statuses never carry.
+    if (
+      pt === "prepaid" &&
+      (ps === "pending" || ps === "failed" || ps === "cancelled")
+    ) {
+      issues.push({
+        severity: "warning",
+        scope: "trigger",
+        field: "trigger_config.payment_type",
+        message:
+          "Prepaid only matches orders with a confirmed payment, so it will rarely match this order status.",
       });
     }
   }
