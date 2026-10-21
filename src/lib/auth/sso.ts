@@ -58,6 +58,13 @@ export interface SsoConsumeResponse {
   identity: SsoIdentity;
   hashed_token?: string;
   shopify_connection?: RecoverAgentShopifyConnection;
+  woocommerce_connection?: RecoverAgentWooCommerceConnection;
+}
+
+export interface RecoverAgentWooCommerceConnection {
+  store_url: string;
+  consumer_key: string;
+  consumer_secret: string;
 }
 
 export function recoverAgentDashboardUrl(): string {
@@ -127,6 +134,21 @@ export function parseSsoConsumeResponse(raw: unknown): SsoConsumeResponse {
       : null;
   const shopDomain = shopify ? asNonEmptyString(shopify.shop_domain) : undefined;
   const accessToken = shopify ? asNonEmptyString(shopify.access_token) : undefined;
+  const wooRaw = body.woocommerce_connection;
+  let woocommerceConnection: RecoverAgentWooCommerceConnection | undefined;
+  if (wooRaw != null) {
+    const woo = wooRaw as Record<string, unknown>;
+    const storeUrl = asNonEmptyString(woo.store_url);
+    const consumerKey = asNonEmptyString(woo.consumer_key);
+    const consumerSecret = asNonEmptyString(woo.consumer_secret);
+    if (!storeUrl || !consumerKey || !consumerSecret) {
+      throw new SsoError('The dashboard WooCommerce connection is incomplete. Reconnect the store in the dashboard and try again.');
+    }
+    if (shopDomain && accessToken) {
+      throw new SsoError('The dashboard returned conflicting store connections. Select one commerce platform and try again.');
+    }
+    woocommerceConnection = { store_url: storeUrl, consumer_key: consumerKey, consumer_secret: consumerSecret };
+  }
   return {
     identity: {
       email,
@@ -135,6 +157,7 @@ export function parseSsoConsumeResponse(raw: unknown): SsoConsumeResponse {
       roles: identityObj.roles,
     },
     hashed_token: hashed,
+    woocommerce_connection: woocommerceConnection,
     shopify_connection:
       shopDomain && accessToken
         ? {
