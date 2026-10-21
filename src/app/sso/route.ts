@@ -11,6 +11,7 @@ import {
   ssoErrorHtml,
 } from "@/lib/auth/sso";
 import { importRecoverAgentShopifyConnection } from "@/lib/shopify/recover-agent-import";
+import { importRecoverAgentWooCommerceConnection } from "@/lib/woocommerce/recover-agent-import";
 
 export const dynamic = "force-dynamic";
 
@@ -80,6 +81,17 @@ export async function GET(request: NextRequest) {
 
   try {
     const consumed = await completeSsoLogin(ticket, supabase);
+    if (consumed.woocommerce_connection) {
+      try {
+        await importRecoverAgentWooCommerceConnection({
+          sessionClient: supabase,
+          connection: consumed.woocommerce_connection,
+          webhookCallbackUrl: `${origin}/api/woocommerce/webhook`,
+        });
+      } catch {
+        return errorResponse('WooCommerce connection import failed. Ask a workspace admin to check the store connection and API permissions, then retry from the dashboard.');
+      }
+    }
     if (consumed.shopify_connection) {
       try {
         await importRecoverAgentShopifyConnection({

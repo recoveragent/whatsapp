@@ -298,3 +298,20 @@ describe("ssoErrorHtml", () => {
     expect(html).not.toContain("<script>alert(1)</script>");
   });
 });
+
+describe('WooCommerce SSO payload', () => {
+  const identity = { email: 'owner@example.com' };
+  const connection = { store_url: 'https://brand.example', consumer_key: 'ck_test', consumer_secret: 'cs_test' };
+  it('reads a complete server-side connection', () => {
+    expect(parseSsoConsumeResponse({ identity, woocommerce_connection: connection }).woocommerce_connection).toEqual(connection);
+  });
+  it('allows older dashboards without WooCommerce payloads', () => {
+    expect(parseSsoConsumeResponse({ identity, woocommerce_connection: null }).woocommerce_connection).toBeUndefined();
+  });
+  it('rejects partial WooCommerce credentials instead of silently skipping import', () => {
+    expect(() => parseSsoConsumeResponse({ identity, woocommerce_connection: { store_url: connection.store_url } })).toThrow(SsoError);
+  });
+  it('rejects simultaneous platforms', () => {
+    expect(() => parseSsoConsumeResponse({ identity, woocommerce_connection: connection, shopify_connection: { shop_domain: 'brand.myshopify.com', access_token: 'token' } })).toThrow(/conflicting/);
+  });
+});
