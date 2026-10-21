@@ -295,6 +295,29 @@ describe("validateFlowForActivation — nodes", () => {
     ).toBe(true);
   });
 
+  it("flags a footer over WhatsApp's 60-char limit", () => {
+    const nodes = validNodes.map((n) =>
+      n.node_key === "menu"
+        ? { ...n, config: { ...n.config, footer_text: "x".repeat(61) } }
+        : n,
+    );
+    const issues = validateFlowForActivation(validFlow, nodes);
+    expect(
+      issues.some((i) => i.node_key === "menu" && i.field === "footer_text"),
+    ).toBe(true);
+
+    const ok = validNodes.map((n) =>
+      n.node_key === "menu"
+        ? { ...n, config: { ...n.config, footer_text: "x".repeat(60) } }
+        : n,
+    );
+    expect(
+      validateFlowForActivation(validFlow, ok).some(
+        (i) => i.field === "footer_text",
+      ),
+    ).toBe(false);
+  });
+
   it("flags send_buttons with zero buttons", () => {
     const nodes = [
       { node_key: "s", node_type: "start", config: { next_node_key: "b" } },

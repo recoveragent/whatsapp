@@ -681,6 +681,22 @@ function validateNode(
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
+  // Meta rejects interactive messages whose footer is over the limit, which
+  // fails the run mid-flow — catch it at save time for every node with one.
+  const footer = (node.config as { footer_text?: unknown } | null)?.footer_text;
+  if (
+    typeof footer === "string" &&
+    footer.length > INTERACTIVE_LIMITS.footerMaxLength
+  ) {
+    issues.push({
+      severity: "error",
+      scope: "node",
+      node_key: node.node_key,
+      field: "footer_text",
+      message: `Footer is ${footer.length} chars; WhatsApp allows at most ${INTERACTIVE_LIMITS.footerMaxLength}.`,
+    });
+  }
+
   switch (node.node_type) {
     case "collect_payment": {
       for (const issue of paymentConfigErrors(node.config)) issues.push({ ...issue, severity: "error", scope: "node", node_key: node.node_key });
