@@ -793,6 +793,9 @@
         "preview": "Preview",
         "previewSample": "Showing preview with sample data.",
         "noPreview": "Preview not available.",
+        "fallback": "If empty, use",
+        "fallbackPlaceholder": "e.g. Ji",
+        "fallbackDesc": "Sent to contacts whose value is empty. Leave blank and those contacts fail — WhatsApp rejects an empty value.",
         "fieldMap": {
           "name": "Name",
           "phone": "Phone",

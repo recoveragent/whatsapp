@@ -792,6 +792,9 @@
         "preview": "미리보기",
         "previewSample": "샘플 데이터로 미리보기를 표시합니다.",
         "noPreview": "미리보기를 사용할 수 없습니다.",
+        "fallback": "비어 있으면 사용할 값",
+        "fallbackPlaceholder": "예: 고객님",
+        "fallbackDesc": "값이 비어 있는 연락처에 대신 보냅니다. 비워 두면 해당 연락처는 전송에 실패합니다 — WhatsApp은 빈 값을 거부합니다.",
         "fieldMap": {
           "name": "이름",
           "phone": "전화번호",
