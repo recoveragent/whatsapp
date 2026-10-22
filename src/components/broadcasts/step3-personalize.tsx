@@ -14,15 +14,14 @@ import {
 } from '@/components/ui/select';
 import { ArrowLeft, ArrowRight, Eye, ImageIcon, Loader2 } from 'lucide-react';
 import { normalizeTemplateButtons } from '@/lib/flows/template-buttons';
+import {
+  resolveVariable,
+  type VariableMapping,
+} from '@/lib/broadcast-variables';
 import { TemplateMobilePreview } from '@/components/shared/template-mobile-preview';
 import { useTranslations } from 'next-intl';
 
-type VariableType = 'static' | 'field' | 'custom_field';
-
-interface VariableMapping {
-  type: VariableType;
-  value: string;
-}
+type VariableType = VariableMapping['type'];
 
 interface Step3Props {
   template: MessageTemplate;
@@ -185,7 +184,7 @@ export function Step3Personalize({
     const current = variables[key] ?? { type: 'static' as VariableType, value: '' };
     onUpdate({
       ...variables,
-      [key]: { ...current, ...patch },
+      [key]: { ...current, ...patch } as VariableMapping,
     });
   }
 
@@ -203,24 +202,12 @@ export function Step3Personalize({
     for (const placeholder of placeholders) {
       const key = placeholder.replace(/^\{\{|\}\}$/g, '');
       const mapping = variables[key];
-      let replacement = placeholder;
-
-      if (mapping) {
-        if (mapping.type === 'static' && mapping.value) {
-          replacement = mapping.value;
-        } else if (mapping.type === 'field' && mapping.value) {
-          const fieldMap: Record<string, string | undefined> = {
-            name: contact.name,
-            phone: contact.phone,
-            email: contact.email,
-            company: contact.company,
-          };
-          replacement = fieldMap[mapping.value] ?? placeholder;
-        } else if (mapping.type === 'custom_field' && mapping.value) {
-          replacement = customValues.get(mapping.value) || placeholder;
-        }
-      }
-      text = text.replaceAll(placeholder, replacement);
+      // Same resolution as the send (fallback included). A placeholder
+      // that still resolves empty stays visible as {{N}} — that contact
+      // would be rejected by Meta.
+      const resolved =
+        mapping?.value ? resolveVariable(mapping, contact, customValues) : '';
+      text = text.replaceAll(placeholder, resolved || placeholder);
     }
     return text;
   }, [
@@ -386,6 +373,25 @@ export function Step3Personalize({
                     )}
                   </div>
                 </div>
+
+                {mapping.type !== 'static' && (
+                  <div className="mt-3">
+                    <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                      {t('personalize.fallback')}
+                    </label>
+                    <Input
+                      value={mapping.fallback ?? ''}
+                      onChange={(e) =>
+                        updateVariable(key, { fallback: e.target.value })
+                      }
+                      placeholder={t('personalize.fallbackPlaceholder')}
+                      className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
+                    />
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                      {t('personalize.fallbackDesc')}
+                    </p>
+                  </div>
+                )}
               </div>
             );
           })}
