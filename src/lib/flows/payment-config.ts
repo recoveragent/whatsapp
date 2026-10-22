@@ -1,3 +1,4 @@
+import { withoutVariableFallbacks } from './variable-fallback';
 import type { SendTemplateNodeConfig } from './types';
 
 export interface CollectPaymentNodeConfig {
@@ -115,7 +116,7 @@ export function paymentConfigErrors(
     if (
       template?.template_name &&
       !Object.values(template.variables ?? {}).some((v) =>
-        /\{\{\s*vars\.payment_(url|url_suffix)\s*\}\}/.test(v)
+        /\{\{\s*vars\.payment_(url|url_suffix)\s*\}\}/.test(withoutVariableFallbacks(v))
       )
     )
       add(

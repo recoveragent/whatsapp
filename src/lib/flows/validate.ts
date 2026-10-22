@@ -1,3 +1,4 @@
+import { missingVariableFallbacks } from './variable-fallback';
 /**
  * Save-time validation for flows.
  *
@@ -707,6 +708,11 @@ function validateNode(
   knownKeys: Set<string>,
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
+  for (const issue of missingVariableFallbacks(node.config)) {
+    issues.push({ severity: "error", scope: "node", node_key: node.node_key,
+      field: issue.path, message: `Enter a required fallback for ${issue.key}.` });
+  }
+
 
   // Meta rejects interactive messages whose footer is over the limit, which
   // fails the run mid-flow — catch it at save time for every node with one.

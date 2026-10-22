@@ -22,12 +22,24 @@ import {
 } from '@/lib/broadcast-variables';
 import { TemplateMobilePreview } from '@/components/shared/template-mobile-preview';
 import { useTranslations } from 'next-intl';
+import { VariableFallbackFields } from '@/components/shared/variable-fallback-fields';
+import {
+  missingVariableFallbacks,
+  preserveVariableFallbacks,
+  withoutVariableFallbacks,
+} from '@/lib/flows/variable-fallback';
 import { TemplateVariablePicker } from '@/components/shared/template-variable-picker';
 import { templateVariableGroupsForAutomation } from '@/lib/flows/template-variables';
 
 type VariableType = VariableMapping['type'];
 
-function BroadcastFallbackInput({ mapping, customFields, onChange, placeholder, label }: {
+function BroadcastFallbackInput({
+  mapping,
+  customFields,
+  onChange,
+  placeholder,
+  label,
+}: {
   mapping: VariableMapping;
   customFields: CustomField[];
   onChange: (value: string) => void;
@@ -38,22 +50,40 @@ function BroadcastFallbackInput({ mapping, customFields, onChange, placeholder, 
   const inputRef = useRef<HTMLInputElement>(null);
   const selection = useRef({ start: 0, end: 0 });
   const value = broadcastFallbackText(mapping);
-  const groups = templateVariableGroupsForAutomation().filter((group) => group.id === 'contact');
+  const groups = templateVariableGroupsForAutomation().filter(
+    (group) => group.id === 'contact'
+  );
   if (customFields.length) {
     groups.push({
-      id: 'custom', label: 'Custom user attributes',
+      id: 'custom',
+      label: 'Custom user attributes',
       options: customFields.map((field) => ({
-        label: field.field_name, token: broadcastCustomFieldToken(field.id), type: 'text',
+        label: field.field_name,
+        token: broadcastCustomFieldToken(field.id),
+        type: 'text',
       })),
     });
   }
   function insertToken(token: string) {
     const { start, end } = selection.current;
-    onChange(value.slice(0, start) + token + value.slice(end));
-    selection.current = { start: start + token.length, end: start + token.length };
+    onChange(
+      preserveVariableFallbacks(
+        withoutVariableFallbacks(value).slice(0, start) +
+          token +
+          withoutVariableFallbacks(value).slice(end),
+        value
+      )
+    );
+    selection.current = {
+      start: start + token.length,
+      end: start + token.length,
+    };
     requestAnimationFrame(() => {
       inputRef.current?.focus();
-      inputRef.current?.setSelectionRange(start + token.length, start + token.length);
+      inputRef.current?.setSelectionRange(
+        start + token.length,
+        start + token.length
+      );
     });
   }
   return (
@@ -61,8 +91,14 @@ function BroadcastFallbackInput({ mapping, customFields, onChange, placeholder, 
       <Input
         ref={inputRef}
         aria-label={label}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
+        value={withoutVariableFallbacks(value)}
+        required
+        aria-invalid={
+          !value.trim() || missingVariableFallbacks(value).length > 0
+        }
+        onChange={(event) =>
+          onChange(preserveVariableFallbacks(event.target.value, value))
+        }
         onSelect={(event) => {
           selection.current = {
             start: event.currentTarget.selectionStart ?? value.length,
@@ -72,6 +108,12 @@ function BroadcastFallbackInput({ mapping, customFields, onChange, placeholder, 
         placeholder={placeholder}
         className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
       />
+      <VariableFallbackFields value={value} onChange={onChange} />
+      {!value.trim() && (
+        <p className="text-destructive mt-1 text-xs">
+          Fallback text is required.
+        </p>
+      )}
       <button
         type="button"
         className="text-muted-foreground hover:text-foreground mt-1 text-xs"
@@ -80,7 +122,13 @@ function BroadcastFallbackInput({ mapping, customFields, onChange, placeholder, 
       >
         Add variables
       </button>
-      {showVariables && <TemplateVariablePicker groups={groups} onInsert={insertToken} className="mt-2" />}
+      {showVariables && (
+        <TemplateVariablePicker
+          groups={groups}
+          onInsert={insertToken}
+          className="mt-2"
+        />
+      )}
     </>
   );
 }
@@ -235,7 +283,14 @@ export function Step3Personalize({
     for (const placeholder of placeholders) {
       const key = placeholder.replace(/^\{\{|\}\}$/g, '');
       const mapping = variables[key];
-      if (!mapping || !mapping.value?.trim()) {
+      if (
+        !mapping ||
+        !mapping.value?.trim() ||
+        (mapping.type !== 'static' &&
+          (!broadcastFallbackText(mapping).trim() ||
+            missingVariableFallbacks(broadcastFallbackText(mapping)).length >
+              0))
+      ) {
         missing.push(placeholder);
       }
     }
@@ -243,7 +298,10 @@ export function Step3Personalize({
   }, [placeholders, variables]);
 
   function updateVariable(key: string, patch: Partial<VariableMapping>) {
-    const current = variables[key] ?? { type: 'static' as VariableType, value: '' };
+    const current = variables[key] ?? {
+      type: 'static' as VariableType,
+      value: '',
+    };
     onUpdate({
       ...variables,
       [key]: { ...current, ...patch } as VariableMapping,
@@ -267,8 +325,9 @@ export function Step3Personalize({
       // Same resolution as the send (fallback included). A placeholder
       // that still resolves empty stays visible as {{N}} — that contact
       // would be rejected by Meta.
-      const resolved =
-        mapping?.value ? resolveVariable(mapping, contact, customValues) : '';
+      const resolved = mapping?.value
+        ? resolveVariable(mapping, contact, customValues)
+        : '';
       text = text.replaceAll(placeholder, resolved || placeholder);
     }
     return text;
@@ -287,22 +346,26 @@ export function Step3Personalize({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-foreground">{t('personalize.title')}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h2 className="text-foreground text-lg font-semibold">
+          {t('personalize.title')}
+        </h2>
+        <p className="text-muted-foreground mt-1 text-sm">
           {t('personalize.subtitle')}
         </p>
       </div>
 
       {mediaHeaderType && (
-        <div className="rounded-xl border border-border bg-card/50 p-4">
+        <div className="border-border bg-card/50 rounded-xl border p-4">
           <div className="mb-3 flex items-center gap-2">
-            <ImageIcon className="h-4 w-4 text-primary" />
-            <p className="text-sm font-medium text-foreground">{t('personalize.headerImage')}</p>
-            <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium uppercase text-primary">
+            <ImageIcon className="text-primary h-4 w-4" />
+            <p className="text-foreground text-sm font-medium">
+              {t('personalize.headerImage')}
+            </p>
+            <span className="bg-primary/10 text-primary inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium uppercase">
               {mediaHeaderType}
             </span>
           </div>
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+          <label className="text-muted-foreground mb-1.5 block text-xs font-medium">
             {t('personalize.imageUrl')}
           </label>
           <Input
@@ -312,7 +375,7 @@ export function Step3Personalize({
             placeholder={t('personalize.imageUrlPlaceholder')}
             className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
           />
-          <p className="mt-1.5 text-xs text-muted-foreground">
+          <p className="text-muted-foreground mt-1.5 text-xs">
             {t('personalize.headerImageDesc')}
           </p>
           {headerMediaError && (
@@ -326,8 +389,8 @@ export function Step3Personalize({
       )}
 
       {placeholders.length === 0 && !mediaHeaderType ? (
-        <div className="rounded-xl border border-border bg-card/50 p-6 text-center">
-          <p className="text-sm text-muted-foreground">
+        <div className="border-border bg-card/50 rounded-xl border p-6 text-center">
+          <p className="text-muted-foreground text-sm">
             {t('personalize.noPreview')}
           </p>
         </div>
@@ -340,17 +403,17 @@ export function Step3Personalize({
             return (
               <div
                 key={placeholder}
-                className="rounded-xl border border-border bg-card/50 p-4"
+                className="border-border bg-card/50 rounded-xl border p-4"
               >
                 <div className="mb-3 flex items-center gap-2">
-                  <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-mono font-medium text-primary">
+                  <span className="bg-primary/10 text-primary inline-flex items-center rounded-md px-2 py-0.5 font-mono text-xs font-medium">
                     {placeholder}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                    <label className="text-muted-foreground mb-1.5 block text-xs font-medium">
                       {t('personalize.type')}
                     </label>
                     <Select
@@ -362,12 +425,16 @@ export function Step3Personalize({
                         })
                       }
                     >
-                      <SelectTrigger className="w-full border-border bg-muted text-foreground">
+                      <SelectTrigger className="border-border bg-muted text-foreground w-full">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="border-border bg-popover">
-                        <SelectItem value="static">{t('personalize.typeStatic')}</SelectItem>
-                        <SelectItem value="field">{t('personalize.typeContact')}</SelectItem>
+                        <SelectItem value="static">
+                          {t('personalize.typeStatic')}
+                        </SelectItem>
+                        <SelectItem value="field">
+                          {t('personalize.typeContact')}
+                        </SelectItem>
                         <SelectItem value="custom_field">
                           {t('personalize.typeCustom')}
                         </SelectItem>
@@ -376,8 +443,10 @@ export function Step3Personalize({
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                      {mapping.type === 'static' ? t('personalize.staticValue') : t('personalize.contactField')}
+                    <label className="text-muted-foreground mb-1.5 block text-xs font-medium">
+                      {mapping.type === 'static'
+                        ? t('personalize.staticValue')
+                        : t('personalize.contactField')}
                     </label>
                     {mapping.type === 'static' ? (
                       <Input
@@ -395,8 +464,10 @@ export function Step3Personalize({
                           updateVariable(key, { value: val || '' })
                         }
                       >
-                        <SelectTrigger className="w-full border-border bg-muted text-foreground">
-                          <SelectValue placeholder={t('personalize.selectContactField')} />
+                        <SelectTrigger className="border-border bg-muted text-foreground w-full">
+                          <SelectValue
+                            placeholder={t('personalize.selectContactField')}
+                          />
                         </SelectTrigger>
                         <SelectContent className="border-border bg-popover">
                           {contactFields.map((field) => (
@@ -413,7 +484,7 @@ export function Step3Personalize({
                           updateVariable(key, { value: val || '' })
                         }
                       >
-                        <SelectTrigger className="w-full border-border bg-muted text-foreground">
+                        <SelectTrigger className="border-border bg-muted text-foreground w-full">
                           <SelectValue
                             placeholder={
                               loadingFields
@@ -439,12 +510,17 @@ export function Step3Personalize({
                 {mapping.type !== 'static' && (
                   <div className="mt-3">
                     <label className="text-muted-foreground mb-1.5 block text-xs font-medium">
-                      {t('personalize.fallback')}
+                      {t('personalize.fallback')} *
                     </label>
                     <BroadcastFallbackInput
                       mapping={mapping}
                       customFields={customFields}
-                      onChange={(fallback) => updateVariable(key, { fallback, fallbackType: 'static' })}
+                      onChange={(fallback) =>
+                        updateVariable(key, {
+                          fallback,
+                          fallbackType: 'static',
+                        })
+                      }
                       placeholder={t('personalize.fallbackPlaceholder')}
                       label={t('personalize.fallback')}
                     />
@@ -460,13 +536,17 @@ export function Step3Personalize({
       )}
 
       {/* Live Preview — mobile mockup approximating the recipient view. */}
-      <div className="rounded-xl border border-border bg-card/50 p-4">
+      <div className="border-border bg-card/50 rounded-xl border p-4">
         <div className="mb-3 flex items-center gap-2">
-          <Eye className="h-4 w-4 text-primary" />
-          <p className="text-sm font-medium text-foreground">{t('personalize.preview')}</p>
-          <span className="text-xs text-muted-foreground">({previewLabel})</span>
+          <Eye className="text-primary h-4 w-4" />
+          <p className="text-foreground text-sm font-medium">
+            {t('personalize.preview')}
+          </p>
+          <span className="text-muted-foreground text-xs">
+            ({previewLabel})
+          </span>
           {loadingPreview && (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+            <Loader2 className="text-primary h-3.5 w-3.5 animate-spin" />
           )}
         </div>
         <TemplateMobilePreview
@@ -474,7 +554,9 @@ export function Step3Personalize({
           headerType={template.header_type}
           headerContent={template.header_content}
           headerMediaUrl={
-            mediaHeaderType ? headerMediaUrl.trim() || template.header_media_url : null
+            mediaHeaderType
+              ? headerMediaUrl.trim() || template.header_media_url
+              : null
           }
           footerText={template.footer_text}
           buttons={normalizeTemplateButtons(template.buttons)}
@@ -491,7 +573,7 @@ export function Step3Personalize({
         </div>
       )}
 
-      <div className="flex items-center justify-between border-t border-border pt-4">
+      <div className="border-border flex items-center justify-between border-t pt-4">
         <Button
           variant="outline"
           onClick={onBack}

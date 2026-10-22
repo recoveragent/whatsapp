@@ -23,6 +23,11 @@
 
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { TemplateVariableGroup } from '@/lib/flows/template-variables';
+import { VariableFallbackFields } from '@/components/shared/variable-fallback-fields';
+import {
+  preserveVariableFallbacks,
+  withoutVariableFallbacks,
+} from '@/lib/flows/variable-fallback';
 import { TemplateVariablePicker } from '@/components/shared/template-variable-picker';
 
 export const NodeVariableGroups = createContext<TemplateVariableGroup[]>([]);
@@ -65,9 +70,15 @@ export function TextRow({
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const insertVariable = (token: string) => {
     const field = inputRef.current;
-    const start = field?.selectionStart ?? value.length;
+    const displayed = withoutVariableFallbacks(value);
+    const start = field?.selectionStart ?? displayed.length;
     const end = field?.selectionEnd ?? start;
-    onChange(value.slice(0, start) + token + value.slice(end));
+    onChange(
+      preserveVariableFallbacks(
+        displayed.slice(0, start) + token + displayed.slice(end),
+        value
+      )
+    );
     requestAnimationFrame(() => {
       field?.focus();
       field?.setSelectionRange(start + token.length, start + token.length);
@@ -78,26 +89,33 @@ export function TextRow({
       <label className="text-muted-foreground mb-1 block text-xs">
         {label}
       </label>
-      {rows > 1 ? (
-        <Textarea
-          ref={(field) => {
-            inputRef.current = field;
-          }}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          rows={rows}
-          className="bg-muted"
-        />
-      ) : (
-        <Input
-          ref={(field) => {
-            inputRef.current = field;
-          }}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="bg-muted"
-        />
-      )}
+      <div className="grid min-w-0 grid-cols-1 items-start gap-2 @min-[26rem]:grid-cols-2">
+        {rows > 1 ? (
+          <Textarea
+            ref={(field) => {
+              inputRef.current = field;
+            }}
+            value={withoutVariableFallbacks(value)}
+            onChange={(e) =>
+              onChange(preserveVariableFallbacks(e.target.value, value))
+            }
+            rows={rows}
+            className="bg-muted"
+          />
+        ) : (
+          <Input
+            ref={(field) => {
+              inputRef.current = field;
+            }}
+            value={withoutVariableFallbacks(value)}
+            onChange={(e) =>
+              onChange(preserveVariableFallbacks(e.target.value, value))
+            }
+            className="bg-muted"
+          />
+        )}
+        <VariableFallbackFields value={value} onChange={onChange} />
+      </div>
       {variableGroups.length > 0 && (
         <>
           <button

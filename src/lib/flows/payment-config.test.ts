@@ -17,7 +17,7 @@ import type { BuilderNode } from '@/components/flows/shared';
 const template = {
   template_name: 'collect_advance',
   language: 'en_US',
-  variables: { '1': '{{ vars.payment_url }}' },
+  variables: { '1': '{{ vars.payment_url | "Contact support for a payment link" }}' },
   next_node_key: '',
 };
 const config = {

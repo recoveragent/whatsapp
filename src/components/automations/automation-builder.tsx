@@ -1,5 +1,7 @@
 "use client"
 
+import { missingVariableFallbacks } from "@/lib/flows/variable-fallback"
+
 import {
   createContext,
   useContext,
@@ -624,6 +626,10 @@ export function AutomationBuilder({ initial }: { initial: BuilderInitial }) {
   }
 
   async function save() {
+    if (missingVariableFallbacks(toApiSteps(state.steps)).length) {
+      toast.error("Enter required fallbacks for all selected variables before saving.")
+      return
+    }
     setSaving(true)
     try {
       const payload = {

@@ -1,3 +1,4 @@
+import { missingVariableFallbacks } from '@/lib/flows/variable-fallback'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
@@ -123,6 +124,12 @@ export async function PUT(
     )
   }
 
+  const fallbackIssues = (body.nodes ?? []).flatMap(node =>
+    missingVariableFallbacks(node.config).map(issue => ({ ...issue, node_key: node.node_key })))
+  if (fallbackIssues.length) return NextResponse.json(
+    { error: 'Enter required fallbacks for all selected variables before saving.', issues: fallbackIssues },
+    { status: 400 },
+  )
   const admin = supabaseAdmin()
 
   const { data: existing } = await admin

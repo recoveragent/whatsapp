@@ -7,6 +7,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 
+import { VariableFallbackFields } from "@/components/shared/variable-fallback-fields";
+import { preserveVariableFallbacks, withoutVariableFallbacks } from "@/lib/flows/variable-fallback";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -162,13 +164,8 @@ function HeaderMediaField({
       <label className="mb-1 block text-xs text-muted-foreground">
         Header media URL ({mediaHeaderType})
       </label>
-      <Input
-        value={value}
-        onFocus={onFocus}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="{{ vars.product_image }} or https://…"
-        className={variableInputClass(active)}
-      />
+      <VariableMappingInput value={value} onFocus={onFocus} onChange={onChange}
+        placeholder="{{ vars.product_image }} or https://…" active={active} />
       {mediaHeaderType === "image" &&
         isStaticMediaUrl(value) && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -213,18 +210,21 @@ function VariableMappingInput({
   placeholder?: string;
 }) {
   return (
+    <div className="grid min-w-0 grid-cols-1 items-start gap-2 @min-[26rem]:grid-cols-2">
     <textarea
-      rows={value.length > 36 ? 2 : 1}
-      value={value}
-      title={value}
+      rows={withoutVariableFallbacks(value).length > 36 ? 2 : 1}
+      value={withoutVariableFallbacks(value)}
+      title={withoutVariableFallbacks(value)}
       onFocus={onFocus}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => onChange(preserveVariableFallbacks(e.target.value, value))}
       placeholder={placeholder}
       className={cn(
         variableInputClass(active),
         "resize-none break-all rounded-lg border border-input outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
       )}
     />
+    <VariableFallbackFields value={value} onChange={onChange} />
+    </div>
   );
 }
 
@@ -233,7 +233,7 @@ function renderPreviewBody(
   variables: Record<string, string>,
 ): string {
   return body.replace(/\{\{(\d+)\}\}/g, (_, n) => {
-    const raw = variables[n]?.trim();
+    const raw = withoutVariableFallbacks(variables[n]?.trim() ?? "");
     if (!raw) return `{{${n}}}`;
     const varsRef = raw.match(/\{\{\s*vars\.([\w.]+)\s*\}\}/);
     if (varsRef) return `[${varsRef[1]}]`;
@@ -301,7 +301,7 @@ export function SendTemplateFields({
   allNodes = [],
   currentNodeKey = "",
   onChange,
-  variableHint = "Click a variable on the right or type {{ vars.field }} manually. Use Fallback options when a field may be empty.",
+  variableHint = "Select a variable and enter its required fallback beside it. The fallback is used when the value is empty.",
   variableGroups = [],
 }: SendTemplateFieldsProps) {
   const { accountId } = useAuth();

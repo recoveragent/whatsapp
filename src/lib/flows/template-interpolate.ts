@@ -3,48 +3,46 @@
  * and fallback forms like {{ vars.name | "there" }}.
  */
 
+import { decodeVariableFallback } from './variable-fallback';
+
 export function resolveTemplateVar(
   key: string,
   vars: Record<string, unknown>,
-  messageText?: string,
+  messageText?: string
 ): string | undefined {
-  if (key === 'message.text') return messageText ?? ''
+  if (key === 'message.text') return messageText ?? '';
 
-  let lookup = key
-  const hadPrefix = key.startsWith('vars.') || key.startsWith('trigger.')
-  if (key.startsWith('vars.')) lookup = key.slice(5)
-  else if (key.startsWith('trigger.')) lookup = key.slice(8)
+  let lookup = key;
+  const hadPrefix = key.startsWith('vars.') || key.startsWith('trigger.');
+  if (key.startsWith('vars.')) lookup = key.slice(5);
+  else if (key.startsWith('trigger.')) lookup = key.slice(8);
 
   if (lookup in vars) {
-    const val = vars[lookup]
-    return val === undefined || val === null ? '' : String(val)
+    const val = vars[lookup];
+    return val === undefined || val === null ? '' : String(val);
   }
-  if (hadPrefix) return ''
-  if (key in vars) return String(vars[key] ?? '')
-  return undefined
+  if (hadPrefix) return '';
+  if (key in vars) return String(vars[key] ?? '');
+  return undefined;
 }
 
 export function interpolateTemplateString(
   template: string,
   vars: Record<string, unknown>,
   messageText?: string,
-  encode: (value: string) => string = (value) => value,
+  encode: (value: string) => string = (value) => value
 ): string {
-  if (!template) return ''
+  if (!template) return '';
 
-  const withFallback = template.replace(
-    /\{\{\s*([\w.]+)\s*\|\s*(?:"([^"]*)"|'([^']*)')\s*\}\}/g,
-    (match, key: string, dq: string | undefined, sq: string | undefined) => {
-      const fallback = dq ?? sq ?? ''
-      const resolved = resolveTemplateVar(key, vars, messageText)
-      if (resolved !== undefined && resolved.trim() !== '') return encode(resolved)
-      return encode(fallback)
-    },
-  )
-
-  return withFallback.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (match, key: string) => {
-    const resolved = resolveTemplateVar(key, vars, messageText)
-    if (resolved === undefined) return match
-    return encode(resolved)
-  })
+  return template.replace(
+    /\{\{\s*([\w.]+)\s*(?:\|\s*("(?:\\.|[^"\\])*"|'[^']*'))?\s*\}\}/g,
+    (match, key: string, quoted: string | undefined) => {
+      const resolved = resolveTemplateVar(key, vars, messageText);
+      if (quoted && (resolved === undefined || resolved.trim() === '')) {
+        const fallback = decodeVariableFallback(quoted);
+        return encode(fallback);
+      }
+      return resolved === undefined ? match : encode(resolved);
+    }
+  );
 }

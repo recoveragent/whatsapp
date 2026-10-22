@@ -668,7 +668,7 @@ describe("validateFlowForActivation — create_deal", () => {
       nodesWith({
         pipeline_id: "pipe-1",
         stage_id: "stage-1",
-        title: "{{ vars.name }} deal",
+        title: '{{ vars.name | "Customer" }} deal',
         next_node_key: "h",
       }),
     );

@@ -1,12 +1,11 @@
 'use client';
 
+import { missingVariableFallbacks } from '@/lib/flows/variable-fallback';
+
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
-import {
-  BATCH_SEND_ATTEMPTS,
-  batchRetryDelayMs,
-} from '@/lib/broadcast-retry';
+import { BATCH_SEND_ATTEMPTS, batchRetryDelayMs } from '@/lib/broadcast-retry';
 import {
   fetchAllContacts,
   fetchContactsByIds,
@@ -16,13 +15,12 @@ import {
 import { normalizeKey } from '@/lib/contacts/dedupe';
 import {
   resolveVariables,
+  broadcastFallbackText,
   type VariableMapping,
 } from '@/lib/broadcast-variables';
 import { fetchAllInChunks, fetchAllPages } from '@/lib/supabase/fetch-all';
 import { Contact, MessageTemplate } from '@/types';
-import {
-  resolveWooCommerceSegmentContacts,
-} from '@/lib/woocommerce/resolve-segment-audience';
+import { resolveWooCommerceSegmentContacts } from '@/lib/woocommerce/resolve-segment-audience';
 import type { WooCommerceSegmentKey } from '@/lib/woocommerce/segments';
 import { validateBroadcastSchedule } from '@/lib/broadcast-schedule';
 
@@ -102,7 +100,7 @@ type CustomValueIndex = Map<string, Map<string, string>>;
  */
 async function fetchCustomValueIndex(
   supabase: ReturnType<typeof createClient>,
-  contactIds: string[],
+  contactIds: string[]
 ): Promise<CustomValueIndex> {
   const index: CustomValueIndex = new Map();
   if (contactIds.length === 0) return index;
@@ -119,7 +117,7 @@ async function fetchCustomValueIndex(
       .select('contact_id, custom_field_id, value')
       .in('contact_id', chunk)
       .order('id')
-      .range(from, to),
+      .range(from, to)
   );
 
   for (const row of rows) {
@@ -152,14 +150,17 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       const ids = await fetchTagContactIds(supabase, audience.tagIds);
       contacts = await fetchContactsByIds(supabase, ids);
     } else if (audience.type === 'custom_field' && audience.customField) {
-      const ids = await fetchCustomFieldContactIds(supabase, audience.customField);
+      const ids = await fetchCustomFieldContactIds(
+        supabase,
+        audience.customField
+      );
       contacts = await fetchContactsByIds(supabase, ids);
     } else if (audience.type === 'csv' && audience.csvContacts) {
       contacts = await upsertCsvContacts(supabase, audience.csvContacts);
     } else if (audience.type === 'woocommerce' && audience.woocommerceSegment) {
       contacts = await resolveWooCommerceSegmentContacts(
         supabase,
-        audience.woocommerceSegment,
+        audience.woocommerceSegment
       );
     }
 
@@ -168,7 +169,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
     if (audience.excludeTagIds && audience.excludeTagIds.length > 0) {
       const excludedIds = await fetchTagContactIds(
         supabase,
-        audience.excludeTagIds,
+        audience.excludeTagIds
       );
       contacts = contacts.filter((c) => !excludedIds.has(c.id));
     }
@@ -192,7 +193,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
    */
   async function upsertCsvContacts(
     supabase: ReturnType<typeof createClient>,
-    csvRows: { phone: string; name?: string }[],
+    csvRows: { phone: string; name?: string }[]
   ): Promise<Contact[]> {
     if (csvRows.length === 0) return [];
 
@@ -230,7 +231,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
         .eq('account_id', accountId)
         .in('phone_normalized', chunk)
         .order('id')
-        .range(from, to),
+        .range(from, to)
     ).catch((err: Error) => {
       throw new Error(`Failed to look up CSV contacts: ${err.message}`);
     });
@@ -275,7 +276,21 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       .filter((c): c is Contact => Boolean(c));
   }
 
-  async function createAndSendBroadcast(payload: BroadcastPayload): Promise<string> {
+  async function createAndSendBroadcast(
+    payload: BroadcastPayload
+  ): Promise<string> {
+    if (
+      Object.values(payload.variables).some(
+        (mapping) =>
+          mapping.type !== 'static' &&
+          (!broadcastFallbackText(mapping).trim() ||
+            missingVariableFallbacks(broadcastFallbackText(mapping)).length > 0)
+      )
+    ) {
+      throw new Error(
+        'Enter required fallbacks for all selected variables before sending.'
+      );
+    }
     setIsProcessing(true);
     setProgress(0);
 
@@ -340,7 +355,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
 
       if (broadcastError || !broadcast) {
         throw new Error(
-          `Failed to create broadcast: ${broadcastError?.message ?? 'unknown error'}`,
+          `Failed to create broadcast: ${broadcastError?.message ?? 'unknown error'}`
         );
       }
 
@@ -355,7 +370,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       setProgress(20);
       const customValueIndex = await fetchCustomValueIndex(
         supabase,
-        contacts.map((c) => c.id),
+        contacts.map((c) => c.id)
       );
       const paramsByContact = new Map(
         contacts.map((contact) => [
@@ -363,9 +378,9 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
           resolveVariables(
             payload.variables,
             contact,
-            customValueIndex.get(contact.id),
+            customValueIndex.get(contact.id)
           ),
-        ]),
+        ])
       );
       const recipientRows = contacts.map((contact) => ({
         broadcast_id: broadcast.id,
@@ -393,17 +408,19 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
             })
             .eq('id', broadcast.id);
           throw new Error(
-            `Failed to insert recipient batch ${i / INSERT_BATCH_SIZE + 1}: ${recipientError.message}`,
+            `Failed to insert recipient batch ${i / INSERT_BATCH_SIZE + 1}: ${recipientError.message}`
           );
         }
       }
 
       if (payload.scheduledAt) {
         const scheduledAt = validateBroadcastSchedule(payload.scheduledAt);
-        const { error } = await supabase.from('broadcasts')
+        const { error } = await supabase
+          .from('broadcasts')
           .update({ status: 'scheduled', scheduled_at: scheduledAt })
           .eq('id', broadcast.id);
-        if (error) throw new Error(`Failed to schedule broadcast: ${error.message}`);
+        if (error)
+          throw new Error(`Failed to schedule broadcast: ${error.message}`);
         setProgress(100);
         return broadcast.id;
       }
@@ -422,7 +439,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
           .select('*, contact:contacts(*)')
           .eq('broadcast_id', broadcast.id)
           .order('id')
-          .range(from, to),
+          .range(from, to)
       ).catch((err: Error) => {
         throw new Error(`Failed to fetch broadcast recipients: ${err.message}`);
       });
@@ -536,7 +553,8 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
               .from('broadcast_recipients')
               .update({
                 status: 'failed',
-                error_message: err instanceof Error ? err.message : 'Unknown error',
+                error_message:
+                  err instanceof Error ? err.message : 'Unknown error',
               })
               .eq('id', recipient.id);
           }

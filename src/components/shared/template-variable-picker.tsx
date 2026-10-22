@@ -49,7 +49,11 @@ export function TemplateVariablePicker({
   );
 
   const filteredGroups = useMemo(
-    () => filterGroups(groups, query),
+    () =>
+      filterGroups(
+        groups.filter((group) => group.id !== 'fallback'),
+        query
+      ),
     [groups, query]
   );
 
