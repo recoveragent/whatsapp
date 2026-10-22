@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Contact } from '@/types';
 
-import { resolveVariable, resolveVariables } from './broadcast-variables';
+import { resolveVariable, resolveVariables, broadcastFallbackText, broadcastCustomFieldToken } from './broadcast-variables';
 
 function contact(overrides: Partial<Contact> = {}): Contact {
   return {
@@ -18,6 +18,23 @@ function contact(overrides: Partial<Contact> = {}): Contact {
 }
 
 describe('resolveVariable', () => {
+  it('interpolates typed text and user attribute tokens per contact', () => {
+    const mapping = { type: 'custom_field', value: 'missing', fallback: 'Hello {{ vars.first_name }} {{ vars.last_name }}' } as const;
+    expect(resolveVariable(mapping, contact({ name: 'Asha Sharma' }))).toBe('Hello Asha Sharma');
+    expect(resolveVariable(mapping, contact({ name: 'Dev Kumar' }))).toBe('Hello Dev Kumar');
+  });
+
+  it('resolves missing user attributes and inline defaults', () => {
+    expect(resolveVariable({ type: 'field', value: 'name', fallback: '{{ vars.email }}' }, contact({ name: '' }))).toBe('');
+    expect(resolveVariable({ type: 'field', value: 'name', fallback: '{{ vars.first_name | "friend" }}' }, contact({ name: '' }))).toBe('friend');
+  });
+
+  it('inserts custom attribute tokens and displays legacy fallbacks as tokens', () => {
+    const token = broadcastCustomFieldToken('abc-123');
+    expect(resolveVariable({ type: 'field', value: 'name', fallback: token }, contact({ name: '' }), new Map([['abc-123', 'Gold']]))).toBe('Gold');
+    expect(broadcastFallbackText({ type: 'field', value: 'name', fallbackType: 'field', fallback: 'phone' })).toBe('{{ vars.phone }}');
+    expect(broadcastFallbackText({ type: 'field', value: 'name', fallbackType: 'custom_field', fallback: 'abc-123' })).toBe(token);
+  });
   it('uses the contact field when it has a value', () => {
     expect(
       resolveVariable(

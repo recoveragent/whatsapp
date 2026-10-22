@@ -794,9 +794,8 @@
         "previewSample": "Showing preview with sample data.",
         "noPreview": "Preview not available.",
         "fallback": "If empty, use",
-        "fallbackType": "Fallback type",
         "fallbackPlaceholder": "e.g. Ji",
-        "fallbackDesc": "Type a value or select a user attribute to use when the primary value is empty. If both are empty, sending to that contact fails.",
+        "fallbackDesc": "Type text or use Add variables to insert user attributes. Used when the primary value is empty. If the fallback also resolves empty, sending to that contact fails.",
         "fieldMap": {
           "name": "Name",
           "phone": "Phone",

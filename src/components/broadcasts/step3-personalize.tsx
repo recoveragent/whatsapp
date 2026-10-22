@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Contact, CustomField, MessageTemplate } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -16,12 +16,74 @@ import { ArrowLeft, ArrowRight, Eye, ImageIcon, Loader2 } from 'lucide-react';
 import { normalizeTemplateButtons } from '@/lib/flows/template-buttons';
 import {
   resolveVariable,
+  broadcastFallbackText,
+  broadcastCustomFieldToken,
   type VariableMapping,
 } from '@/lib/broadcast-variables';
 import { TemplateMobilePreview } from '@/components/shared/template-mobile-preview';
 import { useTranslations } from 'next-intl';
+import { TemplateVariablePicker } from '@/components/shared/template-variable-picker';
+import { templateVariableGroupsForAutomation } from '@/lib/flows/template-variables';
 
 type VariableType = VariableMapping['type'];
+
+function BroadcastFallbackInput({ mapping, customFields, onChange, placeholder, label }: {
+  mapping: VariableMapping;
+  customFields: CustomField[];
+  onChange: (value: string) => void;
+  placeholder: string;
+  label: string;
+}) {
+  const [showVariables, setShowVariables] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const selection = useRef({ start: 0, end: 0 });
+  const value = broadcastFallbackText(mapping);
+  const groups = templateVariableGroupsForAutomation().filter((group) => group.id === 'contact');
+  if (customFields.length) {
+    groups.push({
+      id: 'custom', label: 'Custom user attributes',
+      options: customFields.map((field) => ({
+        label: field.field_name, token: broadcastCustomFieldToken(field.id), type: 'text',
+      })),
+    });
+  }
+  function insertToken(token: string) {
+    const { start, end } = selection.current;
+    onChange(value.slice(0, start) + token + value.slice(end));
+    selection.current = { start: start + token.length, end: start + token.length };
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(start + token.length, start + token.length);
+    });
+  }
+  return (
+    <>
+      <Input
+        ref={inputRef}
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onSelect={(event) => {
+          selection.current = {
+            start: event.currentTarget.selectionStart ?? value.length,
+            end: event.currentTarget.selectionEnd ?? value.length,
+          };
+        }}
+        placeholder={placeholder}
+        className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
+      />
+      <button
+        type="button"
+        className="text-muted-foreground hover:text-foreground mt-1 text-xs"
+        aria-expanded={showVariables}
+        onClick={() => setShowVariables(!showVariables)}
+      >
+        Add variables
+      </button>
+      {showVariables && <TemplateVariablePicker groups={groups} onInsert={insertToken} className="mt-2" />}
+    </>
+  );
+}
 
 interface Step3Props {
   template: MessageTemplate;
@@ -379,86 +441,13 @@ export function Step3Personalize({
                     <label className="text-muted-foreground mb-1.5 block text-xs font-medium">
                       {t('personalize.fallback')}
                     </label>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <Select
-                        value={mapping.fallbackType ?? 'static'}
-                        onValueChange={(val) =>
-                          updateVariable(key, {
-                            fallbackType: val as VariableType,
-                            fallback: '',
-                          })
-                        }
-                      >
-                        <SelectTrigger
-                          aria-label={t('personalize.fallbackType')}
-                          className="border-border bg-muted text-foreground w-full"
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="border-border bg-popover">
-                          <SelectItem value="static">
-                            {t('personalize.typeStatic')}
-                          </SelectItem>
-                          <SelectItem value="field">
-                            {t('personalize.typeContact')}
-                          </SelectItem>
-                          <SelectItem value="custom_field">
-                            {t('personalize.typeCustom')}
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                      {!mapping.fallbackType ||
-                      mapping.fallbackType === 'static' ? (
-                        <Input
-                          value={mapping.fallback ?? ''}
-                          onChange={(e) =>
-                            updateVariable(key, { fallback: e.target.value })
-                          }
-                          placeholder={t('personalize.fallbackPlaceholder')}
-                          className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
-                        />
-                      ) : (
-                        <Select
-                          value={mapping.fallback || undefined}
-                          onValueChange={(val) =>
-                            updateVariable(key, { fallback: val || '' })
-                          }
-                        >
-                          <SelectTrigger
-                            aria-label={t('personalize.fallback')}
-                            className="border-border bg-muted text-foreground w-full"
-                          >
-                            <SelectValue
-                              placeholder={
-                                mapping.fallbackType === 'field'
-                                  ? t('personalize.selectContactField')
-                                  : loadingFields
-                                    ? 'Loading…'
-                                    : t('personalize.selectCustomField')
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent className="border-border bg-popover">
-                            {mapping.fallbackType === 'field'
-                              ? contactFields.map((field) => (
-                                  <SelectItem
-                                    key={field.value}
-                                    value={field.value}
-                                  >
-                                    {t(
-                                      `personalize.fieldMap.${field.labelKey}`
-                                    )}
-                                  </SelectItem>
-                                ))
-                              : customFields.map((field) => (
-                                  <SelectItem key={field.id} value={field.id}>
-                                    {field.field_name}
-                                  </SelectItem>
-                                ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </div>
+                    <BroadcastFallbackInput
+                      mapping={mapping}
+                      customFields={customFields}
+                      onChange={(fallback) => updateVariable(key, { fallback, fallbackType: 'static' })}
+                      placeholder={t('personalize.fallbackPlaceholder')}
+                      label={t('personalize.fallback')}
+                    />
                     <p className="text-muted-foreground mt-1.5 text-xs">
                       {t('personalize.fallbackDesc')}
                     </p>

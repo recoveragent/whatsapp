@@ -4,6 +4,7 @@
 // ============================================================
 
 import type { Contact } from '@/types';
+import { interpolateTemplateString } from '@/lib/flows/template-interpolate';
 
 /**
  * Variable mapping — each template placeholder (by key, usually "1",
@@ -12,7 +13,8 @@ import type { Contact } from '@/types';
  * contact_custom_values.value row keyed by the custom_fields.id stored
  * in `value`.
  *
- * `fallback` is literal text or an attribute key according to `fallbackType`,
+ * `fallback` is text with user-attribute tokens (legacy attribute keys are
+ * supported according to `fallbackType`),
  * resolved when a field/custom_field value is blank
  * for a contact. Without one the param goes out empty, Meta rejects the
  * message, and that recipient is marked failed. Ignored for `static`.
@@ -21,9 +23,37 @@ export type VariableMapping = {
   type: 'static' | 'field' | 'custom_field';
   value: string;
   fallback?: string;
-  /** Omitted for existing mappings, whose fallback is literal text. */
+  /** Legacy attribute-selector mappings; new fallbacks use text with tokens. */
   fallbackType?: 'static' | 'field' | 'custom_field';
 };
+
+export function broadcastCustomFieldToken(id: string): string {
+  return `{{ vars.custom_field_${id.replaceAll('-', '_')} }}`;
+}
+
+/** Display previously saved attribute fallbacks as editable variable tokens. */
+export function broadcastFallbackText(mapping: VariableMapping): string {
+  if (!mapping.fallback) return '';
+  if (mapping.fallbackType === 'field') return `{{ vars.${mapping.fallback} }}`;
+  if (mapping.fallbackType === 'custom_field') return broadcastCustomFieldToken(mapping.fallback);
+  return mapping.fallback;
+}
+
+function resolveFallbackText(text: string, contact: Contact, customValues?: Map<string, string>): string {
+  const names = (contact.name ?? '').trim().split(/\s+/);
+  const vars: Record<string, unknown> = {
+    name: contact.name ?? '',
+    first_name: names[0] ?? '',
+    last_name: names.slice(1).join(' '),
+    phone: contact.phone ?? '',
+    email: contact.email ?? '',
+    company: contact.company ?? '',
+  };
+  for (const [id, value] of customValues ?? []) {
+    vars[`custom_field_${id.replaceAll('-', '_')}`] = value;
+  }
+  return interpolateTemplateString(text, vars).trim();
+}
 
 /** One placeholder's value for one contact ('' when nothing resolves). */
 export function resolveVariable(
@@ -49,7 +79,7 @@ export function resolveVariable(
   // Whitespace-only counts as empty — Meta rejects it the same way.
   if (raw?.trim()) return raw;
   if (!mapping.fallbackType || mapping.fallbackType === 'static') {
-    return mapping.fallback?.trim() ?? '';
+    return resolveFallbackText(mapping.fallback ?? '', contact, customValues);
   }
   return resolveVariable(
     { type: mapping.fallbackType, value: mapping.fallback ?? '' },
