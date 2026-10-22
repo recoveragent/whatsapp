@@ -487,14 +487,21 @@ export function ConversationList({
   const searchInTopBar = useTopBarSlotActive('start');
   const searchField = (
     <div className={cn('relative', searchInTopBar && 'min-w-0 flex-1')}>
-      <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+      <Search
+        className={cn(
+          'text-muted-foreground absolute top-1/2 -translate-y-1/2',
+          searchInTopBar ? 'left-2.5 h-3.5 w-3.5' : 'left-3 h-4 w-4'
+        )}
+      />
       <Input
         value={search}
         onChange={handleSearchChange}
         placeholder={t('searchPlaceholder')}
         className={cn(
-          'border-border bg-accent text-foreground focus-visible:border-border-lit pl-9 text-sm focus-visible:ring-0',
-          searchInTopBar ? 'rounded-full' : 'rounded-[10px]'
+          'border-border bg-accent text-foreground focus-visible:border-border-lit focus-visible:ring-0',
+          searchInTopBar
+            ? 'h-8 rounded-full pl-8 text-[13px]'
+            : 'rounded-[10px] pl-9 text-sm'
         )}
       />
     </div>

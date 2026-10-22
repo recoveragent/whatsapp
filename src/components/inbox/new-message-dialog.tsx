@@ -85,9 +85,9 @@ export function NewMessageDialog({ onCreated, compact = false }: NewMessageDialo
               size="icon"
               aria-label="New message"
               title="New message"
-              className="bg-primary hover:bg-primary/90"
+              className="size-8 shrink-0 rounded-full bg-primary hover:bg-primary/90"
             >
-              <MessageSquarePlus className="size-[18px]" />
+              <MessageSquarePlus className="size-4" />
             </Button>
           ) : (
             <Button size="sm" className="h-8 gap-1.5 bg-primary text-xs hover:bg-primary/90">
