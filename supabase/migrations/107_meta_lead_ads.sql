@@ -1,4 +1,12 @@
 -- Direct Meta Instant Form ingestion.
+--
+-- NOTE: renamed from 101 → 107 to resolve a duplicate migration version.
+-- 101 was already taken by 101_flow_send_product_node.sql, so a clean
+-- `supabase db reset` failed with a duplicate schema_migrations key
+-- (SQLSTATE 23505). Nothing in 102–106 references these tables, and
+-- every statement is IF NOT EXISTS-guarded, so running it after 106 is
+-- safe. Production's migration history does not use these file numbers,
+-- so the rename doesn't change what has been applied there.
 
 CREATE TABLE IF NOT EXISTS meta_lead_sources (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
