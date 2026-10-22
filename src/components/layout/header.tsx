@@ -29,7 +29,7 @@ interface HeaderProps {
 
 export function Header({ onOpenSidebar }: HeaderProps) {
   const t = useTranslations("Header");
-  const { profile, account, signOut } = useAuth();
+  const { profile, signOut } = useAuth();
 
   const initial =
     profile?.full_name?.charAt(0)?.toUpperCase() ??
@@ -61,11 +61,6 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             {BRAND_NAME}
           </span>
         </Link>
-        {account?.name ? (
-          <span className="ml-1 hidden min-w-0 max-w-56 truncate rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-foreground ring-1 ring-white/15 md:inline">
-            {account.name}
-          </span>
-        ) : null}
       </div>
 
       {/* Page slots line up with the columns below: start over a page's
