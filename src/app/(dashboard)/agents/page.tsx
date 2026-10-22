@@ -63,13 +63,9 @@ export default function AgentsPage() {
 
   return (
     <div>
-      <div className="flex items-center gap-2">
-        <Bot className="text-primary h-6 w-6" />
-        <h1 className="text-foreground text-2xl font-bold tracking-tight">
-          AI Agents
-        </h1>
-      </div>
-      <p className="text-muted-foreground mt-1 text-sm">
+      {/* Sidebar already names the page; keep the heading for screen readers. */}
+      <h1 className="sr-only">AI Agents</h1>
+      <p className="text-muted-foreground text-sm">
         Your AI model is managed by super admin. Configure your agent’s behavior
         and knowledge, then test replies in the playground before going live.
       </p>

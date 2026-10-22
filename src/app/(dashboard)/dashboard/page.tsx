@@ -142,9 +142,8 @@ export default function DashboardPage() {
         <p className="font-cabinet text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
           Performance overview
         </p>
-        <h1 className="font-cabinet text-2xl font-bold text-foreground sm:text-3xl">
-          {t('title')}
-        </h1>
+        {/* Sidebar already names the page; keep the heading for screen readers. */}
+        <h1 className="sr-only">{t('title')}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {t('description')}
         </p>
