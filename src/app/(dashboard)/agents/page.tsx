@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bot, Sparkles, Settings2, BarChart3 } from 'lucide-react';
+import { PageHeader } from '@/components/layout/page-header';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AiPlayground } from '@/components/agents/ai-playground';
 import { AiUsageCard } from '@/components/agents/ai-usage';
@@ -63,12 +64,10 @@ export default function AgentsPage() {
 
   return (
     <div>
-      {/* Sidebar already names the page; keep the heading for screen readers. */}
-      <h1 className="sr-only">AI Agents</h1>
-      <p className="text-muted-foreground text-sm">
-        Your AI model is managed by super admin. Configure your agent’s behavior
-        and knowledge, then test replies in the playground before going live.
-      </p>
+      <PageHeader
+        title="AI Agents"
+        subtitle="Your AI model is managed by super admin. Configure your agent’s behavior and knowledge, then test replies in the playground before going live."
+      />
 
       {decided && (
         <>

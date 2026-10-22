@@ -10,7 +10,6 @@ export default function AdminBillingPage() {
         size="admin"
         eyebrow="Admin"
         title="Payment gateway"
-        showTitle
         subtitle="Configure Razorpay for Recover Agent. Brands recharge their wallets through this gateway with GST applied automatically."
       />
       <div className="mt-6">
