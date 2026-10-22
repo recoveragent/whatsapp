@@ -185,6 +185,19 @@ function recipient(
 }
 
 describe('planBroadcastResume', () => {
+  it('rejects early delivery of a scheduled broadcast', async () => {
+    await expect(planBroadcastResume(planDb({ broadcast: {
+      ...BROADCAST, status: 'scheduled', scheduled_at: '2099-01-01T00:00:00Z',
+    } }), 'acct-1', 'bc-1', 'pending')).rejects.toMatchObject({ code: 'scheduled_not_due' });
+  });
+
+  it('preserves the selected media header for deferred delivery', async () => {
+    const { plan } = await planBroadcastResume(planDb({
+      broadcast: { ...BROADCAST, audience_filter: { headerMediaUrl: 'https://example.com/header.png' } },
+      config: CONFIG, recipients: [recipient('r1', '+15551234567')],
+    }), 'acct-1', 'bc-1', 'pending');
+    expect(plan.headerMediaUrl).toBe('https://example.com/header.png');
+  });
   it('plans the outstanding recipients with their frozen params', async () => {
     const writes: PlanWrites = {};
     const { plan, remaining, unsendable } = await planBroadcastResume(

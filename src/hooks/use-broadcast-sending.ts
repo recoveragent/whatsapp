@@ -24,6 +24,7 @@ import {
   resolveWooCommerceSegmentContacts,
 } from '@/lib/woocommerce/resolve-segment-audience';
 import type { WooCommerceSegmentKey } from '@/lib/woocommerce/segments';
+import { validateBroadcastSchedule } from '@/lib/broadcast-schedule';
 
 export type CustomFieldOperator = 'is' | 'is_not' | 'contains';
 
@@ -56,6 +57,7 @@ interface BroadcastPayload {
    * falls back to the template's stored URL only when this is empty.
    */
   headerMediaUrl?: string;
+  scheduledAt?: string;
 }
 
 interface UseBroadcastSendingReturn {
@@ -281,6 +283,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
 
     try {
       // ── Step 0: Resolve current user ──────────────────────────────
+      if (payload.scheduledAt) validateBroadcastSchedule(payload.scheduledAt);
       // broadcasts.user_id is NOT NULL + guarded by RLS
       // (auth.uid() = user_id). Without this, the INSERT below was
       // silently failing with 23502 / 42501 — the wizard would
@@ -321,8 +324,10 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
             customField: payload.audience.customField,
             excludeTagIds: payload.audience.excludeTagIds,
             woocommerceSegment: payload.audience.woocommerceSegment,
+            headerMediaUrl: payload.headerMediaUrl?.trim() || undefined,
           },
-          status: 'sending',
+          // Publish the schedule only after all recipient rows are ready.
+          status: payload.scheduledAt ? 'draft' : 'sending',
           total_recipients: contacts.length,
           sent_count: 0,
           delivered_count: 0,
@@ -391,6 +396,16 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
             `Failed to insert recipient batch ${i / INSERT_BATCH_SIZE + 1}: ${recipientError.message}`,
           );
         }
+      }
+
+      if (payload.scheduledAt) {
+        const scheduledAt = validateBroadcastSchedule(payload.scheduledAt);
+        const { error } = await supabase.from('broadcasts')
+          .update({ status: 'scheduled', scheduled_at: scheduledAt })
+          .eq('id', broadcast.id);
+        if (error) throw new Error(`Failed to schedule broadcast: ${error.message}`);
+        setProgress(100);
+        return broadcast.id;
       }
 
       // ── Step 4: Fetch recipients back (joined contact) ────────────

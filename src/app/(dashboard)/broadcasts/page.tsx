@@ -92,7 +92,7 @@ export default function BroadcastsPage() {
   }, []);
 
   const anySending = useMemo(
-    () => broadcasts.some((b) => b.status === 'sending'),
+    () => broadcasts.some((b) => b.status === 'sending' || b.status === 'scheduled'),
     [broadcasts],
   );
 
@@ -274,6 +274,11 @@ export default function BroadcastsPage() {
                         )}
                         {tStatus(status.label)}
                       </span>
+                      {broadcast.status === 'scheduled' && broadcast.scheduled_at && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {new Date(broadcast.scheduled_at).toLocaleString()}
+                        </p>
+                      )}
                     </TableCell>
                     <TableCell className="hidden text-muted-foreground sm:table-cell">
                       {new Date(broadcast.created_at).toLocaleDateString()}

@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server'
 import { isValidAutomationCronSecret } from '@/lib/automations/cron-secret'
 import { runScheduledAutomationJobs } from '@/lib/automations/run-scheduled-jobs'
 
+export const maxDuration = 300;
+
 /**
  * Drain due `automation_pending_executions` rows, then poll Google Sheet
  * flow triggers. Meant to be hit on a schedule (Vercel Cron / Hostinger

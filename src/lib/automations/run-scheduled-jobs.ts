@@ -7,6 +7,7 @@ import { reconcileRecentFlowOutboundMessages } from '@/lib/flows/backfill-outbou
 import { processDueCadences } from '@/lib/leads/engine'
 import { pollLeadSources } from '@/lib/leads/poll-sources'
 import { processDueAbandonedCheckouts } from '@/lib/shopify/handle-webhook'
+import { processScheduledBroadcasts } from '@/lib/whatsapp/broadcast-scheduled'
 
 export interface ScheduledAutomationJobsResult {
   processed: number
@@ -17,6 +18,7 @@ export interface ScheduledAutomationJobsResult {
   abandoned_checkouts: number
   flow_outbound_reconciliation: unknown
   errors: string[]
+  broadcasts: number
 }
 
 function settledValue<T>(
@@ -88,6 +90,7 @@ export async function runScheduledAutomationJobs(): Promise<ScheduledAutomationJ
     flowWaitsResult,
     abandonedCheckoutsResult,
     flowOutboundReconciliationResult,
+    broadcastsResult,
   ] = await Promise.allSettled([
     pollGoogleSheetFlows(admin),
     pollLeadSources(admin),
@@ -95,6 +98,7 @@ export async function runScheduledAutomationJobs(): Promise<ScheduledAutomationJ
     resumeFlowPendingExecutions(),
     processDueAbandonedCheckouts(admin),
     reconcileRecentFlowOutboundMessages({ db: admin }),
+    processScheduledBroadcasts(admin),
   ])
 
   return {
@@ -112,5 +116,6 @@ export async function runScheduledAutomationJobs(): Promise<ScheduledAutomationJ
       errors,
     ),
     errors,
+    broadcasts: settledValue(broadcastsResult, 'broadcasts', errors) ?? 0,
   }
 }

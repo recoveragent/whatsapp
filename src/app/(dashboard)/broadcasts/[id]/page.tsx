@@ -196,6 +196,14 @@ export default function BroadcastDetailPage() {
     fetchData();
   }, [fetchData]);
 
+  useEffect(() => {
+    if (broadcast?.status !== 'scheduled' && broadcast?.status !== 'sending') return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') void fetchData();
+    }, 10_000);
+    return () => clearInterval(timer);
+  }, [broadcast?.status, fetchData]);
+
   const filteredRecipients = useMemo(
     () =>
       statusFilter === 'all'
@@ -324,7 +332,7 @@ export default function BroadcastDetailPage() {
   // A campaign whose tab went away sits in 'sending' with recipients
   // still pending and nothing left to move them. Name that state rather
   // than leaving a permanently pulsing "sending" badge.
-  const isStalled = broadcast.status === 'sending' && pendingCount > 0;
+  const isStalled = broadcast.status === 'sending' && !broadcast.scheduled_at && pendingCount > 0;
 
   const funnelSteps: FunnelStep[] = [
     { label: t('stats.sent'), value: broadcast.sent_count, color: 'bg-primary' },
@@ -362,6 +370,11 @@ export default function BroadcastDetailPage() {
                 {t('createdAt', { date: new Date(broadcast.created_at).toLocaleDateString() })}
               </span>
             </div>
+            {broadcast.scheduled_at && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {tStatus('Scheduled')}: {new Date(broadcast.scheduled_at).toLocaleString()} ({Intl.DateTimeFormat().resolvedOptions().timeZone})
+              </p>
+            )}
           </div>
         </div>
 
@@ -411,7 +424,7 @@ export default function BroadcastDetailPage() {
 
       {/* Resume / retry (issue #472). Only rendered when there is
           actually something outstanding. */}
-      {(pendingCount > 0 || retryableCount > 0) && (
+      {broadcast.status !== 'scheduled' && (pendingCount > 0 || retryableCount > 0) && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
           <div className="text-sm">
             <p className="font-medium text-foreground">

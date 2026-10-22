@@ -16,8 +16,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Send, Loader2, Users, Save } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Users, Save, CalendarClock } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { validateBroadcastSchedule } from '@/lib/broadcast-schedule';
 
 interface Step4Props {
   name: string;
@@ -26,6 +27,7 @@ interface Step4Props {
   audience: AudienceConfig;
   onSend: () => void;
   onSaveDraft?: () => void;
+  onSchedule: (scheduledAt: string) => Promise<void>;
   onBack: () => void;
   isProcessing: boolean;
   progress: number;
@@ -38,12 +40,18 @@ export function Step4ScheduleSend({
   audience,
   onSend,
   onSaveDraft,
+  onSchedule,
   onBack,
   isProcessing,
   progress,
 }: Step4Props) {
   const t = useTranslations('Broadcasts.wizard');
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+  const [scheduleError, setScheduleError] = useState(false);
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [estimatedReach, setEstimatedReach] = useState<number>(0);
   const [loadingReach, setLoadingReach] = useState(true);
 
@@ -134,7 +142,7 @@ export function Step4ScheduleSend({
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
-              <p className="text-sm font-medium text-foreground">{t('scheduleSend.sending')}</p>
+              <p className="text-sm font-medium text-foreground">{t(showSchedule ? 'scheduleSend.preparing' : 'scheduleSend.sending')}</p>
             </div>
             <span className="text-xs font-medium text-primary">{progress}%</span>
           </div>
@@ -158,7 +166,7 @@ export function Step4ScheduleSend({
           {t('back')}
         </Button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {onSaveDraft && (
             <Button
               variant="outline"
@@ -170,6 +178,46 @@ export function Step4ScheduleSend({
               {t('scheduleSend.saveDraft')}
             </Button>
           )}
+
+          <Dialog open={showSchedule} onOpenChange={(open) => {
+            if (!isProcessing) { setShowSchedule(open); setScheduleError(false); }
+          }}>
+            <DialogTrigger render={<Button variant="outline" disabled={!name.trim() || isProcessing} />}>
+              <CalendarClock className="h-4 w-4" />
+              {t('scheduleSend.schedule')}
+            </DialogTrigger>
+            <DialogContent className="border-border bg-popover sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>{t('scheduleSend.scheduleTitle')}</DialogTitle>
+                <DialogDescription>{t('scheduleSend.scheduleDescription', { timeZone })}</DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="broadcast-date" className="mb-1.5 block text-sm">{t('scheduleSend.date')}</label>
+                  <Input id="broadcast-date" type="date" value={scheduleDate} disabled={isProcessing}
+                    onChange={(event) => { setScheduleDate(event.target.value); setScheduleError(false); }} />
+                </div>
+                <div>
+                  <label htmlFor="broadcast-time" className="mb-1.5 block text-sm">{t('scheduleSend.time')}</label>
+                  <Input id="broadcast-time" type="time" value={scheduleTime} disabled={isProcessing}
+                    onChange={(event) => { setScheduleTime(event.target.value); setScheduleError(false); }} />
+                </div>
+              </div>
+              {scheduleError && <p role="alert" className="text-sm text-destructive">{t('scheduleSend.futureTime')}</p>}
+              <DialogFooter>
+                <Button variant="outline" disabled={isProcessing} onClick={() => setShowSchedule(false)}>{t('cancel')}</Button>
+                <Button disabled={!scheduleDate || !scheduleTime || isProcessing} onClick={async () => {
+                  let scheduledAt: string;
+                  try { scheduledAt = validateBroadcastSchedule(`${scheduleDate}T${scheduleTime}`); }
+                  catch { setScheduleError(true); return; }
+                  await onSchedule(scheduledAt);
+                }}>
+                  {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarClock className="h-4 w-4" />}
+                  {t('scheduleSend.schedule')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
           <DialogTrigger

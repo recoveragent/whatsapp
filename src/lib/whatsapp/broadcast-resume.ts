@@ -146,13 +146,18 @@ export async function planBroadcastResume(
 ): Promise<ResumePlan> {
   const { data: broadcast, error: bcError } = await db
     .from('broadcasts')
-    .select('id, template_name, template_language')
+    .select('id, template_name, template_language, status, scheduled_at, audience_filter')
     .eq('id', broadcastId)
     .eq('account_id', accountId)
     .maybeSingle();
 
   if (bcError || !broadcast) {
     throw new BroadcastError('not_found', 'Broadcast not found', 404);
+  }
+
+  if (broadcast.status === 'scheduled' &&
+      (!broadcast.scheduled_at || new Date(broadcast.scheduled_at).getTime() > Date.now())) {
+    throw new BroadcastError('scheduled_not_due', 'This broadcast is scheduled for a future time.', 409);
   }
 
   const statuses = scopeStatuses(scope);
@@ -239,6 +244,8 @@ export async function planBroadcastResume(
     phoneNumberId: config.phone_number_id,
     accessToken: decrypt(config.access_token),
     templateRow: resolvedTemplate.row,
+    headerMediaUrl: typeof broadcast.audience_filter?.headerMediaUrl === 'string'
+      ? broadcast.audience_filter.headerMediaUrl : undefined,
     planned: slice.map((row) => ({
       recipientRowId: row.id,
       phone: sanitizePhoneForMeta(contactPhone(row) ?? ''),

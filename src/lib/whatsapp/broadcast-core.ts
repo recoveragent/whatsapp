@@ -69,6 +69,7 @@ export interface BroadcastPlan {
   phoneNumberId: string;
   accessToken: string;
   templateRow: MessageTemplate | null;
+  headerMediaUrl?: string;
   planned: PlannedRecipient[];
   /** Phones rejected up front (invalid E.164) — counted as failed. */
   rejected: number;
@@ -274,6 +275,7 @@ export async function deliverBroadcast(
           language: plan.templateLanguage,
           template: plan.templateRow ?? undefined,
           params: recipient.params,
+          ...(plan.headerMediaUrl ? { messageParams: { headerMediaUrl: plan.headerMediaUrl } } : {}),
         });
         sentMessageId = result.messageId;
         lastError = null;

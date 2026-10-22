@@ -50,7 +50,7 @@ export default function NewBroadcastPage() {
   const [headerMediaUrl, setHeaderMediaUrl] = useState('');
   const [name, setName] = useState('');
 
-  async function handleSend() {
+  async function handleSend(scheduledAt?: string) {
     if (!template) return;
 
     try {
@@ -67,7 +67,9 @@ export default function NewBroadcastPage() {
         },
         variables,
         headerMediaUrl,
+        scheduledAt,
       });
+      if (scheduledAt) toast.success(t('toastScheduled'));
       router.push(`/broadcasts/${broadcastId}`);
     } catch (err) {
       // Previously swallowed with console.error — the wizard would
@@ -226,7 +228,8 @@ export default function NewBroadcastPage() {
               onNameChange={setName}
               template={template}
               audience={audience}
-              onSend={handleSend}
+              onSend={() => handleSend()}
+              onSchedule={(scheduledAt) => handleSend(scheduledAt)}
               onSaveDraft={handleSaveDraft}
               onBack={() => setCurrentStep(2)}
               isProcessing={isProcessing}
