@@ -34,6 +34,10 @@ vi.mock('@/lib/auth/brand-accounts', () => ({
   fetchAccountWithCategory: vi
     .fn()
     .mockResolvedValue({ ai_agents_enabled: true }),
+  isMissingColumnError: () => false,
+}));
+vi.mock('./store-profile', () => ({
+  loadStoreProfile: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('./context', () => ({
   buildConversationContext: h.buildConversationContext,
@@ -287,7 +291,9 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     ]);
     h.generateReply.mockResolvedValueOnce({ text: '', handoff: true });
     await dispatchInboundToAiReply(ARGS);
-    expect(h.engineSendText).not.toHaveBeenCalled();
+    // Only the handoff notice goes out — no product links.
+    expect(h.engineSendText).toHaveBeenCalledTimes(1);
+    expect(h.engineSendText.mock.calls[0][0].text).not.toContain('myshopify.com');
     expect(h.sendShopifyProductCarousel).not.toHaveBeenCalled();
   });
   it('claims a slot and sends on the happy path', async () => {
@@ -365,13 +371,6 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(systemPrompt).toContain('Order #1042');
   });
 
-  it('stands down when an active message-level automation exists', async () => {
-    h.state.autoResponders = [{ id: 'auto-1' }];
-    await dispatchInboundToAiReply(ARGS);
-    expect(h.generateReply).not.toHaveBeenCalled();
-    expect(h.engineSendText).not.toHaveBeenCalled();
-  });
-
   it('does not send when the atomic slot claim loses the race', async () => {
     h.state.claim = false;
     await dispatchInboundToAiReply(ARGS);
@@ -432,10 +431,16 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
 });
 
 describe('dispatchInboundToAiReply — handoff', () => {
-  it('disables auto-reply, writes a summary, and does not send on handoff', async () => {
+  it('disables auto-reply, writes a summary, and tells the customer on handoff', async () => {
     h.generateReply.mockResolvedValue({ text: '', handoff: true });
     await dispatchInboundToAiReply(ARGS);
-    expect(h.engineSendText).not.toHaveBeenCalled();
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining('passing this to our team'),
+        aiGenerated: true,
+      })
+    );
+    // The notice doesn't consume an auto-reply slot.
     expect(h.state.rpcCalls).toHaveLength(0);
     expect(h.state.updatePayload).toMatchObject({
       ai_autoreply_disabled: true,
@@ -455,5 +460,44 @@ describe('dispatchInboundToAiReply — handoff', () => {
       ai_autoreply_disabled: true,
       assigned_agent_id: 'agent-7',
     });
+  });
+
+  it("sends the brand's own handoff message when set", async () => {
+    h.loadAiConfig.mockResolvedValue(
+      aiConfig({ handoffMessage: 'One sec — connecting you to Priya.' })
+    );
+    h.generateReply.mockResolvedValue({ text: '', handoff: true });
+    await dispatchInboundToAiReply(ARGS);
+    expect(h.engineSendText.mock.calls[0][0].text).toBe(
+      'One sec — connecting you to Priya.'
+    );
+  });
+
+  it('hands off instead of going silent when the provider fails', async () => {
+    const { AiError } = await import('./types');
+    h.generateReply.mockRejectedValue(
+      new AiError('bad key', { code: 'invalid_key', status: 401 })
+    );
+    await dispatchInboundToAiReply(ARGS);
+    expect(h.state.updatePayload).toMatchObject({ ai_autoreply_disabled: true });
+    expect(h.state.updatePayload?.ai_handoff_summary).toContain(
+      'rejected the API key'
+    );
+    expect(h.engineSendText).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears a flow goal when handing off', async () => {
+    h.state.conv = { ...h.state.conv, ai_flow_goal: 'Recover the checkout' };
+    h.generateReply.mockResolvedValue({ text: '', handoff: true });
+    await dispatchInboundToAiReply(ARGS);
+    expect(h.state.updatePayload).toMatchObject({ ai_flow_goal: null });
+  });
+
+  it('passes the flow goal into the system prompt', async () => {
+    h.state.conv = { ...h.state.conv, ai_flow_goal: 'Recover the checkout' };
+    await dispatchInboundToAiReply(ARGS);
+    expect(h.generateReply.mock.calls[0][0].systemPrompt).toContain(
+      'Recover the checkout'
+    );
   });
 });

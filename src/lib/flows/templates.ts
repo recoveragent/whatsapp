@@ -20,6 +20,7 @@
  */
 
 import type {
+  AiAgentNodeConfig,
   CollectInputNodeConfig,
   ConditionNodeConfig,
   HandoffNodeConfig,
@@ -41,6 +42,8 @@ export type FlowTemplateNodeType =
   | "condition"
   | "set_tag"
   | "handoff"
+  | "send_template"
+  | "ai_agent"
   | "end";
 
 export interface FlowTemplateNode {
@@ -54,6 +57,7 @@ export interface FlowTemplateNode {
     | CollectInputNodeConfig
     | ConditionNodeConfig
     | HandoffNodeConfig
+    | AiAgentNodeConfig
     | Record<string, unknown>;
 }
 
@@ -62,8 +66,12 @@ export interface FlowTemplate {
   name: string;
   description: string;
   /** Used by the gallery to surface a relevant icon. lucide-react name. */
-  icon: "MessageSquare" | "HelpCircle" | "UserPlus";
-  trigger_type: "keyword" | "first_inbound_message" | "manual";
+  icon: "MessageSquare" | "HelpCircle" | "UserPlus" | "Bot";
+  trigger_type:
+    | "keyword"
+    | "first_inbound_message"
+    | "manual"
+    | "shopify_checkout_abandoned";
   trigger_config: KeywordTriggerConfig | Record<string, unknown>;
   entry_node_id: string;
   nodes: FlowTemplateNode[];
@@ -362,10 +370,88 @@ const PRODUCT_RECOMMENDATION: FlowTemplate = {
 };
 
 // ============================================================
+// 5. AI checkout recovery — Shopify abandoned checkout → AI agent
+// ============================================================
+const AI_CHECKOUT_RECOVERY: FlowTemplate = {
+  slug: "ai_checkout_recovery",
+  name: "AI checkout recovery",
+  description:
+    "When a Shopify checkout is abandoned, send your recovery template, then let the AI agent answer whatever is holding the customer back and guide them to finish checkout.",
+  icon: "Bot",
+  trigger_type: "shopify_checkout_abandoned",
+  trigger_config: {},
+  entry_node_id: "start",
+  nodes: [
+    {
+      node_key: "start",
+      node_type: "start",
+      config: { next_node_key: "reminder" } as StartNodeConfig,
+    },
+    {
+      // Outside the 24h window only an approved template can open the
+      // chat — pick your recovery template here.
+      node_key: "reminder",
+      node_type: "send_template",
+      config: {
+        template_name: "",
+        language: "en_US",
+        variables: {},
+        buttons: [],
+        next_node_key: "ai_agent",
+      },
+    },
+    {
+      node_key: "ai_agent",
+      node_type: "ai_agent",
+      config: {
+        goal:
+          "This customer left items in their checkout ({{ vars.checkout_url }}). When they reply, answer what is holding them back — shipping time, delivery charges, COD, returns, sizing — from the store's policies, and encourage them to complete the purchase with that checkout link. Do not offer discounts unless the business instructions say you can.",
+        respond_now: false,
+      } as AiAgentNodeConfig,
+    },
+  ],
+};
+
+// ============================================================
+// 6. AI shopping assistant — keyword → AI agent with a sales goal
+// ============================================================
+const AI_SHOPPING_ASSISTANT: FlowTemplate = {
+  slug: "ai_shopping_assistant",
+  name: "AI shopping assistant",
+  description:
+    "When a customer asks to shop or for gift ideas, the AI agent asks about occasion, recipient and budget, then recommends products from your Shopify catalog with checkout links.",
+  icon: "Bot",
+  trigger_type: "keyword",
+  trigger_config: {
+    keywords: ["shop", "buy", "gift", "recommend", "suggest"],
+    match_type: "contains",
+  },
+  entry_node_id: "start",
+  nodes: [
+    {
+      node_key: "start",
+      node_type: "start",
+      config: { next_node_key: "ai_agent" } as StartNodeConfig,
+    },
+    {
+      node_key: "ai_agent",
+      node_type: "ai_agent",
+      config: {
+        goal:
+          "Help the customer choose a product. If they haven't said, ask about the occasion, who it is for and their budget — one question at a time — then recommend matching products from the catalog.",
+        respond_now: true,
+      } as AiAgentNodeConfig,
+    },
+  ],
+};
+
+// ============================================================
 // Registry
 // ============================================================
 
 const TEMPLATES: Record<string, FlowTemplate> = {
+  ai_checkout_recovery: AI_CHECKOUT_RECOVERY,
+  ai_shopping_assistant: AI_SHOPPING_ASSISTANT,
   welcome_menu: WELCOME_MENU,
   faq_bot: FAQ_BOT,
   lead_capture: LEAD_CAPTURE,

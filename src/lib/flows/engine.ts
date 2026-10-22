@@ -53,7 +53,10 @@ import { ensureFlowOutboundPersisted } from "./backfill-outbound-prompt";
 import { ensureConversation } from "@/lib/shopify/ensure-contact";
 import { addContactTagAndDispatch } from "@/lib/contacts/tag-events";
 import { removeContactTag } from "@/lib/contacts/tag-write";
+import { handOffRunToAiAgent } from "./ai-agent-node";
+import { insertConversationStatusMessage } from "@/lib/inbox/status-system-message";
 import {
+  type AiAgentNodeConfig,
   type CollectInputNodeConfig,
   type ConditionNodeConfig,
   type DispatchInboundInput,
@@ -257,7 +260,7 @@ export function isSuspending(node_type: string): boolean {
 
 /** Nodes that end the run. */
 export function isTerminal(node_type: string): boolean {
-  return node_type === "handoff" || node_type === "end";
+  return node_type === "handoff" || node_type === "end" || node_type === "ai_agent";
 }
 
 /**
@@ -1264,6 +1267,30 @@ async function advanceFromNodeKey(
       await endRun(db, run.id, "completed", "end_node");
       return finish("completed");
     }
+    if (node.node_type === "ai_agent") {
+      const cfg = node.config as AiAgentNodeConfig;
+      // End the run first so the agent's reply (and the customer's next
+      // message) isn't treated as input to this flow.
+      await endRun(db, run.id, "completed", "ai_agent_node");
+      try {
+        const { responded } = await handOffRunToAiAgent(
+          db,
+          run,
+          cfg,
+          interpolateVars(cfg.goal ?? "", varsFor(run)),
+        );
+        await logEvent(db, run.id, "completed", node.node_key, {
+          reason: "handed_to_ai_agent",
+          responded_now: responded,
+        });
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "ai_agent_handoff_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+      }
+      return finish("completed");
+    }
     // Unknown node type — shouldn't happen given the CHECK constraint.
     await logEvent(db, run.id, "error", node.node_key, {
       reason: `unknown_node_type:${node.node_type}`,
@@ -1941,10 +1968,22 @@ async function handleReplyForActiveRun(
   }
   if (action.type === "handoff") {
     if (run.conversation_id) {
-      await db
+      // Hand the thread to an agent in the Open filter. A `pending` status
+      // here hid the conversation from the default inbox view entirely.
+      const { data: reopened } = await db
         .from("conversations")
-        .update({ status: "pending", updated_at: new Date().toISOString() })
-        .eq("id", run.conversation_id);
+        .update({ status: "open", updated_at: new Date().toISOString() })
+        .eq("id", run.conversation_id)
+        .neq("status", "open")
+        .select("id");
+      if (reopened?.length) {
+        await insertConversationStatusMessage({
+          db,
+          conversationId: run.conversation_id,
+          status: "open",
+          actor: { kind: "flow" },
+        });
+      }
     }
     await logEvent(db, run.id, "handoff", run.current_node_key, {
       reason: "fallback_exhausted",

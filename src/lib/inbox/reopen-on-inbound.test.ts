@@ -6,21 +6,21 @@ import {
 } from "./reopen-on-inbound";
 
 describe("shouldReopenConversationOnInbound", () => {
-  it("reopens closed and followup conversations by default", () => {
+  it("reopens closed, followup and pending conversations by default", () => {
     expect(
       shouldReopenConversationOnInbound({ conversationStatus: "closed" }),
     ).toBe(true);
     expect(
       shouldReopenConversationOnInbound({ conversationStatus: "followup" }),
     ).toBe(true);
-  });
-
-  it("does not reopen open or pending conversations", () => {
-    expect(
-      shouldReopenConversationOnInbound({ conversationStatus: "open" }),
-    ).toBe(false);
     expect(
       shouldReopenConversationOnInbound({ conversationStatus: "pending" }),
+    ).toBe(true);
+  });
+
+  it("does not reopen open conversations", () => {
+    expect(
+      shouldReopenConversationOnInbound({ conversationStatus: "open" }),
     ).toBe(false);
   });
 

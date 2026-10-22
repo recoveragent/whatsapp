@@ -14,6 +14,8 @@ interface FakeState {
   fts: { id: string; content: string }[]
   chunkCount: number
   rpcCalls: string[]
+  rpcQueries: string[]
+  allChunks: { id: string; content: string }[]
   inserted: Record<string, unknown>[] | null
   deletedFor: string | null
 }
@@ -24,22 +26,33 @@ function makeDb() {
     fts: [],
     chunkCount: 5, // account has a non-empty KB by default
     rpcCalls: [],
+    rpcQueries: [],
+    allChunks: [],
     inserted: null,
     deletedFor: null,
   }
   const db = {
-    rpc: (name: string) => {
+    rpc: (name: string, args: { p_query?: string }) => {
       state.rpcCalls.push(name)
       if (name === 'match_ai_knowledge_semantic')
         return Promise.resolve({ data: state.semantic, error: null })
-      if (name === 'match_ai_knowledge_fts')
+      if (name === 'match_ai_knowledge_fts') {
+        state.rpcQueries.push(args.p_query ?? '')
         return Promise.resolve({ data: state.fts, error: null })
+      }
       return Promise.resolve({ data: null, error: null })
     },
     from: () => ({
-      // retrieveKnowledge's empty-KB count guard.
-      select: () => ({
-        eq: () => Promise.resolve({ count: state.chunkCount, error: null }),
+      // The empty-KB count guard, and the small-KB "send it all" read.
+      select: (_cols: string, opts?: { head?: boolean }) => ({
+        eq: () => {
+          if (opts?.head) return Promise.resolve({ count: state.chunkCount, error: null })
+          const chain = {
+            order: () => chain,
+            limit: () => Promise.resolve({ data: state.allChunks, error: null }),
+          }
+          return chain
+        },
       }),
       delete: () => ({
         eq: (_col: string, val: string) => {
@@ -82,10 +95,36 @@ describe('retrieveKnowledge', () => {
   it('uses lexical FTS only when there is no embeddings key', async () => {
     const { db, state } = makeDb()
     state.fts = [{ id: 'f1', content: 'F1' }]
-    const out = await retrieveKnowledge(db, 'acct', { embeddingsApiKey: null }, 'q')
+    const out = await retrieveKnowledge(db, 'acct', { embeddingsApiKey: null }, 'refund time')
     expect(out).toEqual(['F1'])
     expect(state.rpcCalls).toEqual(['match_ai_knowledge_fts'])
     expect(h.embedTexts).not.toHaveBeenCalled()
+  })
+
+  it('searches only the meaningful keywords of the question', async () => {
+    const { db, state } = makeDb()
+    state.fts = [{ id: 'f1', content: 'Returns within 7 days' }]
+    await retrieveKnowledge(db, 'acct', { embeddingsApiKey: null }, 'Hi! What is your return policy?')
+    expect(state.rpcQueries).toEqual(['return policy'])
+  })
+
+  it('sends a small knowledge base whole when the search finds nothing', async () => {
+    const { db, state } = makeDb()
+    state.chunkCount = 2
+    state.allChunks = [
+      { id: 'a', content: 'COD available on all orders' },
+      { id: 'b', content: 'Ships in 3-5 days' },
+    ]
+    const out = await retrieveKnowledge(db, 'acct', { embeddingsApiKey: null }, 'cash on delivery chalega?')
+    expect(out).toEqual(['COD available on all orders', 'Ships in 3-5 days'])
+  })
+
+  it('does not dump a large knowledge base when the search finds nothing', async () => {
+    const { db, state } = makeDb()
+    state.chunkCount = 40
+    state.allChunks = [{ id: 'a', content: 'A' }]
+    const out = await retrieveKnowledge(db, 'acct', { embeddingsApiKey: null }, 'warranty')
+    expect(out).toEqual([])
   })
 
   it('uses semantic search when an embeddings key is present', async () => {
@@ -112,7 +151,7 @@ describe('retrieveKnowledge', () => {
       { id: 's2', content: 'S2-dup' }, // dedup by id
       { id: 'f1', content: 'F1' },
     ]
-    const out = await retrieveKnowledge(db, 'acct', { embeddingsApiKey: 'sk-x' }, 'q', 3)
+    const out = await retrieveKnowledge(db, 'acct', { embeddingsApiKey: 'sk-x' }, 'gift wrap', 3)
     expect(out).toEqual(['S1', 'S2', 'F1'])
     expect(state.rpcCalls).toEqual([
       'match_ai_knowledge_semantic',

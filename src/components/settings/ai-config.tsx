@@ -27,6 +27,7 @@ import {
 import { SettingsPanelHead } from './settings-panel-head';
 import { AiKnowledgeCard } from './ai-knowledge';
 import type { AiProvider } from '@/lib/ai/types';
+import { DEFAULT_HANDOFF_MESSAGE } from '@/lib/ai/defaults';
 import type { AccountMember } from '@/types';
 import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
 import { useTranslations } from 'next-intl';
@@ -59,6 +60,8 @@ export function AiConfig() {
   const [maxPerConversation, setMaxPerConversation] = useState(3);
   // Empty string = leave unassigned (shared queue).
   const [handoffAgentId, setHandoffAgentId] = useState('');
+  // Empty string = use DEFAULT_HANDOFF_MESSAGE.
+  const [handoffText, setHandoffText] = useState('');
   const [members, setMembers] = useState<AccountMember[]>([]);
 
   // Guard keyed on the account (not a bare boolean) so an in-place
@@ -85,6 +88,7 @@ export function AiConfig() {
         setAutoReplyEnabled(data.auto_reply_enabled);
         setMaxPerConversation(data.auto_reply_max_per_conversation ?? 3);
         setHandoffAgentId(data.handoff_agent_id ?? '');
+        setHandoffText(data.handoff_message ?? '');
         setHasStoredKey(Boolean(data.has_key));
         setHasStoredEmbeddingsKey(Boolean(data.has_embeddings_key));
       } else {
@@ -97,6 +101,7 @@ export function AiConfig() {
         setAutoReplyEnabled(false);
         setMaxPerConversation(3);
         setHandoffAgentId('');
+        setHandoffText('');
       }
     } catch {
       toast.error(t('loadFailed'));
@@ -121,6 +126,7 @@ export function AiConfig() {
     auto_reply_enabled: autoReplyEnabled,
     auto_reply_max_per_conversation: maxPerConversation,
     handoff_agent_id: handoffAgentId || null,
+    handoff_message: handoffText.trim() || null,
   });
 
   const handleSave = async () => {
@@ -293,6 +299,23 @@ export function AiConfig() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ai-handoff-message">Message sent on handoff</Label>
+              <p className="text-muted-foreground text-xs">
+                What the customer is told when the agent passes the chat to
+                your team. Leave blank to use the default.
+              </p>
+              <Textarea
+                id="ai-handoff-message"
+                value={handoffText}
+                onChange={(e) => setHandoffText(e.target.value)}
+                placeholder={DEFAULT_HANDOFF_MESSAGE}
+                maxLength={1000}
+                rows={2}
+                disabled={disabled || !autoReplyEnabled}
+              />
             </div>
           </CardContent>
         </Card>

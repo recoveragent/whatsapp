@@ -29,6 +29,9 @@ export interface AiConfig {
    *  knowledge base is embedded and semantic retrieval turns on; when
    *  null, retrieval falls back to lexical full-text search. */
   embeddingsApiKey: string | null
+  /** What the customer is told on handoff; null/absent uses the default
+   *  (`DEFAULT_HANDOFF_MESSAGE`). */
+  handoffMessage?: string | null
 }
 
 /** A single conversation turn in the shape both providers accept. */

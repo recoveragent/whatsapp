@@ -9,6 +9,9 @@ vi.mock('@/lib/auth/account', () => ({
   requireAiAgentsAccount: h.auth,
   toErrorResponse: () => Response.json({}, { status: 403 }),
 }));
+vi.mock('@/lib/auth/brand-accounts', () => ({
+  isMissingColumnError: () => false,
+}));
 vi.mock('@/lib/rate-limit', () => ({
   checkRateLimit: () => ({ success: true }),
   RATE_LIMITS: { adminAction: {} },
@@ -69,6 +72,22 @@ describe('brand AI configuration boundary', () => {
       auto_reply_enabled: true,
     });
     expect(h.eq).toHaveBeenCalledWith('account_id', 'brand-1');
+  });
+  it('saves a trimmed handoff message, and null to restore the default', async () => {
+    expect(
+      (await POST(request({ handoff_message: '  Connecting you to Priya  ' })))
+        .status
+    ).toBe(200);
+    expect(h.update).toHaveBeenLastCalledWith({
+      handoff_message: 'Connecting you to Priya',
+    });
+    expect((await POST(request({ handoff_message: '' }))).status).toBe(200);
+    expect(h.update).toHaveBeenLastCalledWith({ handoff_message: null });
+  });
+  it('rejects an overlong handoff message', async () => {
+    expect(
+      (await POST(request({ handoff_message: 'x'.repeat(1001) }))).status
+    ).toBe(400);
   });
   it('cannot delete centrally managed credentials', async () => {
     expect((await DELETE()).status).toBe(403);

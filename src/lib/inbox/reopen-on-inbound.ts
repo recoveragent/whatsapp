@@ -1,6 +1,7 @@
 /**
- * Whether an inbound customer message should reopen a closed/followup
- * conversation in the agent inbox.
+ * Whether an inbound customer message should reopen a closed/followup/pending
+ * conversation in the agent inbox. Pending threads are hidden from the
+ * default Open filter, so a customer reply must surface them again.
  */
 export function shouldReopenConversationOnInbound(args: {
   conversationStatus: string;
@@ -9,7 +10,8 @@ export function shouldReopenConversationOnInbound(args: {
   if (args.suppressInboxReopen) return false;
   return (
     args.conversationStatus === "closed" ||
-    args.conversationStatus === "followup"
+    args.conversationStatus === "followup" ||
+    args.conversationStatus === "pending"
   );
 }
 

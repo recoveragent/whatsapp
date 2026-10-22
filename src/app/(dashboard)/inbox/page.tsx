@@ -102,6 +102,16 @@ function InboxPageInner() {
    * once on conversationId-change as usual.
    */
   const [resyncToken, setResyncToken] = useState(0);
+  const [pendingInboundCount, setPendingInboundCount] = useState(0);
+  /**
+   * While inbound messages are pending, the list keeps the order and rows it
+   * had when the first one arrived: conversation id → last_message_at at
+   * that moment. Rows not in the map stay hidden until the next refetch.
+   */
+  const [frozenListActivity, setFrozenListActivity] = useState<Record<
+    string,
+    string | null
+  > | null>(null);
 
   /**
    * Whether the desktop contact sidebar (tags / deals / notes) is shown.
@@ -420,6 +430,24 @@ function InboxPageInner() {
           return;
         }
 
+        // Surface "N new messages" above the list for inbound messages the
+        // agent isn't already reading. Cleared when the list refetches.
+        // The first one also freezes the list's order and membership (from
+        // the last committed state, i.e. before this message's patch) so
+        // rows don't jump under the agent until they click the bar.
+        if (
+          newMsg.sender_type === "customer" &&
+          activeConversation?.id !== newMsg.conversation_id
+        ) {
+          setPendingInboundCount((n) => n + 1);
+          const snapshot = conversationsForDeepLinkRef.current;
+          setFrozenListActivity(
+            (prev) =>
+              prev ??
+              Object.fromEntries(snapshot.map((c) => [c.id, c.last_message_at ?? null])),
+          );
+        }
+
         // Update conversation list preview. We need to know *synchronously*
         // whether the conv is already in state to decide between patching
         // the preview and triggering a hydrate — see the comment on
@@ -589,9 +617,24 @@ function InboxPageInner() {
     setResyncToken((n) => n + 1);
   }, []);
 
+  const handlePendingInboundCleared = useCallback(() => {
+    setPendingInboundCount(0);
+    setFrozenListActivity(null);
+  }, []);
+
   const handleConversationsLoaded = useCallback(
     (loaded: Conversation[]) => {
       setConversations(loaded);
+      // "Load more" while frozen: older pages aren't new activity, show them.
+      setFrozenListActivity((prev) => {
+        if (!prev) return prev;
+        const missing = loaded.filter((c) => !(c.id in prev));
+        if (missing.length === 0) return prev;
+        return {
+          ...prev,
+          ...Object.fromEntries(missing.map((c) => [c.id, c.last_message_at ?? null])),
+        };
+      });
       // Resolve a pending deep-link here rather than in an effect — this
       // is an event handler, so the setState calls below are allowed by
       // react-hooks/set-state-in-effect. Runs once per ?c=<id> URL value
@@ -778,6 +821,12 @@ function InboxPageInner() {
           }
           return [conv, ...prev];
         });
+        // A chat the agent just started should show even while frozen.
+        setFrozenListActivity((prev) =>
+          prev && !(conv.id in prev)
+            ? { ...prev, [conv.id]: conv.last_message_at ?? null }
+            : prev,
+        );
       }
       handleSelectConversation(conv);
     },
@@ -1030,6 +1079,9 @@ function InboxPageInner() {
             onConversationCreated={handleConversationCreated}
             onListViewChange={handleListViewChange}
             resyncToken={resyncToken}
+            pendingMessageCount={pendingInboundCount}
+            frozenActivity={frozenListActivity}
+            onPendingMessagesCleared={handlePendingInboundCleared}
           />
         </div>
         )}

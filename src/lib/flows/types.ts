@@ -138,6 +138,21 @@ export interface HandoffNodeConfig {
 }
 
 /**
+ * Terminal: hands the conversation to the AI agent (see
+ * `handOffRunToAiAgent`). The run ends; the agent owns the next replies.
+ */
+export interface AiAgentNodeConfig {
+  /**
+   * What the agent should help this customer achieve, e.g. "Help them
+   * finish their abandoned checkout". Supports {{vars.X}}. Optional —
+   * without it the agent just handles the chat with its usual setup.
+   */
+  goal?: string;
+  /** Answer the customer's latest message right away. Default true. */
+  respond_now?: boolean;
+}
+
+/**
  * Captures the customer's next free-text reply into
  * `flow_runs.vars[var_key]`, then advances.
  *
@@ -419,6 +434,7 @@ export type FlowNodeConfig =
   | { node_type: "switch"; config: SwitchNodeConfig }
   | { node_type: "set_tag"; config: SetTagNodeConfig }
   | { node_type: "handoff"; config: HandoffNodeConfig }
+  | { node_type: "ai_agent"; config: AiAgentNodeConfig }
   | { node_type: "send_template"; config: SendTemplateNodeConfig }
   | { node_type: "wait"; config: WaitNodeConfig }
   | { node_type: "send_webhook"; config: SendWebhookNodeConfig }

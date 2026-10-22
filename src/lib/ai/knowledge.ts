@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { AiConfig } from './types'
 import { chunkText } from './chunk'
 import { embedTexts, toVectorLiteral } from './embeddings'
+import { knowledgeKeywords } from './knowledge-query'
 
 // ============================================================
 // Knowledge base: ingest (chunk + optionally embed) and hybrid
@@ -95,12 +96,14 @@ export async function retrieveKnowledge(
   // every draft / auto-reply would pay for a query embedding + two RPCs
   // just to get []. One cheap indexed COUNT (head, no rows) instead of a
   // paid embeddings call on the hot path.
+  let chunkCount = 0
   try {
     const { count, error } = await db
       .from('ai_knowledge_chunks')
       .select('id', { count: 'exact', head: true })
       .eq('account_id', accountId)
     if (error || !count) return []
+    chunkCount = count
   } catch {
     return []
   }
@@ -127,11 +130,13 @@ export async function retrieveKnowledge(
   }
 
   // Lexical top-up (also the sole path when there's no embeddings key).
-  if (picked.size < k) {
+  // The RPC ORs its terms, so only meaningful keywords are sent.
+  const keywords = knowledgeKeywords(query).join(' ')
+  if (picked.size < k && keywords) {
     try {
       const { data, error } = await db.rpc('match_ai_knowledge_fts', {
         p_account_id: accountId,
-        p_query: query,
+        p_query: keywords,
         p_match_count: k,
       })
       if (!error && Array.isArray(data)) {
@@ -145,5 +150,32 @@ export async function retrieveKnowledge(
     }
   }
 
+  // A small knowledge base (a pasted FAQ, one policy page) fits in the
+  // prompt whole. When the search found nothing — a paraphrase, another
+  // language — hand the model all of it rather than nothing: an empty
+  // knowledge section is what made the agent hand off on questions its
+  // documents answered.
+  if (picked.size === 0 && chunkCount <= SMALL_KNOWLEDGE_BASE_CHUNKS) {
+    try {
+      const { data, error } = await db
+        .from('ai_knowledge_chunks')
+        .select('id, content')
+        .eq('account_id', accountId)
+        .order('document_id')
+        .order('chunk_index')
+        .limit(SMALL_KNOWLEDGE_BASE_CHUNKS)
+      if (!error && Array.isArray(data)) {
+        for (const row of data as MatchRow[]) picked.set(row.id, row.content)
+      }
+    } catch (err) {
+      console.error('[ai knowledge] small knowledge-base fallback failed:', err)
+    }
+    return Array.from(picked.values())
+  }
+
   return Array.from(picked.values()).slice(0, k)
 }
+
+/** Knowledge bases up to this many chunks (~10k characters) are sent
+ *  whole when the search finds nothing. */
+const SMALL_KNOWLEDGE_BASE_CHUNKS = 8

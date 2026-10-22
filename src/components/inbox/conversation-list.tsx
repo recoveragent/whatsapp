@@ -8,7 +8,7 @@ import {
 } from '@/lib/inbox/conversations';
 import { cn } from '@/lib/utils';
 import type { Conversation, ConversationStatus, Tag } from '@/types';
-import { Search, ChevronDown, X } from 'lucide-react';
+import { Search, ChevronDown, RefreshCw, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import { Input } from '@/components/ui/input';
@@ -48,6 +48,16 @@ interface ConversationListProps {
    * or the tab was throttled. Optional so existing callers keep working.
    */
   resyncToken?: number;
+  /** Inbound messages received since the list was last fetched. */
+  pendingMessageCount?: number;
+  /** Called after every full list fetch so the parent can reset the count. */
+  onPendingMessagesCleared?: () => void;
+  /**
+   * When set, rows keep the position given by this id → last_message_at
+   * snapshot and ids missing from it are hidden, so new messages don't
+   * reorder the list until it is refreshed.
+   */
+  frozenActivity?: Record<string, string | null> | null;
   /** Called when the agent starts a new conversation from the dialog. */
   onConversationCreated?: (conversation: Conversation) => void;
   /** Reports the sidebar filter/search/sort so the parent can pick the next thread. */
@@ -84,6 +94,9 @@ export function ConversationList({
   conversations,
   onConversationsLoaded,
   resyncToken = 0,
+  pendingMessageCount = 0,
+  onPendingMessagesCleared,
+  frozenActivity = null,
   onConversationCreated,
   onListViewChange,
 }: ConversationListProps) {
@@ -121,17 +134,20 @@ export function ConversationList({
     WhatsAppNumberOption[]
   >([]);
   const [selectedWhatsappIds, setSelectedWhatsappIds] = useState<string[]>([]);
+  const [refreshToken, setRefreshToken] = useState(0);
 
   useEffect(() => {
     onListViewChange?.({ filter, search, sort });
   }, [filter, search, sort, onListViewChange]);
 
   const onConversationsLoadedRef = useRef(onConversationsLoaded);
+  const onPendingMessagesClearedRef = useRef(onPendingMessagesCleared);
   const conversationsRef = useRef(conversations);
   const moreRequestRef = useRef<AbortController | null>(null);
   const listGenerationRef = useRef(0);
   useEffect(() => {
     onConversationsLoadedRef.current = onConversationsLoaded;
+    onPendingMessagesClearedRef.current = onPendingMessagesCleared;
   });
   useEffect(() => {
     conversationsRef.current = conversations;
@@ -176,6 +192,7 @@ export function ConversationList({
         const loaded = normalizeConversations(body.conversations ?? []);
         conversationsRef.current = loaded;
         onConversationsLoadedRef.current(loaded);
+        onPendingMessagesClearedRef.current?.();
         const cursor = loaded.at(-1)?.last_message_at ?? null;
         setNextCursor(cursor);
         setHasMore(Boolean(body.hasMore && cursor));
@@ -195,7 +212,7 @@ export function ConversationList({
       controller.abort();
       moreRequestRef.current?.abort();
     };
-  }, [filter, resyncToken, search, sort]);
+  }, [filter, refreshToken, resyncToken, search, sort]);
 
   const loadMoreConversations = useCallback(
     async (pageSize = CONVERSATIONS_PER_PAGE) => {
@@ -340,10 +357,26 @@ export function ConversationList({
   }, [tags]);
 
   const filtered = useMemo(() => {
-    let result = sortInboxConversations(
-      filterInboxConversations(conversations, filter, search),
-      sort
-    );
+    let result: Conversation[];
+    if (frozenActivity) {
+      // Sort by the snapshot times, then swap the live rows back in so
+      // previews and badges stay current while positions hold still.
+      const visible = filterInboxConversations(
+        conversations.filter((c) => c.id in frozenActivity),
+        filter,
+        search
+      );
+      const byId = new Map(visible.map((c) => [c.id, c]));
+      result = sortInboxConversations(
+        visible.map((c) => ({ ...c, last_message_at: frozenActivity[c.id] })),
+        sort
+      ).map((c) => byId.get(c.id)!);
+    } else {
+      result = sortInboxConversations(
+        filterInboxConversations(conversations, filter, search),
+        sort
+      );
+    }
 
     if (selectedTagIds.length > 0 || selectedCompany !== null) {
       result = result.filter((c) =>
@@ -366,6 +399,7 @@ export function ConversationList({
     return result;
   }, [
     conversations,
+    frozenActivity,
     filter,
     search,
     sort,
@@ -453,14 +487,21 @@ export function ConversationList({
   const searchInTopBar = useTopBarSlotActive('start');
   const searchField = (
     <div className={cn('relative', searchInTopBar && 'min-w-0 flex-1')}>
-      <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+      <Search
+        className={cn(
+          'text-muted-foreground absolute top-1/2 -translate-y-1/2',
+          searchInTopBar ? 'left-2.5 h-3.5 w-3.5' : 'left-3 h-4 w-4'
+        )}
+      />
       <Input
         value={search}
         onChange={handleSearchChange}
         placeholder={t('searchPlaceholder')}
         className={cn(
-          'border-border bg-accent text-foreground focus-visible:border-border-lit pl-9 text-sm focus-visible:ring-0',
-          searchInTopBar ? 'rounded-full' : 'rounded-[10px]'
+          'border-border bg-accent text-foreground focus-visible:border-border-lit focus-visible:ring-0',
+          searchInTopBar
+            ? 'h-8 rounded-full pl-8 text-[13px]'
+            : 'rounded-[10px] pl-9 text-sm'
         )}
       />
     </div>
@@ -745,6 +786,19 @@ export function ConversationList({
           </div>
         )}
       </div>
+
+      {pendingMessageCount > 0 && !loading && (
+        <button
+          type="button"
+          onClick={() => setRefreshToken((n) => n + 1)}
+          className="border-border bg-primary/10 text-primary hover:bg-primary/15 flex w-full shrink-0 items-center justify-center gap-1.5 border-b px-3 py-1.5 text-xs font-medium transition-colors"
+        >
+          <RefreshCw className="h-3 w-3" />
+          {pendingMessageCount === 1
+            ? '1 new message'
+            : `${pendingMessageCount} new messages`}
+        </button>
+      )}
 
       <ScrollArea className="min-h-0 flex-1">
         {loading ? (

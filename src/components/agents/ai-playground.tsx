@@ -26,6 +26,7 @@ import type { PlaygroundProductCarousel } from '@/lib/ai/playground-carousel';
 import type { Contact } from '@/types';
 
 import { PlaygroundProductCarouselPreview } from './playground-product-carousel';
+import { playgroundTestedKey } from './agent-readiness';
 
 const NO_CONTACT = '__none__';
 
@@ -158,11 +159,19 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
           content:
             typeof data.reply === 'string' && data.reply.trim()
               ? data.reply
-              : '',
+              : typeof data.handoff_message === 'string'
+                ? data.handoff_message
+                : '',
           handoff: Boolean(data.handoff),
           productCarousel: data.product_carousel ?? null,
         },
       ]);
+      // Ticks "Replies tested" on the go-live checklist.
+      try {
+        localStorage.setItem(playgroundTestedKey(accountId), '1');
+      } catch {
+        // Storage blocked — the checklist just keeps the step open.
+      }
     } catch {
       toast.error("Couldn't reach the agent.");
       setTurns(turns);
