@@ -376,18 +376,90 @@ export function Step3Personalize({
 
                 {mapping.type !== 'static' && (
                   <div className="mt-3">
-                    <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                    <label className="text-muted-foreground mb-1.5 block text-xs font-medium">
                       {t('personalize.fallback')}
                     </label>
-                    <Input
-                      value={mapping.fallback ?? ''}
-                      onChange={(e) =>
-                        updateVariable(key, { fallback: e.target.value })
-                      }
-                      placeholder={t('personalize.fallbackPlaceholder')}
-                      className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
-                    />
-                    <p className="mt-1.5 text-xs text-muted-foreground">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Select
+                        value={mapping.fallbackType ?? 'static'}
+                        onValueChange={(val) =>
+                          updateVariable(key, {
+                            fallbackType: val as VariableType,
+                            fallback: '',
+                          })
+                        }
+                      >
+                        <SelectTrigger
+                          aria-label={t('personalize.fallbackType')}
+                          className="border-border bg-muted text-foreground w-full"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="border-border bg-popover">
+                          <SelectItem value="static">
+                            {t('personalize.typeStatic')}
+                          </SelectItem>
+                          <SelectItem value="field">
+                            {t('personalize.typeContact')}
+                          </SelectItem>
+                          <SelectItem value="custom_field">
+                            {t('personalize.typeCustom')}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {!mapping.fallbackType ||
+                      mapping.fallbackType === 'static' ? (
+                        <Input
+                          value={mapping.fallback ?? ''}
+                          onChange={(e) =>
+                            updateVariable(key, { fallback: e.target.value })
+                          }
+                          placeholder={t('personalize.fallbackPlaceholder')}
+                          className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
+                        />
+                      ) : (
+                        <Select
+                          value={mapping.fallback || undefined}
+                          onValueChange={(val) =>
+                            updateVariable(key, { fallback: val || '' })
+                          }
+                        >
+                          <SelectTrigger
+                            aria-label={t('personalize.fallback')}
+                            className="border-border bg-muted text-foreground w-full"
+                          >
+                            <SelectValue
+                              placeholder={
+                                mapping.fallbackType === 'field'
+                                  ? t('personalize.selectContactField')
+                                  : loadingFields
+                                    ? 'Loading…'
+                                    : t('personalize.selectCustomField')
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent className="border-border bg-popover">
+                            {mapping.fallbackType === 'field'
+                              ? contactFields.map((field) => (
+                                  <SelectItem
+                                    key={field.value}
+                                    value={field.value}
+                                  >
+                                    {t(
+                                      `personalize.fieldMap.${field.labelKey}`
+                                    )}
+                                  </SelectItem>
+                                ))
+                              : customFields.map((field) => (
+                                  <SelectItem key={field.id} value={field.id}>
+                                    {field.field_name}
+                                  </SelectItem>
+                                ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                    <p className="text-muted-foreground mt-1.5 text-xs">
                       {t('personalize.fallbackDesc')}
                     </p>
                   </div>

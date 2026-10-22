@@ -12,20 +12,24 @@ import type { Contact } from '@/types';
  * contact_custom_values.value row keyed by the custom_fields.id stored
  * in `value`.
  *
- * `fallback` is sent instead when a field/custom_field value is blank
+ * `fallback` is literal text or an attribute key according to `fallbackType`,
+ * resolved when a field/custom_field value is blank
  * for a contact. Without one the param goes out empty, Meta rejects the
  * message, and that recipient is marked failed. Ignored for `static`.
  */
-export type VariableMapping =
-  | { type: 'static'; value: string; fallback?: string }
-  | { type: 'field'; value: string; fallback?: string }
-  | { type: 'custom_field'; value: string; fallback?: string };
+export type VariableMapping = {
+  type: 'static' | 'field' | 'custom_field';
+  value: string;
+  fallback?: string;
+  /** Omitted for existing mappings, whose fallback is literal text. */
+  fallbackType?: 'static' | 'field' | 'custom_field';
+};
 
 /** One placeholder's value for one contact ('' when nothing resolves). */
 export function resolveVariable(
   mapping: VariableMapping,
   contact: Contact,
-  customValues?: Map<string, string>,
+  customValues?: Map<string, string>
 ): string {
   if (mapping.type === 'static') return mapping.value;
 
@@ -44,7 +48,14 @@ export function resolveVariable(
 
   // Whitespace-only counts as empty — Meta rejects it the same way.
   if (raw?.trim()) return raw;
-  return mapping.fallback?.trim() ?? '';
+  if (!mapping.fallbackType || mapping.fallbackType === 'static') {
+    return mapping.fallback?.trim() ?? '';
+  }
+  return resolveVariable(
+    { type: mapping.fallbackType, value: mapping.fallback ?? '' },
+    contact,
+    customValues
+  );
 }
 
 /**
@@ -55,7 +66,7 @@ export function resolveVariable(
 export function resolveVariables(
   variables: Record<string, VariableMapping>,
   contact: Contact,
-  customValues?: Map<string, string>,
+  customValues?: Map<string, string>
 ): string[] {
   // Keys are typically "1","2",... — numeric-aware sort keeps
   // {{1}} before {{10}}.
@@ -67,6 +78,6 @@ export function resolveVariables(
   });
 
   return keys.map((key) =>
-    resolveVariable(variables[key], contact, customValues),
+    resolveVariable(variables[key], contact, customValues)
   );
 }
