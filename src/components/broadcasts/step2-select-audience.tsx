@@ -19,7 +19,7 @@ import {
   Store,
 } from 'lucide-react';
 import type { WooCommerceSegmentKey } from '@/lib/woocommerce/segments';
-import { resolveWooCommerceSegmentContactIds } from '@/lib/woocommerce/resolve-segment-audience';
+import { estimateAudienceCount } from '@/lib/broadcast-audience';
 import { useTranslations } from 'next-intl';
 
 type AudienceType = 'all' | 'tags' | 'custom_field' | 'csv' | 'woocommerce';
@@ -180,89 +180,14 @@ export function Step2SelectAudience({
     try {
       const supabase = createClient();
 
-      // Base query — produces the superset before exclude is applied.
-      let baseIds: Set<string> | null = null; // null means "all contacts"
-
-      if (audience.type === 'all') {
-        // Handled below — full-table count adjusted by excludes.
-      } else if (
-        audience.type === 'tags' &&
-        audience.tagIds &&
-        audience.tagIds.length > 0
-      ) {
-        const { data } = await supabase
-          .from('contact_tags')
-          .select('contact_id')
-          .in('tag_id', audience.tagIds);
-        baseIds = new Set((data ?? []).map((r) => r.contact_id));
-      } else if (
-        audience.type === 'custom_field' &&
-        audience.customField?.fieldId &&
-        audience.customField.value
-      ) {
-        const { fieldId, operator, value } = audience.customField;
-        let q = supabase
-          .from('contact_custom_values')
-          .select('contact_id')
-          .eq('custom_field_id', fieldId);
-        if (operator === 'is') q = q.eq('value', value);
-        else if (operator === 'is_not') q = q.neq('value', value);
-        else q = q.ilike('value', `%${value}%`);
-        const { data } = await q;
-        baseIds = new Set((data ?? []).map((r) => r.contact_id));
-      } else if (
-        audience.type === 'csv' &&
-        audience.csvContacts &&
-        audience.csvContacts.length > 0
-      ) {
-        setEstimatedCount(audience.csvContacts.length);
-        return;
-      } else if (audience.type === 'woocommerce' && audience.woocommerceSegment) {
-        const ids = await resolveWooCommerceSegmentContactIds(
-          supabase,
-          audience.woocommerceSegment,
-        );
-        baseIds = new Set(ids);
-      } else {
-        // Partially-configured audience — wait for the user to finish.
-        setEstimatedCount(null);
-        return;
-      }
-
-      // Apply exclude tags
-      let excludeSet: Set<string> | null = null;
-      if (audience.excludeTagIds && audience.excludeTagIds.length > 0) {
-        const { data: excludeRows } = await supabase
-          .from('contact_tags')
-          .select('contact_id')
-          .in('tag_id', audience.excludeTagIds);
-        excludeSet = new Set((excludeRows ?? []).map((r) => r.contact_id));
-      }
-
-      if (baseIds) {
-        const effective = [...baseIds].filter(
-          (id) => !excludeSet?.has(id),
-        );
-        setEstimatedCount(effective.length);
-      } else {
-        // "All" — fetch the total, then subtract exclude set if any.
-        const { count } = await supabase
-          .from('contacts')
-          .select('*', { count: 'exact', head: true });
-        const total = count ?? 0;
-        setEstimatedCount(excludeSet ? Math.max(0, total - excludeSet.size) : total);
-      }
+      setEstimatedCount(await estimateAudienceCount(supabase, audience));
+    } catch (err) {
+      console.error('Failed to estimate audience:', err);
+      setEstimatedCount(null);
     } finally {
       setLoadingCount(false);
     }
-  }, [
-    audience.type,
-    audience.tagIds,
-    audience.customField,
-    audience.csvContacts,
-    audience.excludeTagIds,
-    audience.woocommerceSegment,
-  ]);
+  }, [audience]);
 
   useEffect(() => {
     fetchEstimatedCount();
