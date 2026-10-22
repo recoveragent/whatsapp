@@ -51,6 +51,7 @@ import { useTranslations } from "next-intl";
 import { ReminderSnoozeControls } from "@/components/inbox/reminder-snooze-controls";
 import { ScheduleReminderDialog } from "@/components/inbox/schedule-reminder-dialog";
 import { FormSubmissionFields } from "@/components/inbox/form-submission-fields";
+import { useTopBarSlotActive } from "@/components/layout/top-bar-slots";
 import {
   Dialog,
   DialogContent,
@@ -104,6 +105,7 @@ export function ContactSidebar({
 }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
+  const toggleInTopBar = useTopBarSlotActive("center");
 
   const { accountId, defaultCurrency, isLeadGenBrand, isEcommerceBrand, isWooCommerceBrand } =
     useAuth();
@@ -787,7 +789,8 @@ export function ContactSidebar({
 
   return (
     <div className="flex h-full min-h-0 w-70 flex-col overflow-hidden border-l border-border bg-card">
-      {onToggleContactPanel && (
+      {/* With the thread header in the top bar, the panel toggle lives there. */}
+      {onToggleContactPanel && !toggleInTopBar && (
         <div className="flex shrink-0 items-center justify-end border-b border-border px-2 py-1.5">
           <button
             type="button"

@@ -28,7 +28,7 @@ import {
   Check,
   Clock,
   ArrowLeft,
-  RefreshCw,
+  PanelRightClose,
   PanelRightOpen,
 } from 'lucide-react';
 import {
@@ -48,6 +48,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  TopBarPortal,
+  useTopBarSlotActive,
+} from '@/components/layout/top-bar-slots';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageBubble } from './message-bubble';
 import { MessageActions } from './message-actions';
@@ -232,6 +236,8 @@ export function MessageThread({
   const t = useTranslations('Inbox.messageThread');
   const tTimer = useTranslations('Inbox.sessionTimer');
   const tQuote = useTranslations('Inbox.replyQuote');
+  // Desktop lifts the conversation header into the shell's top bar.
+  const headerInTopBar = useTopBarSlotActive('center');
 
   const { user, accountId, isShopifyBrand } = useAuth();
   const { getPresence, getRow, now } = usePresence();
@@ -268,29 +274,7 @@ export function MessageThread({
   } | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
-  // Purely visual spin state for the manual-refresh button. The actual
-  // refetch is fire-and-forget through `onRefresh` (which bumps the
-  // parent's resyncToken); the 700ms spin is just feedback so the click
-  // doesn't feel like a no-op. Cleared via the timer ref on unmount.
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [contactSheetOpen, setContactSheetOpen] = useState(false);
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    return () => {
-      if (refreshTimerRef.current !== null) {
-        clearTimeout(refreshTimerRef.current);
-      }
-    };
-  }, []);
-  const handleRefreshClick = useCallback(() => {
-    if (isRefreshing || !onRefresh) return;
-    setIsRefreshing(true);
-    onRefresh();
-    refreshTimerRef.current = setTimeout(() => {
-      setIsRefreshing(false);
-      refreshTimerRef.current = null;
-    }, 700);
-  }, [isRefreshing, onRefresh]);
   const handleOpenContact = useCallback(() => {
     onOpenContact?.();
 
@@ -301,6 +285,53 @@ export function MessageThread({
       setContactSheetOpen(true);
     }
   }, [onOpenContact]);
+
+  // Mobile swipe gestures on the messages area: swipe right goes back to
+  // the conversation list, swipe left opens the contact sheet. Touches that
+  // start near a screen edge are left to the OS back gesture, and swipes
+  // inside horizontally scrollable content (carousels) are ignored.
+  const swipeStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const handleSwipeStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    swipeStartRef.current = null;
+    if (e.touches.length !== 1) return;
+    if (window.matchMedia('(min-width: 1024px)').matches) return;
+    const touch = e.touches[0];
+    if (touch.clientX < 24 || touch.clientX > window.innerWidth - 24) return;
+    for (
+      let el = e.target as HTMLElement | null;
+      el && el !== e.currentTarget;
+      el = el.parentElement
+    ) {
+      const overflowX = window.getComputedStyle(el).overflowX;
+      if (
+        (overflowX === 'auto' || overflowX === 'scroll') &&
+        el.scrollWidth > el.clientWidth
+      ) {
+        return;
+      }
+    }
+    swipeStartRef.current = { x: touch.clientX, y: touch.clientY, t: Date.now() };
+  }, []);
+  const handleSwipeCancel = useCallback(() => {
+    swipeStartRef.current = null;
+  }, []);
+  const handleSwipeEnd = useCallback(
+    (e: React.TouchEvent<HTMLDivElement>) => {
+      const start = swipeStartRef.current;
+      swipeStartRef.current = null;
+      if (!start) return;
+      const touch = e.changedTouches[0];
+      const dx = touch.clientX - start.x;
+      const dy = touch.clientY - start.y;
+      if (Date.now() - start.t > 600) return;
+      if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return;
+      if (window.getSelection()?.toString()) return;
+      if (dx > 0) onBack?.();
+      else handleOpenContact();
+    },
+    [onBack, handleOpenContact]
+  );
+
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<
     string | null
@@ -1444,205 +1475,210 @@ export function MessageThread({
     >
       {/* Header — solid card surface sits on top of the doodle so the
           name/avatar/dropdowns stay legible. */}
-      <div className="border-border bg-card flex shrink-0 items-center gap-2 border-b px-3 py-3 sm:px-4">
-        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-          {/* Back-to-list button — mobile only. Hidden on lg+ where the
-              conversation list is always visible next to the thread. */}
-          {onBack && (
-            <button
-              type="button"
-              onClick={onBack}
-              aria-label={t('backToConversations')}
-              className={cn(
-                'text-muted-foreground hover:bg-muted hover:text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-md',
-                !showBackAlways && 'lg:hidden'
-              )}
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
+      <TopBarPortal slot="center">
+        <div
+          className={cn(
+            'flex items-center gap-2',
+            headerInTopBar
+              ? 'min-w-0 flex-1'
+              : 'border-border bg-card shrink-0 border-b px-3 py-3 sm:px-4'
           )}
-          <button
-            type="button"
-            onClick={handleOpenContact}
-            className="group hover:bg-muted/60 focus-visible:ring-ring relative z-10 -ml-1 flex min-w-0 flex-1 cursor-pointer items-center gap-2 overflow-hidden rounded-md py-0.5 pr-2 pl-1 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none sm:gap-3"
-            aria-label={`Open contact details for ${displayName}`}
-            title="Open contact"
-          >
-            <div className="bg-muted text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-medium">
-              {displayName.charAt(0).toUpperCase()}
-            </div>
-            <div className="pointer-events-none min-w-0 flex-1">
-              <h2 className="text-foreground truncate text-sm font-semibold underline-offset-2 group-hover:underline">
-                {displayName}
-              </h2>
-              <p className="text-muted-foreground truncate text-xs">
-                {contact.phone}
-              </p>
-            </div>
-          </button>
-        </div>
-
-        {/* Fixed-width toolbar — badge + actions stay put regardless of name length. */}
-        <div className="flex shrink-0 items-center gap-2">
-          <Badge
-            variant="outline"
-            className={cn(
-              'border-border hidden shrink-0 gap-1 text-[10px] sm:inline-flex',
-              sessionInfo.expired ? 'text-red-400' : 'text-primary'
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+            {/* Back-to-list button — mobile only. Hidden on lg+ where the
+                conversation list is always visible next to the thread. */}
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                aria-label={t('backToConversations')}
+                className={cn(
+                  'text-muted-foreground hover:bg-muted hover:text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-md',
+                  !showBackAlways && 'lg:hidden'
+                )}
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
             )}
-          >
-            <Clock className="h-3 w-3" />
-            {sessionInfo.remaining}
-          </Badge>
-          {/* Show contact panel — desktop only, when the sidebar is
-              collapsed. The hide control lives in the sidebar header.
-              Issue #258. */}
-          {!contactPanelOpen && onToggleContactPanel && (
             <button
               type="button"
-              onClick={onToggleContactPanel}
-              aria-label={t('showContactPanel')}
-              aria-pressed={false}
-              title={t('showContact')}
-              className="text-muted-foreground hover:bg-muted hover:text-foreground hidden h-7 w-7 items-center justify-center rounded-md transition-colors lg:inline-flex"
+              onClick={handleOpenContact}
+              className="group hover:bg-muted/60 focus-visible:ring-ring relative z-10 -ml-1 flex min-w-0 flex-1 cursor-pointer items-center gap-2 overflow-hidden rounded-md py-0.5 pr-2 pl-1 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none sm:gap-3"
+              aria-label={`Open contact details for ${displayName}`}
+              title="Open contact"
             >
-              <PanelRightOpen className="h-4 w-4" />
+              <div className="bg-muted text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-medium">
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+              <div className="pointer-events-none min-w-0 flex-1">
+                <h2 className="text-foreground truncate text-sm font-semibold underline-offset-2 group-hover:underline">
+                  {displayName}
+                </h2>
+                <p className="text-muted-foreground truncate text-xs">
+                  {contact.phone}
+                </p>
+              </div>
             </button>
-          )}
+          </div>
 
-          {/* Manual refresh — forces a refetch of the messages + the
-              conversation list (the parent bumps its resyncToken). Useful
-              when realtime missed an event or the agent just wants to be
-              sure nothing's stale. Only rendered when the parent wires
-              up `onRefresh`. */}
-          {onRefresh && (
-            <button
-              type="button"
-              onClick={handleRefreshClick}
-              disabled={isRefreshing}
-              aria-label={t('refreshConversation')}
-              title={t('refresh')}
+          {/* Fixed-width toolbar — badge + actions stay put regardless of name length. */}
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge
+              variant="outline"
               className={cn(
-                'text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors disabled:opacity-60'
+                'border-border hidden shrink-0 gap-1 text-[10px] sm:inline-flex',
+                sessionInfo.expired ? 'text-red-400' : 'text-primary'
               )}
             >
-              <RefreshCw
-                className={cn('h-3.5 w-3.5', isRefreshing && 'animate-spin')}
-              />
-            </button>
-          )}
+              <Clock className="h-3 w-3" />
+              {sessionInfo.remaining}
+            </Badge>
+            {/* Status: primary toggles open/closed; dropdown sets follow-up */}
+            <div className="border-border inline-flex items-center rounded-md border">
+              <button
+                type="button"
+                onClick={handleToggleOpenClose}
+                className={cn(
+                  'hover:bg-muted inline-flex h-7 items-center px-2.5 text-xs font-medium',
+                  primaryStatusColor,
+                )}
+              >
+                {primaryStatusLabel}
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className={cn(
+                    'border-border text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 w-7 items-center justify-center border-l',
+                    conversation.status === 'followup' && 'text-amber-500'
+                  )}
+                  aria-label="More status options"
+                >
+                  <ChevronDown className="h-3 w-3" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="border-border bg-popover"
+                >
+                  <DropdownMenuItem
+                    onClick={() => void handleStatusChange('followup')}
+                    className={cn('text-sm', STATUS_COLORS.followup)}
+                  >
+                    Followup
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
 
-          {/* Status: primary toggles open/closed; dropdown sets follow-up */}
-          <div className="border-border inline-flex items-center rounded-md border">
-            <button
-              type="button"
-              onClick={handleToggleOpenClose}
-              className={cn(
-                'hover:bg-muted inline-flex h-7 items-center px-2.5 text-xs font-medium',
-                primaryStatusColor,
-              )}
-            >
-              {primaryStatusLabel}
-            </button>
+            {/* Assign dropdown — fixed width so Close stays in the same spot. */}
             <DropdownMenu>
               <DropdownMenuTrigger
                 className={cn(
-                  'border-border text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 w-7 items-center justify-center border-l',
-                  conversation.status === 'followup' && 'text-amber-500'
+                  'hover:bg-muted inline-flex h-7 w-[6.75rem] items-center justify-center gap-1 rounded-md px-2 text-xs sm:w-[7.5rem]',
+                  assignedAgentId ? 'text-primary' : 'text-muted-foreground'
                 )}
-                aria-label="More status options"
+                title={assignLabel}
               >
-                <ChevronDown className="h-3 w-3" />
+                <UserPlus className="h-3 w-3 shrink-0" />
+                <span className="hidden min-w-0 flex-1 truncate text-left sm:inline">
+                  {assignLabel}
+                </span>
+                <ChevronDown className="h-3 w-3 shrink-0" />
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
                 className="border-border bg-popover"
               >
-                <DropdownMenuItem
-                  onClick={() => void handleStatusChange('followup')}
-                  className={cn('text-sm', STATUS_COLORS.followup)}
-                >
-                  Followup
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {/* Assign dropdown — fixed width so Close stays in the same spot. */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className={cn(
-                'hover:bg-muted inline-flex h-7 w-[6.75rem] items-center justify-center gap-1 rounded-md px-2 text-xs sm:w-[7.5rem]',
-                assignedAgentId ? 'text-primary' : 'text-muted-foreground'
-              )}
-              title={assignLabel}
-            >
-              <UserPlus className="h-3 w-3 shrink-0" />
-              <span className="hidden min-w-0 flex-1 truncate text-left sm:inline">
-                {assignLabel}
-              </span>
-              <ChevronDown className="h-3 w-3 shrink-0" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="border-border bg-popover"
-            >
-              {profiles.length === 0 ? (
-                <DropdownMenuItem
-                  disabled
-                  className="text-muted-foreground text-sm"
-                >
-                  {t('noTeammates')}
-                </DropdownMenuItem>
-              ) : (
-                profiles.map((p) => {
-                  const isSelected = p.user_id === assignedAgentId;
-                  const presence = getPresence(p.user_id);
-                  return (
-                    <DropdownMenuItem
-                      key={p.id}
-                      onClick={() => handleAssignChange(p.user_id)}
-                      className={cn(
-                        'text-sm',
-                        isSelected ? 'text-primary' : 'text-popover-foreground'
-                      )}
-                    >
-                      <PresenceDot
-                        status={presence}
-                        label={presenceLabel(
-                          presence,
-                          getRow(p.user_id)?.last_seen_at ?? null,
-                          now
-                        )}
-                        className="mr-2"
-                      />
-                      <span className="flex-1">
-                        {p.full_name}
-                        {p.user_id === user?.id ? t('me') : ''}
-                      </span>
-                      {isSelected && <Check className="ml-2 h-3 w-3" />}
-                    </DropdownMenuItem>
-                  );
-                })
-              )}
-              {assignedAgentId && (
-                <>
-                  <DropdownMenuSeparator className="bg-border" />
+                {profiles.length === 0 ? (
                   <DropdownMenuItem
-                    onClick={() => handleAssignChange(null)}
+                    disabled
                     className="text-muted-foreground text-sm"
                   >
-                    {t('unassign')}
+                    {t('noTeammates')}
                   </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                ) : (
+                  profiles.map((p) => {
+                    const isSelected = p.user_id === assignedAgentId;
+                    const presence = getPresence(p.user_id);
+                    return (
+                      <DropdownMenuItem
+                        key={p.id}
+                        onClick={() => handleAssignChange(p.user_id)}
+                        className={cn(
+                          'text-sm',
+                          isSelected ? 'text-primary' : 'text-popover-foreground'
+                        )}
+                      >
+                        <PresenceDot
+                          status={presence}
+                          label={presenceLabel(
+                            presence,
+                            getRow(p.user_id)?.last_seen_at ?? null,
+                            now
+                          )}
+                          className="mr-2"
+                        />
+                        <span className="flex-1">
+                          {p.full_name}
+                          {p.user_id === user?.id ? t('me') : ''}
+                        </span>
+                        {isSelected && <Check className="ml-2 h-3 w-3" />}
+                      </DropdownMenuItem>
+                    );
+                  })
+                )}
+                {assignedAgentId && (
+                  <>
+                    <DropdownMenuSeparator className="bg-border" />
+                    <DropdownMenuItem
+                      onClick={() => handleAssignChange(null)}
+                      className="text-muted-foreground text-sm"
+                    >
+                      {t('unassign')}
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Contact panel toggle — desktop only. Pinned as the last
+                control in the top bar so it stays put whether the panel is
+                open or closed. Inline (no top bar), the panel header keeps
+                the hide control and this only offers "show". Issue #258. */}
+            {onToggleContactPanel && (headerInTopBar || !contactPanelOpen) && (
+              <button
+                type="button"
+                onClick={onToggleContactPanel}
+                aria-label={
+                  contactPanelOpen
+                    ? t('hideContactPanel')
+                    : t('showContactPanel')
+                }
+                aria-pressed={!!contactPanelOpen}
+                title={contactPanelOpen ? t('hideContact') : t('showContact')}
+                className={cn(
+                  'hover:bg-muted hover:text-foreground hidden h-7 w-7 items-center justify-center rounded-md transition-colors lg:inline-flex',
+                  contactPanelOpen ? 'text-primary' : 'text-muted-foreground'
+                )}
+              >
+                {contactPanelOpen ? (
+                  <PanelRightClose className="h-4 w-4" />
+                ) : (
+                  <PanelRightOpen className="h-4 w-4" />
+                )}
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      </TopBarPortal>
 
       {/* Messages Area */}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div
+        ref={scrollRef}
+        onTouchStart={handleSwipeStart}
+        onTouchEnd={handleSwipeEnd}
+        onTouchCancel={handleSwipeCancel}
+        className="min-h-0 flex-1 touch-pan-y overflow-y-auto px-4 py-4"
+      >
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="border-primary h-5 w-5 animate-spin rounded-full border-2 border-t-transparent" />

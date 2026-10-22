@@ -15,6 +15,10 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { NewMessageDialog } from '@/components/inbox/new-message-dialog';
 import {
+  TopBarPortal,
+  useTopBarSlotActive,
+} from '@/components/layout/top-bar-slots';
+import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
@@ -445,66 +449,87 @@ export function ConversationList({
   const activeOtherFilter = OTHER_FILTERS.find((o) => o.value === filter);
   const activeSort = SORT_OPTIONS.find((o) => o.value === sort);
 
+  // Desktop lifts search + New message into the shell's top bar.
+  const searchInTopBar = useTopBarSlotActive('start');
+  const searchField = (
+    <div className={cn('relative', searchInTopBar && 'min-w-0 flex-1')}>
+      <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+      <Input
+        value={search}
+        onChange={handleSearchChange}
+        placeholder={t('searchPlaceholder')}
+        className={cn(
+          'border-border bg-accent text-foreground focus-visible:border-border-lit pl-9 text-sm focus-visible:ring-0',
+          searchInTopBar ? 'rounded-full' : 'rounded-[10px]'
+        )}
+      />
+    </div>
+  );
+  const newMessageButton = onConversationCreated ? (
+    <NewMessageDialog
+      onCreated={onConversationCreated}
+      compact={searchInTopBar}
+    />
+  ) : null;
+
   return (
     <div className="border-border bg-surface flex h-full w-full flex-col border-r lg:w-80">
       <div className="border-border space-y-2 border-b p-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-1">
-            <h2 className="font-cabinet text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
-              Inbox
-            </h2>
-            {whatsappNumbers.length > 1 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger className="text-foreground hover:bg-muted inline-flex h-7 max-w-40 items-center gap-1 rounded-md px-2 text-xs font-medium">
-                  <span className="truncate">
-                    {selectedWhatsappIds.length === whatsappNumbers.length
-                      ? 'All numbers'
-                      : selectedWhatsappIds.length === 1
-                        ? whatsappNumbers.find(
-                            (item) => item.id === selectedWhatsappIds[0]
-                          )?.reference_name
-                        : `${selectedWhatsappIds.length} numbers`}
-                  </span>
-                  <ChevronDown className="h-3 w-3 shrink-0" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  className="border-border bg-popover w-56"
-                >
-                  {whatsappNumbers.map((number) => (
-                    <DropdownMenuCheckboxItem
-                      key={number.id}
-                      checked={selectedWhatsappIds.includes(number.id)}
-                      onSelect={(event) => event.preventDefault()}
-                      onCheckedChange={() => toggleWhatsappNumber(number.id)}
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate">
-                          {number.reference_name}
+        {searchInTopBar ? (
+          <TopBarPortal slot="start">
+            {searchField}
+            {newMessageButton}
+          </TopBarPortal>
+        ) : null}
+        {!searchInTopBar || whatsappNumbers.length > 1 ? (
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1">
+              <h2 className="font-cabinet text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+                Inbox
+              </h2>
+              {whatsappNumbers.length > 1 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger className="text-foreground hover:bg-muted inline-flex h-7 max-w-40 items-center gap-1 rounded-md px-2 text-xs font-medium">
+                    <span className="truncate">
+                      {selectedWhatsappIds.length === whatsappNumbers.length
+                        ? 'All numbers'
+                        : selectedWhatsappIds.length === 1
+                          ? whatsappNumbers.find(
+                              (item) => item.id === selectedWhatsappIds[0]
+                            )?.reference_name
+                          : `${selectedWhatsappIds.length} numbers`}
+                    </span>
+                    <ChevronDown className="h-3 w-3 shrink-0" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    className="border-border bg-popover w-56"
+                  >
+                    {whatsappNumbers.map((number) => (
+                      <DropdownMenuCheckboxItem
+                        key={number.id}
+                        checked={selectedWhatsappIds.includes(number.id)}
+                        onSelect={(event) => event.preventDefault()}
+                        onCheckedChange={() => toggleWhatsappNumber(number.id)}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate">
+                            {number.reference_name}
+                          </span>
+                          <span className="text-muted-foreground block truncate text-[10px]">
+                            {number.phone_number_id}
+                          </span>
                         </span>
-                        <span className="text-muted-foreground block truncate text-[10px]">
-                          {number.phone_number_id}
-                        </span>
-                      </span>
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+            {!searchInTopBar && newMessageButton}
           </div>
-          {onConversationCreated && (
-            <NewMessageDialog onCreated={onConversationCreated} />
-          )}
-        </div>
-        <div className="relative">
-          <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-          <Input
-            value={search}
-            onChange={handleSearchChange}
-            placeholder={t('searchPlaceholder')}
-            className="border-border bg-accent text-foreground placeholder-muted-foreground focus-visible:border-border-lit rounded-[10px] pl-9 text-sm focus-visible:ring-0"
-          />
-        </div>
+        ) : null}
+        {!searchInTopBar && searchField}
 
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">

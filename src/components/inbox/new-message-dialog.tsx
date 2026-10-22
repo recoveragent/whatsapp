@@ -20,9 +20,11 @@ import {
 
 interface NewMessageDialogProps {
   onCreated: (conversation: Conversation) => void;
+  /** Square icon-only trigger (used in the shell top bar). */
+  compact?: boolean;
 }
 
-export function NewMessageDialog({ onCreated }: NewMessageDialogProps) {
+export function NewMessageDialog({ onCreated, compact = false }: NewMessageDialogProps) {
   const [open, setOpen] = useState(false);
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
@@ -78,10 +80,21 @@ export function NewMessageDialog({ onCreated }: NewMessageDialogProps) {
     >
       <DialogTrigger
         render={
-          <Button size="sm" className="h-8 gap-1.5 bg-primary text-xs hover:bg-primary/90">
-            <MessageSquarePlus className="h-3.5 w-3.5" />
-            New message
-          </Button>
+          compact ? (
+            <Button
+              size="icon"
+              aria-label="New message"
+              title="New message"
+              className="bg-primary hover:bg-primary/90"
+            >
+              <MessageSquarePlus className="size-[18px]" />
+            </Button>
+          ) : (
+            <Button size="sm" className="h-8 gap-1.5 bg-primary text-xs hover:bg-primary/90">
+              <MessageSquarePlus className="h-3.5 w-3.5" />
+              New message
+            </Button>
+          )
         }
       />
       <DialogContent className="sm:max-w-md">

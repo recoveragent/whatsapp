@@ -5,6 +5,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { TopBarSlotsProvider } from "@/components/layout/top-bar-slots";
 import { AccountAccessAlert } from "@/components/layout/account-access-alert";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 import { isEmbedMode } from "@/lib/embed/query";
@@ -125,31 +126,33 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   return (
     // Dark frame carries the top bar; the sidebar + page sit in an inset,
     // rounded panel below it (gutter only on lg+, full-bleed on mobile).
-    <div className="flex h-screen flex-col overflow-hidden bg-frame">
-      <PresenceHeartbeat />
-      <Header onOpenSidebar={() => setSidebarOpen(true)} />
-      <div className="flex min-h-0 flex-1 lg:px-2 lg:pb-2">
-        <div className="flex min-w-0 flex-1 overflow-hidden bg-background lg:rounded-3xl">
-          <Sidebar
-            open={sidebarOpen}
-            onClose={closeSidebar}
-            collapsed={sidebarCollapsed}
-            onToggleCollapsed={toggleSidebarCollapsed}
-          />
-          <main
-            className={cn(
-              "min-w-0 flex-1 px-4 py-5 sm:p-6 lg:px-8 lg:py-8",
-              isFullHeightEditor
-                ? "flex min-h-0 flex-col overflow-hidden"
-                : "overflow-y-auto",
-            )}
-          >
-            <AccountAccessAlert />
-            {children}
-          </main>
+    <TopBarSlotsProvider>
+      <div className="flex h-screen flex-col overflow-hidden bg-frame">
+        <PresenceHeartbeat />
+        <Header onOpenSidebar={() => setSidebarOpen(true)} />
+        <div className="flex min-h-0 flex-1 lg:px-2 lg:pb-2">
+          <div className="flex min-w-0 flex-1 overflow-hidden bg-background lg:rounded-3xl">
+            <Sidebar
+              open={sidebarOpen}
+              onClose={closeSidebar}
+              collapsed={sidebarCollapsed}
+              onToggleCollapsed={toggleSidebarCollapsed}
+            />
+            <main
+              className={cn(
+                "min-w-0 flex-1 px-4 py-5 sm:p-6 lg:px-8 lg:py-8",
+                isFullHeightEditor
+                  ? "flex min-h-0 flex-col overflow-hidden"
+                  : "overflow-y-auto",
+              )}
+            >
+              <AccountAccessAlert />
+              {children}
+            </main>
+          </div>
         </div>
       </div>
-    </div>
+    </TopBarSlotsProvider>
   );
 }
 

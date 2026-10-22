@@ -251,6 +251,9 @@ html[data-theme="rose"] {
   --accent: hsl(0 0% 100% / 0.1);
   --accent-foreground: var(--frame-foreground);
   --muted: hsl(0 0% 100% / 0.1);
+  --border: hsl(0 0% 100% / 0.14);
+  --border-lit: hsl(0 0% 100% / 0.28);
+  --input: hsl(0 0% 100% / 0.14);
 }
 
 @keyframes blink {

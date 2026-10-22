@@ -16,8 +16,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ModeToggle } from "@/components/layout/mode-toggle";
 import { ReminderNotifications } from "@/components/layout/reminder-notifications";
+import { TopBarSlotTarget } from "@/components/layout/top-bar-slots";
 import { BRAND_ICON_PATH, BRAND_NAME } from "@/components/brand/brand-logo";
 import { useTranslations } from "next-intl";
 
@@ -38,7 +38,8 @@ export function Header({ onOpenSidebar }: HeaderProps) {
 
   return (
     <header className="app-topbar z-20 flex h-14 shrink-0 items-center justify-between gap-3 bg-frame px-3 text-frame-foreground lg:h-16 lg:px-5">
-      <div className="flex min-w-0 items-center gap-2">
+      {/* lg width lines the page slot up with the sidebar's right edge. */}
+      <div className="flex min-w-0 items-center gap-2 lg:w-[236px] lg:shrink-0">
         <button
           type="button"
           onClick={onOpenSidebar}
@@ -61,15 +62,19 @@ export function Header({ onOpenSidebar }: HeaderProps) {
           </span>
         </Link>
         {account?.name ? (
-          <span className="ml-2 hidden max-w-56 truncate rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-foreground ring-1 ring-white/15 md:inline">
+          <span className="ml-1 hidden min-w-0 max-w-56 truncate rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-foreground ring-1 ring-white/15 md:inline">
             {account.name}
           </span>
         ) : null}
       </div>
 
+      {/* Page slots line up with the columns below: start over a page's
+          list column (w-80), center over its main pane. */}
+      <TopBarSlotTarget slot="start" className="lg:w-80 lg:shrink-0 lg:pr-3" />
+      <TopBarSlotTarget slot="center" className="flex-1" />
+
       <div className="flex items-center gap-1 sm:gap-2">
         <ReminderNotifications />
-        <ModeToggle />
 
         <DropdownMenu>
         <DropdownMenuTrigger
