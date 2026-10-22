@@ -13,63 +13,18 @@ import {
   Building2,
   ChevronsLeft,
   ChevronsRight,
-  Crown,
   FileText,
   GitBranch,
   LayoutDashboard,
-  LogOut,
   MessageSquare,
   Radio,
   Settings,
-  Shield,
-  User,
-  UserCog,
   Users,
-  UsersRound,
   Workflow,
   X,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { AccountRole } from "@/lib/auth/roles";
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { TooltipProvider } from "@/components/ui/tooltip";
-
-const ROLE_CHIP: Record<
-  AccountRole,
-  { icon: typeof Crown; labelKey: string; className: string }
-> = {
-  owner: {
-    icon: Crown,
-    labelKey: "roleOwner",
-    className: "border-amber-500/40 bg-amber-500/10 text-amber-700",
-  },
-  admin: {
-    icon: Shield,
-    labelKey: "roleAdmin",
-    className: "border-primary/40 bg-primary/10 text-primary",
-  },
-  agent: {
-    icon: UserCog,
-    labelKey: "roleAgent",
-    className: "border-border bg-muted text-foreground",
-  },
-  viewer: {
-    icon: User,
-    labelKey: "roleViewer",
-    className: "border-border bg-card text-muted-foreground",
-  },
-};
 
 interface NavItem {
   href: string;
@@ -117,11 +72,6 @@ export function Sidebar({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const {
-    profile,
-    profileLoading,
-    account,
-    accountRole,
-    signOut,
     isSuperAdmin,
     isSuperAdminActing,
     isLeadGenBrand,
@@ -140,11 +90,6 @@ export function Sidebar({
       ? pathname === "/settings" && searchParams.get("tab") === "templates"
       : pathname.startsWith("/admin/templates");
   const { unread: totalUnread, openContacts: openInboxCount } = useInboxNavCounts();
-  const showAccountStrip =
-    !opsOnlyNav &&
-    !profileLoading &&
-    !!account?.name &&
-    account.name !== profile?.full_name;
 
   useEffect(() => {
     onClose?.();
@@ -216,11 +161,6 @@ export function Sidebar({
               <p className="truncate text-[13px] font-bold text-sidebar-foreground">
                 {BRAND_NAME}
               </p>
-              {account?.name ? (
-                <p className="truncate text-[10px] text-muted-foreground">
-                  {account.name}
-                </p>
-              ) : null}
             </div>
           </Link>
           <button
@@ -332,108 +272,14 @@ export function Sidebar({
           </ul>
         </nav>
 
-        <div className="shrink-0 border-t border-sidebar-border/70 p-3">
-          {showAccountStrip && account?.name && !collapsed ? (
-            <div className="mb-2 flex items-center gap-2 px-2 text-xs text-muted-foreground">
-              <UsersRound className="size-3.5 shrink-0" />
-              <span className="truncate" title={account.name}>
-                {account.name}
-              </span>
-              {accountRole
-                ? (() => {
-                    const meta = ROLE_CHIP[accountRole];
-                    const Icon = meta.icon;
-                    return (
-                      <span
-                        className={`ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium tracking-wider uppercase ${meta.className}`}
-                      >
-                        <Icon className="size-3" />
-                        {t(meta.labelKey)}
-                      </span>
-                    );
-                  })()
-                : null}
-            </div>
-          ) : null}
-
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className={cn(
-                "flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors hover:bg-sidebar-accent/70 focus:bg-sidebar-accent/70 focus:outline-none data-popup-open:bg-sidebar-accent",
-                collapsed && "lg:justify-center lg:px-0",
-              )}
-            >
-              <Avatar className="size-8 shrink-0">
-                {profile?.avatar_url ? (
-                  <AvatarImage
-                    src={profile.avatar_url}
-                    alt={profile.full_name ?? t("defaultAvatar")}
-                  />
-                ) : null}
-                <AvatarFallback className="bg-primary/15 text-sm font-medium text-primary">
-                  {profile?.full_name?.charAt(0)?.toUpperCase() ??
-                    profile?.email?.charAt(0)?.toUpperCase() ??
-                    "U"}
-                </AvatarFallback>
-              </Avatar>
-              <div className={cn("min-w-0 flex-1", collapsed && "lg:hidden")}>
-                <p className="truncate text-[13px] font-medium text-foreground">
-                  {profile?.full_name ?? t("defaultUser")}
-                </p>
-                <p className="truncate text-[10px] text-muted-foreground">
-                  {profile?.email ?? ""}
-                </p>
-              </div>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              side="top"
-              sideOffset={6}
-              className="min-w-56 bg-popover text-popover-foreground ring-border"
-            >
-              <DropdownMenuItem
-                render={
-                  <Link
-                    href="/settings?tab=profile"
-                    onClick={onClose}
-                    className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
-                  />
-                }
-              >
-                <User className="size-4" />
-                {t("menuProfile")}
-              </DropdownMenuItem>
-              {!opsOnlyNav ? (
-                <DropdownMenuItem
-                  render={
-                    <Link
-                      href="/settings?tab=whatsapp"
-                      onClick={onClose}
-                      className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
-                    />
-                  }
-                >
-                  <Settings className="size-4" />
-                  {t("menuSettings")}
-                </DropdownMenuItem>
-              ) : null}
-              <DropdownMenuSeparator className="bg-border" />
-              <DropdownMenuItem
-                onClick={signOut}
-                className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-              >
-                <LogOut className="size-4" />
-                {t("menuSignOut")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {onToggleCollapsed ? (
+        {/* Profile + sign-out live in the top bar's account menu. */}
+        {onToggleCollapsed ? (
+          <div className="hidden shrink-0 border-t border-sidebar-border/70 p-3 lg:block">
             <button
               type="button"
               onClick={onToggleCollapsed}
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className="mt-1 hidden w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent/70 hover:text-sidebar-foreground lg:flex"
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent/70 hover:text-sidebar-foreground"
             >
               {collapsed ? (
                 <ChevronsRight className="mx-auto h-4 w-4" />
@@ -444,8 +290,8 @@ export function Sidebar({
                 </>
               )}
             </button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </aside>
     </TooltipProvider>
   );
