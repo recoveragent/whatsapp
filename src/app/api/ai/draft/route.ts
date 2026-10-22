@@ -10,7 +10,7 @@ import { buildConversationContext } from '@/lib/ai/context';
 import { retrieveKnowledge } from '@/lib/ai/knowledge';
 import { generateReply } from '@/lib/ai/generate';
 import { buildSystemPrompt } from '@/lib/ai/defaults';
-import { latestUserMessage } from '@/lib/ai/query';
+import { knowledgeSearchText } from '@/lib/ai/knowledge-query';
 import { shouldRefreshShopifyOrders } from '@/lib/ai/commerce-intent';
 import {
   extractProductPreferences,
@@ -119,7 +119,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const latestQuestion = latestUserMessage(messages);
+    const latestQuestion = knowledgeSearchText(messages);
     const wantsProducts = shouldOfferProductCarousel(messages);
     const productPreferences = extractProductPreferences(messages);
 

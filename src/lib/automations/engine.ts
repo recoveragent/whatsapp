@@ -57,6 +57,13 @@ export interface DispatchInput {
   context?: AutomationContext
 }
 
+export interface AutomationDispatchResult {
+  /** Automations whose trigger matched and that were run. The AI
+   *  auto-reply stands down when a message-level one matched, so the
+   *  customer never gets two answers to one message. */
+  matched: number
+}
+
 /**
  * Fire all active automations matching the given trigger for an
  * account.
@@ -65,7 +72,8 @@ export interface DispatchInput {
  * All errors are caught and logged; per-automation failures are
  * recorded into automation_logs with status='failed'.
  */
-export async function runAutomationsForTrigger(input: DispatchInput): Promise<void> {
+export async function runAutomationsForTrigger(input: DispatchInput): Promise<AutomationDispatchResult> {
+  let matched = 0
   try {
     const db = supabaseAdmin()
 
@@ -85,11 +93,11 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
         .maybeSingle()
       if (ownErr) {
         console.error('[automations] contact ownership check failed:', ownErr)
-        return
+        return { matched }
       }
       if (!owned) {
         console.warn('[automations] contact not in account, refusing dispatch', input.contactId)
-        return
+        return { matched }
       }
     }
 
@@ -102,12 +110,13 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
 
     if (error) {
       console.error('[automations] fetch failed:', error)
-      return
+      return { matched }
     }
-    if (!automations || automations.length === 0) return
+    if (!automations || automations.length === 0) return { matched }
 
     for (const automation of automations as Automation[]) {
       if (!triggerMatches(automation, input.context)) continue
+      matched++
       try {
         await executeAutomation(automation, input)
       } catch (err) {
@@ -117,6 +126,7 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
   } catch (err) {
     console.error('[automations] dispatch failed:', err)
   }
+  return { matched }
 }
 
 /**

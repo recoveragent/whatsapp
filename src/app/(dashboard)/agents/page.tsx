@@ -11,6 +11,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { canEditSettings } from '@/lib/auth/roles';
 import { AgentOnboarding } from '@/components/agents/agent-onboarding';
 import { AgentTraining } from '@/components/agents/agent-training';
+import { AgentReadiness } from '@/components/agents/agent-readiness';
 
 type Tab = 'playground' | 'train' | 'setup' | 'usage';
 
@@ -27,6 +28,12 @@ export default function AgentsPage() {
   const [tab, setTab] = useState<Tab>('playground');
   const [decided, setDecided] = useState(false);
   const [introductory, setIntroductory] = useState(false);
+  // Bumped on tab changes so the checklist reflects what was just saved.
+  const [readinessKey, setReadinessKey] = useState(0);
+  const changeTab = (next: Tab) => {
+    setTab(next);
+    setReadinessKey((k) => k + 1);
+  };
 
   useEffect(() => {
     if (!profileLoading && !isAiAgentsEnabled) {
@@ -70,12 +77,20 @@ export default function AgentsPage() {
         </h1>
       </div>
       <p className="text-muted-foreground mt-1 text-sm">
-        Your AI model is managed by super admin. Configure your agent’s behavior
-        and knowledge, then test replies in the playground before going live.
+        Answers product, policy and order questions on WhatsApp around the
+        clock, and hands the chat to your team when it should. Train it, test
+        it, then switch it on.
       </p>
 
       {decided && (
         <>
+          {!introductory && (
+            <AgentReadiness
+              accountId={accountId}
+              refreshKey={readinessKey}
+              onNavigate={changeTab}
+            />
+          )}
           {isShopifyBrand && (introductory || tab === 'setup') && (
             <div className="mt-6">
               <AgentOnboarding
@@ -84,14 +99,14 @@ export default function AgentsPage() {
                 introductory={introductory}
                 onGetStarted={() => {
                   setIntroductory(false);
-                  setTab('train');
+                  changeTab('train');
                 }}
               />
             </div>
           )}
           <Tabs
             value={tab}
-            onValueChange={(v) => setTab(v as Tab)}
+            onValueChange={(v) => changeTab(v as Tab)}
             className="mt-6"
           >
             <TabsList className="h-auto flex-wrap justify-start">
@@ -116,7 +131,7 @@ export default function AgentsPage() {
             </TabsContent>
 
             <TabsContent value="playground" className="mt-4">
-              <AiPlayground onGoToSetup={() => setTab('setup')} />
+              <AiPlayground onGoToSetup={() => changeTab('setup')} />
             </TabsContent>
 
             <TabsContent value="setup" className="mt-4">

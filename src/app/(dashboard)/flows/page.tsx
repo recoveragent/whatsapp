@@ -18,6 +18,7 @@ import {
   UserPlus,
   FileText,
   ClipboardList,
+  Bot,
 } from "lucide-react";
 
 import { useTranslations } from "next-intl";
@@ -74,7 +75,7 @@ interface TemplateSummary {
   slug: string;
   name: string;
   description: string;
-  icon: "MessageSquare" | "HelpCircle" | "UserPlus";
+  icon: "MessageSquare" | "HelpCircle" | "UserPlus" | "Bot";
   trigger_type: string;
   node_count: number;
 }
@@ -83,6 +84,7 @@ const TEMPLATE_ICONS = {
   MessageSquare,
   HelpCircle,
   UserPlus,
+  Bot,
 } as const;
 
 export default function FlowsPage() {

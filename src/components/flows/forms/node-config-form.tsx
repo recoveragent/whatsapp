@@ -77,6 +77,7 @@ import type { TemplateQuickReplyButton } from "@/lib/flows/template-buttons";
 import { isShopifyFulfillmentFlowTrigger, isShopifyCheckoutAbandonmentFlowTrigger, isShopifyOrderFlowTrigger, type FlowTriggerType } from "@/lib/flows/trigger-types";
 import { useAccountPipelines } from "./use-account-pipelines";
 import { CollectPaymentFields } from "./collect-payment-fields";
+import { AiAgentFields } from "./ai-agent-fields";
 import { SendFlowFields, type SendFlowCfg as SendFlowFieldsCfg } from "./send-flow-fields";
 import { formConditionSources, formFieldVariableGroups, type FormConditionSource } from "@/lib/flows/form-variables";
 import { ConditionRuleFields } from "./condition-fields";
@@ -309,6 +310,14 @@ function NodeConfigBody({
           value={(cfg as { note?: string }).note ?? ""}
           onChange={(v) => onUpdateConfig({ note: v })}
           rows={2}
+        />
+      );
+
+    case "ai_agent":
+      return (
+        <AiAgentFields
+          cfg={cfg as { goal?: string; respond_now?: boolean }}
+          onUpdateConfig={onUpdateConfig}
         />
       );
 

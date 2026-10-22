@@ -1712,6 +1712,20 @@ function validateNode(
       break;
     }
 
+    case "ai_agent": {
+      const goal = (node.config as { goal?: string }).goal ?? "";
+      if (goal.length > 2000) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "goal",
+          message: "AI agent goal must be 2,000 characters or fewer.",
+        });
+      }
+      break;
+    }
+
     case "handoff":
     case "end":
       // Terminal nodes have no outgoing edges; nothing to validate

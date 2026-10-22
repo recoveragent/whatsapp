@@ -22,6 +22,19 @@ export const AI_PROVIDER_DEFAULT_MODEL: Record<AiProvider, string> = {
  */
 export const HANDOFF_SENTINEL = '[[HANDOFF]]';
 
+/**
+ * Sent to the customer when the agent hands the chat to a human, unless
+ * the brand set its own (`ai_configs.handoff_message`). Without it the
+ * customer's last message simply went unanswered.
+ */
+export const DEFAULT_HANDOFF_MESSAGE =
+  "Thanks for your patience! I'm passing this to our team — someone will reply here shortly.";
+
+/** The customer-facing handoff text: the brand's own, else the default. */
+export function handoffMessage(custom: string | null | undefined): string {
+  return custom?.trim() || DEFAULT_HANDOFF_MESSAGE;
+}
+
 /** Cap on generated reply length — keeps WhatsApp replies short and
  *  bounds token spend on the caller's own key. */
 export const MAX_OUTPUT_TOKENS = 1024;
@@ -65,6 +78,10 @@ export function buildSystemPrompt(args: {
   productPreferences?: string;
   /** Customer wants product ideas but the catalogue had no close match. */
   productBrowseNoMatches?: boolean;
+  /** Brand name + catalog sample (see `loadStoreProfile`). */
+  storeProfile?: string | null;
+  /** Goal a flow set when it handed this conversation to the agent. */
+  flowGoal?: string | null;
 }): string {
   const {
     userPrompt,
@@ -75,6 +92,8 @@ export function buildSystemPrompt(args: {
     productBrowseNoMatches,
     productDelivery = 'carousel',
     productPreferences,
+    storeProfile,
+    flowGoal,
   } = args;
   const parts: string[] = [
     'You are a customer-messaging assistant for a business that uses a WhatsApp CRM. ' +
@@ -95,7 +114,18 @@ export function buildSystemPrompt(args: {
 
   if (mode === 'auto_reply') {
     parts.push(
-      `You are replying automatically with no human in the loop. If you cannot confidently and safely help — the customer explicitly asks for a human, is upset or complaining, or the request needs information you do not have — reply with exactly ${HANDOFF_SENTINEL} and nothing else. A human agent will then take over. Prefer handing off over guessing.`
+      'You are replying automatically with no human in the loop. Your job is to resolve the customer’s message yourself whenever the information in this prompt allows it. ' +
+        'Answer greetings, questions about what the store sells, and any policy, shipping, payment, product or order question that the business context, store profile, knowledge base or order data below covers. ' +
+        'When a question is ambiguous, ask one short clarifying question instead of handing off. ' +
+        `Reply with exactly ${HANDOFF_SENTINEL} and nothing else only when: the customer asks for a person; they report a problem that needs the team to act (damaged, wrong or missing item, payment taken but no order); they ask you to perform an action you cannot (refund, cancel, edit an order, change an address, give a discount); they are angry; or answering needs a specific fact that appears nowhere in this prompt. ` +
+        'A human agent then takes over and the customer is told so automatically. Never guess a fact to avoid handing off.'
+    );
+  }
+
+  if (storeProfile && storeProfile.trim()) {
+    parts.push(
+      'Store profile — who the business is and a sample of its synced catalog. Use it to describe what the store sells; it is not a live stock check and not a full catalog.\n' +
+        storeProfile.trim()
     );
   }
 
@@ -103,10 +133,17 @@ export function buildSystemPrompt(args: {
     parts.push(`Business context and instructions:\n${userPrompt.trim()}`);
   }
 
+  if (flowGoal && flowGoal.trim()) {
+    parts.push(
+      'Goal for this conversation, set by the business when it handed the chat to you. Work towards it while following every rule above; it never overrides them:\n' +
+        flowGoal.trim()
+    );
+  }
+
   if (knowledge && knowledge.length > 0) {
     const fallback =
       mode === 'auto_reply'
-        ? `if they don't cover the question, do not guess — reply with exactly ${HANDOFF_SENTINEL} so a human can help`
+        ? `if neither they nor the rest of this prompt contain a specific fact the customer needs, do not guess — reply with exactly ${HANDOFF_SENTINEL} so a human can help`
         : "if they don't cover the question, don't guess — say you'll check and follow up";
     parts.push(
       "Knowledge base — excerpts from the business's own documentation, retrieved for this question. " +

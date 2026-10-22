@@ -1,4 +1,10 @@
-import { fetchAccountWithCategory } from '@/lib/auth/brand-accounts';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  fetchAccountWithCategory,
+  isMissingColumnError,
+} from '@/lib/auth/brand-accounts';
+import { AiError, type AiConfig, type ChatMessage } from './types';
+import { loadStoreProfile } from './store-profile';
 import { supabaseAdmin } from './admin-client';
 import { loadAiConfig } from './config';
 import { buildConversationContext } from './context';
@@ -16,10 +22,10 @@ import {
   ProductCarouselDeliveryUncertainError,
 } from '@/lib/shopify/product-delivery-error';
 import { generateReply } from './generate';
-import { buildSystemPrompt } from './defaults';
+import { buildSystemPrompt, handoffMessage } from './defaults';
 import { buildHandoffSummary } from './handoff';
 import { logAiUsage } from './usage';
-import { latestUserMessage } from './query';
+import { knowledgeSearchText } from './knowledge-query';
 import { shouldRefreshShopifyOrders } from './commerce-intent';
 import {
   extractProductPreferences,
@@ -76,29 +82,14 @@ export async function dispatchInboundToAiReply(
     const config = await loadAiConfig(db, accountId);
     if (!config || !config.autoReplyEnabled) return;
 
-    // Deterministic, user-configured responders win over the LLM — the
-    // caller already excludes messages a Flow consumed. Message-level
-    // automations (`new_message_received` / `keyword_match`) are
-    // dispatched independently for this same inbound and may send their
-    // own reply, so if the account has any active one we stand down to
-    // avoid double-texting the customer. (Relationship triggers like
-    // `first_inbound_message` don't count — they're not per-message
-    // auto-responders.)
-    const { data: autoResponders } = await db
-      .from('automations')
-      .select('id')
-      .eq('account_id', accountId)
-      .eq('is_active', true)
-      .in('trigger_type', ['new_message_received', 'keyword_match'])
-      .limit(1);
-    if (autoResponders && autoResponders.length > 0) return;
+    // Deterministic, user-configured responders win over the LLM. The
+    // webhook only calls this when no Flow consumed the message and no
+    // message-level automation (`new_message_received`, or a
+    // `keyword_match` whose keyword matched) ran for it. An unrelated
+    // keyword automation no longer silences the agent account-wide.
 
-    const { data: conv, error: convErr } = await db
-      .from('conversations')
-      .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count')
-      .eq('id', conversationId)
-      .maybeSingle();
-    if (convErr || !conv) return;
+    const conv = await loadConversationState(db, conversationId);
+    if (!conv) return;
     if (conv.assigned_agent_id) return; // a human owns this thread
     if (conv.ai_autoreply_disabled) return; // handed off / turned off here
     // Cheap early-out; the authoritative cap check is the atomic claim
@@ -124,20 +115,22 @@ export async function dispatchInboundToAiReply(
       return;
     }
 
-    const latestQuestion = latestUserMessage(messages);
+    const latestQuestion = knowledgeSearchText(messages);
     const wantsProductCarousel = shouldOfferProductCarousel(messages);
     const productSearchQuery = buildProductSearchQuery(messages);
     const productPreferences = extractProductPreferences(messages);
 
-    const [knowledge, shopifyContext, recommendationStore] = await Promise.all([
-      retrieveKnowledge(db, accountId, config, latestQuestion),
-      retrieveShopifyContext(db, accountId, contactId, {
-        refresh: shouldRefreshShopifyOrders(messages),
-      }),
-      wantsProductCarousel
-        ? loadRecommendationStore(db, accountId)
-        : Promise.resolve(null),
-    ]);
+    const [knowledge, shopifyContext, recommendationStore, storeProfile] =
+      await Promise.all([
+        retrieveKnowledge(db, accountId, config, latestQuestion),
+        retrieveShopifyContext(db, accountId, contactId, {
+          refresh: shouldRefreshShopifyOrders(messages),
+        }),
+        wantsProductCarousel
+          ? loadRecommendationStore(db, accountId)
+          : Promise.resolve(null),
+        loadStoreProfile(db, accountId),
+      ]);
 
     const recommendedProducts =
       wantsProductCarousel && recommendationStore
@@ -172,13 +165,32 @@ export async function dispatchInboundToAiReply(
         : undefined,
       productBrowseNoMatches:
         wantsProductCarousel && recommendedProducts.length === 0,
+      storeProfile,
+      flowGoal: conv.ai_flow_goal,
     });
 
-    const { text, handoff, usage } = await generateReply({
-      config,
-      systemPrompt,
-      messages,
-    });
+    let generated: Awaited<ReturnType<typeof generateReply>>;
+    try {
+      generated = await generateReply({ config, systemPrompt, messages });
+    } catch (genErr) {
+      // A provider failure (bad key, quota, outage, empty output after
+      // the retry) used to end here with only a log line, leaving the
+      // customer unanswered. Hand the thread to the team instead.
+      console.error('[ai auto-reply] generation failed, handing off:', genErr);
+      await handOffToHuman({
+        db,
+        accountId,
+        conversationId,
+        contactId,
+        configOwnerUserId,
+        config,
+        conv,
+        messages,
+        failureReason: describeFailure(genErr),
+      });
+      return;
+    }
+    const { text, handoff, usage } = generated;
 
     // Record token spend on the account's BYO key. Fire-and-forget so it
     // never adds latency to the customer-facing send: `logAiUsage`
@@ -195,27 +207,16 @@ export async function dispatchInboundToAiReply(
     });
 
     if (handoff || !text) {
-      // The model can't (or shouldn't) answer — stop auto-replying on
-      // this thread and hand it to a human. We (a) pause the bot here
-      // (sticky until re-enabled), (b) route the conversation to the
-      // configured handoff agent — null leaves it in the shared queue —
-      // and (c) leave a short internal note so whoever picks it up has
-      // context. Assigning fires the `on_conversation_assigned` trigger,
-      // which notifies the agent.
-      const summary = buildHandoffSummary({
+      await handOffToHuman({
+        db,
+        accountId,
+        conversationId,
+        contactId,
+        configOwnerUserId,
+        config,
+        conv,
         messages,
-        replyCount: conv.ai_reply_count ?? 0,
       });
-      const update: Record<string, unknown> = {
-        ai_autoreply_disabled: true,
-        ai_handoff_summary: summary,
-      };
-      // Only set the assignee when a target is configured AND the thread
-      // isn't already owned — never stomp an existing human assignment.
-      if (config.handoffAgentId && !conv.assigned_agent_id) {
-        update.assigned_agent_id = config.handoffAgentId;
-      }
-      await db.from('conversations').update(update).eq('id', conversationId);
       return;
     }
 
@@ -293,5 +294,116 @@ export async function dispatchInboundToAiReply(
     });
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err);
+  }
+}
+
+interface ConversationState {
+  assigned_agent_id: string | null;
+  ai_autoreply_disabled: boolean;
+  ai_reply_count: number;
+  ai_flow_goal: string | null;
+}
+
+async function loadConversationState(
+  db: SupabaseClient,
+  conversationId: string
+): Promise<ConversationState | null> {
+  const base = 'assigned_agent_id, ai_autoreply_disabled, ai_reply_count';
+  let { data, error } = await db
+    .from('conversations')
+    .select(`${base}, ai_flow_goal`)
+    .eq('id', conversationId)
+    .maybeSingle();
+  // Tolerate code shipping ahead of migration 20261022090000.
+  if (isMissingColumnError(error, 'ai_flow_goal')) {
+    ({ data, error } = await db
+      .from('conversations')
+      .select(base)
+      .eq('id', conversationId)
+      .maybeSingle());
+  }
+  if (error || !data) return null;
+  return {
+    assigned_agent_id: data.assigned_agent_id ?? null,
+    ai_autoreply_disabled: !!data.ai_autoreply_disabled,
+    ai_reply_count: data.ai_reply_count ?? 0,
+    ai_flow_goal:
+      'ai_flow_goal' in data ? ((data.ai_flow_goal as string | null) ?? null) : null,
+  };
+}
+
+/**
+ * Stop auto-replying on this thread and give it to a human:
+ *   (a) pause the bot here (sticky until re-enabled) and clear any flow goal,
+ *   (b) route the conversation to the configured handoff agent — null
+ *       leaves it in the shared queue; never stomps an existing owner,
+ *   (c) leave a short internal note so whoever picks it up has context,
+ *   (d) tell the customer a person is coming, so their message never sits
+ *       unanswered.
+ * Assigning fires the `on_conversation_assigned` trigger, which notifies
+ * the agent.
+ */
+async function handOffToHuman(args: {
+  db: SupabaseClient;
+  accountId: string;
+  conversationId: string;
+  contactId: string;
+  configOwnerUserId: string;
+  config: AiConfig;
+  conv: ConversationState;
+  messages: ChatMessage[];
+  failureReason?: string;
+}): Promise<void> {
+  const { db, conversationId, config, conv } = args;
+  const update: Record<string, unknown> = {
+    ai_autoreply_disabled: true,
+    ai_handoff_summary: buildHandoffSummary({
+      messages: args.messages,
+      replyCount: conv.ai_reply_count,
+      failureReason: args.failureReason,
+    }),
+  };
+  if (conv.ai_flow_goal) update.ai_flow_goal = null;
+  if (config.handoffAgentId && !conv.assigned_agent_id) {
+    update.assigned_agent_id = config.handoffAgentId;
+  }
+  const { error } = await db
+    .from('conversations')
+    .update(update)
+    .eq('id', conversationId);
+  if (error) {
+    // Without the pause flag the next inbound would hand off (and message
+    // the customer) again, so don't send.
+    console.error('[ai auto-reply] handoff update failed:', error);
+    return;
+  }
+
+  try {
+    await engineSendText({
+      accountId: args.accountId,
+      userId: args.configOwnerUserId,
+      conversationId,
+      contactId: args.contactId,
+      text: handoffMessage(config.handoffMessage),
+      aiGenerated: true,
+    });
+  } catch (sendErr) {
+    console.error('[ai auto-reply] handoff message failed to send:', sendErr);
+  }
+}
+
+function describeFailure(err: unknown): string {
+  const code = err instanceof AiError ? err.code : 'unknown';
+  switch (code) {
+    case 'invalid_key':
+      return 'the AI provider rejected the API key';
+    case 'rate_limited':
+      return 'the AI provider rate-limited the request';
+    case 'timeout':
+      return 'the AI provider timed out';
+    case 'empty_response':
+      return 'the AI model returned an empty reply';
+    default:
+      return 'the AI provider returned an error';
   }
 }

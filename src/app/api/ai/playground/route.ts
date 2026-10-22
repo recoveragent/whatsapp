@@ -8,8 +8,9 @@ import {
 import { loadAiConfig } from '@/lib/ai/config';
 import { retrieveKnowledge } from '@/lib/ai/knowledge';
 import { generateReply } from '@/lib/ai/generate';
-import { buildSystemPrompt } from '@/lib/ai/defaults';
-import { latestUserMessage } from '@/lib/ai/query';
+import { buildSystemPrompt, handoffMessage } from '@/lib/ai/defaults';
+import { loadStoreProfile } from '@/lib/ai/store-profile';
+import { knowledgeSearchText } from '@/lib/ai/knowledge-query';
 import { shouldRefreshShopifyOrders } from '@/lib/ai/commerce-intent';
 import {
   extractProductPreferences,
@@ -112,12 +113,12 @@ export async function POST(request: Request) {
     const contactId =
       body && typeof body.contact_id === 'string' ? body.contact_id.trim() : '';
 
-    const latestQuestion = latestUserMessage(messages);
+    const latestQuestion = knowledgeSearchText(messages);
     const wantsProductCarousel = shouldOfferProductCarousel(messages);
     const productSearchQuery = buildProductSearchQuery(messages);
     const productPreferences = extractProductPreferences(messages);
 
-    const [knowledge, shopifyContext, shopifyConfig] = await Promise.all([
+    const [knowledge, shopifyContext, shopifyConfig, storeProfile] = await Promise.all([
       retrieveKnowledge(supabase, accountId, config, latestQuestion),
       contactId
         ? retrieveShopifyContext(supabase, accountId, contactId, {
@@ -127,6 +128,7 @@ export async function POST(request: Request) {
       wantsProductCarousel
         ? loadRecommendationStore(supabase, accountId)
         : Promise.resolve(null),
+      loadStoreProfile(supabase, accountId),
     ]);
 
     const recommendedProducts =
@@ -162,6 +164,7 @@ export async function POST(request: Request) {
         : undefined,
       productBrowseNoMatches:
         wantsProductCarousel && recommendedProducts.length === 0,
+      storeProfile,
     });
 
     const { text, handoff } = await generateReply({
@@ -181,6 +184,8 @@ export async function POST(request: Request) {
           ? appendRecommendationText(text, recommendedProducts, shopifyConfig)
           : text,
       handoff,
+      // What the customer would be sent on handoff in a live chat.
+      handoff_message: handoff ? handoffMessage(config.handoffMessage) : null,
       product_carousel: productCarousel,
     });
   } catch (err) {

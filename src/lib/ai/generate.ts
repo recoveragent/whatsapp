@@ -5,9 +5,10 @@ import {
   type ChatMessage,
   type GenerateResult,
 } from './types'
-import { HANDOFF_SENTINEL, aiRequestTimeoutMs } from './defaults'
+import { HANDOFF_SENTINEL, MAX_OUTPUT_TOKENS, aiRequestTimeoutMs } from './defaults'
 import { generateOpenAi } from './providers/openai'
 import { generateAnthropic } from './providers/anthropic'
+import type { ProviderArgs } from './providers/shared'
 
 export interface GenerateArgs {
   config: AiConfig
@@ -34,21 +35,40 @@ export async function generateReply(args: GenerateArgs): Promise<GenerateResult>
   }
 
   let result: { text: string; usage: AiUsage | null }
-  switch (config.provider) {
+  try {
+    result = await callProvider(config.provider, providerArgs)
+  } catch (err) {
+    // Reasoning models spend part of the output budget thinking; on a
+    // long prompt they can exhaust it and return no text at all. One
+    // retry with a larger budget recovers those turns.
+    if (!(err instanceof AiError) || err.code !== 'empty_response') throw err
+    result = await callProvider(config.provider, {
+      ...providerArgs,
+      maxOutputTokens: RETRY_OUTPUT_TOKENS,
+    })
+  }
+
+  return parseGeneration(result.text, result.usage)
+}
+
+/** Output budget for the single retry after an empty response. */
+const RETRY_OUTPUT_TOKENS = MAX_OUTPUT_TOKENS * 4
+
+function callProvider(
+  provider: AiConfig['provider'],
+  args: ProviderArgs,
+): Promise<{ text: string; usage: AiUsage | null }> {
+  switch (provider) {
     case 'openai':
-      result = await generateOpenAi(providerArgs)
-      break
+      return generateOpenAi(args)
     case 'anthropic':
-      result = await generateAnthropic(providerArgs)
-      break
+      return generateAnthropic(args)
     default:
-      throw new AiError(`Unsupported AI provider: ${config.provider}`, {
+      throw new AiError(`Unsupported AI provider: ${provider}`, {
         code: 'unsupported_provider',
         status: 400,
       })
   }
-
-  return parseGeneration(result.text, result.usage)
 }
 
 /**

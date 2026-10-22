@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { decrypt } from '@/lib/whatsapp/encryption';
+import { isMissingColumnError } from '@/lib/auth/brand-accounts';
 import type { AiConfig } from './types';
 
 interface AiConfigRow {
@@ -13,12 +14,13 @@ interface AiConfigRow {
   auto_reply_max_per_conversation: number;
   handoff_agent_id: string | null;
   embeddings_api_key: string | null;
+  handoff_message?: string | null;
 }
 
 const CONFIG_COLUMNS =
-  'provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key';
+  'provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key, handoff_message';
 const TRAINING_CONFIG_COLUMNS =
-  'provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key, training_model';
+  'provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key, handoff_message, training_model';
 
 /**
  * Load and decrypt the account's AI config for *use* (draft or
@@ -37,13 +39,22 @@ export async function loadAiConfig(
   opts: { requireActive?: boolean; purpose?: 'chat' | 'training' } = {}
 ): Promise<AiConfig | null> {
   const { requireActive = true } = opts;
-  const { data, error } = await db
+  const columns =
+    opts.purpose === 'training' ? TRAINING_CONFIG_COLUMNS : CONFIG_COLUMNS;
+  let { data, error } = await db
     .from('ai_configs')
-    .select(
-      opts.purpose === 'training' ? TRAINING_CONFIG_COLUMNS : CONFIG_COLUMNS
-    )
+    .select(columns)
     .eq('account_id', accountId)
     .maybeSingle<AiConfigRow>();
+  // Code can ship before migration 20261022090000 adds handoff_message;
+  // don't take the whole agent down for an optional column.
+  if (isMissingColumnError(error, 'handoff_message')) {
+    ({ data, error } = await db
+      .from('ai_configs')
+      .select(columns.replace(', handoff_message', ''))
+      .eq('account_id', accountId)
+      .maybeSingle<AiConfigRow>());
+  }
 
   if (error) throw error;
   if (!data) return null;
@@ -87,6 +98,7 @@ export async function loadAiConfig(
     autoReplyMaxPerConversation: row.auto_reply_max_per_conversation,
     handoffAgentId: row.handoff_agent_id,
     embeddingsApiKey,
+    handoffMessage: row.handoff_message ?? null,
   };
 }
 

@@ -113,11 +113,11 @@ describe('generateReply — OpenAI', () => {
     ).rejects.toMatchObject({ code: 'invalid_key', status: 401 })
   })
 
-  it('throws on an empty completion', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(okResponse({ choices: [{ message: { content: '' } }] })),
-    )
+  it('throws when the completion is empty twice', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okResponse({ choices: [{ message: { content: '' } }] }))
+    vi.stubGlobal('fetch', fetchMock)
     await expect(
       generateReply({
         config: config(),
@@ -125,6 +125,24 @@ describe('generateReply — OpenAI', () => {
         messages: [{ role: 'user', content: 'Hi' }],
       }),
     ).rejects.toBeInstanceOf(AiError)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries an empty completion once with a larger output budget', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(okResponse({ choices: [{ message: { content: '' } }] }))
+      .mockResolvedValueOnce(okResponse({ choices: [{ message: { content: 'Hello!' } }] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const out = await generateReply({
+      config: config(),
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'Hi' }],
+    })
+    expect(out.text).toBe('Hello!')
+    const first = JSON.parse(fetchMock.mock.calls[0][1].body)
+    const second = JSON.parse(fetchMock.mock.calls[1][1].body)
+    expect(second.max_completion_tokens).toBeGreaterThan(first.max_completion_tokens)
   })
 })
 

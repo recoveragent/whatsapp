@@ -292,10 +292,10 @@ beforeEach(() => {
   h.dispatchWebhookEvent.mockResolvedValue(undefined)
   h.runAutomationsForTrigger.mockImplementation(() => {
     h.state.automationStarted++
-    return new Promise<void>((resolve) => {
+    return new Promise<{ matched: number }>((resolve) => {
       setTimeout(() => {
         h.state.automationCompleted++
-        resolve()
+        resolve({ matched: 0 })
       }, 0)
     })
   })
@@ -331,6 +331,37 @@ describe('inbound webhook: idempotent insert (#367)', () => {
     expect(h.runAutomationsForTrigger).not.toHaveBeenCalled()
     expect(h.dispatchInboundToAiReply).not.toHaveBeenCalled()
     expect(h.dispatchWebhookEvent).not.toHaveBeenCalled()
+  })
+})
+
+describe('inbound webhook: AI agent vs automations', () => {
+  it('runs the AI agent when no message-level automation matched', async () => {
+    await runWebhook()
+    expect(h.dispatchInboundToAiReply).toHaveBeenCalledTimes(1)
+  })
+
+  it('stands the AI agent down when an auto-responder handled the message', async () => {
+    h.runAutomationsForTrigger.mockImplementation(
+      async (input: { triggerType: string }) => ({
+        matched: input.triggerType === 'keyword_match' ? 1 : 0,
+      }),
+    )
+    await runWebhook()
+    expect(h.dispatchInboundToAiReply).not.toHaveBeenCalled()
+  })
+
+  it('keeps the AI agent on when only a relationship trigger matched', async () => {
+    h.runAutomationsForTrigger.mockImplementation(
+      async (input: { triggerType: string }) => ({
+        matched:
+          input.triggerType === 'first_inbound_message' ||
+          input.triggerType === 'new_contact_created'
+            ? 1
+            : 0,
+      }),
+    )
+    await runWebhook()
+    expect(h.dispatchInboundToAiReply).toHaveBeenCalledTimes(1)
   })
 })
 

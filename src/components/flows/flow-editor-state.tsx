@@ -269,6 +269,8 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
       return { mode: "add", tag_id: "", next_node_key: "" };
     case "handoff":
       return { note: "" };
+    case "ai_agent":
+      return { goal: "", respond_now: true };
     case "send_template":
       return { template_name: "", language: "en_US", variables: {}, buttons: [], next_node_key: "" };
     case "wait":

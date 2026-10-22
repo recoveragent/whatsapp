@@ -8,7 +8,10 @@ import { mergeAbandonedCheckoutSkipTriggerConfig } from '@/lib/flows/abandoned-c
 import { ensureFlowWebhookConfig } from '@/lib/flows/webhook-config'
 import { defaultCheckoutAppTriggerConfig } from '@/lib/flows/checkout-app-webhook'
 import { ensureGoogleSheetRowConfig } from '@/lib/google-sheets/trigger-config'
-import type { FlowTriggerType } from '@/lib/flows/trigger-types'
+import {
+  defaultShopifyCheckoutAbandonedTriggerConfig,
+  type FlowTriggerType,
+} from '@/lib/flows/trigger-types'
 
 /**
  * GET /api/flows — list the caller's flows.
@@ -98,6 +101,18 @@ export async function POST(request: Request) {
         { status: 400 },
       )
     }
+    // Shopify-triggered templates get the same trigger defaults as a
+    // flow created from scratch with that trigger.
+    const templateTriggerConfig =
+      template.trigger_type === 'shopify_checkout_abandoned'
+        ? mergeAbandonedCheckoutSkipTriggerConfig(
+            {
+              ...defaultShopifyCheckoutAbandonedTriggerConfig(),
+              ...template.trigger_config,
+            },
+            template.trigger_config as Record<string, unknown>,
+          )
+        : template.trigger_config
     const { data: flow, error: flowErr } = await admin
       .from('flows')
       .insert({
@@ -107,7 +122,7 @@ export async function POST(request: Request) {
         description: template.description,
         status: 'draft',
         trigger_type: template.trigger_type,
-        trigger_config: template.trigger_config,
+        trigger_config: templateTriggerConfig,
         entry_node_id: template.entry_node_id,
       })
       .select()

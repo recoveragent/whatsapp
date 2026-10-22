@@ -17,6 +17,7 @@
  */
 
 import {
+  Bot,
   Flag,
   GitFork,
   Inbox,
@@ -77,6 +78,7 @@ export type NodeType =
   | "switch"
   | "set_tag"
   | "handoff"
+  | "ai_agent"
   | "wait"
   | "send_webhook"
   | "http_fetch"
@@ -222,6 +224,13 @@ export const NODE_META: Record<
     blurb: 'Hands the conversation to a human',
     category: 'flow',
   },
+  ai_agent: {
+    label: 'Hand to AI agent',
+    icon: Bot,
+    color: 'text-primary',
+    blurb: 'The AI agent takes over the chat, with an optional goal',
+    category: 'flow',
+  },
   send_template: {
     label: "Send template",
     icon: FileText,
@@ -330,6 +339,7 @@ const NODE_HUE: Record<NodeType, { l: number; c: number; h: number }> = {
   switch: { l: 0.68, c: 0.14, h: 290 },
   set_tag: { l: 0.65, c: 0.15, h: 350 },
   handoff: { l: 0.65, c: 0.17, h: 16 },
+  ai_agent: { l: 0.62, c: 0.17, h: 300 },
   collect_payment: { l: 0.68, c: 0.15, h: 160 },
   wait: { l: 0.58, c: 0.02, h: 260 },
   send_webhook: { l: 0.68, c: 0.16, h: 45 },
@@ -682,6 +692,10 @@ export function summarizeNode(
     case 'handoff': {
       const note = typeof cfg.note === 'string' ? cfg.note : '';
       return note.length > 0 ? truncate(note) : null;
+    }
+    case 'ai_agent': {
+      const goal = typeof cfg.goal === 'string' ? cfg.goal.trim() : '';
+      return goal ? `Goal: ${truncate(goal, 60)}` : 'AI agent takes over';
     }
     case "send_template": {
       const name = typeof cfg.template_name === "string" ? cfg.template_name : "";

@@ -240,6 +240,7 @@ describe("node classification helpers", () => {
       "switch",
       "set_tag",
       "handoff",
+      "ai_agent",
       "end",
     ];
     for (const t of types) {

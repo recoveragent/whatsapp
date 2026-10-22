@@ -472,6 +472,7 @@ function AddNodeButton({ onAdd, t }: { onAdd: (type: NodeType) => void; t: Retur
     'assign_conversation',
     'create_deal',
     'close_conversation',
+    'ai_agent',
     'handoff',
     'end',
   ];

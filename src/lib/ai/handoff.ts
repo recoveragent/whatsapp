@@ -20,8 +20,11 @@ const MAX_QUOTE_LEN = 160
 export function buildHandoffSummary(args: {
   messages: ChatMessage[]
   replyCount: number
+  /** Set when the handoff was forced by a failure rather than chosen by
+   *  the model, e.g. "the AI provider rejected the API key". */
+  failureReason?: string
 }): string {
-  const { messages, replyCount } = args
+  const { messages, replyCount, failureReason } = args
 
   const lastCustomer = [...messages]
     .reverse()
@@ -32,7 +35,9 @@ export function buildHandoffSummary(args: {
       ? 'without replying'
       : `after ${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}`
 
-  const base = `🤖 AI agent handed off ${replies}.`
+  const base = failureReason
+    ? `🤖 AI agent handed off ${replies} because ${failureReason}.`
+    : `🤖 AI agent handed off ${replies}.`
 
   if (!lastCustomer) return base
 

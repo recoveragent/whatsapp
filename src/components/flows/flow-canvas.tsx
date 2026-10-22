@@ -1270,6 +1270,7 @@ const ADD_NODE_TYPES: NodeType[] = [
   'assign_conversation',
   'create_deal',
   'close_conversation',
+  'ai_agent',
   'handoff',
   'end',
 ];

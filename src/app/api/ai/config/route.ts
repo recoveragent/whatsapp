@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAiAgentsAccount, toErrorResponse } from '@/lib/auth/account';
+import { isMissingColumnError } from '@/lib/auth/brand-accounts';
 import {
   checkRateLimit,
   rateLimitResponse,
@@ -9,13 +10,21 @@ import {
 export async function GET() {
   try {
     const { supabase, accountId } = await requireAiAgentsAccount();
-    const { data, error } = await supabase
+    const columns =
+      'provider, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key';
+    let { data, error } = await supabase
       .from('ai_configs')
-      .select(
-        'provider, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key'
-      )
+      .select(`${columns}, handoff_message`)
       .eq('account_id', accountId)
       .maybeSingle();
+    // Tolerate code shipping ahead of migration 20261022090000.
+    if (isMissingColumnError(error, 'handoff_message')) {
+      ({ data, error } = await supabase
+        .from('ai_configs')
+        .select(columns)
+        .eq('account_id', accountId)
+        .maybeSingle());
+    }
     if (error)
       return NextResponse.json(
         { error: 'Failed to load AI configuration' },
@@ -78,6 +87,21 @@ export async function POST(request: Request) {
         );
       patch.system_prompt = body.system_prompt?.trim() || null;
     }
+    if ('handoff_message' in body) {
+      const msg = body.handoff_message;
+      if (msg !== null && typeof msg !== 'string')
+        return NextResponse.json(
+          { error: 'Invalid handoff message' },
+          { status: 400 }
+        );
+      const trimmed = msg?.trim() || null;
+      if (trimmed && trimmed.length > 1000)
+        return NextResponse.json(
+          { error: 'Handoff message must be 1,000 characters or fewer' },
+          { status: 400 }
+        );
+      patch.handoff_message = trimmed;
+    }
     for (const field of ['is_active', 'auto_reply_enabled']) {
       if (field in body) {
         if (typeof body[field] !== 'boolean')
@@ -125,12 +149,18 @@ export async function POST(request: Request) {
         { error: 'No behavior settings supplied' },
         { status: 400 }
       );
-    const { data, error } = await supabase
-      .from('ai_configs')
-      .update(patch)
-      .eq('account_id', accountId)
-      .select('account_id')
-      .maybeSingle();
+    const save = () =>
+      supabase
+        .from('ai_configs')
+        .update(patch)
+        .eq('account_id', accountId)
+        .select('account_id')
+        .maybeSingle();
+    let { data, error } = await save();
+    if (isMissingColumnError(error, 'handoff_message')) {
+      delete patch.handoff_message;
+      if (Object.keys(patch).length) ({ data, error } = await save());
+    }
     if (error)
       return NextResponse.json(
         { error: 'Failed to save AI behavior' },
