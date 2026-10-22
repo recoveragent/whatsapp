@@ -998,7 +998,8 @@ function InboxPageInner() {
         "flex flex-col overflow-hidden",
         embedded
           ? "h-full"
-          : "-mx-4 -my-5 h-[calc(100vh-3.5rem)] lg:-mx-9 lg:-my-7",
+          : // Cancel the shell's <main> padding; lg height = top bar (4rem) + frame gutter (0.5rem).
+            "-mx-4 -my-5 h-[calc(100vh-3.5rem)] sm:-m-6 lg:-m-8 lg:h-[calc(100vh-4.5rem)]",
       )}
     >
       {/* WhatsApp connection banner — in the flex column, not absolute,

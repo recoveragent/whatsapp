@@ -123,32 +123,31 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-background">
+    // Dark frame carries the top bar; the sidebar + page sit in an inset,
+    // rounded panel below it (gutter only on lg+, full-bleed on mobile).
+    <div className="flex h-screen flex-col overflow-hidden bg-frame">
       <PresenceHeartbeat />
-      <Sidebar
-        open={sidebarOpen}
-        onClose={closeSidebar}
-        collapsed={sidebarCollapsed}
-        onToggleCollapsed={toggleSidebarCollapsed}
-      />
-      <div
-        className={cn(
-          "flex h-screen flex-col overflow-hidden transition-[margin] duration-200",
-          sidebarCollapsed ? "lg:ml-[60px]" : "lg:ml-[220px]",
-        )}
-      >
-        <Header onOpenSidebar={() => setSidebarOpen(true)} />
-        <main
-          className={cn(
-            "flex-1 px-4 py-5 sm:p-6 lg:px-9 lg:py-7",
-            isFullHeightEditor
-              ? "flex min-h-0 flex-col overflow-hidden"
-              : "overflow-y-auto",
-          )}
-        >
-          <AccountAccessAlert />
-          {children}
-        </main>
+      <Header onOpenSidebar={() => setSidebarOpen(true)} />
+      <div className="flex min-h-0 flex-1 lg:px-2 lg:pb-2">
+        <div className="flex min-w-0 flex-1 overflow-hidden bg-background lg:rounded-3xl">
+          <Sidebar
+            open={sidebarOpen}
+            onClose={closeSidebar}
+            collapsed={sidebarCollapsed}
+            onToggleCollapsed={toggleSidebarCollapsed}
+          />
+          <main
+            className={cn(
+              "min-w-0 flex-1 px-4 py-5 sm:p-6 lg:px-8 lg:py-8",
+              isFullHeightEditor
+                ? "flex min-h-0 flex-col overflow-hidden"
+                : "overflow-y-auto",
+            )}
+          >
+            <AccountAccessAlert />
+            {children}
+          </main>
+        </div>
       </div>
     </div>
   );

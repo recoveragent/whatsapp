@@ -29,7 +29,7 @@ interface HeaderProps {
 
 export function Header({ onOpenSidebar }: HeaderProps) {
   const t = useTranslations("Header");
-  const { profile, signOut } = useAuth();
+  const { profile, account, signOut } = useAuth();
 
   const initial =
     profile?.full_name?.charAt(0)?.toUpperCase() ??
@@ -37,28 +37,34 @@ export function Header({ onOpenSidebar }: HeaderProps) {
     "U";
 
   return (
-    <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4 lg:bg-background/95 lg:px-9 lg:backdrop-blur-sm">
+    <header className="app-topbar z-20 flex h-14 shrink-0 items-center justify-between gap-3 bg-frame px-3 text-frame-foreground lg:h-16 lg:px-5">
       <div className="flex min-w-0 items-center gap-2">
         <button
           type="button"
           onClick={onOpenSidebar}
           aria-label={t("openMenu")}
-          className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
+          className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
         >
           <Menu className="h-5 w-5" />
         </button>
-        <div className="flex items-center gap-2 lg:hidden">
+        <Link href="/dashboard" className="flex min-w-0 items-center gap-2.5">
           <Image
             src={BRAND_ICON_PATH}
             alt=""
-            width={28}
-            height={28}
-            className="h-7 w-7 rounded-lg"
+            width={32}
+            height={32}
+            className="h-8 w-8 shrink-0 rounded-lg"
+            priority
           />
-          <span className="truncate text-[13px] font-bold text-foreground">
+          <span className="truncate text-sm font-bold text-foreground">
             {BRAND_NAME}
           </span>
-        </div>
+        </Link>
+        {account?.name ? (
+          <span className="ml-2 hidden max-w-56 truncate rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-foreground ring-1 ring-white/15 md:inline">
+            {account.name}
+          </span>
+        ) : null}
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
@@ -67,7 +73,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
 
         <DropdownMenu>
         <DropdownMenuTrigger
-          className="flex items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-accent focus:bg-accent focus:outline-none data-popup-open:bg-accent sm:gap-3 sm:pl-1 sm:pr-3"
+          className="flex items-center gap-2 rounded-full px-1 py-1 transition-colors hover:bg-accent focus:bg-accent focus:outline-none data-popup-open:bg-accent sm:gap-2.5 sm:pl-1 sm:pr-3"
           aria-label={t("openAccountMenu")}
         >
           <Avatar className="size-8">
@@ -77,7 +83,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
                 alt={profile.full_name ?? t("defaultAvatar")}
               />
             ) : null}
-            <AvatarFallback className="bg-primary/15 text-sm font-medium text-primary">
+            <AvatarFallback className="bg-primary text-sm font-medium text-primary-foreground">
               {initial}
             </AvatarFallback>
           </Avatar>

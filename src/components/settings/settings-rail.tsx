@@ -87,7 +87,7 @@ export function SettingsRail({
             className="flex shrink-0 gap-1 lg:flex-col lg:gap-0.5"
           >
             {label ? (
-              <div className="hidden px-3 pt-3.5 pb-1.5 text-[11px] font-semibold tracking-[0.09em] text-muted-foreground uppercase lg:block">
+              <div className="hidden px-3 pt-4 pb-1.5 text-xs font-medium text-muted-foreground lg:block">
                 {t(`groups.${group}`)}
               </div>
             ) : null}
@@ -107,20 +107,25 @@ export function SettingsRail({
                   }}
                   aria-current={isActive ? 'page' : undefined}
                   className={cn(
-                    'flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium whitespace-nowrap transition-colors',
+                    'flex h-9 shrink-0 items-center gap-3 rounded-xl px-3 text-left text-sm whitespace-nowrap transition-colors',
                     'lg:w-full',
                     isActive
-                      ? 'bg-primary/15 font-semibold text-primary'
-                      : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                      ? 'bg-card font-medium text-foreground shadow-[0_1px_2px_rgb(0_0_0/0.04)] ring-1 ring-border'
+                      : 'text-foreground/80 hover:bg-card/60 hover:text-foreground',
                   )}
                 >
-                  <Icon className="size-4 shrink-0" />
+                  <Icon
+                    className={cn(
+                      "size-[18px] shrink-0",
+                      isActive ? "text-primary" : "text-foreground/70",
+                    )}
+                  />
                   <span className="flex-1">{t(`sections.${s}`)}</span>
                   {hints?.[s] != null ? (
                     <span
                       className={cn(
                         'hidden items-center gap-1.5 text-xs lg:inline-flex',
-                        isActive ? 'text-primary' : 'text-muted-foreground',
+                        'text-muted-foreground',
                       )}
                     >
                       {hints[s]}

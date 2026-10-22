@@ -187,18 +187,17 @@ export function Sidebar({
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex h-full flex-col border-r border-sidebar-border bg-sidebar",
+          "fixed inset-y-0 left-0 z-40 flex h-full flex-col bg-sidebar",
           "w-[min(260px,85vw)] transition-[width,transform] duration-200 ease-out will-change-transform",
           open ? "translate-x-0" : "-translate-x-full",
-          "lg:translate-x-0",
-          collapsed ? "lg:w-[60px]" : "lg:w-[220px]",
+          "lg:static lg:z-auto lg:shrink-0 lg:translate-x-0",
+          collapsed ? "lg:w-[68px]" : "lg:w-[248px]",
         )}
         aria-label="Primary"
       >
         <div
           className={cn(
-            "flex h-14 shrink-0 items-center gap-2.5 border-b border-sidebar-border px-3",
-            collapsed && "lg:justify-center lg:px-2",
+            "flex h-14 shrink-0 items-center gap-2.5 border-b border-sidebar-border px-3 lg:hidden",
           )}
         >
           <Link
@@ -234,7 +233,7 @@ export function Sidebar({
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-2 py-3">
+        <nav className="flex-1 overflow-y-auto px-3 py-3">
           {!opsOnlyNav ? (
             <>
               <NavSection
@@ -268,7 +267,7 @@ export function Sidebar({
           ) : (
             <p
               className={cn(
-                "mb-2 px-2.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase",
+                "mb-1.5 px-3 text-xs font-medium text-muted-foreground",
                 collapsed && "lg:hidden",
               )}
             >
@@ -276,12 +275,12 @@ export function Sidebar({
             </p>
           )}
 
-          <div className="my-3 h-px bg-sidebar-border" />
+          <div className="my-3 h-px bg-sidebar-border/70" />
 
           {isSuperAdmin || !opsOnlyNav ? (
             <p
               className={cn(
-                "mb-1 px-2.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase",
+                "mb-1.5 px-3 text-xs font-medium text-muted-foreground",
                 collapsed && "lg:hidden",
               )}
             >
@@ -333,7 +332,7 @@ export function Sidebar({
           </ul>
         </nav>
 
-        <div className="shrink-0 border-t border-sidebar-border p-2">
+        <div className="shrink-0 border-t border-sidebar-border/70 p-3">
           {showAccountStrip && account?.name && !collapsed ? (
             <div className="mb-2 flex items-center gap-2 px-2 text-xs text-muted-foreground">
               <UsersRound className="size-3.5 shrink-0" />
@@ -360,7 +359,7 @@ export function Sidebar({
           <DropdownMenu>
             <DropdownMenuTrigger
               className={cn(
-                "flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-sidebar-accent/60 focus:bg-sidebar-accent/60 focus:outline-none data-popup-open:bg-sidebar-accent/60",
+                "flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors hover:bg-sidebar-accent/70 focus:bg-sidebar-accent/70 focus:outline-none data-popup-open:bg-sidebar-accent",
                 collapsed && "lg:justify-center lg:px-0",
               )}
             >
@@ -434,7 +433,7 @@ export function Sidebar({
               type="button"
               onClick={onToggleCollapsed}
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className="mt-1 hidden w-full items-center gap-2.5 rounded-md px-2 py-2 text-[13px] text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground lg:flex"
+              className="mt-1 hidden w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent/70 hover:text-sidebar-foreground lg:flex"
             >
               {collapsed ? (
                 <ChevronsRight className="mx-auto h-4 w-4" />
@@ -471,10 +470,10 @@ function NavSection({
 }) {
   if (items.length === 0) return null;
   return (
-    <div className="mb-3">
+    <div className="mb-4">
       <p
         className={cn(
-          "mb-1 px-2.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase",
+          "mb-1.5 px-3 text-xs font-medium text-muted-foreground",
           collapsed && "lg:hidden",
         )}
       >
@@ -539,22 +538,24 @@ function NavRow({
         title={
           collapsed
             ? badgeLabel
-              ? `${label} ┬╖ ${badgeLabel}`
+              ? `${label} · ${badgeLabel}`
               : label
             : undefined
         }
         className={cn(
-          "relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-colors duration-150",
+          "relative flex h-9 items-center gap-3 rounded-xl px-3 text-sm text-sidebar-foreground transition-colors duration-150",
           collapsed && "lg:justify-center lg:px-0",
           active
-            ? "bg-sidebar-accent font-semibold text-primary"
-            : "font-normal text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+            ? "bg-sidebar-accent font-medium shadow-[0_1px_2px_rgb(0_0_0/0.04)]"
+            : "font-normal hover:bg-sidebar-accent/60",
         )}
       >
-        {active ? (
-          <span className="absolute top-1/2 left-0 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-primary" />
-        ) : null}
-        <Icon className="h-4 w-4 shrink-0" />
+        <Icon
+          className={cn(
+            "h-[18px] w-[18px] shrink-0",
+            active ? "text-primary" : "text-sidebar-foreground/75",
+          )}
+        />
         <span className={cn("flex-1 truncate", collapsed && "lg:hidden")}>
           {label}
         </span>

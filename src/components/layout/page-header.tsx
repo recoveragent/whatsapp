@@ -38,7 +38,7 @@ export function PageHeader({
         ) : null}
         <h1
           className={cn(
-            "font-cabinet font-bold text-foreground",
+            "font-cabinet font-medium tracking-tight text-foreground",
             size === "admin"
               ? "text-xl"
               : "text-2xl sm:text-3xl",

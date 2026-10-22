@@ -71,8 +71,8 @@ export const THEMES: ReadonlyArray<ThemeMeta> = [
   {
     id: "violet",
     name: "Violet",
-    tagline: "Confident, slightly playful.",
-    swatch: "#7c3aed",
+    tagline: "Confident hosting-panel purple.",
+    swatch: "#673de6",
   },
   {
     id: "cobalt",
