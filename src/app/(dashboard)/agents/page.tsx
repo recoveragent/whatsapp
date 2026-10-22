@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bot, Sparkles, Settings2, BarChart3 } from 'lucide-react';
+import { PageHeader } from '@/components/layout/page-header';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AiPlayground } from '@/components/agents/ai-playground';
 import { AiUsageCard } from '@/components/agents/ai-usage';
@@ -70,13 +71,10 @@ export default function AgentsPage() {
 
   return (
     <div>
-      {/* Sidebar already names the page; keep the heading for screen readers. */}
-      <h1 className="sr-only">AI Agents</h1>
-      <p className="text-muted-foreground text-sm">
-        Answers product, policy and order questions on WhatsApp around the
-        clock, and hands the chat to your team when it should. Train it, test
-        it, then switch it on.
-      </p>
+      <PageHeader
+        title="AI Agents"
+        subtitle="Answers product, policy and order questions on WhatsApp around the clock, and hands the chat to your team when it should. Train it, test it, then switch it on."
+      />
 
       {decided && (
         <>
