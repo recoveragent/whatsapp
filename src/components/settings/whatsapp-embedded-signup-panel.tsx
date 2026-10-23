@@ -10,10 +10,13 @@ import { useWhatsAppEmbeddedSignup } from '@/hooks/use-whatsapp-embedded-signup'
 export function WhatsAppEmbeddedSignupPanel({
   onComplete,
   registrationOnly = false,
+  reconnectExisting = false,
 }: {
   onComplete: () => void | Promise<void>;
   /** Credentials saved but inbound /register still needs a PIN. */
   registrationOnly?: boolean;
+  /** Restore Business app coexistence without clearing the existing credentials. */
+  reconnectExisting?: boolean;
 }) {
   const {
     configLoading,
@@ -53,39 +56,47 @@ export function WhatsAppEmbeddedSignupPanel({
     <div className="space-y-4 rounded-lg border border-border bg-card p-4">
       {showConnect && (
         <div>
-          <p className="font-medium text-foreground">Connect with Meta</p>
+          <p className="font-medium text-foreground">
+            {reconnectExisting
+              ? 'Reconnect your existing Business app number'
+              : 'Connect with Meta'}
+          </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Sign in with your Meta Business account. Use a new Cloud API number, or
-            connect a number already on the WhatsApp Business app (coexistence).
-            Recover Agent never sees your Meta password.
+            {reconnectExisting
+              ? 'Select the same number that still works in WhatsApp Business on your phone. Your saved connection stays in place while you complete Meta authorization. Do not delete your WhatsApp account or select a replacement number.'
+              : 'Sign in with your Meta Business account. Use a new Cloud API number, or connect a number already on the WhatsApp Business app (coexistence). Recover Agent never sees your Meta password.'}
           </p>
         </div>
       )}
 
       {showConnect && (
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <Button
-            type="button"
-            onClick={() => launch('standard')}
-            disabled={!sdkReady || launching}
-            className="bg-[#1877F2] hover:bg-[#166FE5] text-white"
-          >
-            {launching ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Connecting…
-              </>
-            ) : (
-              'Connect new WhatsApp number'
-            )}
-          </Button>
+          {!reconnectExisting && (
+            <Button
+              type="button"
+              onClick={() => launch('standard')}
+              disabled={!sdkReady || launching}
+              className="bg-[#1877F2] hover:bg-[#166FE5] text-white"
+            >
+              {launching ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Connecting…
+                </>
+              ) : (
+                'Connect new WhatsApp number'
+              )}
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
             onClick={() => launch('coexistence')}
             disabled={!sdkReady || launching}
           >
-            Connect existing Business app number
+            {reconnectExisting
+              ? 'Reconnect existing Business app number'
+              : 'Connect existing Business app number'}
           </Button>
         </div>
       )}

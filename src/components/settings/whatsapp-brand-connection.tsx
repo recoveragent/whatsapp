@@ -250,6 +250,8 @@ export function WhatsAppBrandConnection() {
     connection?.display_phone_number || connection?.phone_number_id || null;
   const verifiedName = connection?.verified_name;
   const showConnect = canEditSettings && Boolean(accountCtx?.linked) && !configured;
+  const showReconnect =
+    canEditSettings && Boolean(accountCtx?.linked) && configured && needsReconnect;
   const registrationIncomplete =
     canEditSettings &&
     configured &&
@@ -264,16 +266,17 @@ export function WhatsAppBrandConnection() {
           configured && connected
             ? 'Your connected WhatsApp Business number for this workspace.'
             : configured && needsReconnect
-              ? 'Reconnect or disconnect this number, then link a new WhatsApp Business number.'
+              ? 'Restore Meta access to your existing WhatsApp Business number.'
               : 'Connect your Meta WhatsApp Business account and phone number.'
         }
       />
 
       <div className="space-y-6 max-w-xl">
-        {(showConnect || registrationIncomplete) && (
+        {(showConnect || showReconnect || registrationIncomplete) && (
           <WhatsAppEmbeddedSignupPanel
             onComplete={async () => { await refreshProfile(); await load(); }}
             registrationOnly={registrationIncomplete}
+            reconnectExisting={showReconnect}
           />
         )}
 
@@ -312,10 +315,10 @@ export function WhatsAppBrandConnection() {
                   </>
                 ) : configured && needsReconnect ? (
                   <>
-                    {connection?.message ??
-                      'A number is on file but Meta verification failed.'}
+                    Meta could not verify access to the saved number. This does not
+                    confirm that the number was removed.
                     {canEditSettings
-                      ? ' Disconnect below before connecting a replacement number.'
+                      ? ' If it still works in WhatsApp Business on your phone, reconnect it above without disconnecting first.'
                       : ' Contact your workspace admin or Recover Agent.'}
                   </>
                 ) : canEditSettings ? (
