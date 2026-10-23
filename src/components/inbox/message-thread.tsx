@@ -1507,9 +1507,6 @@ export function MessageThread({
               aria-label={`Open contact details for ${displayName}`}
               title="Open contact"
             >
-              <div className="bg-muted text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-medium">
-                {displayName.charAt(0).toUpperCase()}
-              </div>
               <div className="pointer-events-none min-w-0 flex-1">
                 <h2 className="text-foreground truncate text-sm font-semibold underline-offset-2 group-hover:underline">
                   {displayName}
