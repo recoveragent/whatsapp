@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -50,14 +50,19 @@ function LoginPageInner() {
   const [showLegacyLogin, setShowLegacyLogin] = useState(() =>
     Boolean(inviteToken || searchParams.get('error'))
   );
-  const [error, setError] = useState<string | null>(null);
+  const urlError = searchParams.get('error');
+  const [error, setError] = useState<string | null>(urlError);
   const [loading, setLoading] = useState(false);
   const supabase = createClient();
 
-  useEffect(() => {
-    const urlError = searchParams.get('error');
+  // Surface a new `?error=` from the URL (e.g. after an auth redirect).
+  // Adjusted during render rather than in an effect to avoid a cascading
+  // re-render.
+  const [prevUrlError, setPrevUrlError] = useState(urlError);
+  if (urlError !== prevUrlError) {
+    setPrevUrlError(urlError);
     if (urlError) setError(urlError);
-  }, [searchParams]);
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
