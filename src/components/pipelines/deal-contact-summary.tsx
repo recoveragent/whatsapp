@@ -21,12 +21,19 @@ export function DealContactSummary({
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [customValues, setCustomValues] = useState<Record<string, string>>({});
 
-  useEffect(() => {
+  // Clear custom fields when the contact is removed (adjusted during
+  // render rather than in an effect).
+  const [prevContactId, setPrevContactId] = useState(contactId);
+  if (contactId !== prevContactId) {
+    setPrevContactId(contactId);
     if (!contactId) {
       setCustomFields([]);
       setCustomValues({});
-      return;
     }
+  }
+
+  useEffect(() => {
+    if (!contactId) return;
 
     let cancelled = false;
     (async () => {

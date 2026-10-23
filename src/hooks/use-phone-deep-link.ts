@@ -26,11 +26,16 @@ export function usePhoneDeepLink() {
     () => Boolean(phone) && !searchParams.get('c'),
   );
 
-  useEffect(() => {
-    if (conversationId) {
-      setPending(false);
-    }
-  }, [conversationId]);
+  // Adjusted during render rather than in effects: a new phone starts a
+  // lookup, no phone or an opened conversation ends it.
+  const [prevPhone, setPrevPhone] = useState(phone);
+  if (phone !== prevPhone) {
+    setPrevPhone(phone);
+    setPending(Boolean(phone));
+  }
+  if (pending && (!phone || conversationId)) {
+    setPending(false);
+  }
 
   useEffect(() => {
     if (phone !== prevPhoneRef.current) {
@@ -40,15 +45,11 @@ export function usePhoneDeepLink() {
   }, [phone]);
 
   useEffect(() => {
-    if (!phone) {
-      setPending(false);
-      return;
-    }
+    if (!phone) return;
     if (handledPhoneRef.current === phone) return;
     handledPhoneRef.current = phone;
 
     let cancelled = false;
-    setPending(true);
 
     void (async () => {
       try {

@@ -40,10 +40,20 @@ export function DealConversationPanel({
     conversationIdRef.current = conversation?.id ?? null;
   }, [conversation?.id]);
 
-  useEffect(() => {
-    let cancelled = false;
+  // Reset to the loading state whenever the contact changes (adjusted
+  // during render rather than in the load effect).
+  const [loadedFor, setLoadedFor] = useState({ contactId, initialContact });
+  if (
+    loadedFor.contactId !== contactId ||
+    loadedFor.initialContact !== initialContact
+  ) {
+    setLoadedFor({ contactId, initialContact });
     setLoading(true);
     setMessages([]);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
 
     (async () => {
       const [conversationRes, contactRes] = await Promise.all([

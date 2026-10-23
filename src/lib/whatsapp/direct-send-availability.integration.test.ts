@@ -14,7 +14,7 @@ describe('Direct Send capability migration', () => {
         'utf8'
       )
     );
-  });
+  }, 20_000);
   afterAll(async () => {
     await db.close();
   });

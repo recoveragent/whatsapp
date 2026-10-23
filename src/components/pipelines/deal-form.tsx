@@ -112,26 +112,40 @@ export function DealForm({
   }, [open, deal, defaultStageId, stages]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  useEffect(() => {
-    if (!open) {
-      setContactDetailOpen(false);
-      return;
-    }
-    setLocalContact(deal?.contact ?? null);
-  }, [open, deal?.id, deal?.contact]);
+  // Sync the locally edited contact with the deal whenever the sheet
+  // opens or the deal changes; close the contact detail when the sheet
+  // closes. Adjusted during render rather than in an effect.
+  const [contactSync, setContactSync] = useState<{
+    open: boolean;
+    dealId: string | undefined;
+    contact: Contact | null | undefined;
+  } | null>(null);
+  if (
+    !contactSync ||
+    contactSync.open !== open ||
+    contactSync.dealId !== deal?.id ||
+    contactSync.contact !== deal?.contact
+  ) {
+    setContactSync({ open, dealId: deal?.id, contact: deal?.contact });
+    if (open) setLocalContact(deal?.contact ?? null);
+  }
+  if (!open && contactDetailOpen) {
+    setContactDetailOpen(false);
+  }
 
+  const dealContactId = deal?.contact_id;
   const handleContactUpdated = useCallback(async () => {
-    if (!deal?.contact_id) return;
+    if (!dealContactId) return;
     const { data } = await supabase
       .from("contacts")
       .select("*")
-      .eq("id", deal.contact_id)
+      .eq("id", dealContactId)
       .maybeSingle();
     if (data) {
       setLocalContact(data as Contact);
     }
     onSaved();
-  }, [deal?.contact_id, onSaved, supabase]);
+  }, [dealContactId, onSaved, supabase]);
 
   // Load supporting data once the sheet is open
   useEffect(() => {
@@ -162,12 +176,14 @@ export function DealForm({
   }, [open, deal, supabase]);
 
   // Check whether this contact has a conversation (edit flow only).
+  const effectiveContactId = deal?.contact_id ?? contactId;
+  const canHaveConversation = open && !!deal && !!effectiveContactId;
+  if (!canHaveConversation && hasConversation) {
+    setHasConversation(false);
+  }
+
   useEffect(() => {
-    const effectiveContactId = deal?.contact_id ?? contactId;
-    if (!open || !deal || !effectiveContactId) {
-      setHasConversation(false);
-      return;
-    }
+    if (!open || !deal || !effectiveContactId) return;
 
     let cancelled = false;
     (async () => {
@@ -183,17 +199,28 @@ export function DealForm({
     return () => {
       cancelled = true;
     };
-  }, [open, deal, contactId, supabase]);
+  }, [open, deal, effectiveContactId, supabase]);
 
-  useEffect(() => {
-    if (!open || !deal?.id) {
+  // Reset the timeline whenever the sheet closes or opens on another
+  // deal. Adjusted during render; the effect below only fetches.
+  const timelineDealId = open ? deal?.id ?? null : null;
+  const [prevTimelineDealId, setPrevTimelineDealId] = useState<
+    string | null | undefined
+  >(undefined);
+  if (timelineDealId !== prevTimelineDealId) {
+    setPrevTimelineDealId(timelineDealId);
+    if (timelineDealId) {
+      setTimelineLoading(true);
+    } else {
       setStageEvents([]);
       setTimelineLoading(false);
-      return;
     }
+  }
+
+  useEffect(() => {
+    if (!open || !deal?.id) return;
 
     let cancelled = false;
-    setTimelineLoading(true);
     (async () => {
       const { data, error } = await supabase
         .from("deal_stage_events")
