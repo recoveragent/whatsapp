@@ -39,7 +39,7 @@ interface ConnectionPayload {
   connected: boolean;
   needs_reconnect?: boolean;
   /** `check_failed` = Meta didn't answer clearly; not proof of a disconnect. */
-  access?: 'ok' | 'access_revoked' | 'check_failed';
+  access?: 'ok' | 'not_registered' | 'access_revoked' | 'check_failed';
   meta_error?: { code: number | null; subcode: number | null; message: string } | null;
   meta_disconnected_at?: string | null;
   meta_disconnect_reason?: string | null;

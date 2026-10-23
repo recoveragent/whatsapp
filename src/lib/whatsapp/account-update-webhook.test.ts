@@ -141,6 +141,23 @@ describe('handleAccountUpdateWebhookChange', () => {
     });
   });
 
+  it("includes Meta's coexistence removal reason", async () => {
+    const config = baseConfig();
+    const { db, notifications } = makeDb([config]);
+
+    await handleAccountUpdateWebhookChange(
+      {
+        entryId: 'WABA_1',
+        value: { event: 'PARTNER_REMOVED', reason: 'PRIMARY_INACTIVITY', initiated_by: 'SYSTEM' },
+      },
+      db,
+      { confirmAccess: revoked },
+    );
+
+    expect(config.meta_disconnect_reason).toContain('not opened for about 14 days');
+    expect(String(notifications[0].body)).toContain('not opened for about 14 days');
+  });
+
   it('alerts only once when Meta redelivers the event', async () => {
     const config = baseConfig();
     const { db, notifications } = makeDb([config]);

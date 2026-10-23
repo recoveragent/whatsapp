@@ -50,8 +50,8 @@ export async function GET() {
       });
     }
 
-    let phoneInfo: { verified_name?: string; display_phone_number?: string } | null = null;
-    let access: 'ok' | MetaAccessErrorKind = 'ok';
+    let phoneInfo: Awaited<ReturnType<typeof verifyPhoneNumber>> | null = null;
+    let access: 'ok' | 'not_registered' | MetaAccessErrorKind = 'ok';
     let metaError: {
       code: number | null;
       subcode: number | null;
@@ -63,6 +63,11 @@ export async function GET() {
         phoneNumberId: config.phone_number_id,
         accessToken: decrypt(config.access_token),
       });
+      // Readable but not on Cloud API (e.g. ON_PREMISE after an unfinished
+      // coexistence onboarding): every send fails with 133010.
+      if (phoneInfo.platform_type && phoneInfo.platform_type !== 'CLOUD_API') {
+        access = 'not_registered';
+      }
     } catch (err) {
       console.warn('[GET /api/whatsapp/connection] Meta verify failed:', err);
       access = classifyMetaAccessError(err);
@@ -86,6 +91,7 @@ export async function GET() {
     const connected = access === 'ok';
     const needsReconnect =
       access === 'access_revoked' ||
+      access === 'not_registered' ||
       (access === 'check_failed' && Boolean(config.meta_disconnected_at));
     const codeLabel = metaError?.code != null
       ? ` (Meta code ${[metaError.code, metaError.subcode].filter((n) => n != null).join('/')})`
@@ -109,7 +115,9 @@ export async function GET() {
       last_registration_error: config.last_registration_error,
       message: connected
         ? undefined
-        : needsReconnect
+        : access === 'not_registered'
+          ? `Meta shows this number as not registered for the WhatsApp Cloud API (platform: ${phoneInfo?.platform_type}), so messages fail with “Account not registered”. The WhatsApp Business app link was not completed.`
+          : needsReconnect
           ? `${config.meta_disconnect_reason ?? 'Meta no longer gives Recover Agent access to this number.'}${codeLabel}`
           : `Meta did not confirm this number's status right now${codeLabel}. Messaging may still work — check again in a few minutes.`,
     });

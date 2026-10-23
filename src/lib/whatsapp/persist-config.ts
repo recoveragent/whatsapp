@@ -10,6 +10,8 @@ import {
   verifyPhoneNumber,
 } from '@/lib/whatsapp/meta-api';
 
+const COEXISTENCE_RECHECK_MS = 2000;
+
 export interface PersistWhatsAppConfigInput {
   supabase: SupabaseClient;
   userId: string;
@@ -99,10 +101,32 @@ export async function persistWhatsAppConfig(
       phoneNumberId: phone_number_id,
       accessToken: access_token,
     });
+    // A finished coexistence onboarding flips the number to CLOUD_API.
+    // Give Meta a moment, then refuse to save a half-finished one: the
+    // app gets WABA access but every send fails with 133010 "Account
+    // not registered", and /register must not be called for these.
+    for (let attempt = 0; coexistenceRequested && !isCoexistencePhone(phoneInfo) && attempt < 2; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, COEXISTENCE_RECHECK_MS));
+      phoneInfo = await verifyPhoneNumber({
+        phoneNumberId: phone_number_id,
+        accessToken: access_token,
+      });
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown Meta API error';
     console.error('Meta API verification failed during save:', message);
     return { ok: false, status: 400, error: `Meta API error: ${message}` };
+  }
+
+  if (coexistenceRequested && !isCoexistencePhone(phoneInfo)) {
+    console.warn(
+      `[persist-config] coexistence onboarding incomplete for ${phone_number_id}: platform_type=${phoneInfo.platform_type}, is_on_biz_app=${phoneInfo.is_on_biz_app}`,
+    );
+    return {
+      ok: false,
+      status: 409,
+      error: `Meta has not finished linking this WhatsApp Business app number (platform: ${phoneInfo.platform_type ?? 'unknown'}). Start the reconnect again and complete every step in the Meta window, including the confirmation and QR scan in WhatsApp Business on your phone.`,
+    };
   }
 
   let encryptedAccessToken: string;

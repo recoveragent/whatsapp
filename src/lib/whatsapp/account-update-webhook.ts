@@ -40,8 +40,22 @@ const DISCONNECT_REASONS: Record<string, string> = {
     'Meta reports that this WhatsApp Business account was deleted.',
 };
 
-export function disconnectReasonForEvent(event: string): string | null {
-  return DISCONNECT_REASONS[event] ?? null;
+// `reason` Meta sets on coexistence PARTNER_REMOVED events.
+const REMOVAL_CAUSES: Record<string, string> = {
+  PRIMARY_INACTIVITY:
+    'The WhatsApp Business app on the phone was not opened for about 14 days.',
+  USER_RE_REGISTERED:
+    'The WhatsApp Business app was registered again on a phone (new device or reinstall).',
+};
+
+export function disconnectReasonForEvent(
+  event: string,
+  cause?: string | null,
+): string | null {
+  const base = DISCONNECT_REASONS[event];
+  if (!base) return null;
+  if (!cause) return base;
+  return `${base} ${REMOVAL_CAUSES[cause] ?? `Meta reason: ${cause}.`}`;
 }
 
 export interface AccountUpdateWebhookChange {
@@ -85,7 +99,10 @@ export async function handleAccountUpdateWebhookChange(
 ): Promise<void> {
   const value = asRecord(change.value);
   const event = typeof value?.event === 'string' ? value.event : '';
-  const reason = disconnectReasonForEvent(event);
+  const reason = disconnectReasonForEvent(
+    event,
+    typeof value?.reason === 'string' ? value.reason : null,
+  );
   if (!value || !reason) return;
 
   const wabaInfo = asRecord(value.waba_info);
