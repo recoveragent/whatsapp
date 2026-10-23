@@ -6,7 +6,13 @@ import {
   toErrorResponse,
 } from '@/lib/auth/account';
 import { decrypt } from '@/lib/whatsapp/encryption';
-import { verifyPhoneNumber } from '@/lib/whatsapp/meta-api';
+import {
+  classifyMetaAccessError,
+  MetaApiError,
+  verifyPhoneNumber,
+  type MetaAccessErrorKind,
+} from '@/lib/whatsapp/meta-api';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 /**
  * GET /api/whatsapp/connection
@@ -21,7 +27,7 @@ export async function GET() {
     const { data: config, error } = await ctx.supabase
       .from('whatsapp_config')
       .select(
-        'id, phone_number_id, status, registered_at, connected_at, last_registration_error, access_token'
+        'id, phone_number_id, status, registered_at, connected_at, last_registration_error, access_token, meta_disconnected_at, meta_disconnect_reason'
       )
       .eq('account_id', ctx.accountId)
       .maybeSingle();
@@ -45,21 +51,54 @@ export async function GET() {
     }
 
     let phoneInfo: { verified_name?: string; display_phone_number?: string } | null = null;
-    let connected = false;
+    let access: 'ok' | MetaAccessErrorKind = 'ok';
+    let metaError: {
+      code: number | null;
+      subcode: number | null;
+      message: string;
+      fbtrace_id: string | null;
+    } | null = null;
     try {
       phoneInfo = await verifyPhoneNumber({
         phoneNumberId: config.phone_number_id,
         accessToken: decrypt(config.access_token),
       });
-      connected = true;
     } catch (err) {
       console.warn('[GET /api/whatsapp/connection] Meta verify failed:', err);
+      access = classifyMetaAccessError(err);
+      metaError = {
+        code: err instanceof MetaApiError ? err.code ?? null : null,
+        subcode: err instanceof MetaApiError ? err.subcode ?? null : null,
+        message: err instanceof Error ? err.message : 'Meta API request failed.',
+        fbtrace_id: err instanceof MetaApiError ? err.fbtraceId ?? null : null,
+      };
     }
+
+    // The account_update webhook marked this number disconnected, but
+    // Meta grants access again (reconnected outside Embedded Signup).
+    if (access === 'ok' && config.meta_disconnected_at) {
+      await supabaseAdmin()
+        .from('whatsapp_config')
+        .update({ status: 'connected', meta_disconnected_at: null, meta_disconnect_reason: null })
+        .eq('id', config.id);
+    }
+
+    const connected = access === 'ok';
+    const needsReconnect =
+      access === 'access_revoked' ||
+      (access === 'check_failed' && Boolean(config.meta_disconnected_at));
+    const codeLabel = metaError?.code != null
+      ? ` (Meta code ${[metaError.code, metaError.subcode].filter((n) => n != null).join('/')})`
+      : '';
 
     return NextResponse.json({
       configured: true,
       connected,
-      needs_reconnect: !connected,
+      needs_reconnect: needsReconnect,
+      access,
+      meta_error: metaError,
+      meta_disconnected_at: connected ? null : config.meta_disconnected_at,
+      meta_disconnect_reason: connected ? null : config.meta_disconnect_reason,
       id: config.id,
       phone_number_id: config.phone_number_id,
       verified_name: phoneInfo?.verified_name ?? null,
@@ -70,7 +109,9 @@ export async function GET() {
       last_registration_error: config.last_registration_error,
       message: connected
         ? undefined
-        : 'This number is no longer valid with Meta (removed, revoked, or incomplete). Disconnect it, then connect a new number.',
+        : needsReconnect
+          ? `${config.meta_disconnect_reason ?? 'Meta no longer gives Recover Agent access to this number.'}${codeLabel}`
+          : `Meta did not confirm this number's status right now${codeLabel}. Messaging may still work — check again in a few minutes.`,
     });
   } catch (err) {
     return toErrorResponse(err);
@@ -92,7 +133,7 @@ export async function DELETE(request: Request) {
     }
     const { error } = await ctx.supabase
       .from('whatsapp_config')
-      .update({ direct_send_status: 'unknown', access_token: '', verify_token: null, status: 'disconnected', connected_at: null, registered_at: null, last_registration_error: null })
+      .update({ direct_send_status: 'unknown', access_token: '', verify_token: null, status: 'disconnected', connected_at: null, registered_at: null, last_registration_error: null, meta_disconnected_at: null, meta_disconnect_reason: null })
       .eq('account_id', ctx.accountId)
       .eq('id', configId);
 

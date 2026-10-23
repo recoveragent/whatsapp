@@ -105,11 +105,39 @@ export function formatMetaErrorMessage(
   return codeBits ? `${primary} (code ${codeBits})` : primary
 }
 
+/**
+ * Error thrown for non-2xx Graph API responses. `message` stays the
+ * toast-friendly summary; the raw Meta fields are kept so callers can
+ * branch on them (see `classifyMetaAccessError`).
+ */
+export class MetaApiError extends Error {
+  readonly httpStatus: number
+  readonly code?: number
+  readonly subcode?: number
+  readonly metaMessage?: string
+  readonly fbtraceId?: string
+
+  constructor(
+    message: string,
+    httpStatus: number,
+    err?: MetaErrorResponse['error'],
+  ) {
+    super(message)
+    this.name = 'MetaApiError'
+    this.httpStatus = httpStatus
+    this.code = err?.code
+    this.subcode = err?.error_subcode
+    this.metaMessage = err?.message
+    this.fbtraceId = err?.fbtrace_id
+  }
+}
+
 async function throwMetaError(response: Response, fallback: string): Promise<never> {
   let message = fallback
+  let err: MetaErrorResponse['error']
   try {
     const data = (await response.json()) as MetaErrorResponse
-    const err = data.error
+    err = data.error
     if (err) {
       message = formatMetaErrorMessage(err)
       // Full payload to server logs for anything the summary line drops.
@@ -118,7 +146,26 @@ async function throwMetaError(response: Response, fallback: string): Promise<nev
   } catch {
     // response body wasn't JSON — keep the fallback
   }
-  throw new Error(message)
+  throw new MetaApiError(message, response.status, err)
+}
+
+export type MetaAccessErrorKind = 'access_revoked' | 'check_failed'
+
+/**
+ * Split "this app can no longer reach the number" from transient
+ * failures (rate limits, Meta outages). Only the former should tell a
+ * brand to reconnect:
+ *   190      — token invalid / expired / user logged out
+ *   10, 200+ — permission removed (app uninstalled, asset unshared)
+ *   100/33   — object missing or not visible to this token
+ */
+export function classifyMetaAccessError(err: unknown): MetaAccessErrorKind {
+  if (!(err instanceof MetaApiError)) return 'check_failed'
+  const { code, subcode } = err
+  if (code === 190 || code === 10) return 'access_revoked'
+  if (code != null && code >= 200 && code <= 299) return 'access_revoked'
+  if (code === 100 && subcode === 33) return 'access_revoked'
+  return 'check_failed'
 }
 
 // ============================================================

@@ -90,7 +90,7 @@ export async function persistWhatsAppConfig(
     return { ok: false, status: 500, error: 'Failed to load WhatsApp configuration' };
   }
   if (existing?.access_token && existing.phone_number_id !== phone_number_id) {
-    return { ok: false, status: 409, error: 'Only one WhatsApp number is supported. Disconnect the current number before connecting a replacement.' };
+    return { ok: false, status: 409, error: 'You selected a different number from the one saved for this workspace. To restore access, run Embedded Signup again and select the same number. To switch numbers, disconnect the current one first.' };
   }
 
   let phoneInfo;
@@ -181,6 +181,8 @@ export async function persistWhatsAppConfig(
     registered_at: registrationError ? null : registeredAt,
     subscribed_apps_at: subscribedAppsAt ?? null,
     last_registration_error: registrationError,
+    meta_disconnected_at: null,
+    meta_disconnect_reason: null,
     updated_at: new Date().toISOString(),
   };
 

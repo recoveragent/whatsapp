@@ -16,6 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { SystemNotifications } from "@/components/layout/system-notifications";
 import { ReminderNotifications } from "@/components/layout/reminder-notifications";
 import { TopBarSlotTarget } from "@/components/layout/top-bar-slots";
 import { BRAND_ICON_PATH, BRAND_NAME } from "@/components/brand/brand-logo";
@@ -69,6 +70,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
       <TopBarSlotTarget slot="center" className="flex-1" />
 
       <div className="flex items-center gap-1 sm:gap-2">
+        <SystemNotifications />
         <ReminderNotifications />
 
         <DropdownMenu>

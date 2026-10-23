@@ -161,10 +161,7 @@ function HeaderMediaField({
           </span>
         </div>
       )}
-      <label className="mb-1 block text-xs text-muted-foreground">
-        Header media URL ({mediaHeaderType})
-      </label>
-      <VariableMappingInput value={value} onFocus={onFocus} onChange={onChange}
+      <VariableMappingInput label={`Header media URL (${mediaHeaderType})`} value={value} onFocus={onFocus} onChange={onChange}
         placeholder="{{ vars.product_image }} or https://…" active={active} />
       {mediaHeaderType === "image" &&
         isStaticMediaUrl(value) && (
@@ -202,7 +199,9 @@ function VariableMappingInput({
   onFocus,
   active,
   placeholder,
+  label,
 }: {
+  label: string;
   value: string;
   onChange: (value: string) => void;
   onFocus: () => void;
@@ -211,19 +210,22 @@ function VariableMappingInput({
 }) {
   return (
     <div className="grid min-w-0 grid-cols-1 items-start gap-2 @min-[26rem]:grid-cols-2">
-    <textarea
-      rows={withoutVariableFallbacks(value).length > 36 ? 2 : 1}
-      value={withoutVariableFallbacks(value)}
-      title={withoutVariableFallbacks(value)}
-      onFocus={onFocus}
-      onChange={(e) => onChange(preserveVariableFallbacks(e.target.value, value))}
-      placeholder={placeholder}
-      className={cn(
-        variableInputClass(active),
-        "resize-none break-all rounded-lg border border-input outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-      )}
-    />
-    <VariableFallbackFields value={value} onChange={onChange} />
+      <label className="min-w-0 space-y-1">
+        <span className="block text-xs text-muted-foreground">{label}</span>
+        <textarea
+          rows={withoutVariableFallbacks(value).length > 36 ? 2 : 1}
+          value={withoutVariableFallbacks(value)}
+          title={withoutVariableFallbacks(value)}
+          onFocus={onFocus}
+          onChange={(e) => onChange(preserveVariableFallbacks(e.target.value, value))}
+          placeholder={placeholder}
+          className={cn(
+            variableInputClass(active),
+            "min-h-10 resize-none break-all rounded-lg border border-input outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+          )}
+        />
+      </label>
+      <VariableFallbackFields value={value} onChange={onChange} />
     </div>
   );
 }
@@ -698,10 +700,7 @@ export function SendTemplateFields({
                 <p className="text-[11px] text-muted-foreground">{variableHint}</p>
                 {placeholders.map((key) => (
                   <div key={key} className="min-w-0">
-                    <label className="mb-1 block text-xs text-muted-foreground">
-                      Variable {`{{${key}}}`}
-                    </label>
-                    <VariableMappingInput
+                    <VariableMappingInput label={`Variable {{${key}}}`}
                       value={variables[key] ?? ""}
                       onFocus={() => setActiveField(key)}
                       onChange={(next) =>
@@ -737,10 +736,7 @@ export function SendTemplateFields({
                   selectedTemplate.header_content &&
                   extractVariableIndices(selectedTemplate.header_content).length > 0 && (
                     <div>
-                      <label className="mb-1 block text-xs text-muted-foreground">
-                        Header variable
-                      </label>
-                      <VariableMappingInput
+                      <VariableMappingInput label="Header variable"
                         value={variables.header_1 ?? ""}
                         onFocus={() => setActiveField("header_1")}
                         onChange={(next) =>
@@ -758,10 +754,7 @@ export function SendTemplateFields({
 
                 {urlSuffixButtons.map((slot) => (
                   <div key={`button_${slot.index}`}>
-                    <label className="mb-1 block text-xs text-muted-foreground">
-                      URL button “{slot.text}” — suffix for {`{{1}}`}
-                    </label>
-                    <VariableMappingInput
+                    <VariableMappingInput label={`URL button “${slot.text}” — suffix for {{1}}`}
                       value={variables[`button_${slot.index}`] ?? ""}
                       onFocus={() => setActiveField(`button_${slot.index}`)}
                       onChange={(next) =>
@@ -801,10 +794,7 @@ export function SendTemplateFields({
             extractVariableIndices(selectedTemplate.header_content).length > 0 && (
               <div className={flowLayout ? "space-y-3" : VARIABLE_FIELDS_LAYOUT}>
                 <div className="min-w-0">
-                  <label className="mb-1 block text-xs text-muted-foreground">
-                    Header variable
-                  </label>
-                  <VariableMappingInput
+                  <VariableMappingInput label="Header variable"
                     value={variables.header_1 ?? ""}
                     onFocus={() => setActiveField("header_1")}
                     onChange={(next) =>
@@ -858,10 +848,7 @@ export function SendTemplateFields({
               <div className="min-w-0 space-y-2">
                 {urlSuffixButtons.map((slot) => (
                   <div key={`button_${slot.index}`}>
-                    <label className="mb-1 block text-xs text-muted-foreground">
-                      URL button “{slot.text}” — suffix for {`{{1}}`}
-                    </label>
-                    <VariableMappingInput
+                    <VariableMappingInput label={`URL button “${slot.text}” — suffix for {{1}}`}
                       value={variables[`button_${slot.index}`] ?? ""}
                       onFocus={() => setActiveField(`button_${slot.index}`)}
                       onChange={(next) =>
