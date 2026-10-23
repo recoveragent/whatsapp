@@ -37,6 +37,10 @@ import {
   handleCoexistenceWebhookChange,
   isCoexistenceWebhookField,
 } from '@/lib/whatsapp/coexistence-webhook'
+import {
+  handleAccountUpdateWebhookChange,
+  isAccountUpdateWebhookField,
+} from '@/lib/whatsapp/account-update-webhook'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -289,6 +293,14 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }, delivery
       if (isCoexistenceWebhookField(change.field)) {
         await handleCoexistenceWebhookChange(
           { field: change.field, value: change.value as unknown },
+          supabaseAdmin(),
+        )
+        continue
+      }
+
+      if (isAccountUpdateWebhookField(change.field)) {
+        await handleAccountUpdateWebhookChange(
+          { entryId: entry.id, value: change.value as unknown },
           supabaseAdmin(),
         )
         continue

@@ -288,7 +288,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
 
     const { error: deleteError } = await supabaseAdmin()
       .from('whatsapp_config')
-      .update({ access_token: '', verify_token: null, status: 'disconnected', connected_at: null, registered_at: null, last_registration_error: null })
+      .update({ access_token: '', verify_token: null, status: 'disconnected', connected_at: null, registered_at: null, last_registration_error: null, meta_disconnected_at: null, meta_disconnect_reason: null })
       .eq('account_id', ctx.brand.id);
 
     if (deleteError) {

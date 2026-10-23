@@ -5,16 +5,17 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import type { Notification } from "@/types";
-import { Bell, CheckCheck, Loader2, UserPlus } from "lucide-react";
+import { Bell, CheckCheck, Loader2, UserPlus, TriangleAlert, Unplug } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-// Icon per notification type. Only one type exists today
-// (conversation_assigned) but this keeps future types a one-line add.
+// Notification icons shared by assignments and delivery errors.
 const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
   conversation_assigned: UserPlus,
+  message_failed: TriangleAlert,
+  whatsapp_disconnected: Unplug,
 };
 
 export default function NotificationsPage() {
@@ -114,7 +115,9 @@ export default function NotificationsPage() {
   const handleClick = useCallback(
     (n: Notification) => {
       if (!n.read_at) markRead(n.id);
-      if (n.conversation_id) {
+      if (n.type === 'whatsapp_disconnected') {
+        router.push('/settings?tab=whatsapp');
+      } else if (n.conversation_id) {
         router.push(`/inbox?c=${n.conversation_id}`);
       }
     },
@@ -167,7 +170,7 @@ export default function NotificationsPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Notifications</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Conversations other teammates assign to you show up here.
+            WhatsApp delivery failures and conversation assignments show up here.
           </p>
         </div>
         <Button
@@ -194,8 +197,7 @@ export default function NotificationsPage() {
             No notifications yet
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            You&apos;ll see an alert here when someone assigns you a
-            conversation.
+            Delivery failures and new conversation assignments will appear here.
           </p>
         </div>
       ) : (
@@ -247,7 +249,7 @@ export default function NotificationsPage() {
                       )}
                     </div>
                     {n.body && (
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      <p className="mt-0.5 whitespace-pre-wrap break-words text-xs text-muted-foreground">
                         {n.body}
                       </p>
                     )}

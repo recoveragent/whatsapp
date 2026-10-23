@@ -306,7 +306,7 @@ export interface Conversation {
 // Notifications (migration 027)
 // ============================================================
 
-export type NotificationType = 'conversation_assigned';
+export type NotificationType = 'conversation_assigned' | 'message_failed' | 'whatsapp_disconnected';
 
 export interface Notification {
   id: string;

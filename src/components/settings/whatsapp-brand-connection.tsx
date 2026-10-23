@@ -38,6 +38,11 @@ interface ConnectionPayload {
   configured: boolean;
   connected: boolean;
   needs_reconnect?: boolean;
+  /** `check_failed` = Meta didn't answer clearly; not proof of a disconnect. */
+  access?: 'ok' | 'access_revoked' | 'check_failed';
+  meta_error?: { code: number | null; subcode: number | null; message: string } | null;
+  meta_disconnected_at?: string | null;
+  meta_disconnect_reason?: string | null;
   phone_number_id?: string | null;
   verified_name?: string | null;
   display_phone_number?: string | null;
@@ -245,11 +250,14 @@ export function WhatsAppBrandConnection() {
   const needsReconnect = Boolean(
     connection?.needs_reconnect ?? (configured && !connected),
   );
+  const checkFailed = configured && !connected && !needsReconnect;
   const canEditSettings = accountCtx?.canEditSettings ?? false;
   const displayNumber =
     connection?.display_phone_number || connection?.phone_number_id || null;
   const verifiedName = connection?.verified_name;
   const showConnect = canEditSettings && Boolean(accountCtx?.linked) && !configured;
+  const showReconnect =
+    canEditSettings && Boolean(accountCtx?.linked) && configured && needsReconnect;
   const registrationIncomplete =
     canEditSettings &&
     configured &&
@@ -264,16 +272,19 @@ export function WhatsAppBrandConnection() {
           configured && connected
             ? 'Your connected WhatsApp Business number for this workspace.'
             : configured && needsReconnect
-              ? 'Reconnect or disconnect this number, then link a new WhatsApp Business number.'
-              : 'Connect your Meta WhatsApp Business account and phone number.'
+              ? 'Restore Meta access to your existing WhatsApp Business number.'
+              : checkFailed
+                ? 'Your saved WhatsApp Business number for this workspace.'
+                : 'Connect your Meta WhatsApp Business account and phone number.'
         }
       />
 
       <div className="space-y-6 max-w-xl">
-        {(showConnect || registrationIncomplete) && (
+        {(showConnect || showReconnect || registrationIncomplete) && (
           <WhatsAppEmbeddedSignupPanel
             onComplete={async () => { await refreshProfile(); await load(); }}
             registrationOnly={registrationIncomplete}
+            reconnectExisting={showReconnect}
           />
         )}
 
@@ -281,7 +292,7 @@ export function WhatsAppBrandConnection() {
           className={
             configured && connected
               ? 'bg-emerald-950/30 border-emerald-700/50'
-              : configured && needsReconnect
+              : configured && (needsReconnect || checkFailed)
                 ? 'bg-amber-950/30 border-amber-700/50'
                 : 'bg-card border-border'
           }
@@ -291,7 +302,7 @@ export function WhatsAppBrandConnection() {
               <CheckCircle2 className="size-5 text-emerald-400 mt-0.5 shrink-0" />
             ) : (
               <XCircle
-                className={`size-5 mt-0.5 shrink-0 ${needsReconnect ? 'text-amber-400' : 'text-muted-foreground'}`}
+                className={`size-5 mt-0.5 shrink-0 ${needsReconnect || checkFailed ? 'text-amber-400' : 'text-muted-foreground'}`}
               />
             )}
             <div>
@@ -299,8 +310,10 @@ export function WhatsAppBrandConnection() {
                 {configured && connected
                   ? 'WhatsApp number connected'
                   : configured && needsReconnect
-                    ? 'Number configured - needs attention'
-                    : 'No WhatsApp number connected'}
+                    ? 'WhatsApp number disconnected from Recover Agent'
+                    : checkFailed
+                      ? 'Could not confirm status with Meta'
+                      : 'No WhatsApp number connected'}
               </AlertTitle>
               <AlertDescription className="text-muted-foreground text-sm">
                 {loadError ? (
@@ -311,13 +324,36 @@ export function WhatsAppBrandConnection() {
                     incoming messages appear in Inbox.
                   </>
                 ) : configured && needsReconnect ? (
-                  <>
-                    {connection?.message ??
-                      'A number is on file but Meta verification failed.'}
-                    {canEditSettings
-                      ? ' Disconnect below before connecting a replacement number.'
-                      : ' Contact your workspace admin or Recover Agent.'}
-                  </>
+                  <span className="block space-y-2">
+                    <span className="block">
+                      {connection?.message ??
+                        'Meta no longer gives Recover Agent access to this number.'}
+                    </span>
+                    {connection?.meta_disconnected_at && (
+                      <span className="block text-xs">
+                        Disconnected{' '}
+                        {new Date(connection.meta_disconnected_at).toLocaleString(undefined, {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })}
+                      </span>
+                    )}
+                    <span className="block">
+                      {canEditSettings
+                        ? 'Messages are not being sent or received. Use “Reconnect existing Business app number” above and select the same number — Meta will ask you to scan a QR code in WhatsApp Business on your phone. Do not disconnect first; your chats and templates stay in place.'
+                        : 'Messages are not being sent or received. Ask your workspace admin to reconnect the number.'}
+                    </span>
+                  </span>
+                ) : checkFailed ? (
+                  <span className="block space-y-2">
+                    <span className="block">
+                      {connection?.message ??
+                        'Meta did not confirm this number’s status right now.'}
+                    </span>
+                    <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
+                      Check again
+                    </Button>
+                  </span>
                 ) : canEditSettings ? (
                   (connection?.message ??
                     'Use the Connect with Meta button above to link your WhatsApp Business number.')
