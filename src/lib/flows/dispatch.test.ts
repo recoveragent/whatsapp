@@ -243,7 +243,14 @@ describe("dispatchInboundToFlows — entry triggers (#490)", () => {
   });
 
   it("still starts the same flow for the typed text (unchanged path)", async () => {
-    h.state.flows = [KEYWORD_FLOW];
+    // Keyword matching defaults to "exact"; opt into "contains" so the
+    // typed sentence around the keyword still matches.
+    h.state.flows = [
+      {
+        ...KEYWORD_FLOW,
+        trigger_config: { keywords: ["order status"], match_type: "contains" },
+      },
+    ];
 
     const result = await dispatch({
       kind: "text",

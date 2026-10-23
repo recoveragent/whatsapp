@@ -84,6 +84,10 @@ describe('formatWebhookScalar', () => {
     expect(formatWebhookScalar('11 Sept 2026, 0:30 pm')).toBe(
       '11 Sept 2026, 12:30 pm',
     )
+    // Node 20's ICU pads the hour: "00:00 pm".
+    expect(formatWebhookScalar('11 Sept 2026, 00:00 pm')).toBe(
+      '11 Sept 2026, 12:00 pm',
+    )
   })
 })
 

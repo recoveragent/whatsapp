@@ -6,15 +6,15 @@ import { SendMessageError } from './send-message';
 
 // ------------------------------------------------------------
 // Chainable Supabase stub, scripted per table. Terminal methods
-// (like/maybeSingle/single) resolve to configured data; the builder
+// (or/maybeSingle/single) resolve to configured data; the builder
 // itself is thenable so an awaited `update().eq()` resolves cleanly.
 // ------------------------------------------------------------
 type ContactRow = { id: string; phone: string; name?: string | null };
 
 interface Script {
   config?: { user_id: string } | null; // whatsapp_config.maybeSingle
-  contactCandidates?: ContactRow[]; // contacts .like (same every call)
-  /** Per-call `.like` results — overrides contactCandidates. Lets a
+  contactCandidates?: ContactRow[]; // contacts .or (same every call)
+  /** Per-call `.or` results — overrides contactCandidates. Lets a
    *  test simulate "miss, then hit" for the unique-race path. */
   contactCandidatesByCall?: ContactRow[][];
   insertedContactId?: string; // contacts insert -> single
@@ -32,7 +32,7 @@ interface Script {
 function makeDb(script: Script): SupabaseClient {
   let table = '';
   let mode: 'select' | 'insert' | 'update' = 'select';
-  let likeCalls = 0;
+  let orCalls = 0;
   let convLookupCalls = 0;
 
   const builder: Record<string, unknown> = {
@@ -58,11 +58,12 @@ function makeDb(script: Script): SupabaseClient {
       }
       return Promise.resolve({ data: [], error: null });
     },
-    like: () => {
+    // The contact lookup (findExistingContact) terminates on `.or(...)`.
+    or: () => {
       const data = script.contactCandidatesByCall
-        ? (script.contactCandidatesByCall[likeCalls] ?? [])
+        ? (script.contactCandidatesByCall[orCalls] ?? [])
         : (script.contactCandidates ?? []);
-      likeCalls++;
+      orCalls++;
       return Promise.resolve({ data, error: null });
     },
     maybeSingle: () => {

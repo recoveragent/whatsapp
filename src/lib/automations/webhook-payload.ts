@@ -56,11 +56,12 @@ export function resolveWebhookTimeZone(
   return undefined
 }
 
-/** Some ICU builds render noon as "0:00 pm" instead of "12:00 pm". */
+/** Some ICU builds render noon as "0:00 pm" (or "00:00 pm" on Node 20)
+ *  instead of "12:00 pm". */
 function normalizeWebhookTimeDisplay(formatted: string): string {
   return formatted
-    .replace(/, 0:(\d{2}) pm\b/i, ', 12:$1 pm')
-    .replace(/, 0:(\d{2}) am\b/i, ', 12:$1 am')
+    .replace(/, 00?:(\d{2}) pm\b/i, ', 12:$1 pm')
+    .replace(/, 00?:(\d{2}) am\b/i, ', 12:$1 am')
 }
 
 const DISPLAY_DATETIME_RE =

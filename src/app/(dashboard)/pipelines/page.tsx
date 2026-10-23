@@ -221,11 +221,15 @@ export default function PipelinesPage() {
     };
   }, [selectedPipelineId, loadStages, loadDeals]);
 
-  useEffect(() => {
+  // Reset filters when the selected pipeline changes. Adjusting state
+  // during render (rather than in an effect) avoids a cascading render.
+  const [filtersPipelineId, setFiltersPipelineId] = useState(selectedPipelineId);
+  if (filtersPipelineId !== selectedPipelineId) {
+    setFiltersPipelineId(selectedPipelineId);
     setSearch("");
     setDateFrom("");
     setDateTo("");
-  }, [selectedPipelineId]);
+  }
 
   const filteredDeals = useMemo(
     () =>

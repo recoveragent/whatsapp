@@ -22,15 +22,23 @@ export function usePhoneDeepLink() {
   const phone = pickValidE164Phone(searchParams.getAll('phone'));
   const conversationId = searchParams.get('c');
   const embedded = isEmbedMode(searchParams);
-  const [pending, setPending] = useState(
-    () => Boolean(phone) && !searchParams.get('c'),
-  );
+  // `pending` only matters while there is a phone and no conversation
+  // yet (see the return value), so seeding it from `phone` alone is fine.
+  const [pending, setPending] = useState(() => Boolean(phone));
 
-  useEffect(() => {
-    if (conversationId) {
-      setPending(false);
-    }
-  }, [conversationId]);
+  // Sync `pending` with the URL during render rather than in effects,
+  // to avoid cascading renders. A new phone starts a lookup (the effect
+  // below); a conversation id in the URL means there is nothing to wait for.
+  const [prevConversationId, setPrevConversationId] = useState(conversationId);
+  if (conversationId !== prevConversationId) {
+    setPrevConversationId(conversationId);
+    if (conversationId) setPending(false);
+  }
+  const [prevPhone, setPrevPhone] = useState(phone);
+  if (phone !== prevPhone) {
+    setPrevPhone(phone);
+    setPending(Boolean(phone));
+  }
 
   useEffect(() => {
     if (phone !== prevPhoneRef.current) {
@@ -40,15 +48,11 @@ export function usePhoneDeepLink() {
   }, [phone]);
 
   useEffect(() => {
-    if (!phone) {
-      setPending(false);
-      return;
-    }
+    if (!phone) return;
     if (handledPhoneRef.current === phone) return;
     handledPhoneRef.current = phone;
 
     let cancelled = false;
-    setPending(true);
 
     void (async () => {
       try {
