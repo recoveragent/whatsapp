@@ -127,10 +127,14 @@ export function paymentConfigErrors(
   return errors;
 }
 
-/** COD → prepaid needs a live, uncancelled order from the run's trigger. */
+/**
+ * COD → prepaid needs a live, uncancelled order from the run's trigger. An
+ * external webhook qualifies when its payload carries `shopify_order_id`.
+ */
 export const COD_TO_PREPAID_TRIGGERS = [
   'shopify_order_placed',
   'shopify_order_updated',
+  'webhook_received',
 ] as const;
 
 export function supportsCodToPrepaid(triggerType: string | undefined): boolean {

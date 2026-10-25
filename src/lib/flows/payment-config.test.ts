@@ -152,6 +152,7 @@ describe('COD to prepaid configuration', () => {
   it('is offered only for order placed and order updated triggers', () => {
     expect(supportsCodToPrepaid('shopify_order_placed')).toBe(true);
     expect(supportsCodToPrepaid('shopify_order_updated')).toBe(true);
+    expect(supportsCodToPrepaid('webhook_received')).toBe(true);
     expect(supportsCodToPrepaid('shopify_order_cancelled')).toBe(false);
     expect(supportsCodToPrepaid(undefined)).toBe(false);
   });

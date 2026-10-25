@@ -110,7 +110,7 @@ export async function POST(
           : await admin.from('account_payment_connections').select('enabled').eq('account_id', flow.account_id).maybeSingle()
         if (connectionError || !connection?.enabled) issues.push({ severity: 'error', scope: 'node', node_key: n.node_key, field: 'provider', message: `Connect this brand’s ${cashfree ? 'Cashfree' : 'Razorpay'} account before activating payment collection.` })
         if (config.shopify_cod_to_prepaid === true) {
-          if (!supportsCodToPrepaid(flow.trigger_type)) issues.push({ severity: 'error', scope: 'node', node_key: n.node_key, field: 'shopify_cod_to_prepaid', message: 'COD to prepaid needs the “Shopify: order placed” or “Shopify: order updated” trigger.' })
+          if (!supportsCodToPrepaid(flow.trigger_type)) issues.push({ severity: 'error', scope: 'node', node_key: n.node_key, field: 'shopify_cod_to_prepaid', message: 'COD to prepaid needs the “Shopify: order placed”, “Shopify: order updated” or webhook trigger.' })
           const { data: shopify } = await admin.from('shopify_config').select('status').eq('account_id', flow.account_id).maybeSingle()
           if (shopify?.status !== 'connected') issues.push({ severity: 'error', scope: 'node', node_key: n.node_key, field: 'shopify_cod_to_prepaid', message: 'Connect this brand’s Shopify store before activating COD to prepaid.' })
         }

@@ -285,8 +285,15 @@ export function CollectPaymentFields({
           </p>
           {cod && !supportsCodToPrepaid(triggerType) && (
             <p role="alert" className="text-destructive text-xs">
-              Use the “Shopify: order placed” or “Shopify: order updated”
-              trigger for COD to prepaid.
+              Use the “Shopify: order placed”, “Shopify: order updated” or
+              webhook trigger for COD to prepaid.
+            </p>
+          )}
+          {cod && triggerType === 'webhook_received' && (
+            <p className="text-muted-foreground text-xs">
+              The webhook payload must include <code>shopify_order_id</code>{' '}
+              (the numeric Shopify order ID, not the order name), or map it
+              under the trigger’s variable mappings.
             </p>
           )}
           {cod && (

@@ -40,10 +40,13 @@ async function shopifyConnection(db: SupabaseClient, accountId: string) {
 }
 
 function shopifyOrderId(run: FlowRunRow): string {
-  const id = String(run.vars?.shopify_order_id ?? '').trim();
+  // Webhook payloads may send the Admin GraphQL id (gid://shopify/Order/123).
+  const id = String(run.vars?.shopify_order_id ?? '')
+    .trim()
+    .replace(/^gid:\/\/shopify\/Order\//, '');
   if (!/^\d+$/.test(id))
     throw new Error(
-      'COD to prepaid needs a Shopify order from the flow trigger.'
+      'COD to prepaid needs a Shopify order from the flow trigger. Webhook triggers must send shopify_order_id.'
     );
   return id;
 }
