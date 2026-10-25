@@ -771,7 +771,22 @@
         "errorLoadTags": "Failed to load tags",
         "errorLoadFields": "Failed to load custom fields",
         "errorCsvParse": "Could not parse CSV file.",
-        "errorCsvMissingPhone": "CSV must have a 'phone' column."
+        "errorCsvMissingPhone": "CSV must have a 'phone' column.",
+        "lastActivity": {
+          "title": "Last Message Activity (Optional)",
+          "desc": "Only include contacts whose most recent message (chat or broadcast) ended in one of these states.",
+          "status": {
+            "read": "Read",
+            "delivered": "Delivered, not read",
+            "sent": "Sent, not delivered",
+            "failed": "Failed",
+            "replied": "Replied",
+            "none": "Never messaged"
+          },
+          "window": "Last message sent",
+          "anyTime": "Any time",
+          "withinDays": "In the last {days} days"
+        }
       },
       "personalize": {
         "title": "Personalize Variables",

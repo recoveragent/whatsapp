@@ -14,6 +14,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   AudienceConfig,
   CustomFieldFilter,
+  LastActivityFilter,
 } from '@/hooks/use-broadcast-sending';
 import { fetchAllInChunks, fetchAllPages } from '@/lib/supabase/fetch-all';
 import { resolveWooCommerceSegmentContactIds } from '@/lib/woocommerce/resolve-segment-audience';
@@ -56,6 +57,38 @@ export async function fetchCustomFieldContactIds(
     else query = query.ilike('value', `%${value}%`);
     return query.order('id').range(from, to);
   });
+  return new Set(rows.map((r) => r.contact_id));
+}
+
+/** True when the audience carries a usable last-activity filter. */
+export function hasLastActivityFilter(
+  audience: AudienceConfig,
+): audience is AudienceConfig & { lastActivity: LastActivityFilter } {
+  return (
+    audience.type !== 'csv' && (audience.lastActivity?.activities.length ?? 0) > 0
+  );
+}
+
+/**
+ * Distinct contact ids whose last message (inbox or broadcast) matches
+ * one of `filter.activities` — see migration
+ * 20261023101357_broadcast_last_activity_filter.
+ */
+export async function fetchLastActivityContactIds(
+  supabase: SupabaseClient,
+  filter: LastActivityFilter,
+): Promise<Set<string>> {
+  const since = filter.withinDays
+    ? new Date(Date.now() - filter.withinDays * 86_400_000).toISOString()
+    : null;
+  const rows = await fetchAllPages<{ contact_id: string }>((from, to) =>
+    supabase
+      .rpc('contacts_by_last_message_activity', {
+        p_activities: filter.activities,
+        p_since: since,
+      })
+      .range(from, to),
+  );
   return new Set(rows.map((r) => r.contact_id));
 }
 
@@ -119,6 +152,16 @@ export async function estimateAudienceCount(
   const excludeSet = audience.excludeTagIds?.length
     ? await fetchTagContactIds(supabase, audience.excludeTagIds)
     : null;
+
+  if (hasLastActivityFilter(audience)) {
+    const activityIds = await fetchLastActivityContactIds(
+      supabase,
+      audience.lastActivity,
+    );
+    baseIds = baseIds
+      ? new Set([...baseIds].filter((id) => activityIds.has(id)))
+      : activityIds;
+  }
 
   if (baseIds) {
     let n = 0;

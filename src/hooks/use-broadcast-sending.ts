@@ -10,7 +10,9 @@ import {
   fetchAllContacts,
   fetchContactsByIds,
   fetchCustomFieldContactIds,
+  fetchLastActivityContactIds,
   fetchTagContactIds,
+  hasLastActivityFilter,
 } from '@/lib/broadcast-audience';
 import { normalizeKey } from '@/lib/contacts/dedupe';
 import {
@@ -32,6 +34,25 @@ export interface CustomFieldFilter {
   value: string;
 }
 
+/**
+ * What happened to the last message exchanged with a contact (inbox
+ * thread or broadcast). `replied` = the customer spoke last; `none` =
+ * never messaged.
+ */
+export type LastMessageActivity =
+  | 'read'
+  | 'delivered'
+  | 'sent'
+  | 'failed'
+  | 'replied'
+  | 'none';
+
+export interface LastActivityFilter {
+  activities: LastMessageActivity[];
+  /** Only count a last message sent within this many days. Omit for any time. */
+  withinDays?: number;
+}
+
 export interface AudienceConfig {
   type: 'all' | 'tags' | 'custom_field' | 'csv' | 'woocommerce';
   tagIds?: string[];
@@ -41,6 +62,8 @@ export interface AudienceConfig {
   excludeTagIds?: string[];
   /** WooCommerce purchase-behavior segment (woocommerce brands only). */
   woocommerceSegment?: WooCommerceSegmentKey;
+  /** Keep only contacts whose last message activity matches. */
+  lastActivity?: LastActivityFilter;
 }
 
 interface BroadcastPayload {
@@ -172,6 +195,14 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
         audience.excludeTagIds
       );
       contacts = contacts.filter((c) => !excludedIds.has(c.id));
+    }
+
+    if (hasLastActivityFilter(audience)) {
+      const activityIds = await fetchLastActivityContactIds(
+        supabase,
+        audience.lastActivity
+      );
+      contacts = contacts.filter((c) => activityIds.has(c.id));
     }
 
     return contacts;
@@ -339,6 +370,7 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
             customField: payload.audience.customField,
             excludeTagIds: payload.audience.excludeTagIds,
             woocommerceSegment: payload.audience.woocommerceSegment,
+            lastActivity: payload.audience.lastActivity,
             headerMediaUrl: payload.headerMediaUrl?.trim() || undefined,
           },
           // Publish the schedule only after all recipient rows are ready.

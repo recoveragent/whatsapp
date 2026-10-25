@@ -17,7 +17,12 @@ import {
   ArrowLeft,
   X,
   Store,
+  Activity,
 } from 'lucide-react';
+import type {
+  LastActivityFilter,
+  LastMessageActivity,
+} from '@/hooks/use-broadcast-sending';
 import type { WooCommerceSegmentKey } from '@/lib/woocommerce/segments';
 import { estimateAudienceCount } from '@/lib/broadcast-audience';
 import { useTranslations } from 'next-intl';
@@ -38,7 +43,19 @@ interface AudienceConfig {
   csvContacts?: { phone: string; name?: string }[];
   excludeTagIds?: string[];
   woocommerceSegment?: WooCommerceSegmentKey;
+  lastActivity?: LastActivityFilter;
 }
+
+const LAST_ACTIVITY_OPTIONS: LastMessageActivity[] = [
+  'read',
+  'delivered',
+  'sent',
+  'failed',
+  'replied',
+  'none',
+];
+
+const LAST_ACTIVITY_WINDOWS = [0, 7, 30, 90] as const;
 
 interface WooSegmentOption {
   key: WooCommerceSegmentKey;
@@ -231,6 +248,30 @@ export function Step2SelectAudience({
       ? current.filter((id) => id !== tagId)
       : [...current, tagId];
     onUpdate({ ...audience, excludeTagIds: updated });
+  }
+
+  function toggleLastActivity(activity: LastMessageActivity) {
+    const current = audience.lastActivity?.activities ?? [];
+    const activities = current.includes(activity)
+      ? current.filter((a) => a !== activity)
+      : [...current, activity];
+    onUpdate({
+      ...audience,
+      lastActivity: activities.length
+        ? { ...audience.lastActivity, activities }
+        : undefined,
+    });
+  }
+
+  function setLastActivityWindow(days: number) {
+    if (!audience.lastActivity) return;
+    onUpdate({
+      ...audience,
+      lastActivity: {
+        ...audience.lastActivity,
+        withinDays: days || undefined,
+      },
+    });
   }
 
   function updateCustomField(patch: Partial<CustomFieldFilter>) {
@@ -535,6 +576,61 @@ export function Step2SelectAudience({
           </div>
         )}
       </div>
+
+      {/* Last message activity — narrows any contact-derived audience */}
+      {audience.type !== 'csv' && (
+        <div className="rounded-xl border border-border bg-card/50 p-4">
+          <div className="mb-1 flex items-center gap-2">
+            <Activity className="h-4 w-4 text-primary" />
+            <p className="text-sm font-medium text-foreground">
+              {t('selectAudience.lastActivity.title')}
+            </p>
+          </div>
+          <p className="mb-3 text-xs text-muted-foreground">
+            {t('selectAudience.lastActivity.desc')}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {LAST_ACTIVITY_OPTIONS.map((activity) => {
+              const isSelected =
+                audience.lastActivity?.activities.includes(activity);
+              return (
+                <button
+                  key={activity}
+                  type="button"
+                  onClick={() => toggleLastActivity(activity)}
+                  className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                    isSelected
+                      ? 'border-primary/30 bg-primary/10 text-primary'
+                      : 'border-border bg-muted text-muted-foreground hover:border-border'
+                  }`}
+                >
+                  {t(`selectAudience.lastActivity.status.${activity}`)}
+                </button>
+              );
+            })}
+          </div>
+          {audience.lastActivity && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {t('selectAudience.lastActivity.window')}
+              </span>
+              <select
+                value={audience.lastActivity.withinDays ?? 0}
+                onChange={(e) => setLastActivityWindow(Number(e.target.value))}
+                className="h-8 rounded-lg border border-border bg-muted px-2.5 text-xs text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+              >
+                {LAST_ACTIVITY_WINDOWS.map((days) => (
+                  <option key={days} value={days}>
+                    {days
+                      ? t('selectAudience.lastActivity.withinDays', { days })
+                      : t('selectAudience.lastActivity.anyTime')}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Audience Summary */}
       <div className="rounded-xl border border-border bg-card/50 p-4">
