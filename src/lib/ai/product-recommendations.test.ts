@@ -17,6 +17,8 @@ import {
   isProductRecommendationQuery,
   shouldOfferProductCarousel,
   resolveRecommendedProducts,
+  productMatchScore,
+  weightedSearchTerms,
 } from './product-recommendations';
 import type { ChatMessage } from './types';
 import type { ShopifyCatalogProduct } from '@/lib/shopify/product-store';
@@ -141,6 +143,7 @@ describe('constraint-aware catalog resolution', () => {
       {
         ...SAMPLE_PRODUCT,
         shopify_variant_id: 200,
+        title: 'Hoodie',
         price: '500',
         image_url: null,
       },
@@ -230,5 +233,53 @@ describe('formatProductRecommendationsForAi', () => {
     const text = formatProductRecommendationsForAi([SAMPLE_PRODUCT]);
     expect(text).toContain('Blue T-Shirt (Large)');
     expect(text).toContain('₹999.00');
+  });
+});
+
+describe('ranked catalog search', () => {
+  const row = (
+    productId: number,
+    variantId: number,
+    title: string,
+    price = '999'
+  ): ShopifyCatalogProduct => ({
+    ...SAMPLE_PRODUCT,
+    shopify_product_id: productId,
+    shopify_variant_id: variantId,
+    title,
+    variant_title: null,
+    price,
+  });
+
+  it('ranks by fit, maps recipients to catalog words and shows one variant per product', async () => {
+    const catalog = [
+      row(1, 11, 'Wooden photo Standy - Gift for all occasions', '690'),
+      row(1, 12, 'Wooden photo Standy - Gift for all occasions', '990'),
+      row(2, 21, "Customized Men's Wallet and Pen Combo"),
+      row(5, 51, "Customized Men's Wallet and Pen Combo - Olive Green"),
+      row(3, 31, "Customized Women's Wallet"),
+      row(4, 41, 'Personalised Magic Mug', '550'),
+    ];
+    vi.mocked(searchShopifyProducts).mockImplementation(async ({ query }) =>
+      catalog.filter((p) => p.title.toLowerCase().includes(String(query)))
+    );
+    const result = await resolveRecommendedProducts(
+      {} as never,
+      'acct-1',
+      'gift dad',
+      [],
+      4
+    );
+    expect(result.map((p) => p.shopify_variant_id)).toEqual([21]);
+  });
+
+  it('does not treat "women" as a match for "men"', () => {
+    const weighted = weightedSearchTerms(['dad']);
+    expect(
+      productMatchScore(row(3, 31, "Customized Women's Wallet"), weighted)
+    ).toBe(0);
+    expect(
+      productMatchScore(row(2, 21, "Customized Men's Wallet"), weighted)
+    ).toBe(0.75);
   });
 });

@@ -143,7 +143,9 @@ describe('playground guided selling', () => {
     const body = await (
       await POST(request('Show hoodies under INR 1000 size L'))
     ).json();
-    expect(body.reply).toBe('');
+    expect(body.reply).toBe(
+      "Thanks for your patience! I'm passing this to our team — someone will reply here shortly."
+    );
     expect(body.product_carousel).toBeNull();
   });
   it('respects the merchant product-send switch in the preview', async () => {

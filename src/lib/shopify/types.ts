@@ -211,6 +211,8 @@ export interface ShopifyProductVariantPayload {
   compare_at_price?: string | null;
   inventory_quantity?: number | null;
   inventory_management?: string | null;
+  /** `deny` stops sales at zero stock; `continue` keeps selling. */
+  inventory_policy?: string | null;
   available?: boolean;
   /** Links to an entry in `product.images` when the variant has its own photo. */
   image_id?: number | null;

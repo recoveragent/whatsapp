@@ -1,7 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import * as adminApi from './admin-api';
-import { pickDefaultVariant, syncShopifyProductsForAccount } from './products-sync';
+import {
+  mapShopifyProductRows,
+  pickDefaultVariant,
+  syncShopifyProductsForAccount,
+} from './products-sync';
 import type { ShopifyProductPayload } from './types';
 
 vi.mock('./admin-api', async (importOriginal) => {
@@ -149,6 +153,26 @@ describe('pickDefaultVariant', () => {
     ]);
 
     expect(chosen?.id).toBe(2);
+  });
+});
+
+describe('mapShopifyProductRows', () => {
+  it('keeps made-to-order variants sellable at zero or negative stock', () => {
+    const rows = mapShopifyProductRows({
+      accountId: 'acct-1',
+      currency: 'INR',
+      product: {
+        id: 9,
+        title: 'Magic Mug',
+        status: 'active',
+        variants: [
+          { id: 1, inventory_management: 'shopify', inventory_policy: 'continue', inventory_quantity: -336 },
+          { id: 2, inventory_management: null, inventory_quantity: 0 },
+          { id: 3, inventory_management: 'shopify', inventory_policy: 'deny', inventory_quantity: 0 },
+        ],
+      },
+    });
+    expect(rows.map((row) => row.inventory_quantity)).toEqual([null, null, 0]);
   });
 });
 

@@ -473,6 +473,19 @@ describe('dispatchInboundToAiReply — handoff', () => {
     );
   });
 
+  it("sends the agent's reply before the handoff line", async () => {
+    h.generateReply.mockResolvedValue({
+      text: 'Sorry it arrived broken! Please share your order number and a photo.',
+      handoff: true,
+    });
+    await dispatchInboundToAiReply(ARGS);
+    expect(h.engineSendText).toHaveBeenCalledTimes(1);
+    expect(h.engineSendText.mock.calls[0][0].text).toBe(
+      "Sorry it arrived broken! Please share your order number and a photo.\n\nThanks for your patience! I'm passing this to our team — someone will reply here shortly."
+    );
+    expect(h.state.updatePayload).toMatchObject({ ai_autoreply_disabled: true });
+  });
+
   it('hands off instead of going silent when the provider fails', async () => {
     const { AiError } = await import('./types');
     h.generateReply.mockRejectedValue(

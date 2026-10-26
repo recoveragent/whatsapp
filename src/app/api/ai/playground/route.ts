@@ -8,7 +8,11 @@ import {
 import { loadAiConfig } from '@/lib/ai/config';
 import { retrieveKnowledge } from '@/lib/ai/knowledge';
 import { generateReply } from '@/lib/ai/generate';
-import { buildSystemPrompt, handoffMessage } from '@/lib/ai/defaults';
+import {
+  buildSystemPrompt,
+  handoffMessage,
+  handoffReplyText,
+} from '@/lib/ai/defaults';
 import { loadStoreProfile } from '@/lib/ai/store-profile';
 import { knowledgeSearchText } from '@/lib/ai/knowledge-query';
 import { shouldRefreshShopifyOrders } from '@/lib/ai/commerce-intent';
@@ -179,8 +183,9 @@ export async function POST(request: Request) {
         : null;
 
     return NextResponse.json({
-      reply:
-        !handoff && !hasCarouselProducts
+      reply: handoff
+        ? handoffReplyText(text, config.handoffMessage)
+        : !hasCarouselProducts
           ? appendRecommendationText(text, recommendedProducts, shopifyConfig)
           : text,
       handoff,

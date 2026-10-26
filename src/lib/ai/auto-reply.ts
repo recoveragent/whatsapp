@@ -22,7 +22,7 @@ import {
   ProductCarouselDeliveryUncertainError,
 } from '@/lib/shopify/product-delivery-error';
 import { generateReply } from './generate';
-import { buildSystemPrompt, handoffMessage } from './defaults';
+import { buildSystemPrompt, handoffReplyText } from './defaults';
 import { buildHandoffSummary } from './handoff';
 import { logAiUsage } from './usage';
 import { knowledgeSearchText } from './knowledge-query';
@@ -216,6 +216,7 @@ export async function dispatchInboundToAiReply(
         config,
         conv,
         messages,
+        agentText: text,
       });
       return;
     }
@@ -338,8 +339,8 @@ async function loadConversationState(
  *   (b) route the conversation to the configured handoff agent — null
  *       leaves it in the shared queue; never stomps an existing owner,
  *   (c) leave a short internal note so whoever picks it up has context,
- *   (d) tell the customer a person is coming, so their message never sits
- *       unanswered.
+ *   (d) tell the customer a person is coming — after any useful reply the
+ *       agent wrote — so their message never sits unanswered.
  * Assigning fires the `on_conversation_assigned` trigger, which notifies
  * the agent.
  */
@@ -353,6 +354,8 @@ async function handOffToHuman(args: {
   conv: ConversationState;
   messages: ChatMessage[];
   failureReason?: string;
+  /** The agent's own reply written alongside the handoff, sent first. */
+  agentText?: string;
 }): Promise<void> {
   const { db, conversationId, config, conv } = args;
   const update: Record<string, unknown> = {
@@ -384,7 +387,7 @@ async function handOffToHuman(args: {
       userId: args.configOwnerUserId,
       conversationId,
       contactId: args.contactId,
-      text: handoffMessage(config.handoffMessage),
+      text: handoffReplyText(args.agentText ?? '', config.handoffMessage),
       aiGenerated: true,
     });
   } catch (sendErr) {

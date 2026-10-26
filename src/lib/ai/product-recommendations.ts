@@ -18,7 +18,7 @@ import {
 } from './product-preferences';
 
 const PRODUCT_INTENT_PATTERN =
-  /\b(recommend|suggestion|suggest|show(?:\s+me)?|looking\s+for|browse|catalog|catalogue|products?|collection|buy|shop|purchase|what\s+do\s+you\s+have|do\s+you\s+have|any\s+.+\s+available|new\s+arrivals?|best\s+sellers?|gift|gifts|anniversary|birthday|present)\b/i;
+  /\b(recommend|suggestion|suggest|show(?:\s+me)?|looking\s+for|browse|catalog|catalogue|products?|collection|buy|shop|purchase|what\s+do\s+you\s+have|do\s+you\s+have|any\s+.+\s+available|new\s+arrivals?|best\s+sellers?|gift|gifts|anniversary|birthday|present|in\s+stock|do\s+you\s+sell)\b/i;
 
 /** Stripped from catalog search — keep meaningful product/gift terms only. */
 const SEARCH_STOP_WORDS = new Set([
@@ -84,6 +84,29 @@ const SEARCH_STOP_WORDS = new Set([
   'few',
   'here',
   'options',
+  // Pronouns and filler that otherwise match title prefixes ("he" → "Heart").
+  'he',
+  'she',
+  'his',
+  'they',
+  'them',
+  'it',
+  'doesn',
+  'don',
+  'dont',
+  'like',
+  'likes',
+  'who',
+  'very',
+  'really',
+  'pls',
+  'plz',
+  'best',
+  'selling',
+  'seller',
+  'sellers',
+  'bestseller',
+  'bestsellers',
 ]);
 
 const DEFAULT_CAROUSEL_LIMIT = 4;
@@ -196,16 +219,122 @@ function carouselReady(
   limit: number,
   preferences: ProductPreferences = {}
 ): ShopifyCatalogProduct[] {
+  // One card per product: two sizes of the same frame read as a repeat,
+  // not as a choice. Stores also list colours or designs as separate
+  // products ("Men's Wallet - Olive Green"), so collapse those by the
+  // title before " - " too.
+  const seenProducts = new Set<number>();
+  const seenTitles = new Set<string>();
   return products
-    .filter((product) => productMatchesPreferences(product, preferences))
+    .filter((product) => {
+      if (!productMatchesPreferences(product, preferences)) return false;
+      const baseTitle = product.title.split(' - ')[0].trim().toLowerCase();
+      if (seenProducts.has(product.shopify_product_id)) return false;
+      if (seenTitles.has(baseTitle)) return false;
+      seenProducts.add(product.shopify_product_id);
+      seenTitles.add(baseTitle);
+      return true;
+    })
     .slice(0, Math.min(Math.max(limit, 2), MAX_CAROUSEL_LIMIT));
 }
 
+/** Words that appear in many gift titles and say little about fit. */
+const GENERIC_TERMS = new Set([
+  'gift',
+  'gifts',
+  'personalised',
+  'personalized',
+  'customised',
+  'customized',
+  'custom',
+  'photo',
+]);
+
 /**
- * Search the synced Shopify catalog for carousel candidates. Tries
- * conversation terms first, then individual keywords. Only falls back to
- * the general catalogue for open-ended browse asks with no specific terms
- * (never substitutes a generic list when gift/occasion terms had no match).
+ * Recipient / interest words mapped to catalogue vocabulary. Customers
+ * say "dad" or "coffee"; titles say "Men's Wallet" or "Mug".
+ */
+const RELATED_TERMS: Record<string, string[]> = {
+  wife: ['couple', 'love', 'heart', 'women'],
+  husband: ['couple', 'love', 'heart', 'men'],
+  gf: ['couple', 'love', 'heart', 'women'],
+  girlfriend: ['couple', 'love', 'heart', 'women'],
+  bf: ['couple', 'love', 'heart', 'men'],
+  boyfriend: ['couple', 'love', 'heart', 'men'],
+  anniversary: ['couple', 'love', 'wedding'],
+  valentine: ['couple', 'love', 'heart'],
+  wedding: ['couple', 'anniversary'],
+  dad: ['men'],
+  father: ['men'],
+  papa: ['men'],
+  him: ['men'],
+  brother: ['bro', 'men'],
+  bro: ['brother', 'men'],
+  bhai: ['brother', 'bro', 'men'],
+  sister: ['sis', 'women'],
+  sis: ['sister', 'women'],
+  didi: ['sister', 'sis', 'women'],
+  rakhi: ['brother', 'bro', 'sister'],
+  mom: ['women', 'family'],
+  mother: ['women', 'family'],
+  mummy: ['women', 'family'],
+  maa: ['women', 'family'],
+  her: ['women'],
+  coffee: ['mug'],
+  tea: ['mug'],
+  newborn: ['baby'],
+};
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** "hoodies" → "hoodie", so a plural ask still finds singular titles. */
+function singular(term: string): string {
+  return term.length > 3 && term.endsWith('s') && !term.endsWith('ss')
+    ? term.slice(0, -1)
+    : term;
+}
+
+/** Search terms with weights: the customer's own words, then related catalogue words. */
+export function weightedSearchTerms(terms: string[]): Map<string, number> {
+  const weighted = new Map<string, number>();
+  for (const term of terms.map(singular)) {
+    // Two-letter words ("ok", "to") match too many titles by prefix;
+    // keep only the ones we know map to catalogue words (gf, bf).
+    if (term.length < 3 && !RELATED_TERMS[term]) continue;
+    weighted.set(term, GENERIC_TERMS.has(term) ? 0.25 : 1);
+  }
+  for (const term of terms) {
+    for (const related of RELATED_TERMS[term] ?? RELATED_TERMS[singular(term)] ?? []) {
+      if (!weighted.has(related)) weighted.set(related, 0.75);
+    }
+  }
+  return weighted;
+}
+
+/** How well a catalogue row's title matches the weighted terms (0 = no match). */
+export function productMatchScore(
+  product: Pick<ShopifyCatalogProduct, 'title' | 'variant_title'>,
+  weighted: Map<string, number>
+): number {
+  const text = `${product.title} ${product.variant_title ?? ''}`.toLowerCase();
+  let score = 0;
+  for (const [term, weight] of weighted) {
+    // Word-start match: "men" hits "Men's Wallet" but not "Women's".
+    const wordStart = new RegExp(`(?:^|[^\\p{L}\\p{N}])${escapeRegExp(term)}`, 'u');
+    if (wordStart.test(text)) score += weight;
+  }
+  return score;
+}
+
+/**
+ * Search the synced Shopify catalog for carousel candidates. Searches each
+ * conversation term (plus related catalogue words), ranks rows by how many
+ * terms their title matches, and keeps one variant per product. Only falls
+ * back to the general catalogue for open-ended browse asks with no
+ * specific terms (never substitutes a generic list when gift/occasion
+ * terms had no match).
  */
 export async function searchRecommendedProducts(
   db: SupabaseClient,
@@ -215,59 +344,64 @@ export async function searchRecommendedProducts(
   preferences: ProductPreferences = {}
 ): Promise<ShopifyCatalogProduct[]> {
   const max = Math.min(Math.max(limit, MIN_CAROUSEL_LIMIT), MAX_CAROUSEL_LIMIT);
-  const minNeeded = MIN_CAROUSEL_LIMIT;
-  const byVariant = new Map<number, ShopifyCatalogProduct>();
-
-  const merge = (products: ShopifyCatalogProduct[]) => {
-    for (const product of products) {
-      if (!productMatchesPreferences(product, preferences)) continue;
-      byVariant.set(product.shopify_variant_id, product);
-    }
-  };
-
   const terms = extractProductSearchTerms(query);
 
-  if (terms.length > 0) {
-    merge(
-      await searchShopifyProducts({
+  if (terms.length === 0) {
+    // Open-ended "show me products" with no gift/occasion terms only.
+    return carouselReady(
+      await searchShopifyProducts({ db, accountId, limit: 50, inStockOnly: true }),
+      max,
+      preferences
+    );
+  }
+
+  const weighted = weightedSearchTerms(terms);
+  const searchTerms = [...weighted.keys()].slice(0, 12);
+  const batches = await Promise.all(
+    searchTerms.map((term) =>
+      searchShopifyProducts({
         db,
         accountId,
-        query: terms.join(' '),
+        query: term,
         limit: 50,
         inStockOnly: true,
       })
-    );
+    )
+  );
 
-    if (byVariant.size < minNeeded) {
-      for (const term of terms.slice(0, 8)) {
-        if (byVariant.size >= max) break;
-        merge(
-          await searchShopifyProducts({
-            db,
-            accountId,
-            query: term,
-            limit: 50,
-            inStockOnly: true,
-          })
-        );
+  const byVariant = new Map<number, { product: ShopifyCatalogProduct; score: number }>();
+  batches.forEach((batch, index) => {
+    // Rows found by the customer's own words always qualify; rows found
+    // only through a related word must actually match it as a word.
+    const ownTerm = terms.map(singular).includes(searchTerms[index]);
+    for (const product of batch) {
+      if (byVariant.has(product.shopify_variant_id)) continue;
+      if (!productMatchesPreferences(product, preferences)) continue;
+      const score = productMatchScore(product, weighted);
+      if (ownTerm || score > 0) {
+        byVariant.set(product.shopify_variant_id, { product, score });
       }
     }
-  }
+  });
 
-  // Open-ended "show me products" with no gift/occasion terms only.
-  if (byVariant.size < minNeeded && terms.length === 0) {
-    merge(
-      await searchShopifyProducts({
-        db,
-        accountId,
-        limit: 50,
-        inStockOnly: true,
-      })
-    );
-  }
+  // When the customer named something specific ("dad", "hamper"), a row
+  // that only shares a generic word like "gift" is not a recommendation —
+  // better to show nothing and let the agent ask than to show a wedding
+  // frame for a 7-year-old.
+  const specific = terms.some((term) => !GENERIC_TERMS.has(singular(term)));
+  const ranked = [...byVariant.values()]
+    .filter((entry) => !specific || entry.score >= STRONG_MATCH_SCORE)
+    .sort(
+      (a, b) =>
+        b.score - a.score || Number(a.product.price) - Number(b.product.price)
+    )
+    .map((entry) => entry.product);
 
-  return carouselReady([...byVariant.values()], max, preferences);
+  return carouselReady(ranked, max, preferences);
 }
+
+/** One specific word (or a related one) — more than a lone "gift". */
+const STRONG_MATCH_SCORE = 0.5;
 
 /** Shopify variant IDs from knowledge-base URLs (`?variant=123`). */
 export function extractVariantIdsFromKnowledge(knowledge: string[]): number[] {
@@ -406,26 +540,23 @@ export async function resolveRecommendedProducts(
     );
   }
 
-  const byVariant = new Map<number, ShopifyCatalogProduct>();
-
-  const merge = (products: ShopifyCatalogProduct[]) => {
-    for (const product of products) {
-      if (!productMatchesPreferences(product, preferences)) continue;
-      byVariant.set(product.shopify_variant_id, product);
-    }
-  };
-
-  merge(
-    await productsFromKnowledgeHints(db, accountId, knowledge, max, preferences)
+  // Knowledge-base product names are a hint, not a curation: a policy or
+  // FAQ line that happens to match a title must not crowd out products
+  // that fit what the customer asked for.
+  const [hinted, searched] = await Promise.all([
+    productsFromKnowledgeHints(db, accountId, knowledge, max, preferences),
+    searchRecommendedProducts(db, accountId, query, max, preferences),
+  ]);
+  const weighted = weightedSearchTerms(extractProductSearchTerms(query));
+  const fittingHints = hinted.filter(
+    (product) => productMatchScore(product, weighted) >= STRONG_MATCH_SCORE
   );
 
-  if (byVariant.size < MIN_CAROUSEL_LIMIT) {
-    merge(
-      await searchRecommendedProducts(db, accountId, query, max, preferences)
-    );
-  }
-
-  return carouselReady([...byVariant.values()], max, preferences);
+  return carouselReady(
+    [...fittingHints, ...searched, ...(searched.length === 0 ? hinted : [])],
+    max,
+    preferences
+  );
 }
 
 /** Summarize matched catalog products for the AI prompt. */

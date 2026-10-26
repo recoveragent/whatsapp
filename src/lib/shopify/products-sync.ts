@@ -64,13 +64,27 @@ export function isShopifyVariantInStock(
 ): boolean {
   if (variant.available === false) return false;
   if (
-    variant.inventory_management &&
+    isShopifyStockTracked(variant) &&
     variant.inventory_quantity != null &&
     variant.inventory_quantity <= 0
   ) {
     return false;
   }
   return true;
+}
+
+/**
+ * True when Shopify stops selling this variant at zero stock. Untracked
+ * variants and "continue selling when out of stock" (common for
+ * made-to-order personalised gifts) stay purchasable at any quantity.
+ */
+export function isShopifyStockTracked(
+  variant: ShopifyProductVariantPayload,
+): boolean {
+  return (
+    !!variant.inventory_management &&
+    variant.inventory_policy?.toLowerCase() !== 'continue'
+  );
 }
 
 export function mapShopifyProductRows(args: {
@@ -103,8 +117,11 @@ export function mapShopifyProductRows(args: {
       compare_at_price: variant.compare_at_price?.trim() || null,
       currency: args.currency,
       image_url: variantImageUrl(args.product, variant),
+      // Null means "always sellable" to the catalog's stock checks, so an
+      // untracked or oversellable variant isn't hidden at zero/negative stock.
       inventory_quantity:
-        typeof variant.inventory_quantity === 'number'
+        typeof variant.inventory_quantity === 'number' &&
+        isShopifyStockTracked(variant)
           ? variant.inventory_quantity
           : null,
       status,

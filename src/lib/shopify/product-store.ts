@@ -33,7 +33,10 @@ function rowToCatalogProduct(
     currency: (row.currency as string | null) ?? null,
     image_url: (row.image_url as string | null) ?? null,
     inventory_quantity: inventoryQuantity,
-    in_stock: inventoryQuantity == null || inventoryQuantity > 0,
+    // Shopify only lets stock go negative when the variant keeps selling
+    // past zero, so a negative count means sellable (rows synced before
+    // the sync started storing null for those variants).
+    in_stock: inventoryQuantity == null || inventoryQuantity !== 0,
     handle: (row.handle as string | null) ?? null,
   };
 }
