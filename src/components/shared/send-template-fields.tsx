@@ -291,7 +291,7 @@ function VariableMappingInput({
         value={value}
         onChange={onChange}
         {...(imageFallback && {
-          renderInput: ImageFallbackUpload,
+          FallbackInput: ImageFallbackUpload,
           invalidMessage: "Upload an image to send when this variable is empty.",
         })}
       />
