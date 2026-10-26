@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 
-import { VariableFallbackFields } from "@/components/shared/variable-fallback-fields";
+import { VariableFallbackFields, type FallbackInputProps } from "@/components/shared/variable-fallback-fields";
 import { preserveVariableFallbacks, withoutVariableFallbacks } from "@/lib/flows/variable-fallback";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -88,6 +88,80 @@ function isStaticMediaUrl(value: string): boolean {
   return trimmed.length > 0 && !trimmed.includes("{{");
 }
 
+/** Validates and uploads a JPEG/PNG header image; null when rejected or failed. */
+async function uploadHeaderImage(file: File): Promise<string | null> {
+  if (!["image/jpeg", "image/png"].includes(file.type)) {
+    toast.error("Header image must be a JPEG or PNG.");
+    return null;
+  }
+  if (file.size > MEDIA_MAX_BYTES_BY_KIND.image) {
+    toast.error(
+      `Image is ${(file.size / 1024 / 1024).toFixed(1)} MB — Meta's limit is 5 MB.`,
+    );
+    return null;
+  }
+  try {
+    const { publicUrl } = await uploadAccountMedia("chat-media", file);
+    toast.success("Image uploaded.");
+    return publicUrl;
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : "Upload failed.");
+    return null;
+  }
+}
+
+/** Fallback for a mapped header image variable: an uploaded image, not a typed URL. */
+function ImageFallbackUpload({ id, fallback, invalid, onChange }: FallbackInputProps) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const url = isStaticMediaUrl(fallback) ? fallback.trim() : "";
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/jpeg,image/png"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (!file) return;
+          setUploading(true);
+          const uploaded = await uploadHeaderImage(file);
+          setUploading(false);
+          if (uploaded) onChange(uploaded);
+        }}
+      />
+      {url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={url}
+          alt="Fallback header image"
+          title={url}
+          className="h-10 w-10 shrink-0 rounded-md border border-border object-cover"
+        />
+      )}
+      <Button
+        id={id}
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={uploading}
+        aria-invalid={invalid}
+        aria-describedby={invalid ? `${id}-error` : undefined}
+        onClick={() => fileRef.current?.click()}
+      >
+        {uploading ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Upload className="h-3.5 w-3.5" />
+        )}
+        {url ? "Replace image" : "Upload image"}
+      </Button>
+    </div>
+  );
+}
+
 function HeaderMediaField({
   mediaHeaderType,
   value,
@@ -105,26 +179,10 @@ function HeaderMediaField({
   const [uploading, setUploading] = useState(false);
 
   async function handleHeaderImageFile(file: File) {
-    if (!["image/jpeg", "image/png"].includes(file.type)) {
-      toast.error("Header image must be a JPEG or PNG.");
-      return;
-    }
-    if (file.size > MEDIA_MAX_BYTES_BY_KIND.image) {
-      toast.error(
-        `Image is ${(file.size / 1024 / 1024).toFixed(1)} MB — Meta's limit is 5 MB.`,
-      );
-      return;
-    }
     setUploading(true);
-    try {
-      const { publicUrl } = await uploadAccountMedia("chat-media", file);
-      onChange(publicUrl);
-      toast.success("Image uploaded.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed.");
-    } finally {
-      setUploading(false);
-    }
+    const uploaded = await uploadHeaderImage(file);
+    setUploading(false);
+    if (uploaded) onChange(uploaded);
   }
 
   return (
@@ -162,7 +220,8 @@ function HeaderMediaField({
         </div>
       )}
       <VariableMappingInput label={`Header media URL (${mediaHeaderType})`} value={value} onFocus={onFocus} onChange={onChange}
-        placeholder="{{ vars.product_image }} or https://…" active={active} />
+        placeholder="{{ vars.product_image }} or https://…" active={active}
+        imageFallback={mediaHeaderType === "image"} />
       {mediaHeaderType === "image" &&
         isStaticMediaUrl(value) && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -200,6 +259,7 @@ function VariableMappingInput({
   active,
   placeholder,
   label,
+  imageFallback = false,
 }: {
   label: string;
   value: string;
@@ -207,6 +267,8 @@ function VariableMappingInput({
   onFocus: () => void;
   active: boolean;
   placeholder?: string;
+  /** Fallbacks are uploaded images (header media) instead of text. */
+  imageFallback?: boolean;
 }) {
   return (
     <div className="grid min-w-0 grid-cols-1 items-start gap-2 @min-[26rem]:grid-cols-2">
@@ -225,7 +287,14 @@ function VariableMappingInput({
           )}
         />
       </label>
-      <VariableFallbackFields value={value} onChange={onChange} />
+      <VariableFallbackFields
+        value={value}
+        onChange={onChange}
+        {...(imageFallback && {
+          renderInput: ImageFallbackUpload,
+          invalidMessage: "Upload an image to send when this variable is empty.",
+        })}
+      />
     </div>
   );
 }
