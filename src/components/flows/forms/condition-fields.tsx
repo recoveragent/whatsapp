@@ -11,9 +11,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  CONDITION_ITEM_KEY_LABELS,
+  CONDITION_ITEM_KEYS,
   CONDITION_OPERATOR_LABELS,
   CONDITION_OPERATORS,
   isShopifySubject,
+  operatorsForConditionField,
   operatorsForField,
   PAYMENT_STATUSES,
   shopifyConditionFields,
@@ -47,6 +50,7 @@ function Picker({
       </label>
       <Select
         value={value}
+        items={choices}
         onValueChange={(v) => {
           if (v) onChange(v);
         }}
@@ -76,11 +80,99 @@ function formForPath(forms: FormConditionSource[], path: string | undefined) {
     .sort((a, b) => b.var_key.length - a.var_key.length)[0];
 }
 
+function CollectionSuggestions({
+  selected,
+  onChoose,
+}: {
+  selected: string[];
+  onChoose: (id: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [collections, setCollections] = useState<
+    Array<{ id: string | number; title: string }>
+  >([]);
+  const [status, setStatus] = useState('Loading collections…');
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch('/api/shopify/collections', {
+      signal: controller.signal,
+      cache: 'no-store',
+    })
+      .then(async (res) => {
+        if (!res.ok)
+          throw new Error('Collections unavailable. Enter the ID above.');
+        return res.json();
+      })
+      .then((data) => {
+        const list = Array.isArray(data.collections) ? data.collections : [];
+        setCollections(list);
+        setStatus(list.length ? '' : 'No collections found in Shopify.');
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted)
+          setStatus(
+            err instanceof Error
+              ? err.message
+              : 'Collections unavailable. Enter the ID above.'
+          );
+      });
+    return () => controller.abort();
+  }, []);
+  const q = query.trim().toLowerCase();
+  const options = collections.filter((c) => c.title.toLowerCase().includes(q));
+  const titleOf = (id: string) =>
+    collections.find((c) => String(c.id) === id)?.title;
+  return (
+    <div className="space-y-2 rounded-md border p-2">
+      {selected.length > 0 && (
+        <p className="text-xs">
+          Selected:{' '}
+          {selected.map((id) => titleOf(id) ?? `#${id}`).join(', ')}
+        </p>
+      )}
+      <Input
+        aria-label="Search Shopify collections"
+        placeholder="Find collection…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      {status && <p className="text-muted-foreground text-xs">{status}</p>}
+      <div className="max-h-36 overflow-y-auto">
+        {options.map((c) => (
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-auto w-full justify-start text-left text-xs whitespace-normal"
+            key={String(c.id)}
+            onClick={() => onChoose(String(c.id))}
+          >
+            {c.title}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Adds to comma lists for multi-value operators, otherwise replaces. */
+function chosenValue(current: string | undefined, id: string, multi: boolean) {
+  if (!multi) return id;
+  return [
+    ...new Set([
+      ...(current ?? '')
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean),
+      id,
+    ]),
+  ].join(', ');
+}
+
 function CatalogSuggestions({
   kind,
   onChoose,
 }: {
-  kind: 'product_id' | 'variant_id';
+  kind: 'product_id' | 'variant_id' | 'title';
   onChoose: (id: string) => void;
 }) {
   const [query, setQuery] = useState('');
@@ -132,10 +224,14 @@ function CatalogSuggestions({
     };
   }, [query]);
   const seen = new Set<string>();
+  const valueOf = (p: (typeof products)[number]) =>
+    kind === 'title'
+      ? p.title
+      : String(
+          kind === 'product_id' ? p.shopify_product_id : p.shopify_variant_id
+        );
   const options = products.filter((p) => {
-    const id = String(
-      kind === 'product_id' ? p.shopify_product_id : p.shopify_variant_id
-    );
+    const id = valueOf(p);
     if (seen.has(id)) return false;
     seen.add(id);
     return true;
@@ -151,9 +247,7 @@ function CatalogSuggestions({
       {status && <p className="text-muted-foreground text-xs">{status}</p>}
       <div className="max-h-36 overflow-y-auto">
         {options.map((p) => {
-          const id = String(
-            kind === 'product_id' ? p.shopify_product_id : p.shopify_variant_id
-          );
+          const id = valueOf(p);
           return (
             <Button
               type="button"
@@ -167,8 +261,8 @@ function CatalogSuggestions({
               p.variant_title &&
               p.variant_title !== 'Default Title'
                 ? ` · ${p.variant_title}`
-                : ''}{' '}
-              ({id})
+                : ''}
+              {kind === 'title' ? '' : ` (${id})`}
             </Button>
           );
         })}
@@ -209,8 +303,9 @@ function PredicateFields({
       : subject === 'shopify_payment'
         ? operatorsForField('enum')
         : field
-          ? operatorsForField(field.type)
+          ? operatorsForConditionField(field)
           : CONDITION_OPERATORS;
+  const multiValue = ['contains_any', 'contains_all'].includes(operator);
   const subjectChoices: Choice[] = [
     { value: 'var', label: 'Captured / custom variable' },
     { value: 'tag', label: 'Contact tag' },
@@ -317,7 +412,7 @@ function PredicateFields({
               }
               const next = fields.find((f) => f.key === key);
               const op = next
-                ? operatorsForField(next.type)[0]!
+                ? operatorsForConditionField(next)[0]!
                 : subject === 'tag'
                   ? 'present'
                   : 'equals';
@@ -390,14 +485,30 @@ function PredicateFields({
           <Picker
             label="Identify item by"
             value={cfg.item_key ?? 'product_id'}
-            choices={choices(['product_id', 'variant_id', 'sku'])}
+            choices={CONDITION_ITEM_KEYS.map((value) => ({
+              value,
+              label: CONDITION_ITEM_KEY_LABELS[value],
+            }))}
             onChange={(v) =>
-              onPatch({ item_key: v as ConditionPredicate['item_key'] })
+              onPatch({
+                item_key: v as ConditionPredicate['item_key'],
+                ...(v !== (cfg.item_key ?? 'product_id')
+                  ? { item_value: '' }
+                  : {}),
+              })
             }
           />
           <Input
-            aria-label="Product, variant or SKU to count"
-            placeholder="Product ID, variant ID or SKU"
+            aria-label="Item to count"
+            placeholder={
+              {
+                product_id: 'Product ID',
+                variant_id: 'Variant ID',
+                sku: 'SKU',
+                title: 'Product name (ignores case)',
+                collection_id: 'Collection ID',
+              }[cfg.item_key ?? 'product_id']
+            }
             value={cfg.item_value ?? ''}
             onChange={(e) =>
               onPatch({
@@ -455,34 +566,65 @@ function PredicateFields({
           </div>
         ))}
       {shopify &&
-        (field?.key === 'product_ids' || field?.key === 'variant_ids') &&
+        (field?.key === 'product_ids' ||
+          field?.key === 'variant_ids' ||
+          field?.key === 'product_names') &&
         !['present', 'absent'].includes(operator) && (
           <CatalogSuggestions
-            kind={field.key === 'product_ids' ? 'product_id' : 'variant_id'}
+            kind={
+              field.key === 'product_ids'
+                ? 'product_id'
+                : field.key === 'variant_ids'
+                  ? 'variant_id'
+                  : 'title'
+            }
             onChoose={(id) =>
-              onPatch({
-                value: ['contains_any', 'contains_all'].includes(operator)
-                  ? [
-                      ...new Set([
-                        ...(cfg.value ?? '')
-                          .split(',')
-                          .map((v) => v.trim())
-                          .filter(Boolean),
-                        id,
-                      ]),
-                    ].join(', ')
-                  : id,
-              })
+              onPatch({ value: chosenValue(cfg.value, id, multiValue) })
             }
           />
         )}
-      {field?.key === 'item_quantity' && cfg.item_key !== 'sku' && (
-        <CatalogSuggestions
-          kind={cfg.item_key === 'variant_id' ? 'variant_id' : 'product_id'}
+      {shopify && field?.key === 'collection_ids' && (
+        <CollectionSuggestions
+          selected={(cfg.value ?? '')
+            .split(',')
+            .map((v) => v.trim())
+            .filter(Boolean)}
           onChoose={(id) =>
-            onPatch({ item_key: cfg.item_key ?? 'product_id', item_value: id })
+            onPatch({ value: chosenValue(cfg.value, id, multiValue) })
           }
         />
+      )}
+      {field?.key === 'item_quantity' &&
+        cfg.item_key !== 'sku' &&
+        (cfg.item_key === 'collection_id' ? (
+          <CollectionSuggestions
+            selected={cfg.item_value ? [cfg.item_value] : []}
+            onChoose={(id) =>
+              onPatch({ item_key: 'collection_id', item_value: id })
+            }
+          />
+        ) : (
+          <CatalogSuggestions
+            kind={
+              cfg.item_key === 'variant_id'
+                ? 'variant_id'
+                : cfg.item_key === 'title'
+                  ? 'title'
+                  : 'product_id'
+            }
+            onChoose={(id) =>
+              onPatch({
+                item_key: cfg.item_key ?? 'product_id',
+                item_value: id,
+              })
+            }
+          />
+        ))}
+      {field?.key === 'collection_ids' && (
+        <p className="text-muted-foreground text-xs">
+          Matches when any product in the cart belongs to the collection.
+          Checked live with Shopify when the flow runs.
+        </p>
       )}
       {operator === 'between' && (
         <Input

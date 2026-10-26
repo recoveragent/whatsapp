@@ -268,8 +268,8 @@ export interface ConditionPredicate {
   data_source?: "snapshot" | "latest";
   /** Comma-separated gateway names, matched exactly, ignoring case. */
   cod_gateways?: string;
-  /** Used by line-item quantity conditions to select a product, variant or SKU. */
-  item_key?: "product_id" | "variant_id" | "sku";
+  /** Used by line-item quantity conditions to select a product, variant, SKU, product name or collection. */
+  item_key?: "product_id" | "variant_id" | "sku" | "title" | "collection_id";
   item_value?: string;
 }
 

@@ -13,8 +13,13 @@ vi.mock('@/lib/whatsapp/encryption', () => ({
 vi.mock('@/lib/shopify/admin-api', () => ({
   fetchOrder: vi.fn(),
   fetchConditionOrderCount: vi.fn(),
+  fetchProductCollectionMembership: vi.fn(),
 }));
-import { fetchOrder, fetchConditionOrderCount } from '@/lib/shopify/admin-api';
+import {
+  fetchOrder,
+  fetchConditionOrderCount,
+  fetchProductCollectionMembership,
+} from '@/lib/shopify/admin-api';
 
 const predicate = (
   patch: Partial<ConditionPredicate> = {}
@@ -71,6 +76,55 @@ function mockDb(
 beforeEach(() => vi.resetAllMocks());
 
 describe('condition execution', () => {
+  it('looks up collections for the triggering products once per node', async () => {
+    const { db } = mockDb();
+    vi.mocked(fetchProductCollectionMembership).mockResolvedValue(
+      new Map([['55', new Set(['1'])]])
+    );
+    const withItems = {
+      ...run,
+      vars: {
+        ...run.vars,
+        shopify_condition_data: {
+          ...(run.vars.shopify_condition_data as object),
+          product_ids: ['1', '2'],
+          line_items: [
+            { product_id: '1', quantity: 3 },
+            { product_id: '2', quantity: 1 },
+          ],
+        },
+      },
+    } as unknown as FlowRunRow;
+    const evaluator = createConditionEvaluator(db, withItems);
+    expect(
+      await evaluator.group(
+        group([
+          predicate({
+            subject_key: 'collection_ids',
+            operator: 'contains',
+            value: '55',
+          }),
+          predicate({
+            subject_key: 'item_quantity',
+            operator: 'gte',
+            value: '3',
+            item_key: 'collection_id',
+            item_value: '55',
+          }),
+        ])
+      )
+    ).toBe(true);
+    expect(fetchProductCollectionMembership).toHaveBeenCalledExactlyOnceWith(
+      'test.myshopify.com',
+      'decrypted-token',
+      ['1', '2'],
+      ['55']
+    );
+    expect(evaluator.traces.map((t) => t.source)).toEqual([
+      'latest_collections',
+      'latest_collections',
+    ]);
+  });
   it('evaluates ALL and ANY groups with short-circuiting', async () => {
     const { db } = mockDb();
     expect(

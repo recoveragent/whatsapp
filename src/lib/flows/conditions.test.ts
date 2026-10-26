@@ -207,6 +207,110 @@ describe('Shopify condition data', () => {
       )
     ).toBe(24);
   });
+
+  it('matches product names ignoring case and counts by name or collection', () => {
+    const data = shopifyConditionData(
+      {
+        ...order,
+        line_items: [
+          { product_id: '1', title: 'Baby Romper', quantity: 2 },
+          { product_id: '7', title: 'Bib Set', quantity: 1 },
+        ],
+      },
+      'order'
+    );
+    const names = rule({
+      subject_key: 'product_names',
+      operator: 'contains',
+      value: 'baby romper ',
+    });
+    const value = resolveShopifyConditionValue(data, names);
+    expect(value).toEqual(['baby romper', 'Bib Set']);
+    expect(
+      compareCondition({
+        operator: 'contains',
+        subjectValue: value,
+        configValue: 'baby romper',
+      })
+    ).toBe(true);
+    expect(
+      resolveShopifyConditionValue(
+        data,
+        rule({
+          subject_key: 'item_quantity',
+          item_key: 'title',
+          item_value: 'BABY ROMPER',
+        })
+      )
+    ).toBe(2);
+    const collections = new Map([
+      ['55', new Set(['7'])],
+      ['66', new Set<string>()],
+    ]);
+    expect(
+      resolveShopifyConditionValue(
+        data,
+        rule({
+          subject_key: 'collection_ids',
+          operator: 'contains_any',
+          value: '55, 66',
+        }),
+        Date.now(),
+        collections
+      )
+    ).toEqual(['55']);
+    expect(
+      resolveShopifyConditionValue(
+        data,
+        rule({
+          subject_key: 'item_quantity',
+          item_key: 'collection_id',
+          item_value: '55',
+        }),
+        Date.now(),
+        collections
+      )
+    ).toBe(1);
+    // Without a Shopify lookup the value is unknown, never an empty match.
+    expect(
+      resolveShopifyConditionValue(
+        data,
+        rule({ subject_key: 'collection_ids', value: '55' })
+      )
+    ).toBeUndefined();
+  });
+
+  it('validates collection and name rules', () => {
+    expect(
+      validateConditionPredicate(
+        rule({
+          subject_key: 'collection_ids',
+          operator: 'present',
+          value: '',
+        })
+      )
+    ).toContain('Operator is not supported for this field type.');
+    expect(
+      validateConditionPredicate(
+        rule({
+          subject_key: 'collection_ids',
+          operator: 'contains',
+          value: 'Summer',
+        })
+      )
+    ).toContain('Pick collections from the list (numeric collection IDs).');
+    expect(
+      validateConditionPredicate(
+        rule({
+          subject_key: 'item_quantity',
+          operator: 'gte',
+          value: '1',
+          item_key: 'title',
+          item_value: 'Baby Romper',
+        })
+      )
+    ).toEqual([]);
+  });
   it('does not infer COD from pending payment; supports configured gateway names', () => {
     const data = shopifyConditionData(
       { ...order, payment_gateway_names: ['Bank Transfer'] },

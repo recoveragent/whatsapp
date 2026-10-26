@@ -8,7 +8,34 @@ export interface ConditionField {
   type: ConditionFieldType;
   options?: readonly string[];
   orderOnly?: boolean;
+  /** Narrower operator set than the field type allows. */
+  operators?: readonly ConditionOperator[];
 }
+
+export const CONDITION_ITEM_KEYS = [
+  'product_id',
+  'variant_id',
+  'sku',
+  'title',
+  'collection_id',
+] as const;
+export const CONDITION_ITEM_KEY_LABELS: Record<
+  (typeof CONDITION_ITEM_KEYS)[number],
+  string
+> = {
+  product_id: 'Product',
+  variant_id: 'Variant',
+  sku: 'SKU',
+  title: 'Product name',
+  collection_id: 'Collection',
+};
+/** Collections are resolved against the configured IDs, so presence checks are meaningless. */
+const COLLECTION_OPERATORS = [
+  'contains',
+  'not_contains',
+  'contains_any',
+  'contains_all',
+] as const;
 
 export const PAYMENT_STATUSES = [
   'paid',
@@ -76,6 +103,13 @@ export const SHOPIFY_CONDITION_FIELDS: ConditionField[] = [
   { key: 'product_ids', label: 'Product IDs', type: 'list' },
   { key: 'variant_ids', label: 'Variant IDs', type: 'list' },
   { key: 'skus', label: 'Product SKUs', type: 'list' },
+  { key: 'product_names', label: 'Product names', type: 'list' },
+  {
+    key: 'collection_ids',
+    label: 'Product collections',
+    type: 'list',
+    operators: COLLECTION_OPERATORS,
+  },
   { key: 'tags', label: 'Order tags', type: 'list', orderOnly: true },
   { key: 'shipping_address.address1', label: 'Address line 1', type: 'text' },
   { key: 'shipping_address.address2', label: 'Address line 2', type: 'text' },
@@ -112,7 +146,7 @@ export const SHOPIFY_CONDITION_FIELDS: ConditionField[] = [
   { key: 'quantity', label: 'Total item quantity', type: 'number' },
   {
     key: 'item_quantity',
-    label: 'Selected product / variant / SKU quantity',
+    label: 'Quantity of a product, variant, SKU or collection',
     type: 'number',
   },
   { key: 'discount_codes', label: 'Discount codes', type: 'list' },
@@ -208,6 +242,14 @@ export function operatorsForField(
     'present',
     'absent',
   ];
+}
+
+export function operatorsForConditionField(
+  field: ConditionField
+): ConditionOperator[] {
+  return field.operators
+    ? [...field.operators]
+    : operatorsForField(field.type);
 }
 
 export function shopifyConditionFields(subject: string): ConditionField[] {
@@ -358,9 +400,14 @@ export function validateConditionPredicate(
   if (
     field &&
     raw.operator &&
-    !operatorsForField(field.type).includes(raw.operator)
+    !operatorsForConditionField(field).includes(raw.operator)
   )
     errors.push('Operator is not supported for this field type.');
+  if (
+    field?.key === 'collection_ids' &&
+    conditionList(raw.value).some((id) => !/^\d+$/.test(id))
+  )
+    errors.push('Pick collections from the list (numeric collection IDs).');
   if (
     raw.operator &&
     !['present', 'absent'].includes(raw.operator) &&
@@ -418,9 +465,17 @@ export function validateConditionPredicate(
     errors.push('Pick a supported status.');
   if (
     field?.key === 'item_quantity' &&
-    (!['product_id', 'variant_id', 'sku'].includes(raw.item_key ?? '') ||
+    (!(CONDITION_ITEM_KEYS as readonly string[]).includes(
+      raw.item_key ?? ''
+    ) ||
       !raw.item_value?.trim())
   )
-    errors.push('Select the product, variant or SKU to count.');
+    errors.push('Select the product, variant, SKU, name or collection to count.');
+  if (
+    field?.key === 'item_quantity' &&
+    raw.item_key === 'collection_id' &&
+    !/^\d+$/.test(raw.item_value?.trim() ?? '')
+  )
+    errors.push('Pick the collection from the list.');
   return errors;
 }

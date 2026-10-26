@@ -1,7 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { decrypt } from '@/lib/whatsapp/encryption';
-import { fetchOrder, fetchConditionOrderCount } from '@/lib/shopify/admin-api';
 import {
+  fetchOrder,
+  fetchConditionOrderCount,
+  fetchProductCollectionMembership,
+} from '@/lib/shopify/admin-api';
+import {
+  conditionCollectionIds,
   shopifyConditionData,
   resolveShopifyConditionValue,
 } from '@/lib/shopify/condition-data';
@@ -30,6 +35,7 @@ export function createConditionEvaluator(db: SupabaseClient, run: FlowRunRow) {
   let connection: Promise<{ shop_domain: string; token: string }> | undefined;
   const fresh = new Map<string, Promise<Record<string, unknown>>>();
   const counts = new Map<string, Promise<number>>();
+  const memberships = new Map<string, Promise<Map<string, Set<string>>>>();
   const traces: ConditionTrace[] = [];
   const credentials = () =>
     (connection ??= (async () => {
@@ -143,7 +149,37 @@ export function createConditionEvaluator(db: SupabaseClient, run: FlowRunRow) {
             : cfg.subject_key === 'is_repeat_customer'
               ? count > 0
               : count;
-      } else value = resolveShopifyConditionValue(data, cfg);
+      } else {
+        const collectionIds = conditionCollectionIds(cfg);
+        let collections: Map<string, Set<string>> | undefined;
+        if (collectionIds.length) {
+          source = 'latest_collections';
+          const productIds = Array.isArray(data.product_ids)
+            ? data.product_ids.map(String)
+            : [];
+          const key = `${productIds.join(',')}|${collectionIds.join(',')}`;
+          if (!memberships.has(key))
+            memberships.set(
+              key,
+              (async () => {
+                const config = await credentials();
+                return fetchProductCollectionMembership(
+                  config.shop_domain,
+                  config.token,
+                  productIds,
+                  collectionIds
+                );
+              })()
+            );
+          collections = await memberships.get(key)!;
+        }
+        value = resolveShopifyConditionValue(
+          data,
+          cfg,
+          Date.now(),
+          collections
+        );
+      }
     } else if (cfg.subject === 'var' || cfg.subject === 'shopify_payment') {
       value = conditionPath(
         run.vars,
