@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, type ReactNode } from 'react';
+import { useId, type ComponentType } from 'react';
 import { Input } from '@/components/ui/input';
 import {
   setVariableFallback,
@@ -17,13 +17,14 @@ export interface FallbackInputProps {
 export function VariableFallbackFields({
   value,
   onChange,
-  renderInput,
+  FallbackInput,
   invalidMessage = 'Enter fallback text to use when this variable is empty.',
 }: {
   value: string;
   onChange: (value: string) => void;
-  /** Replaces the text box, e.g. with an image upload for media headers. */
-  renderInput?: (props: FallbackInputProps) => ReactNode;
+  /** Replaces the text box, e.g. with an image upload for media headers.
+   *  Rendered as a component (not called) so its hooks stay its own. */
+  FallbackInput?: ComponentType<FallbackInputProps>;
   invalidMessage?: string;
 }) {
   const id = useId();
@@ -40,8 +41,13 @@ export function VariableFallbackFields({
         >
           Fallback for {key} <span className="text-destructive">*</span>
         </label>
-        {renderInput ? (
-          renderInput({ id: fieldId, fallback, invalid, onChange: setFallback })
+        {FallbackInput ? (
+          <FallbackInput
+            id={fieldId}
+            fallback={fallback}
+            invalid={invalid}
+            onChange={setFallback}
+          />
         ) : (
           <Input
             id={fieldId}
