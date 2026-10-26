@@ -221,11 +221,15 @@ export default function PipelinesPage() {
     };
   }, [selectedPipelineId, loadStages, loadDeals]);
 
-  useEffect(() => {
+  // Reset filters when switching pipelines (adjusted during render, not
+  // in an effect, so the stale filters never paint).
+  const [filtersPipelineId, setFiltersPipelineId] = useState(selectedPipelineId);
+  if (filtersPipelineId !== selectedPipelineId) {
+    setFiltersPipelineId(selectedPipelineId);
     setSearch("");
     setDateFrom("");
     setDateTo("");
-  }, [selectedPipelineId]);
+  }
 
   const filteredDeals = useMemo(
     () =>
