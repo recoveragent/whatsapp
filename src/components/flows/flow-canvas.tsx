@@ -114,6 +114,10 @@ import { reconcileCanvasNodes } from './canvas-node-state';
 import { NodeConfigForm } from './forms/node-config-form';
 import { useCustomFields } from './forms/fields';
 import { useAccountPipelines } from './forms/use-account-pipelines';
+import {
+  renderPreviewBody,
+  useApprovedTemplates,
+} from '@/components/shared/send-template-fields';
 import { NodeKeyField } from './node-key-field';
 import {
   TRIGGER_NODE_ID,
@@ -140,6 +144,37 @@ interface NodeData extends Record<string, unknown> {
   customFields: CustomField[];
   pipelines: PipelineOption[];
   stages: StageOption[];
+  /** Body text of the approved template a send_template node points
+   *  at, with mapped variables substituted. Null when unknown. */
+  templatePreview: string | null;
+}
+
+// Approved templates keyed by `name|language` so the canvas can show
+// the message body on send_template cards, not just the template name.
+function templateKey(name: string, language: string) {
+  return `${name}|${language}`;
+}
+
+function sendTemplatePreview(
+  node: BuilderNode,
+  bodies: Map<string, string>,
+): string | null {
+  if (node.node_type !== 'send_template') return null;
+  const cfg = (node.config ?? {}) as {
+    template_name?: unknown;
+    language?: unknown;
+    variables?: unknown;
+  };
+  const name = typeof cfg.template_name === 'string' ? cfg.template_name : '';
+  if (!name) return null;
+  const lang = typeof cfg.language === 'string' ? cfg.language : 'en_US';
+  const body = bodies.get(templateKey(name, lang));
+  if (!body) return null;
+  const variables =
+    cfg.variables && typeof cfg.variables === 'object'
+      ? (cfg.variables as Record<string, string>)
+      : {};
+  return renderPreviewBody(body, variables);
 }
 
 const NODE_WIDTH = 260;
@@ -223,6 +258,7 @@ function FlowNodeCard({ id, data, selected }: NodeProps) {
     customFields = [],
     pipelines = [],
     stages = [],
+    templatePreview = null,
   } = data as NodeData;
   const resolvedType = resolveNodeType(node.node_type);
   const meta = nodeMetaFor(node.node_type);
@@ -308,6 +344,14 @@ function FlowNodeCard({ id, data, selected }: NodeProps) {
       {summary && (
         <div className="text-muted-foreground mt-1 line-clamp-2 text-xs leading-relaxed">
           {summary}
+        </div>
+      )}
+      {templatePreview && (
+        <div
+          className="mt-2 line-clamp-4 rounded-md rounded-tl-none bg-[var(--nc-soft)] px-2.5 py-1.5 text-[11px] leading-snug whitespace-pre-line text-foreground/85"
+          title={templatePreview}
+        >
+          {templatePreview}
         </div>
       )}
 
@@ -454,6 +498,17 @@ function FlowCanvasInner() {
   } = useFlowEditor();
   const { customFields } = useCustomFields();
   const { pipelines, stages } = useAccountPipelines();
+  const { templates: approvedTemplates } = useApprovedTemplates();
+  const templateBodies = useMemo(
+    () =>
+      new Map(
+        approvedTemplates.map((tpl) => [
+          templateKey(tpl.name, tpl.language ?? 'en_US'),
+          tpl.body_text,
+        ]),
+      ),
+    [approvedTemplates],
+  );
   const reactFlow = useReactFlow();
   const builderNodes = state.nodes;
   const entryNodeId = state.entry_node_id;
@@ -590,6 +645,7 @@ function FlowCanvasInner() {
           customFields,
           pipelines,
           stages,
+          templatePreview: sendTemplatePreview(n, templateBodies),
         },
       };
     });
@@ -615,6 +671,7 @@ function FlowCanvasInner() {
     entryNodeId,
     pipelines,
     stages,
+    templateBodies,
     flashKey,
     autoLayoutPositions,
     triggerPosition,

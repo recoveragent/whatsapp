@@ -230,7 +230,7 @@ function VariableMappingInput({
   );
 }
 
-function renderPreviewBody(
+export function renderPreviewBody(
   body: string,
   variables: Record<string, string>,
 ): string {
@@ -245,7 +245,7 @@ function renderPreviewBody(
   });
 }
 
-function useApprovedTemplates() {
+export function useApprovedTemplates() {
   const { accountId } = useAuth();
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [loading, setLoading] = useState(true);
