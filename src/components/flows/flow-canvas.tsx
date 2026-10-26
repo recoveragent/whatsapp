@@ -348,7 +348,7 @@ function FlowNodeCard({ id, data, selected }: NodeProps) {
       )}
       {templatePreview && (
         <div
-          className="mt-2 line-clamp-4 rounded-md rounded-tl-none bg-[var(--nc-soft)] px-2.5 py-1.5 text-[11px] leading-snug whitespace-pre-line text-foreground/85"
+          className="mt-2 rounded-md rounded-tl-none break-words bg-[var(--nc-soft)] px-2.5 py-1.5 text-[11px] leading-snug whitespace-pre-line text-foreground/85"
           title={templatePreview}
         >
           {templatePreview}
