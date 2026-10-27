@@ -66,7 +66,14 @@ export async function executeCheckoutRecovery(
         flow_run_id: run.id,
         node_key: node.node_key,
         event_type: 'error',
-        payload: { reason: 'checkout_recovery_failed', detail },
+        payload: {
+          reason: 'checkout_recovery_failed',
+          detail,
+          // e.g. Shopify's userErrors, kept out of the routing message.
+          ...(error instanceof Error && typeof error.cause === 'string' && error.cause
+            ? { cause: error.cause }
+            : {}),
+        },
       });
     // Only preparation failures can fall back to checkout. A completion may have
     // reached Shopify even if its response was lost; never invite another order.

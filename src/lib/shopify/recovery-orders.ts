@@ -68,7 +68,7 @@ export const RECOVERY_DRAFT_COMPLETE = `mutation CompleteRecoveryDraft($id: ID!)
   draftOrderComplete(id: $id) { draftOrder { ${RECOVERY_DRAFT_FIELDS} } userErrors { message } }
 }`;
 export const RECOVERY_PAYMENT_TERMS = `query RecoveryPaymentTerms { paymentTermsTemplates(paymentTermsType: FULFILLMENT) { id } }`;
-export const RECOVERY_CUSTOMER = `query RecoveryCustomer($query: String!) { customers(first: 10, query: $query) { nodes { id defaultPhoneNumber { phoneNumber } } } }`;
+export const RECOVERY_CUSTOMER = `query RecoveryCustomer($query: String!) { customers(first: 10, query: $query) { nodes { id defaultPhoneNumber { phoneNumber } defaultEmailAddress { emailAddress } } } }`;
 export const RECOVERY_CUSTOMER_CREATE = `mutation RecoveryCustomerCreate($input: CustomerInput!) {
   customerCreate(input: $input) { customer { id } userErrors { message } }
 }`;
@@ -330,24 +330,51 @@ async function checkInventory(
     throw new Error('An item is unavailable. Please review your checkout.');
 }
 
+type ShopifyConnection = { domain: string; token: string };
+
+/**
+ * Finds the checkout's Shopify customer by phone, then by email, like Shopify's
+ * own checkout. Returning customers often have the email but a different phone.
+ */
+async function findCustomer(
+  c: ShopifyConnection,
+  phone: string,
+  email: string
+): Promise<string | undefined> {
+  const queries = [
+    `phone:${JSON.stringify(phone)}`,
+    ...(email ? [`email:${JSON.stringify(email)}`] : []),
+  ];
+  for (const query of queries) {
+    const found = await gql<{
+      customers: {
+        nodes: Array<{
+          id: string;
+          defaultPhoneNumber: { phoneNumber: string } | null;
+          defaultEmailAddress: { emailAddress: string } | null;
+        }>;
+      };
+    }>(c, RECOVERY_CUSTOMER, { query });
+    const match = found.customers.nodes.find(
+      (v) =>
+        (v.defaultPhoneNumber &&
+          phonesMatch(v.defaultPhoneNumber.phoneNumber, phone)) ||
+        (!!email &&
+          v.defaultEmailAddress?.emailAddress?.toLowerCase() ===
+            email.toLowerCase())
+    );
+    if (match) return match.id;
+  }
+  return undefined;
+}
+
 async function customerAndTerms(
-  c: { domain: string; token: string },
+  c: ShopifyConnection,
   input: ReturnType<typeof recoveryCheckoutInput>
 ) {
   const phone = `+${input.phone.replace(/\D/g, '')}`;
-  const found = await gql<{
-    customers: {
-      nodes: Array<{
-        id: string;
-        defaultPhoneNumber: { phoneNumber: string } | null;
-      }>;
-    };
-  }>(c, RECOVERY_CUSTOMER, { query: `phone:${JSON.stringify(phone)}` });
-  let customerId = found.customers.nodes.find(
-    (v) =>
-      v.defaultPhoneNumber &&
-      phonesMatch(v.defaultPhoneNumber.phoneNumber, phone)
-  )?.id;
+  const email = String(input.draftInput.email ?? '').trim();
+  let customerId = await findCustomer(c, phone, email);
   if (!customerId) {
     const address = input.draftInput.shippingAddress as Record<string, string>;
     const result = await gql<{
@@ -360,15 +387,20 @@ async function customerAndTerms(
         phone,
         firstName: address.firstName,
         lastName: address.lastName,
-        ...(input.draftInput.email ? { email: input.draftInput.email } : {}),
+        ...(email ? { email } : {}),
       },
     });
-    if (
-      result.customerCreate.userErrors.length ||
-      !result.customerCreate.customer
-    )
-      throw new Error('The checkout customer could not be linked in Shopify.');
-    customerId = result.customerCreate.customer.id;
+    customerId = result.customerCreate.customer?.id;
+    // "Already taken" means the customer exists but search missed them
+    // (e.g. a phone stored in another format, or search indexing delay).
+    if (!customerId) customerId = await findCustomer(c, phone, email);
+    if (!customerId)
+      // Shopify's text goes in cause: the message decides checkout-link routing.
+      throw new Error('The checkout customer could not be linked in Shopify.', {
+        cause: result.customerCreate.userErrors
+          .map((e) => e.message)
+          .join('; '),
+      });
   }
   const terms = await gql<{ paymentTermsTemplates: Array<{ id: string }> }>(
     c,

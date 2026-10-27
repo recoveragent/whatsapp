@@ -793,7 +793,10 @@ async function advanceFromNodeKey(
         await beginPaymentCollection(db, run, node);
         return finish("advanced");
       } catch (err) {
-        await logEvent(db, run.id, "error", node.node_key, { reason: err instanceof Error ? err.message : "Payment setup failed" });
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: err instanceof Error ? err.message : "Payment setup failed",
+          ...(err instanceof Error && typeof err.cause === "string" && err.cause ? { cause: err.cause } : {}),
+        });
         run.vars = { ...run.vars, payment_collection_status: "failed" };
         await db.from("flow_runs").update({ vars: run.vars }).eq("id", run.id);
         currentKey = typeof node.config.failed_next === "string" ? node.config.failed_next : null;

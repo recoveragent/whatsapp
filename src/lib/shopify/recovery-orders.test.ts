@@ -144,6 +144,19 @@ function fixture() {
   let stock = 20;
   let recentOrders: Row[] = [];
   let terms = true;
+  let customers: Row[] = [
+    {
+      id: 'gid://shopify/Customer/1',
+      defaultPhoneNumber: { phoneNumber: '+919876543210' },
+      defaultEmailAddress: null,
+    },
+  ];
+  let createResult: Row = {
+    customer: { id: 'gid://shopify/Customer/1' },
+    userErrors: [],
+  };
+  /** Customers Shopify search returns after a create attempt (indexing delay). */
+  let afterCreate: Row[] | null = null;
   let draftResult: 'ok' | 'rejected' | 'lost' = 'ok';
   const draft = () => ({
     id: 'gid://shopify/DraftOrder/1',
@@ -183,24 +196,11 @@ function fixture() {
       data = {
         orders: { nodes: recentOrders, pageInfo: { hasNextPage: false } },
       };
-    else if (query.includes('RecoveryCustomerCreate'))
-      data = {
-        customerCreate: {
-          customer: { id: 'gid://shopify/Customer/1' },
-          userErrors: [],
-        },
-      };
-    else if (query.includes('RecoveryCustomer'))
-      data = {
-        customers: {
-          nodes: [
-            {
-              id: 'gid://shopify/Customer/1',
-              defaultPhoneNumber: { phoneNumber: '+919876543210' },
-            },
-          ],
-        },
-      };
+    else if (query.includes('RecoveryCustomerCreate')) {
+      data = { customerCreate: createResult };
+      if (afterCreate) customers = afterCreate;
+    } else if (query.includes('RecoveryCustomer'))
+      data = { customers: { nodes: customers } };
     else if (query.includes('RecoveryPaymentTerms'))
       data = {
         paymentTermsTemplates: terms
@@ -256,6 +256,11 @@ function fixture() {
     },
     setDraftResult: (v: typeof draftResult) => {
       draftResult = v;
+    },
+    setCustomers: (v: Row[], create?: Row, after?: Row[]) => {
+      customers = v;
+      if (create) createResult = create;
+      afterCreate = after ?? null;
     },
   };
 }
@@ -447,6 +452,58 @@ describe('Shopify recovery order lifecycle', () => {
     expect(
       bodies(f).filter((b) => b.query.includes('CompleteRecoveryDraft'))
     ).toHaveLength(0);
+  });
+  it('links a returning customer found by email when the phone does not match', async () => {
+    const f = fixture();
+    (f.tables.shopify_pending_checkouts[0].payload as Row).email = 'Test@Example.com';
+    f.setCustomers([
+      {
+        id: 'gid://shopify/Customer/7',
+        defaultPhoneNumber: { phoneNumber: '+911111111111' },
+        defaultEmailAddress: { emailAddress: 'test@example.com' },
+      },
+    ]);
+    await prepareRecoveryOrder(f.db, f.run, 'cod');
+    const calls = bodies(f);
+    expect(calls.some((b) => b.query.includes('RecoveryCustomerCreate'))).toBe(false);
+    expect(
+      calls.find((b) => b.query.includes('mutation RecoveryDraft')).variables
+        .input.purchasingEntity
+    ).toEqual({ customerId: 'gid://shopify/Customer/7' });
+  });
+  it('looks the customer up again when Shopify says they already exist', async () => {
+    const f = fixture();
+    f.setCustomers(
+      [],
+      { customer: null, userErrors: [{ message: 'Phone has already been taken' }] },
+      [
+        {
+          id: 'gid://shopify/Customer/8',
+          defaultPhoneNumber: { phoneNumber: '919876543210' },
+          defaultEmailAddress: null,
+        },
+      ]
+    );
+    await expect(prepareRecoveryOrder(f.db, f.run, 'cod')).resolves.toMatchObject({
+      status: 'quoted',
+    });
+    expect(
+      bodies(f).find((b) => b.query.includes('mutation RecoveryDraft')).variables
+        .input.purchasingEntity
+    ).toEqual({ customerId: 'gid://shopify/Customer/8' });
+  });
+  it('keeps Shopify customer errors out of the routing message and frees the checkout', async () => {
+    const f = fixture();
+    f.setCustomers([], {
+      customer: null,
+      userErrors: [{ message: 'Email has already been taken' }],
+    });
+    const error = await prepareRecoveryOrder(f.db, f.run, 'cod').catch((e) => e);
+    expect(error.message).toBe('The checkout customer could not be linked in Shopify.');
+    // "already" in the message would route the customer to an agent instead of checkout.
+    expect(error.message).not.toMatch(/already/i);
+    expect(error.cause).toBe('Email has already been taken');
+    expect(f.tables.shopify_checkout_recoveries).toHaveLength(0);
   });
   it('blocks a customer who already placed an order after checkout', async () => {
     const f = fixture();
