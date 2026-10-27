@@ -709,7 +709,7 @@ export function summarizeNode(
         : `Template: ${truncate(name, 50)}`;
     }
     case "recover_checkout":
-      return cfg.action === 'place_cod' ? 'Create confirmed COD order' : cfg.cod_mode === 'create_order' ? 'Review COD order in WhatsApp' : 'Continue COD on checkout page';
+      return cfg.action === 'place_cod' ? 'Create confirmed COD order' : cfg.action === 'prepare_prepaid' ? 'Check checkout for UPI' : cfg.cod_mode === 'create_order' ? 'Review COD order in WhatsApp' : 'Continue COD on checkout page';
     case "collect_payment":
       return `${cfg.provider === 'cashfree' ? 'Cashfree' : 'Razorpay'} · ${cfg.shopify_checkout_recovery ? 'Checkout total' : `₹${cfg.amount ?? 0}`} · expires in ${cfg.expiry_hours ?? 24}h`;
     case "wait": {

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { recoveryCheckoutInput } from './recovery-checkout-input';
+import {
+  draftInputFor,
+  quotePaise,
+  recoveryCheckoutInput,
+} from './recovery-checkout-input';
 import { fastrrPayload } from './fastrr-checkout.fixture';
 
 export function checkoutPayload() {
@@ -85,7 +89,7 @@ describe('recovery checkout input', () => {
           },
         ],
         shippingLine: {
-          title: 'Shipping',
+          title: 'Standard',
           priceWithCurrency: { amount: '0.00', currencyCode: 'INR' },
         },
         shippingAddress: {
@@ -105,25 +109,87 @@ describe('recovery checkout input', () => {
       'SAVE10',
     ]);
   });
-  it('sends personalized Fastrr items to checkout instead of dropping the personalization', () => {
-    expect(() =>
-      recoveryCheckoutInput(
-        fastrrPayload({
-          custom_attributes: {
-            'Baby name': 'Test',
-            _customization_id: 'test-customization',
+  it('carries Fastrr personalization onto the draft line item, including hidden fields', () => {
+    const input = recoveryCheckoutInput(
+      fastrrPayload({
+        custom_attributes: {
+          'Baby name': 'Test',
+          Date: 11,
+          _customization_id: 'test-customization',
+          'Blood Group': null,
+        },
+      })
+    );
+    expect(input.draftInput.lineItems).toEqual([
+      {
+        variantId: 'gid://shopify/ProductVariant/45394003034337',
+        quantity: 1,
+        customAttributes: [
+          { key: 'Baby name', value: 'Test' },
+          { key: 'Date', value: '11' },
+          { key: '_customization_id', value: 'test-customization' },
+        ],
+      },
+    ]);
+    expect(
+      recoveryCheckoutInput(fastrrPayload({ custom_attributes: {} })).draftInput
+        .lineItems
+    ).toEqual([
+      { variantId: 'gid://shopify/ProductVariant/45394003034337', quantity: 1 },
+    ]);
+  });
+  it('carries Shopify properties sent as name/value pairs', () => {
+    const p = checkoutPayload();
+    expect(
+      recoveryCheckoutInput({
+        ...p,
+        line_items: [
+          {
+            variant_id: 1234,
+            quantity: 1,
+            properties: [
+              { name: 'Engraving', value: 'Asha' },
+              { name: '', value: 'ignored' },
+            ],
           },
-        })
-      )
-    ).toThrow('Personalized items must be completed on the checkout page.');
+        ],
+      }).draftInput.lineItems
+    ).toMatchObject([
+      { customAttributes: [{ key: 'Engraving', value: 'Asha' }] },
+    ]);
     expect(() =>
-      recoveryCheckoutInput(
-        fastrrPayload({ custom_attributes: { _customization_id: 'hidden' } })
-      )
-    ).toThrow('Personalized');
-    expect(() =>
-      recoveryCheckoutInput(fastrrPayload({ custom_attributes: {} }))
-    ).not.toThrow();
+      recoveryCheckoutInput({
+        ...p,
+        line_items: [
+          { variant_id: 1234, quantity: 1, properties: { Photo: { url: 'x' } } },
+        ],
+      })
+    ).toThrow('unsupported personalization');
+  });
+  it('prices COD at the checkout partner COD total and prepaid at the checkout total', () => {
+    // Real Gifting Studio orders: COD 1199 + "Standard (COD)" 100; prepaid 1199 + "Standard (Prepaid)" 0.
+    const input = recoveryCheckoutInput(
+      fastrrPayload({}, { cash_on_delivery_total_amount: 1299, discounted_amount: 1079 })
+    );
+    expect(input.codChargePaise).toBe(10000);
+    expect(quotePaise(input, 'cod')).toBe(129900);
+    expect(quotePaise(input, 'prepaid')).toBe(119900);
+    expect(draftInputFor(input, 'cod').shippingLine).toEqual({
+      title: 'Standard (COD)',
+      priceWithCurrency: { amount: '100.00', currencyCode: 'INR' },
+    });
+    expect(draftInputFor(input, 'prepaid').shippingLine).toEqual({
+      title: 'Standard (Prepaid)',
+      priceWithCurrency: { amount: '0.00', currencyCode: 'INR' },
+    });
+  });
+  it('charges no COD extra when the COD total is missing or below the checkout total', () => {
+    for (const flat of [{}, { cash_on_delivery_total_amount: 'x' }, { cash_on_delivery_total_amount: 999 }]) {
+      const input = recoveryCheckoutInput(fastrrPayload({}, flat));
+      expect(quotePaise(input, 'cod')).toBe(119900);
+    }
+    // Native Shopify checkouts have no partner COD total.
+    expect(recoveryCheckoutInput(checkoutPayload()).codChargePaise).toBe(0);
   });
   it('still refuses a Fastrr checkout with no shipping price', () => {
     const p = fastrrPayload();
@@ -144,7 +210,6 @@ describe('recovery checkout input', () => {
     { cod_charges: 20 },
     { gift_card_total: 10 },
     { subscription: true },
-    { line_items: [{ variant_id: 1234, quantity: 1, properties: [{ name: 'Engraving', value: 'A' }] }] },
     { shipping_address: { city: 'Bengaluru' } },
   ])('refuses incomplete or unsupported checkout data: %j', (patch) => {
     expect(() =>

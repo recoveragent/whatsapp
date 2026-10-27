@@ -166,7 +166,7 @@ export async function beginPaymentCollection(
   const now = Date.now();
   const expiresAt = new Date(now + c.expiry_hours * 3_600_000).toISOString();
   const recovery = c.shopify_checkout_recovery
-    ? await prepareRecoveryOrder(db, run, expiresAt)
+    ? await prepareRecoveryOrder(db, run, 'prepaid', expiresAt)
     : null;
   const amount = recovery
     ? Number(recovery.amount_paise) / 100

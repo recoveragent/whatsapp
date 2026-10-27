@@ -62,7 +62,7 @@ export const CHECKOUT_RECOVERY_SNAPSHOT: FlowSnapshot = {
           {
             reply_id: 'Pay by UPI',
             title: 'Pay by UPI',
-            next_node_key: 'collect_checkout_payment',
+            next_node_key: 'review_upi',
           },
         ],
         next_node_key: '',
@@ -143,6 +143,20 @@ export const CHECKOUT_RECOVERY_SNAPSHOT: FlowSnapshot = {
       760
     ),
     node(
+      'review_upi',
+      'recover_checkout',
+      {
+        // Unsupported carts get the checkout link before any payment exists.
+        action: 'prepare_prepaid',
+        cod_mode: 'create_order',
+        ready_next: 'collect_checkout_payment',
+        checkout_next: 'checkout_link',
+        failed_next: 'assistance',
+      },
+      320,
+      330
+    ),
+    node(
       'collect_checkout_payment',
       'collect_payment',
       {
@@ -184,7 +198,7 @@ export const CHECKOUT_RECOVERY_SNAPSHOT: FlowSnapshot = {
         failed_next: 'assistance',
       },
       320,
-      330
+      540
     ),
     node(
       'paid_receipt',
@@ -194,7 +208,7 @@ export const CHECKOUT_RECOVERY_SNAPSHOT: FlowSnapshot = {
         next_node_key: 'end',
       },
       320,
-      540
+      760
     ),
     node(
       'payment_expired',
@@ -204,7 +218,7 @@ export const CHECKOUT_RECOVERY_SNAPSHOT: FlowSnapshot = {
         next_node_key: 'handoff',
       },
       560,
-      760
+      960
     ),
     node(
       'assistance',

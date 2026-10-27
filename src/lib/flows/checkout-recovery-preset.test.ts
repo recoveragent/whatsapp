@@ -90,6 +90,27 @@ describe('global checkout recovery flow', () => {
       ).toBeNull();
     }
   });
+  it('checks the cart before requesting UPI, sending unsupported carts to checkout', () => {
+    const nodes = Object.fromEntries(
+      CHECKOUT_RECOVERY_SNAPSHOT.nodes.map((n) => [n.node_key, n])
+    );
+    const upi = (
+      nodes.recovery_message.config.buttons as Array<{
+        title: string;
+        next_node_key: string;
+      }>
+    ).find((b) => b.title === 'Pay by UPI');
+    expect(upi?.next_node_key).toBe('review_upi');
+    expect(nodes.review_upi).toMatchObject({
+      node_type: 'recover_checkout',
+      config: {
+        action: 'prepare_prepaid',
+        ready_next: 'collect_checkout_payment',
+        checkout_next: 'checkout_link',
+        failed_next: 'assistance',
+      },
+    });
+  });
   it('rejects a path that skips the COD confirmation summary', () => {
     const s = structuredClone(CHECKOUT_RECOVERY_SNAPSHOT);
     s.nodes.find((n) => n.node_key === 'start')!.config.next_node_key =

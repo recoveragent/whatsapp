@@ -24,9 +24,10 @@ export function CheckoutRecoveryFields({
         >
           <option value="prepare_cod">Review COD checkout</option>
           <option value="place_cod">Place confirmed COD order</option>
+          <option value="prepare_prepaid">Check checkout for UPI payment</option>
         </select>
       </label>
-      {c.action !== 'place_cod' && (
+      {(c.action ?? 'prepare_cod') === 'prepare_cod' && (
         <label className="block text-xs">
           When the customer selects Cash on Delivery
           <select
@@ -42,6 +43,13 @@ export function CheckoutRecoveryFields({
             </option>
           </select>
         </label>
+      )}
+      {c.action === 'prepare_prepaid' && (
+        <p className="text-muted-foreground text-xs">
+          Quotes the checkout at its prepaid total before a Collect payment
+          step. Connect Ready to Collect payment; unsupported checkouts follow
+          Continue on checkout.
+        </p>
       )}
       <p className="text-muted-foreground text-xs">
         Automatic COD requires complete checkout data, an unchanged Shopify

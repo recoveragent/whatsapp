@@ -3,18 +3,74 @@ type Row = Record<string, unknown>;
 const row = (v: unknown): Row =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Row) : {};
 const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
-const hasEntries = (v: unknown) =>
-  !!v && typeof v === 'object' && Object.keys(v).length > 0;
+
+/**
+ * Personalization as Shopify line item attributes. Fastrr sends an object of
+ * custom_attributes; Shopify sends properties as [{ name, value }] or an object.
+ * Fastrr's own orders store these under the same names, so apps such as
+ * Teeinblue read a recovered order the same way.
+ */
+function lineAttributes(item: Row): Array<{ key: string; value: string }> {
+  const pairs = [item.custom_attributes, item.properties].flatMap((source) =>
+    Array.isArray(source)
+      ? source.map((p) => [row(p).name ?? row(p).key, row(p).value] as const)
+      : Object.entries(row(source))
+  );
+  const seen = new Set<string>();
+  return pairs.flatMap(([rawKey, rawValue]) => {
+    const key = typeof rawKey === 'string' ? rawKey.trim() : '';
+    if (!key || seen.has(key) || rawValue === null || rawValue === undefined)
+      return [];
+    if (typeof rawValue === 'object')
+      throw new Error('Checkout has an unsupported personalization value.');
+    seen.add(key);
+    return [{ key, value: String(rawValue) }];
+  });
+}
 function money(v: unknown): number {
   if (v === null || v === undefined || v === '') return NaN;
   return Number(v);
 }
 
+export type RecoveryPaymentMethod = 'cod' | 'prepaid';
+
 export interface RecoveryCheckoutInput {
+  /** Checkout total, which prepaid orders pay. */
   expectedPaise: number;
+  /** Extra charged for Cash on Delivery, added to shipping as the checkout partner does. */
+  codChargePaise: number;
   phone: string;
   checkoutToken: string;
+  /** Prepaid draft input; use draftInputFor for a payment method. */
   draftInput: Record<string, unknown>;
+}
+
+export function quotePaise(
+  input: RecoveryCheckoutInput,
+  method: RecoveryPaymentMethod
+): number {
+  return input.expectedPaise + (method === 'cod' ? input.codChargePaise : 0);
+}
+
+/** Labels shipping like Fastrr ("Standard (COD)") and adds the COD charge to it. */
+export function draftInputFor(
+  input: RecoveryCheckoutInput,
+  method: RecoveryPaymentMethod
+): Record<string, unknown> {
+  const line = input.draftInput.shippingLine as {
+    title: string;
+    priceWithCurrency: { amount: string; currencyCode: string };
+  };
+  const price =
+    Number(line.priceWithCurrency.amount) +
+    (method === 'cod' ? input.codChargePaise / 100 : 0);
+  return {
+    ...input.draftInput,
+    shippingLine: {
+      title: `${line.title} (${method === 'cod' ? 'COD' : 'Prepaid'})`,
+      priceWithCurrency: { ...line.priceWithCurrency, amount: price.toFixed(2) },
+    },
+  };
 }
 
 export function recoveryCheckoutInput(payload: unknown): RecoveryCheckoutInput {
@@ -65,13 +121,12 @@ export function recoveryCheckoutInput(payload: unknown): RecoveryCheckoutInput {
       throw new Error('Checkout has an invalid product variant or quantity.');
     if (item.selling_plan_allocation || item.has_components === true)
       throw new Error('Bundles and subscriptions must use the checkout page.');
-    // Shopify sends line item properties; Fastrr sends custom_attributes.
-    // An order created without them would lose the customer's personalization.
-    if (hasEntries(item.properties) || hasEntries(item.custom_attributes))
-      throw new Error(
-        'Personalized items must be completed on the checkout page.'
-      );
-    return { variantId: `gid://shopify/ProductVariant/${variant}`, quantity };
+    const customAttributes = lineAttributes(item);
+    return {
+      variantId: `gid://shopify/ProductVariant/${variant}`,
+      quantity,
+      ...(customAttributes.length ? { customAttributes } : {}),
+    };
   });
   const address = row(raw.shipping_address ?? raw.address);
   const country = text(address.country_code ?? address.country).toUpperCase();
@@ -114,17 +169,27 @@ export function recoveryCheckoutInput(payload: unknown): RecoveryCheckoutInput {
   const expectedPaise = Math.round(expected * 100);
   if (!Number.isSafeInteger(expectedPaise) || expectedPaise < 100)
     throw new Error('The checkout total is missing or invalid.');
+  // Recover Agent reports the checkout partner's COD total (Fastrr adds a COD
+  // shipping charge). Without it, COD costs the checkout total.
+  const codTotalPaise = Math.round(
+    money(row(event.flat).cash_on_delivery_total_amount) * 100
+  );
+  const codChargePaise =
+    mirror && Number.isSafeInteger(codTotalPaise) && codTotalPaise >= expectedPaise
+      ? codTotalPaise - expectedPaise
+      : 0;
   const phone = text(event.phone ?? address.phone ?? row(raw.customer).phone);
   const email = text(raw.email ?? row(raw.customer).email);
   return {
     expectedPaise,
+    codChargePaise,
     phone,
     checkoutToken: text(raw.token ?? event.token),
     draftInput: {
       lineItems,
       shippingAddress,
       shippingLine: {
-        title: text(shipping.title ?? shipping.name) || 'Shipping',
+        title: text(shipping.title ?? shipping.name) || 'Standard',
         priceWithCurrency: {
           amount: shippingPrice.toFixed(2),
           currencyCode: 'INR',

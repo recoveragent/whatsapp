@@ -37,9 +37,19 @@ send messages, request payments, or place orders.
   shipping address and the selected shipping rate. Product names in template variables
   are never used to select products for an order.
 - A draft order calculates the total in Shopify. Automatic recovery requires INR,
-  an Indian shipping address, and an exact match with the original checkout total.
-  Missing details, personalized products, subscriptions, bundles, partner charges,
+  an Indian shipping address, and an exact match with the expected total for the
+  chosen payment method. Missing details, subscriptions, bundles, partner charges,
   gift cards and credits use the checkout fallback or agent assistance.
+- Personalization (Shopify line item properties or Fastrr `custom_attributes`) is
+  copied onto the draft's line items under the same names, so the order matches one
+  placed on the checkout partner. The COD summary shows readable details (not `_`
+  fields or links) for the customer to confirm.
+- Pricing follows the checkout partner. Prepaid (UPI) uses the checkout total with a
+  "Standard (Prepaid)" shipping line. COD uses Recover Agent's
+  `cash_on_delivery_total_amount`, adding the difference to shipping as
+  "Standard (COD)" (Fastrr: +₹100). Switching method re-prices the same draft.
+- Pay by UPI first runs a **Check checkout for UPI payment** step; unsupported carts
+  receive the checkout link before any payment link exists.
 - The displayed COD summary uses the actual draft's items and address. Its fingerprint
   prevents creating an order after a change to those details. Quotes expire after
   fifteen minutes; inventory is reserved while the quote/payment request is valid.
