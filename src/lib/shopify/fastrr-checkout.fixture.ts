@@ -1,5 +1,9 @@
 /** Shape of a Fastrr (Shiprocket) checkout mirrored by Recover Agent, with test details. */
-export function fastrrPayload(item: Record<string, unknown> = {}) {
+export function fastrrPayload(
+  item: Record<string, unknown> = {},
+  /** Recover Agent's flat fields, e.g. cash_on_delivery_total_amount. */
+  flat: Record<string, unknown> = {}
+) {
   const address = {
     zip: '560001',
     city: 'Bengaluru',
@@ -20,6 +24,7 @@ export function fastrrPayload(item: Record<string, unknown> = {}) {
       phone: '919876543210',
       amount: 1199,
       checkout_id: 'wh-test',
+      flat,
       raw: {
         tax: 0,
         email: 'test@example.com',

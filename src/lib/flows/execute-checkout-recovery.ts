@@ -22,8 +22,10 @@ export async function executeCheckoutRecovery(
     }
     const order =
       c.action === 'prepare_cod'
-        ? await prepareRecoveryOrder(db, run)
-        : await completeRecoveryOrder(
+        ? await prepareRecoveryOrder(db, run, 'cod')
+        : c.action === 'prepare_prepaid'
+          ? await prepareRecoveryOrder(db, run, 'prepaid')
+          : await completeRecoveryOrder(
             db,
             String(run.vars.checkout_recovery_id ?? ''),
             run.account_id,
@@ -69,7 +71,7 @@ export async function executeCheckoutRecovery(
     // Only preparation failures can fall back to checkout. A completion may have
     // reached Shopify even if its response was lost; never invite another order.
     if (
-      c.action === 'prepare_cod' &&
+      (c.action === 'prepare_cod' || c.action === 'prepare_prepaid') &&
       !/already|in progress|another recovery/i.test(detail)
     ) {
       try {

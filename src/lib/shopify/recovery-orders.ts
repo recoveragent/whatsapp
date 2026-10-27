@@ -6,7 +6,12 @@ import { decrypt } from '@/lib/whatsapp/encryption';
 import { phonesMatch } from '@/lib/whatsapp/phone-utils';
 import { fetchOrderPaymentState, markOrderAsPaid } from './admin-api';
 import { normalizeShopDomain } from './normalize-shop';
-import { recoveryCheckoutInput } from './recovery-checkout-input';
+import {
+  draftInputFor,
+  quotePaise,
+  recoveryCheckoutInput,
+  type RecoveryPaymentMethod,
+} from './recovery-checkout-input';
 
 export interface RecoveryOrder {
   id: string;
@@ -36,6 +41,7 @@ interface Draft {
       title: string;
       quantity: number;
       variant: { id: string } | null;
+      customAttributes?: Array<{ key: string; value: string | null }>;
     }>;
   };
   shippingAddress: {
@@ -52,7 +58,7 @@ interface Draft {
 }
 
 export const RECOVERY_DRAFT_FIELDS = `id totalPriceSet { shopMoney { amount currencyCode } } order { id name }
-  lineItems(first: 50) { nodes { title quantity variant { id } } }
+  lineItems(first: 50) { nodes { title quantity variant { id } customAttributes { key value } } }
   shippingAddress { firstName lastName address1 address2 city province zip countryCodeV2 phone }`;
 export const RECOVERY_DRAFT_CREATE = `mutation RecoveryDraft($input: DraftOrderInput!) {
   draftOrderCreate(input: $input) { draftOrder { ${RECOVERY_DRAFT_FIELDS} } userErrors { message } }
@@ -220,18 +226,32 @@ export const RECOVERY_SUMMARY_MAX = 900;
 const clip = (value: string, max: number) =>
   value.length > max ? `${value.slice(0, max - 1).trimEnd()}…` : value;
 
+/** Visible personalization the customer can check, e.g. "Baby name: Asha". */
+function personalization(item: Draft['lineItems']['nodes'][number]) {
+  const details = (item.customAttributes ?? [])
+    .filter(
+      ({ key, value }) =>
+        !key.startsWith('_') && !!value?.trim() && !/^https?:\/\//i.test(value)
+    )
+    .map(({ key, value }) => `${key}: ${value!.trim()}`)
+    .join(', ');
+  return details ? ` (${clip(details, 200)})` : '';
+}
+
 export function recoverySummary(
   draft: Pick<Draft, 'lineItems' | 'shippingAddress'>,
-  expectedPaise: number
+  expectedPaise: number,
+  codChargePaise = 0
 ): string {
   const a = draft.shippingAddress;
-  const total = `Total: INR ${(expectedPaise / 100).toFixed(2)}`;
+  const total = `Total: INR ${(expectedPaise / 100).toFixed(2)}${codChargePaise ? ` (includes INR ${(codChargePaise / 100).toFixed(2)} COD charges)` : ''}`;
   const address = clip(
     `Deliver to: ${[a?.firstName, a?.lastName, a?.address1, a?.address2, a?.city, a?.province, a?.zip].filter(Boolean).join(', ')}`,
     300
   );
   const items = draft.lineItems.nodes.map(
-    (item) => `${clip(item.title, 80)} × ${item.quantity}`
+    (item) =>
+      `${clip(item.title, 80)} × ${item.quantity}${personalization(item)}`
   );
   const budget = RECOVERY_SUMMARY_MAX - total.length - address.length - 2;
   let shown = items.join(', ');
@@ -368,6 +388,7 @@ async function customerAndTerms(
 export async function prepareRecoveryOrder(
   db: SupabaseClient,
   run: FlowRunRow,
+  method: RecoveryPaymentMethod,
   reserveUntil?: string
 ): Promise<RecoveryOrder> {
   const existing = await load(db, run);
@@ -385,6 +406,10 @@ export async function prepareRecoveryOrder(
     await checkInventory(c, input.draftInput);
   const reserveInventoryUntil =
     reserveUntil ?? new Date(Date.now() + 15 * 60_000).toISOString();
+  // COD and prepaid can cost different amounts (e.g. Fastrr's COD charge).
+  const expectedPaise = quotePaise(input, method);
+  const draftInput = draftInputFor(input, method);
+  const codChargePaise = method === 'cod' ? input.codChargePaise : 0;
   if (existing?.draft_order_id) {
     if (
       !existing.quoted_at ||
@@ -401,7 +426,46 @@ export async function prepareRecoveryOrder(
     if (!live.draftOrder || live.draftOrder.order)
       throw new Error('This checkout is no longer available.');
     checkQuote(live.draftOrder, existing);
-    checkTotal(live.draftOrder, input.expectedPaise);
+    if (Number(existing.amount_paise) !== expectedPaise) {
+      // The customer switched payment method: re-price the same draft.
+      const repriced = await gql<{
+        draftOrderUpdate: {
+          draftOrder: Draft | null;
+          userErrors: Array<{ message: string }>;
+        };
+      }>(c, RECOVERY_RESERVE, {
+        id: existing.draft_order_id,
+        input: {
+          lineItems: draftInput.lineItems,
+          shippingLine: draftInput.shippingLine,
+          reserveInventoryUntil,
+        },
+      });
+      const draft = draftFromResult(repriced.draftOrderUpdate);
+      checkTotal(draft, expectedPaise);
+      const { data: requoted, error: requoteError } = await db
+        .from('shopify_checkout_recoveries')
+        .update({
+          amount_paise: expectedPaise,
+          summary: recoverySummary(draft, expectedPaise, codChargePaise),
+          quote_fingerprint: quoteFingerprint(draft),
+          quoted_at: new Date().toISOString(),
+          reserved_until: reserveInventoryUntil,
+          // A COD confirmation does not carry over to the new price.
+          confirmed_at: null,
+          confirmed_flow_run_id: null,
+        })
+        .eq('id', existing.id)
+        .eq('status', 'quoted')
+        .is('payment_request_id', null)
+        .select('*')
+        .maybeSingle();
+      if (requoteError) throw requoteError;
+      if (!requoted)
+        throw new Error('This checkout is already being completed.');
+      return requoted as RecoveryOrder;
+    }
+    checkTotal(live.draftOrder, expectedPaise);
     const updated = await gql<{
       draftOrderUpdate: {
         draftOrder: Draft | null;
@@ -429,7 +493,7 @@ export async function prepareRecoveryOrder(
       account_id: run.account_id,
       checkout_id: String(run.vars.checkout_id),
       contact_id: run.contact_id,
-      amount_paise: input.expectedPaise,
+      amount_paise: expectedPaise,
       status: 'preparing',
     })
     .select('*')
@@ -451,7 +515,7 @@ export async function prepareRecoveryOrder(
     };
   }>(c, RECOVERY_DRAFT_CREATE, {
     input: {
-      ...input.draftInput,
+      ...draftInput,
       ...paymentTerms,
       reserveInventoryUntil,
       tags: ['whatsapp-recovery', `wa-recovery-${claimed.id}`],
@@ -467,10 +531,10 @@ export async function prepareRecoveryOrder(
     .update({ draft_order_id: draft.id })
     .eq('id', claimed.id);
   if (saved) throw saved;
-  checkTotal(draft, input.expectedPaise);
+  checkTotal(draft, expectedPaise);
   if (!draft.shippingAddress)
     throw new Error('Shopify did not return the shipping address.');
-  const summary = recoverySummary(draft, input.expectedPaise);
+  const summary = recoverySummary(draft, expectedPaise, codChargePaise);
   const { data: result, error: updateError } = await db
     .from('shopify_checkout_recoveries')
     .update({
@@ -594,6 +658,13 @@ export async function completeRecoveryOrder(
     )
       throw new Error('Checkout order ownership could not be verified.');
     const fresh = await checkout(db, currentRun);
+    if (
+      quotePaise(fresh.input, prepaid ? 'prepaid' : 'cod') !==
+      Number(recovery.amount_paise)
+    )
+      throw new Error(
+        'The order details changed after review. Please use checkout or ask our team for help.'
+      );
     if (
       !recovery.reserved_until ||
       Date.parse(recovery.reserved_until) <= Date.now()

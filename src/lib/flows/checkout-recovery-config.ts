@@ -1,5 +1,6 @@
 export interface CheckoutRecoveryNodeConfig {
-  action: 'prepare_cod' | 'place_cod';
+  /** prepare_prepaid checks the checkout before Collect payment requests UPI. */
+  action: 'prepare_cod' | 'place_cod' | 'prepare_prepaid';
   cod_mode: 'checkout' | 'create_order';
   ready_next: string;
   checkout_next: string;
@@ -14,12 +15,15 @@ export const CHECKOUT_RECOVERY_BRANCHES = [
 
 export function checkoutRecoveryConfigErrors(c: Record<string, unknown>) {
   const errors: Array<{ field: string; message: string }> = [];
-  if (!['prepare_cod', 'place_cod'].includes(String(c.action)))
+  if (!['prepare_cod', 'place_cod', 'prepare_prepaid'].includes(String(c.action)))
     errors.push({
       field: 'action',
       message: 'Select a checkout recovery action.',
     });
-  if (!['checkout', 'create_order'].includes(String(c.cod_mode)))
+  if (
+    c.action === 'prepare_cod' &&
+    !['checkout', 'create_order'].includes(String(c.cod_mode))
+  )
     errors.push({
       field: 'cod_mode',
       message: 'Select how COD customers complete their order.',
