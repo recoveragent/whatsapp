@@ -556,6 +556,18 @@ describe('Shopify recovery order lifecycle', () => {
       bodies(f).filter((b) => b.query.includes('CompleteRecoveryDraft'))
     ).toHaveLength(0);
   });
+  it('links the customer and creates the draft with a +91 phone from a 10-digit checkout phone', async () => {
+    const f = fixture();
+    const saved = f.tables.shopify_pending_checkouts[0].payload as Row;
+    saved.phone = '9876543210';
+    (saved.shipping_address as Row).phone = '9876543210';
+    await prepareRecoveryOrder(f.db, f.run, 'prepaid');
+    const search = bodies(f).find((b) => b.query.includes('query RecoveryCustomer('));
+    expect(search.variables.query).toBe('phone:"+919876543210"');
+    const create = bodies(f).find((b) => b.query.includes('mutation RecoveryDraft'));
+    expect(create.variables.input.phone).toBe('+919876543210');
+    expect(create.variables.input.shippingAddress.phone).toBe('+919876543210');
+  });
   it('blocks a customer who already placed an order after checkout', async () => {
     const f = fixture();
     f.setRecentOrders([

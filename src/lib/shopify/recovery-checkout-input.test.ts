@@ -3,6 +3,7 @@ import {
   draftInputFor,
   quotePaise,
   recoveryCheckoutInput,
+  shopifyPhone,
 } from './recovery-checkout-input';
 import { fastrrPayload } from './fastrr-checkout.fixture';
 
@@ -80,7 +81,7 @@ describe('recovery checkout input', () => {
   it('reads a Fastrr checkout with a top-level shipping_price', () => {
     expect(recoveryCheckoutInput(fastrrPayload())).toMatchObject({
       expectedPaise: 119900,
-      phone: '919876543210',
+      phone: '+919876543210',
       draftInput: {
         lineItems: [
           {
@@ -190,6 +191,37 @@ describe('recovery checkout input', () => {
     }
     // Native Shopify checkouts have no partner COD total.
     expect(recoveryCheckoutInput(checkoutPayload()).codChargePaise).toBe(0);
+  });
+  it.each([
+    ['9788274333', '+919788274333'],
+    ['919788274333', '+919788274333'],
+    ['09788274333', '+919788274333'],
+    ['+91 97882 74333', '+919788274333'],
+    ['+91-9788274333', '+919788274333'],
+    [9788274333, '+919788274333'],
+    ['+14155550123', '+14155550123'],
+    ['5788274333', ''],
+    ['12345', ''],
+    ['', ''],
+    [null, ''],
+  ])('converts %j to Shopify international phone %j', (value, expected) => {
+    expect(shopifyPhone(value)).toBe(expected);
+  });
+  it('sends Fastrr phones to Shopify in +91 format', () => {
+    // Fastrr: event phone "919876543210", address phone "9876543210".
+    const input = recoveryCheckoutInput(fastrrPayload());
+    expect(input.draftInput.phone).toBe('+919876543210');
+    expect(
+      (input.draftInput.shippingAddress as { phone?: string }).phone
+    ).toBe('+919876543210');
+  });
+  it('leaves phones Shopify would reject off the draft', () => {
+    const p = fastrrPayload();
+    p.event.phone = 'not-a-phone';
+    p.event.raw.shipping_address.phone = 'N/A';
+    const input = recoveryCheckoutInput(p);
+    expect(input.draftInput).not.toHaveProperty('phone');
+    expect(input.draftInput.shippingAddress).not.toHaveProperty('phone');
   });
   it('still refuses a Fastrr checkout with no shipping price', () => {
     const p = fastrrPayload();

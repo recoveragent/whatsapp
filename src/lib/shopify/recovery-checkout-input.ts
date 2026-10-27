@@ -27,6 +27,28 @@ function lineAttributes(item: Row): Array<{ key: string; value: string }> {
     return [{ key, value: String(rawValue) }];
   });
 }
+/**
+ * Shopify needs international (E.164) phones. Fastrr sends "919876543210" and
+ * address phones as "9876543210". Indian numbers become +91XXXXXXXXXX; other
+ * "+" numbers are kept; anything else is '' and left off the draft.
+ */
+export function shopifyPhone(value: unknown): string {
+  const raw = typeof value === 'number' ? String(value) : text(value);
+  const digits = raw.replace(/\D/g, '');
+  const local =
+    digits.length === 10
+      ? digits
+      : digits.length === 11 && digits.startsWith('0')
+        ? digits.slice(1)
+        : digits.length === 12 && digits.startsWith('91')
+          ? digits.slice(2)
+          : '';
+  if (/^[6-9]\d{9}$/.test(local)) return `+91${local}`;
+  if (raw.startsWith('+') && digits.length >= 8 && digits.length <= 15)
+    return `+${digits}`;
+  return '';
+}
+
 function money(v: unknown): number {
   if (v === null || v === undefined || v === '') return NaN;
   return Number(v);
@@ -143,8 +165,8 @@ export function recoveryCheckoutInput(payload: unknown): RecoveryCheckoutInput {
     province: text(address.province ?? address.state),
     zip: text(address.zip ?? address.pincode),
     countryCode: 'IN',
-    phone: text(address.phone ?? event.phone),
   };
+  const addressPhone = shopifyPhone(address.phone ?? event.phone);
   if (
     !shippingAddress.firstName ||
     !shippingAddress.address1 ||
@@ -153,6 +175,7 @@ export function recoveryCheckoutInput(payload: unknown): RecoveryCheckoutInput {
     !/^\d{6}$/.test(shippingAddress.zip)
   )
     throw new Error('A complete shipping address is required.');
+  if (addressPhone) Object.assign(shippingAddress, { phone: addressPhone });
   const shipping = Array.isArray(raw.shipping_lines)
     ? row(raw.shipping_lines[0])
     : row(raw.shipping);
@@ -178,12 +201,16 @@ export function recoveryCheckoutInput(payload: unknown): RecoveryCheckoutInput {
     mirror && Number.isSafeInteger(codTotalPaise) && codTotalPaise >= expectedPaise
       ? codTotalPaise - expectedPaise
       : 0;
-  const phone = text(event.phone ?? address.phone ?? row(raw.customer).phone);
+  const rawPhone = text(
+    event.phone ?? address.phone ?? row(raw.customer).phone
+  );
+  // The same international phone is used for the draft and customer linking.
+  const phone = shopifyPhone(rawPhone);
   const email = text(raw.email ?? row(raw.customer).email);
   return {
     expectedPaise,
     codChargePaise,
-    phone,
+    phone: phone || rawPhone,
     checkoutToken: text(raw.token ?? event.token),
     draftInput: {
       lineItems,
