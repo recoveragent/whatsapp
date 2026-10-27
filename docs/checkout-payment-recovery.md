@@ -9,8 +9,12 @@ send messages, request payments, or place orders.
 1. Deploy the application changes and apply migration
    `20261026175011_checkout_recovery_orders.sql` before activating any copies.
 2. Connect Shopify with `read_orders`, `write_orders`, `read_products`,
-   `read_customers`, `write_customers`, `read_draft_orders`, and `write_draft_orders`.
-   Existing installations need to approve any newly requested permissions.
+   `read_customers`, `write_customers`, `read_draft_orders`, `write_draft_orders`,
+   `read_payment_terms`, and `write_payment_terms`.
+   Existing installations need to approve any newly requested permissions. UPI works
+   without the payment terms permissions; automatic COD needs them, because COD
+   orders are created with "due on fulfillment" terms. Until they are approved, COD
+   follows the checkout fallback.
 3. Push the **Checkout recovery — payment choice** and **Checkout recovery — payment
    request** template presets from Super Admin → Templates. Supply a sample product
    image for Meta approval, then select the approved brand templates in the flow.

@@ -144,6 +144,8 @@ function fixture() {
   let stock = 20;
   let recentOrders: Row[] = [];
   let terms = true;
+  /** Whether the Shopify draft has payment terms (set by create/update input). */
+  let draftTerms = false;
   let customers: Row[] = [
     {
       id: 'gid://shopify/Customer/1',
@@ -191,6 +193,7 @@ function fixture() {
     if (input.shippingLine)
       shipping = Number(input.shippingLine.priceWithCurrency.amount);
     if (input.lineItems) lines = input.lineItems;
+    if (input.paymentTerms) draftTerms = true;
     let data: Row;
     if (query.includes('RecoveryRecentOrders'))
       data = {
@@ -201,6 +204,8 @@ function fixture() {
       if (afterCreate) customers = afterCreate;
     } else if (query.includes('RecoveryCustomer'))
       data = { customers: { nodes: customers } };
+    else if (query.includes('RecoveryDraftTerms'))
+      data = { draftOrder: { paymentTerms: draftTerms ? { id: 'terms-1' } : null } };
     else if (query.includes('RecoveryPaymentTerms'))
       data = {
         paymentTermsTemplates: terms
@@ -256,6 +261,9 @@ function fixture() {
     },
     setDraftResult: (v: typeof draftResult) => {
       draftResult = v;
+    },
+    setDraftTerms: (v: boolean) => {
+      draftTerms = v;
     },
     setCustomers: (v: Row[], create?: Row, after?: Row[]) => {
       customers = v;
@@ -505,6 +513,49 @@ describe('Shopify recovery order lifecycle', () => {
     expect(error.cause).toBe('Email has already been taken');
     expect(f.tables.shopify_checkout_recoveries).toHaveLength(0);
   });
+  it('creates UPI drafts without payment terms and adds them when switching to COD', async () => {
+    const f = fixture();
+    mirror(f, { cash_on_delivery_total_amount: 300 });
+    await prepareRecoveryOrder(f.db, f.run, 'prepaid');
+    const create = bodies(f).find((b) => b.query.includes('mutation RecoveryDraft'));
+    expect(create.variables.input).not.toHaveProperty('paymentTerms');
+    expect(create.variables.input.purchasingEntity).toEqual({
+      customerId: 'gid://shopify/Customer/1',
+    });
+    expect(bodies(f).some((b) => b.query.includes('RecoveryPaymentTerms'))).toBe(false);
+    await prepareRecoveryOrder(f.db, f.run, 'cod');
+    const repriced = bodies(f).find(
+      (b) => b.query.includes('ReserveRecoveryDraft') && b.variables.input.shippingLine
+    );
+    expect(repriced.variables.input.paymentTerms).toEqual({
+      paymentTermsTemplateId: 'gid://shopify/PaymentTermsTemplate/9',
+    });
+  });
+  it('creates COD drafts with due-on-fulfillment payment terms', async () => {
+    const f = fixture();
+    await prepareRecoveryOrder(f.db, f.run, 'cod');
+    expect(
+      bodies(f).find((b) => b.query.includes('mutation RecoveryDraft')).variables
+        .input.paymentTerms
+    ).toEqual({ paymentTermsTemplateId: 'gid://shopify/PaymentTermsTemplate/9' });
+  });
+  it('never completes a COD draft without payment terms, which would record it as paid', async () => {
+    const f = fixture();
+    const r = await prepareRecoveryOrder(f.db, f.run, 'cod');
+    f.run.vars = {
+      ...f.run.vars,
+      checkout_recovery_id: r.id,
+      checkout_order_summary: r.summary,
+    };
+    await confirmRecoveryCod(f.db, f.run);
+    f.setDraftTerms(false);
+    await expect(
+      completeRecoveryOrder(f.db, r.id, 'brand-1', { run: f.run })
+    ).rejects.toThrow('payment terms are missing');
+    expect(
+      bodies(f).filter((b) => b.query.includes('CompleteRecoveryDraft'))
+    ).toHaveLength(0);
+  });
   it('blocks a customer who already placed an order after checkout', async () => {
     const f = fixture();
     f.setRecentOrders([
@@ -574,6 +625,12 @@ describe('Shopify recovery order lifecycle', () => {
       paymentRequestId: 'payment-1',
     });
     expect(placed.shopify_order_id).toBe('99');
+    // Prepaid needs no payment terms, so it never needs read_payment_terms.
+    expect(
+      f.fetch.mock.calls.some(([, o]) =>
+        /RecoveryDraftTerms|RecoveryPaymentTerms/.test(JSON.parse(String(o.body)).query)
+      )
+    ).toBe(false);
     expect(api.mark).toHaveBeenCalledWith(
       'test.myshopify.com',
       'test-token',

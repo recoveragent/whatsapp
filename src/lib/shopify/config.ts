@@ -10,6 +10,9 @@ const DEFAULT_SCOPES = [
   'write_orders',
   'read_draft_orders',
   'write_draft_orders',
+  // Checkout recovery COD orders are due on fulfillment.
+  'read_payment_terms',
+  'write_payment_terms',
   'read_fulfillments',
   'read_checkouts',
   'read_customers',
