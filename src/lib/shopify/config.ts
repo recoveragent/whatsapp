@@ -8,9 +8,12 @@ const DEFAULT_SCOPES = [
   'read_orders',
   // COD → prepaid conversion marks collected orders as paid.
   'write_orders',
+  'read_draft_orders',
+  'write_draft_orders',
   'read_fulfillments',
   'read_checkouts',
   'read_customers',
+  'write_customers',
   'read_products',
   'read_legal_policies',
 ].join(',');

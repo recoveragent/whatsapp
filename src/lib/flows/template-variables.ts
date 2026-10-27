@@ -54,6 +54,9 @@ const WOOCOMMERCE_OPTIONS: TemplateVariableOption[] = [
 ]
 
 const SHOPIFY_OPTIONS: TemplateVariableOption[] = [
+  { label: 'COD confirmation summary', token: '{{ vars.checkout_order_summary }}', type: 'text' },
+  { label: 'Recovery order total (INR)', token: '{{ vars.checkout_amount }}', type: 'text' },
+  { label: 'Checkout recovery error', token: '{{ vars.checkout_recovery_error }}', type: 'text' },
   { label: 'Customer name', token: '{{ vars.customer_name }}', type: 'text' },
   {
     label: 'Customer last name',

@@ -14,6 +14,14 @@ import { CollectPaymentFields } from './collect-payment-fields';
 afterEach(() => { vi.unstubAllGlobals(); captured.fields = []; });
 
 describe('payment template picker state', () => {
+  it('shows checkout-total and UPI controls without a fixed amount for recovery payments', () => {
+    vi.stubGlobal('React', React);
+    const config = { provider: 'razorpay', shopify_checkout_recovery: true, razorpay_checkout: 'upi', max_reminders: 0 };
+    const html = renderToStaticMarkup(React.createElement(CollectPaymentFields, { node: { node_key: 'pay', node_type: 'collect_payment', config } as BuilderNode, allNodes: [], onChange: () => {}, triggerType: 'shopify_checkout_app_abandoned' }));
+    expect(html).toContain('Collect the abandoned checkout total');
+    expect(html).toContain('UPI payment link');
+    expect(html).not.toContain('Fixed amount');
+  });
   it('passes saved buttons back to both template editors so synchronization converges', () => {
     vi.stubGlobal('React', React);
     const buttons = [{ reply_id: 'old_reply', title: 'Continue', next_node_key: '' }];

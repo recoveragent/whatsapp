@@ -24,6 +24,7 @@
  *   - `timeout`           for no-reply timeout branch on suspending nodes
  */
 
+import { CHECKOUT_RECOVERY_BRANCHES } from "./checkout-recovery-config";
 import { PAYMENT_BRANCHES } from "./payment-config";
 import type { BuilderNode } from "@/components/flows/shared";
 import {
@@ -96,6 +97,12 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
   for (const node of nodes) {
     const cfg = node.config;
     switch (node.node_type) {
+      case "recover_checkout":
+        for (const b of CHECKOUT_RECOVERY_BRANCHES) {
+          const next = cfg[b.field];
+          if (typeof next === "string" && knownKeys.has(next)) edges.push({ id: `${node.node_key}--${b.id}--${next}`, source: node.node_key, target: next, sourceHandle: b.id, label: b.label });
+        }
+        break;
       case "collect_payment":
         for (const b of PAYMENT_BRANCHES) {
           const next = cfg[b.field];
@@ -328,6 +335,8 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
   const cfg = node.config;
   let slots: OutgoingSlot[];
   switch (node.node_type) {
+    case "recover_checkout":
+      return CHECKOUT_RECOVERY_BRANCHES.map(b => ({ id: b.id, label: b.label }));
     case "collect_payment":
       return PAYMENT_BRANCHES.map(b => ({ id: b.id, label: b.label }));
     case "start":
@@ -471,6 +480,10 @@ export function applyEdgeConnection(
   }
 
   switch (node.node_type) {
+    case "recover_checkout": {
+      const branch = CHECKOUT_RECOVERY_BRANCHES.find(b => b.id === sourceHandle);
+      return branch ? { [branch.field]: targetKey } : null;
+    }
     case "collect_payment": {
       const branch = PAYMENT_BRANCHES.find(b => b.id === sourceHandle);
       return branch ? { [branch.field]: targetKey } : null;
@@ -665,6 +678,8 @@ function patchedConfigRenamedKeyInner(
 ): Record<string, unknown> | null {
   const cfg = node.config;
   switch (node.node_type) {
+    case "recover_checkout":
+      return { ...cfg, ...Object.fromEntries(CHECKOUT_RECOVERY_BRANCHES.filter(b => cfg[b.field] === oldKey).map(b => [b.field, newKey])) };
     case "collect_payment":
       return { ...cfg, ...Object.fromEntries(PAYMENT_BRANCHES.filter(b => cfg[b.field] === oldKey).map(b => [b.field, newKey])) };
     case "start":
@@ -820,6 +835,8 @@ function patchedConfigWithoutKeyInner(
 ): Record<string, unknown> | null {
   const cfg = node.config;
   switch (node.node_type) {
+    case "recover_checkout":
+      return { ...cfg, ...Object.fromEntries(CHECKOUT_RECOVERY_BRANCHES.filter(b => cfg[b.field] === deletedKey).map(b => [b.field, ""])) };
     case "collect_payment":
       return { ...cfg, ...Object.fromEntries(PAYMENT_BRANCHES.filter(b => cfg[b.field] === deletedKey).map(b => [b.field, ""])) };
     case "start":

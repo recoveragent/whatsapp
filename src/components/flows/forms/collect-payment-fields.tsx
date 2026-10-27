@@ -199,6 +199,7 @@ export function CollectPaymentFields({
 }) {
   const c = node.config as unknown as CollectPaymentNodeConfig;
   const cod = c.shopify_cod_to_prepaid === true;
+  const recovery = c.shopify_checkout_recovery === true;
   const groups = useMemo(
     () => [
       ...templateVariableGroupsForFlow(triggerType, triggerConfig).filter(
@@ -236,6 +237,25 @@ export function CollectPaymentFields({
           <Input value="INR (₹)" readOnly />
         </label>
       </div>
+      {c.provider !== 'cashfree' && (
+        <label className="block text-xs">
+          Razorpay payment experience
+          <select
+            className="bg-background mt-1 w-full rounded border p-2"
+            value={c.razorpay_checkout ?? 'hosted'}
+            onChange={(e) => onChange({ razorpay_checkout: e.target.value })}
+          >
+            <option value="hosted">
+              Hosted checkout (available payment methods)
+            </option>
+            <option value="upi">UPI payment link</option>
+          </select>
+          <span className="text-muted-foreground mt-1 block">
+            UPI links open the supported payment experience or UPI app. The
+            customer authorizes payment outside the WhatsApp conversation.
+          </span>
+        </label>
+      )}
       {c.provider === 'cashfree' && (
         <section className="space-y-2">
           <label className="block text-xs">
@@ -261,7 +281,34 @@ export function CollectPaymentFields({
           </p>
         </section>
       )}
-      {(cod || supportsCodToPrepaid(triggerType)) && (
+      {(recovery ||
+        triggerType === 'shopify_checkout_abandoned' ||
+        triggerType === 'shopify_checkout_app_abandoned') && (
+        <section className="space-y-2 rounded-lg border p-3">
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={recovery}
+              onChange={(e) =>
+                onChange({
+                  shopify_checkout_recovery: e.target.checked,
+                  ...(e.target.checked
+                    ? { shopify_cod_to_prepaid: false }
+                    : {}),
+                })
+              }
+            />
+            Collect the abandoned checkout total
+          </label>
+          <p className="text-muted-foreground text-xs">
+            Shopify validates the items, shipping and total before requesting
+            payment. After verified payment, the order is created and marked
+            paid. The Payment received branch waits for Shopify order creation;
+            failures go to assistance without requesting another payment.
+          </p>
+        </section>
+      )}
+      {!recovery && (cod || supportsCodToPrepaid(triggerType)) && (
         <section className="space-y-2 rounded-lg border p-3">
           <label className="flex items-center gap-2 text-sm font-medium">
             <input
@@ -305,7 +352,7 @@ export function CollectPaymentFields({
           )}
         </section>
       )}
-      {!cod && (
+      {!cod && !recovery && (
         <label className="block text-xs">
           Fixed amount (₹)
           <Input

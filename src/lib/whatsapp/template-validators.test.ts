@@ -199,6 +199,23 @@ describe('validateButtons', () => {
       ]),
     ).not.toThrow();
   });
+  it('accepts CTA then QUICK_REPLY in correct order', () => {
+    expect(() =>
+      validateButtons([
+        { type: 'URL', text: 'A', url: 'https://x' },
+        { type: 'QUICK_REPLY', text: 'B' },
+      ]),
+    ).not.toThrow();
+  });
+  it('rejects CTA interleaved around QUICK_REPLY', () => {
+    expect(() =>
+      validateButtons([
+        { type: 'URL', text: 'A', url: 'https://x' },
+        { type: 'QUICK_REPLY', text: 'B' },
+        { type: 'PHONE_NUMBER', text: 'C', phone_number: '+1' },
+      ]),
+    ).toThrow(/cannot be interleaved/);
+  });
   it('rejects empty button text', () => {
     expect(() =>
       validateButtons([{ type: 'QUICK_REPLY', text: '' }]),

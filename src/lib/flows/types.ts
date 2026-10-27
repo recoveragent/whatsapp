@@ -256,7 +256,7 @@ export type ConditionOperator =
   | "present"
   | "absent";
 
-export type ConditionSubject = "var" | "tag" | "contact_field" | "shopify_payment" | "shopify_order" | "shopify_checkout";
+export type ConditionSubject = | "var" | "tag" | "contact_field" | "shopify_payment" | "shopify_order" | "shopify_checkout";
 
 export interface ConditionPredicate {
   subject: ConditionSubject;
@@ -268,8 +268,8 @@ export interface ConditionPredicate {
   data_source?: "snapshot" | "latest";
   /** Comma-separated gateway names, matched exactly, ignoring case. */
   cod_gateways?: string;
-  /** Used by line-item quantity conditions to select a product, variant or SKU. */
-  item_key?: "product_id" | "variant_id" | "sku";
+  /** Used by line-item quantity conditions to select a product, variant, SKU, product name or collection. */
+  item_key?: "product_id" | "variant_id" | "sku" | "title" | "collection_id";
   item_value?: string;
 }
 
@@ -421,6 +421,10 @@ export interface TimeBasedTriggerConfig {
  */
 export type FlowNodeConfig =
   | { node_type: "collect_payment"; config: import("./payment-config").CollectPaymentNodeConfig }
+  | {
+      node_type: 'recover_checkout';
+      config: import('./checkout-recovery-config').CheckoutRecoveryNodeConfig;
+    }
   | { node_type: "start"; config: StartNodeConfig }
   | { node_type: "send_message"; config: SendMessageNodeConfig }
   | { node_type: "send_buttons"; config: SendButtonsNodeConfig }

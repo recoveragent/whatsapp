@@ -230,19 +230,18 @@ export function validateButtons(buttons: TemplateButton[] | undefined): void {
   }
 
   // Meta rule: QUICK_REPLY buttons must be contiguous — they can't be
-  // interleaved with CTA buttons. Easiest check: walk the array; once
-  // we leave the QUICK_REPLY block, we must not see another.
-  let sawNonQR = false;
-  for (const b of buttons) {
-    if (b.type === 'QUICK_REPLY') {
-      if (sawNonQR) {
-        throw new Error(
-          'QUICK_REPLY buttons cannot be interleaved with URL / PHONE_NUMBER / COPY_CODE buttons — group them at the start.',
-        );
-      }
-    } else {
-      sawNonQR = true;
-    }
+  // interleaved with CTA buttons. The QR group may come before or after
+  // the CTA group, so at most one QR <-> non-QR transition is allowed.
+  let transitions = 0;
+  for (let i = 1; i < buttons.length; i++) {
+    const prevIsQR = buttons[i - 1].type === 'QUICK_REPLY';
+    const isQR = buttons[i].type === 'QUICK_REPLY';
+    if (prevIsQR !== isQR) transitions++;
+  }
+  if (transitions > 1) {
+    throw new Error(
+      'QUICK_REPLY buttons cannot be interleaved with URL / PHONE_NUMBER / COPY_CODE buttons — keep them together, either before or after the other buttons.',
+    );
   }
 
   for (let i = 0; i < buttons.length; i++) {

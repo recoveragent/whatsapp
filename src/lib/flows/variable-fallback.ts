@@ -18,6 +18,14 @@ export function variableFallbacks(value: string) {
   );
 }
 
+/** Header image fallbacks are uploaded files, stored as their public URL. */
+export const MEDIA_FALLBACK_MESSAGE =
+  'Upload an image to send when this variable is empty.';
+
+export function isMediaFallbackUrl(value: string): boolean {
+  return /^https?:\/\/\S+$/i.test(value.trim());
+}
+
 export function setVariableFallback(
   value: string,
   key: string,

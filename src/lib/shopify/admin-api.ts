@@ -800,6 +800,46 @@ export async function fetchCollections(
   ].sort((a, b) => a.title.localeCompare(b.title));
 }
 
+/**
+ * Which of `productIds` sit in each of `collectionIds`. Uses Product.inCollection,
+ * so automated (smart) collections and large collections are exact.
+ */
+export async function fetchProductCollectionMembership(
+  shopDomain: string,
+  accessToken: string,
+  productIds: string[],
+  collectionIds: string[],
+): Promise<Map<string, Set<string>>> {
+  const products = [...new Set(productIds.filter((id) => /^\d+$/.test(id)))].slice(0, 250);
+  const collections = [...new Set(collectionIds.filter((id) => /^\d+$/.test(id)))].slice(0, 20);
+  const result = new Map(collections.map((id) => [id, new Set<string>()]));
+  if (!products.length || !collections.length) return result;
+  const vars = collections.map((_, i) => `$c${i}: ID!`).join(', ');
+  const fields = collections.map((_, i) => `c${i}: inCollection(id: $c${i})`).join(' ');
+  const variables: Record<string, unknown> = {
+    ids: products.map((id) => `gid://shopify/Product/${id}`),
+  };
+  collections.forEach((id, i) => {
+    variables[`c${i}`] = `gid://shopify/Collection/${id}`;
+  });
+  const data = await shopifyGraphql<{
+    data?: { nodes?: Array<({ id?: string } & Record<string, unknown>) | null> };
+  }>(
+    shopDomain,
+    accessToken,
+    `query ($ids: [ID!]!, ${vars}) { nodes(ids: $ids) { ... on Product { id ${fields} } } }`,
+    variables,
+  );
+  for (const node of data.data?.nodes ?? []) {
+    const productId = node?.id ? parseShopifyGid(node.id) : null;
+    if (!node || !productId) continue;
+    collections.forEach((id, i) => {
+      if (node[`c${i}`] === true) result.get(id)!.add(productId);
+    });
+  }
+  return result;
+}
+
 /** Product ids in a collection, in the collection's sort order. */
 export async function fetchCollectionProductIds(
   shopDomain: string,

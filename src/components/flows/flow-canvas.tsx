@@ -1308,6 +1308,7 @@ function NodeEditSheet({
 // ============================================================
 
 const ADD_NODE_TYPES: NodeType[] = [
+  'recover_checkout',
   'collect_payment',
   'send_buttons',
   'send_list',

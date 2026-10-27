@@ -3,6 +3,8 @@ import type { SendTemplateNodeConfig } from './types';
 
 export interface CollectPaymentNodeConfig {
   provider: 'razorpay' | 'cashfree';
+  /** Standard hosted checkout is retained when omitted. */
+  razorpay_checkout?: 'upi' | 'hosted';
   /** Cashfree mobile checkout; omitted uses direct UPI for newly created links. */
   cashfree_checkout?: 'upi_intent' | 'hosted';
   currency: 'INR';
@@ -13,6 +15,8 @@ export interface CollectPaymentNodeConfig {
    * mark that order paid once the gateway confirms payment.
    */
   shopify_cod_to_prepaid?: boolean;
+  /** Quote a saved abandoned checkout and create its order after verified payment. */
+  shopify_checkout_recovery?: boolean;
   /** Tag added to the Shopify order after conversion. Empty adds no tag. */
   shopify_paid_tag?: string;
   description: string;
@@ -51,6 +55,24 @@ export function paymentConfigErrors(
     add('cashfree_checkout', 'Select direct UPI or hosted checkout.');
   const paise = Number(c.amount) * 100;
   if (
+    c.razorpay_checkout !== undefined &&
+    !['upi', 'hosted'].includes(String(c.razorpay_checkout))
+  )
+    add('razorpay_checkout', 'Select UPI or hosted Razorpay checkout.');
+  if (
+    c.shopify_checkout_recovery !== undefined &&
+    typeof c.shopify_checkout_recovery !== 'boolean'
+  )
+    add(
+      'shopify_checkout_recovery',
+      'Checkout recovery must be enabled or disabled.'
+    );
+  if (c.shopify_checkout_recovery === true && c.shopify_cod_to_prepaid === true)
+    add(
+      'shopify_checkout_recovery',
+      'Choose checkout recovery or COD to prepaid, not both.'
+    );
+  if (
     c.shopify_paid_tag !== undefined &&
     (typeof c.shopify_paid_tag !== 'string' ||
       c.shopify_paid_tag.length > 40 ||
@@ -59,6 +81,7 @@ export function paymentConfigErrors(
     add('shopify_paid_tag', 'Use a single tag of up to 40 characters.');
   if (
     c.shopify_cod_to_prepaid !== true &&
+    c.shopify_checkout_recovery !== true &&
     (typeof c.amount !== 'number' ||
       !Number.isSafeInteger(Math.round(paise)) ||
       c.amount < 1 ||

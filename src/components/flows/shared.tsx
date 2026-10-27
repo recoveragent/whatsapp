@@ -63,6 +63,7 @@ import { cn } from "@/lib/utils";
 // ============================================================
 
 export type NodeType =
+  | "recover_checkout"
   | "collect_payment"
   | "start"
   | "send_message"
@@ -132,6 +133,7 @@ export const NODE_META: Record<
     category: NodeCategory;
   }
 > = {
+  recover_checkout: { label: 'Recover checkout', icon: ShoppingBag, color: 'text-emerald-400', blurb: 'Review a COD checkout, create its confirmed order, or route to checkout', category: 'logic' },
   collect_payment: { label: 'Collect payment', icon: CreditCard, color: 'text-emerald-400', blurb: 'Collects an advance, or converts Shopify COD orders to prepaid, with Razorpay or Cashfree', category: 'logic' },
   start: {
     label: 'Start',
@@ -340,6 +342,7 @@ const NODE_HUE: Record<NodeType, { l: number; c: number; h: number }> = {
   set_tag: { l: 0.65, c: 0.15, h: 350 },
   handoff: { l: 0.65, c: 0.17, h: 16 },
   ai_agent: { l: 0.62, c: 0.17, h: 300 },
+  recover_checkout: { l: 0.68, c: 0.15, h: 160 },
   collect_payment: { l: 0.68, c: 0.15, h: 160 },
   wait: { l: 0.58, c: 0.02, h: 260 },
   send_webhook: { l: 0.68, c: 0.16, h: 45 },
@@ -705,8 +708,10 @@ export function summarizeNode(
         ? `Template: ${truncate(name, 40)} · ${qr} button${qr === 1 ? "" : "s"}`
         : `Template: ${truncate(name, 50)}`;
     }
+    case "recover_checkout":
+      return cfg.action === 'place_cod' ? 'Create confirmed COD order' : cfg.cod_mode === 'create_order' ? 'Review COD order in WhatsApp' : 'Continue COD on checkout page';
     case "collect_payment":
-      return `${cfg.provider === 'cashfree' ? 'Cashfree' : 'Razorpay'} · ₹${cfg.amount ?? 0} · expires in ${cfg.expiry_hours ?? 24}h`;
+      return `${cfg.provider === 'cashfree' ? 'Cashfree' : 'Razorpay'} · ${cfg.shopify_checkout_recovery ? 'Checkout total' : `₹${cfg.amount ?? 0}`} · expires in ${cfg.expiry_hours ?? 24}h`;
     case "wait": {
       const amount = cfg.amount ?? 1;
       const unit = typeof cfg.unit === "string" ? cfg.unit : "hours";

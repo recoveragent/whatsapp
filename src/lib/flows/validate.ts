@@ -1,4 +1,11 @@
-import { missingVariableFallbacks } from './variable-fallback';
+import {
+  isMediaFallbackUrl,
+  MEDIA_FALLBACK_MESSAGE,
+  missingVariableFallbacks,
+  variableFallbacks,
+  withoutVariableFallbacks,
+} from './variable-fallback';
+import { CHECKOUT_RECOVERY_BRANCHES, checkoutRecoveryConfigErrors } from './checkout-recovery-config';
 /**
  * Save-time validation for flows.
  *
@@ -244,6 +251,46 @@ export function validateFlowForActivation(
   // Per-node rules (Meta limits + dead-end + edge resolution).
   for (const n of nodes) {
     issues.push(...validateNode(n, keys));
+    if (n.node_type === 'recover_checkout' ||
+      (n.node_type === 'collect_payment' &&
+        n.config.shopify_checkout_recovery === true)
+    ) {
+      if (
+        ![
+          'shopify_checkout_abandoned',
+          'shopify_checkout_app_abandoned',
+        ].includes(flow.trigger_type)
+      )
+        issues.push({
+          severity: 'error',
+          scope: 'node',
+          node_key: n.node_key,
+          message: 'Checkout recovery requires an abandoned checkout trigger.',
+        });
+    }
+    if (n.node_type === 'recover_checkout' && n.config.action === 'place_cod') {
+      const parents = nodes.filter((parent) =>
+        outgoingReplyEdges(parent).includes(n.node_key)
+      );
+      if (
+        !parents.length ||
+        parents.some(
+          (parent) =>
+            parent.node_type !== 'send_buttons' ||
+            !/\{\{\s*vars\.checkout_order_summary\s*\}\}/.test(
+              withoutVariableFallbacks(String(parent.config.text ?? ''))
+            )
+        )
+      )
+        issues.push({
+          severity: 'error',
+          scope: 'node',
+          node_key: n.node_key,
+          message:
+            'COD order creation must follow confirmation buttons displaying {{ vars.checkout_order_summary }}.',
+        });
+    }
+
     if (n.node_type === "condition" || n.node_type === "switch") {
       const groups = n.node_type === "condition" ? [n.config] : Array.isArray(n.config.branches) ? n.config.branches : [];
       for (const group of groups) {
@@ -709,9 +756,19 @@ function validateNode(
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   for (const issue of missingVariableFallbacks(node.config)) {
+    if (issue.path === 'variables.header_media') continue;
     issues.push({ severity: "error", scope: "node", node_key: node.node_key,
       field: issue.path, message: `Enter a required fallback for ${issue.key}.` });
   }
+  const headerMedia = (node.config as { variables?: { header_media?: unknown } } | null)
+    ?.variables?.header_media;
+  // Header media fallbacks are uploaded images; Meta rejects plain-text links.
+  if (
+    typeof headerMedia === 'string' &&
+    variableFallbacks(headerMedia).some(({ fallback }) => !isMediaFallbackUrl(fallback))
+  )
+    issues.push({ severity: "error", scope: "node", node_key: node.node_key,
+      field: 'variables.header_media', message: MEDIA_FALLBACK_MESSAGE });
 
 
   // Meta rejects interactive messages whose footer is over the limit, which
@@ -731,6 +788,29 @@ function validateNode(
   }
 
   switch (node.node_type) {
+    case 'recover_checkout': {
+      for (const issue of checkoutRecoveryConfigErrors(node.config))
+        issues.push({
+          ...issue,
+          severity: 'error',
+          scope: 'node',
+          node_key: node.node_key,
+        });
+      for (const b of CHECKOUT_RECOVERY_BRANCHES) {
+        if (
+          typeof node.config[b.field] !== 'string' ||
+          !knownKeys.has(node.config[b.field] as string)
+        )
+          issues.push({
+            severity: 'error',
+            scope: 'node',
+            node_key: node.node_key,
+            field: b.field,
+            message: `Connect the ${b.label} branch.`,
+          });
+      }
+      break;
+    }
     case "collect_payment": {
       for (const issue of paymentConfigErrors(node.config)) issues.push({ ...issue, severity: "error", scope: "node", node_key: node.node_key });
       for (const b of PAYMENT_BRANCHES) {
@@ -1802,6 +1882,10 @@ function outgoingEdges(node: NodeInput): string[] {
 
 function outgoingReplyEdges(node: NodeInput): string[] {
   switch (node.node_type) {
+    case 'recover_checkout':
+      return CHECKOUT_RECOVERY_BRANCHES.map((b) => node.config[b.field]).filter(
+        (v): v is string => typeof v === 'string' && !!v
+      );
     case "collect_payment":
       return PAYMENT_BRANCHES.map(b => node.config[b.field]).filter((v): v is string => typeof v === "string" && !!v);
     case "start":

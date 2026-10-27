@@ -570,6 +570,44 @@ export async function handleFlowInboundWebhook(
     ? enrichCheckoutAppWebhookVars(payload, vars)
     : vars
 
+  if (isCheckoutAppFlowTrigger(flow.trigger_type) && flowVars.checkout_id) {
+    // Keep an account-scoped source snapshot for later order/payment validation.
+    // This webhook is already dispatching the flow: it must not be queued again.
+    const raw =
+      payload && typeof payload === 'object'
+        ? (payload as Record<string, unknown>)
+        : {};
+    const { error: checkoutError } = await db
+      .from('shopify_pending_checkouts')
+      .upsert(
+        {
+          account_id: flow.account_id,
+          checkout_id: String(flowVars.checkout_id),
+          contact_id: contact.id,
+          payload: {
+            _wa_recover_agent_mirror: true,
+            event: {
+              checkout_id: String(flowVars.checkout_id),
+              phone: contact.phone,
+              amount: Number(flowVars.order_total),
+              checkout_url: flowVars.checkout_url,
+              raw: raw.raw ?? raw.data ?? raw,
+            },
+          },
+          status: 'sent',
+          run_at: new Date().toISOString(),
+        },
+        { onConflict: 'account_id,checkout_id', ignoreDuplicates: true }
+      );
+    if (checkoutError)
+      return {
+        ok: false,
+        status: 503,
+        error: 'Could not save checkout details for recovery.',
+        flow_id: flow.id,
+      };
+  }
+
   await runFlowsForTrigger({
     accountId: flow.account_id,
     triggerType: flow.trigger_type as FlowTriggerType,

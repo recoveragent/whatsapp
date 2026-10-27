@@ -19,6 +19,7 @@ export function VariableFallbackFields({
   onChange,
   FallbackInput,
   invalidMessage = 'Enter fallback text to use when this variable is empty.',
+  isValidFallback,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -26,10 +27,15 @@ export function VariableFallbackFields({
    *  Rendered as a component (not called) so its hooks stay its own. */
   FallbackInput?: ComponentType<FallbackInputProps>;
   invalidMessage?: string;
+  /** Extra check, e.g. an uploaded image's URL for media headers. */
+  isValidFallback?: (fallback: string) => boolean;
 }) {
   const id = useId();
   return variableFallbacks(value).map(({ key, fallback }, index) => {
-    const invalid = !fallback.trim() || fallback.includes('{{');
+    const invalid =
+      !fallback.trim() ||
+      fallback.includes('{{') ||
+      (isValidFallback ? !isValidFallback(fallback) : false);
     const fieldId = `${id}-${index}`;
     const setFallback = (next: string) =>
       onChange(setVariableFallback(value, key, next));

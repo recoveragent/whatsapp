@@ -1,4 +1,5 @@
 import 'server-only';
+import { completeRecoveryOrder } from '@/lib/shopify/recovery-orders';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import {
@@ -92,6 +93,7 @@ interface SyncRow {
   shopify_sync_status: string;
   shopify_sync_attempts: number;
   shopify_sync_next_at: string | null;
+checkout_recovery_id?: string | null;
 }
 
 export type ShopifySyncResult = 'synced' | 'failed' | 'retry' | 'not_due';
@@ -108,7 +110,7 @@ export async function syncShopifyOrderPayment(
   const { data, error } = await db
     .from('flow_payment_requests')
     .select(
-      'id, account_id, flow_run_id, node_key, amount_paise, status, config, shopify_order_id, shopify_sync_status, shopify_sync_attempts, shopify_sync_next_at'
+      'id, account_id, flow_run_id, node_key, amount_paise, status, config, shopify_order_id, shopify_sync_status, shopify_sync_attempts, shopify_sync_next_at, checkout_recovery_id'
     )
     .eq('id', requestId)
     .maybeSingle();
@@ -138,7 +140,7 @@ export async function syncShopifyOrderPayment(
   if (!claimed) return 'not_due';
 
   const finish = async (status: 'synced' | 'failed', message: string | null) => {
-    await db
+    const { error: finishError } = await db
       .from('flow_payment_requests')
       .update({
         shopify_sync_status: status,
@@ -147,6 +149,13 @@ export async function syncShopifyOrderPayment(
         ...(status === 'synced' ? { shopify_synced_at: new Date().toISOString() } : {}),
       })
       .eq('id', row.id);
+    if (finishError) throw finishError;
+    if (row.checkout_recovery_id) {
+      const { error: resumeError } = await db.rpc('resume_checkout_payment', {
+        p_request_id: row.id,
+      });
+      if (resumeError) throw resumeError;
+    }
     if (status === 'failed')
       await db.from('flow_run_events').insert({
         flow_run_id: row.flow_run_id,
@@ -163,6 +172,20 @@ export async function syncShopifyOrderPayment(
   };
 
   try {
+    if (row.checkout_recovery_id) {
+      const order = await completeRecoveryOrder(
+        db,
+        row.checkout_recovery_id,
+        row.account_id,
+        { paymentRequestId: row.id }
+      );
+      const { error: orderError } = await db
+        .from('flow_payment_requests')
+        .update({ shopify_order_id: order.shopify_order_id })
+        .eq('id', row.id);
+      if (orderError) throw orderError;
+      return await finish('synced', null);
+    }
     const { shop, token } = await shopifyConnection(db, row.account_id);
     const state = await fetchOrderPaymentState(shop, token, row.shopify_order_id);
     if (!state) return await finish('failed', 'The Shopify order no longer exists.');
@@ -199,6 +222,21 @@ export async function syncShopifyOrderPayment(
 
 /** Cron sweep: retries order updates whose inline attempt failed or never ran. */
 export async function processShopifyOrderSyncs(db: SupabaseClient): Promise<number> {
+  const { data: releases, error: releaseError } = await db
+    .from('flow_payment_requests')
+    .select('id')
+    .eq('status', 'paid')
+    .not('checkout_recovery_id', 'is', null)
+    .in('shopify_sync_status', ['synced', 'failed'])
+    .is('checkout_branch_released_at', null)
+    .limit(25);
+  if (releaseError) throw releaseError;
+  for (const payment of releases ?? []) {
+    const { error } = await db.rpc('resume_checkout_payment', {
+      p_request_id: payment.id,
+    });
+    if (error) throw error;
+  }
   const { data, error } = await db
     .from('flow_payment_requests')
     .select('id')

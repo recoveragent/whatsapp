@@ -78,11 +78,59 @@ export function shopifyConditionData(
   };
 }
 
+const sameName = (a: unknown, b: string) =>
+  typeof a === 'string' && a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** Product title of a line item; `name` (title + variant) is the fallback. */
+function lineItemTitle(item: Record<string, unknown>): string | undefined {
+  const title = item.title ?? item.name;
+  return typeof title === 'string' && title.trim() ? title.trim() : undefined;
+}
+
+/** Collection IDs a condition references, which the runtime must look up. */
+export function conditionCollectionIds(cfg: ConditionPredicate): string[] {
+  if (cfg.subject_key === 'collection_ids')
+    return conditionList(cfg.value).filter((id) => /^\d+$/.test(id));
+  if (
+    cfg.subject_key === 'item_quantity' &&
+    cfg.item_key === 'collection_id' &&
+    /^\d+$/.test(cfg.item_value?.trim() ?? '')
+  )
+    return [cfg.item_value!.trim()];
+  return [];
+}
+
+/**
+ * `collections` maps a collection ID to the triggering products inside it.
+ * Collection fields resolve to undefined without it.
+ */
 export function resolveShopifyConditionValue(
   data: Record<string, unknown>,
   cfg: ConditionPredicate,
-  now = Date.now()
+  now = Date.now(),
+  collections?: Map<string, Set<string>>
 ): unknown {
+  const items = Array.isArray(data.line_items)
+    ? (data.line_items as Array<Record<string, unknown> | null>).filter(
+        (item): item is Record<string, unknown> => !!item
+      )
+    : undefined;
+  if (cfg.subject_key === 'product_names') {
+    if (!items) return undefined;
+    const configured = conditionList(cfg.value);
+    // Report names in the rule's spelling so matching ignores case and spacing.
+    return items.flatMap((item) => {
+      const title = lineItemTitle(item);
+      if (!title) return [];
+      return [configured.find((c) => sameName(title, c)) ?? title];
+    });
+  }
+  if (cfg.subject_key === 'collection_ids') {
+    if (!collections) return undefined;
+    return [...collections].flatMap(([id, products]) =>
+      products.size ? [id] : []
+    );
+  }
   if (cfg.subject_key === 'is_cod') {
     const gateways = data.payment_gateways;
     if (!Array.isArray(gateways)) return undefined;
@@ -98,10 +146,20 @@ export function resolveShopifyConditionValue(
       : undefined;
   }
   if (cfg.subject_key === 'item_quantity') {
-    if (!Array.isArray(data.line_items) || !cfg.item_key || !cfg.item_value)
-      return undefined;
-    const selected = data.line_items.filter(
-      (item) => item && String(item[cfg.item_key!]) === cfg.item_value
+    if (!items || !cfg.item_key || !cfg.item_value) return undefined;
+    const value = cfg.item_value;
+    const inCollection =
+      cfg.item_key === 'collection_id'
+        ? collections?.get(value.trim())
+        : undefined;
+    if (cfg.item_key === 'collection_id' && !inCollection) return undefined;
+    const selected = items.filter((item) =>
+      cfg.item_key === 'title'
+        ? sameName(lineItemTitle(item), value)
+        : cfg.item_key === 'collection_id'
+          ? item.product_id != null &&
+            inCollection!.has(String(item.product_id))
+          : String(item[cfg.item_key!]) === value
     );
     if (selected.some((item) => conditionNumber(item.quantity) === undefined))
       return undefined;

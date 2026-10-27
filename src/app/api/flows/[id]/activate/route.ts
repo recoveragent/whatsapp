@@ -101,6 +101,49 @@ export async function POST(
       }>,
     )
     const paymentNodes = (nodes ?? []).filter(n => n.node_type === 'collect_payment')
+    const checkoutRecovery = (nodes ?? []).some(
+      (n) =>
+        n.node_type === 'recover_checkout' ||
+        (n.node_type === 'collect_payment' &&
+          (n.config as Record<string, unknown>).shopify_checkout_recovery ===
+            true)
+    );
+    if (checkoutRecovery) {
+      const { data: shopify } = await admin
+        .from('shopify_config')
+        .select('status')
+        .eq('account_id', flow.account_id)
+        .maybeSingle();
+      if (shopify?.status !== 'connected')
+        issues.push({
+          severity: 'error',
+          scope: 'flow',
+          message:
+            'Connect this brand’s Shopify store before activating checkout recovery.',
+        });
+      for (const n of (nodes ?? []).filter(
+        (n) => n.node_type === 'send_template'
+      )) {
+        const config = n.config as Record<string, unknown>;
+        const { data: approved } = await admin
+          .from('message_templates')
+          .select('id,buttons')
+          .eq('account_id', flow.account_id)
+          .eq('name', config.template_name)
+          .eq('language', config.language || 'en_US')
+          .eq('status', 'APPROVED')
+          .maybeSingle();
+        if (!approved)
+          issues.push({
+            severity: 'error',
+            scope: 'node',
+            node_key: n.node_key,
+            field: 'template_name',
+            message:
+              'Select this brand’s approved recovery template before activation.',
+          });
+      }
+    }
     if (paymentNodes.length) {
       for (const n of paymentNodes) {
         const config = n.config as Record<string, unknown>
