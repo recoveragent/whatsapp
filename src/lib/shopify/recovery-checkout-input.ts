@@ -3,6 +3,8 @@ type Row = Record<string, unknown>;
 const row = (v: unknown): Row =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Row) : {};
 const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+const hasEntries = (v: unknown) =>
+  !!v && typeof v === 'object' && Object.keys(v).length > 0;
 function money(v: unknown): number {
   if (v === null || v === undefined || v === '') return NaN;
   return Number(v);
@@ -63,11 +65,9 @@ export function recoveryCheckoutInput(payload: unknown): RecoveryCheckoutInput {
       throw new Error('Checkout has an invalid product variant or quantity.');
     if (item.selling_plan_allocation || item.has_components === true)
       throw new Error('Bundles and subscriptions must use the checkout page.');
-    if (
-      item.properties &&
-      typeof item.properties === 'object' &&
-      Object.keys(item.properties).length
-    )
+    // Shopify sends line item properties; Fastrr sends custom_attributes.
+    // An order created without them would lose the customer's personalization.
+    if (hasEntries(item.properties) || hasEntries(item.custom_attributes))
       throw new Error(
         'Personalized items must be completed on the checkout page.'
       );
@@ -101,7 +101,11 @@ export function recoveryCheckoutInput(payload: unknown): RecoveryCheckoutInput {
   const shipping = Array.isArray(raw.shipping_lines)
     ? row(raw.shipping_lines[0])
     : row(raw.shipping);
-  const shippingPrice = money(shipping.price);
+  // Fastrr has no shipping line, only a top-level shipping_price.
+  const shippingPrice = money(
+    shipping.price ??
+      (Array.isArray(raw.shipping_lines) ? undefined : raw.shipping_price)
+  );
   if (!Number.isFinite(shippingPrice) || shippingPrice < 0)
     throw new Error('The selected shipping rate is missing.');
   if (shipping.cod_charges && money(shipping.cod_charges) !== 0)
@@ -132,8 +136,9 @@ export function recoveryCheckoutInput(payload: unknown): RecoveryCheckoutInput {
       ...(phone ? { phone } : {}),
       ...(Array.isArray(raw.discount_codes)
         ? {
+            // Shopify sends { code } objects; Fastrr sends plain strings.
             discountCodes: raw.discount_codes
-              .map((v) => text(row(v).code))
+              .map((v) => text(typeof v === 'string' ? v : row(v).code))
               .filter(Boolean),
           }
         : {}),
