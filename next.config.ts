@@ -81,6 +81,18 @@ const nextConfig: NextConfig = {
   output: "standalone",
 
   /**
+   * Build worker cap.
+   *
+   * Next starts one "Collecting page data" worker per detected CPU. The
+   * deploy host reports 63 CPUs but limits threads, so each worker's
+   * native addon failed to spawn its thread pool (os error 11) and the
+   * build aborted. Override with NEXT_BUILD_CPUS on larger hosts.
+   */
+  experimental: {
+    cpus: Number(process.env.NEXT_BUILD_CPUS) || 4,
+  },
+
+  /**
    * Cross-origin dev access (Next.js 16).
    *
    * Next 16 blocks requests to dev-only resources (`/_next/*` internals,
