@@ -8,6 +8,9 @@ import { validateFlowForActivation } from './validate';
 import { deriveCanvasEdges, outgoingSlots, applyEdgeConnection } from './edges';
 import type { BuilderNode } from '@/components/flows/shared';
 import { cloneTriggerConfigForCopy } from './clone-flow-snapshot';
+import { getAdminTemplatePreset } from '@/lib/whatsapp/admin-template-presets';
+import { buttonCtaPurpose } from '@/lib/whatsapp/template-cta';
+import { paymentTemplateError } from '@/lib/payments/template-compatibility';
 
 describe('global checkout recovery flow', () => {
   it('is available for Super Admin multi-brand copying', () => {
@@ -67,6 +70,25 @@ describe('global checkout recovery flow', () => {
     expect(
       snapshot.nodes.find((n) => n.node_key === 'confirm_cod')?.config.text
     ).toContain('checkout_order_summary');
+  });
+  it('sends the payment link on a Razorpay Pay now button, not in the body', () => {
+    const template = getAdminTemplatePreset('recovery_payment_request')!;
+    expect(template.body_text).not.toMatch(/\{\{3\}\}|https?:/);
+    expect(template.buttons).toMatchObject([
+      { type: 'URL', text: 'Pay now', url: 'https://rzp.io/{{1}}' },
+    ]);
+    expect(buttonCtaPurpose(template.buttons[0])).toBe('payment');
+    const payment = CHECKOUT_RECOVERY_SNAPSHOT.nodes.find(
+      (n) => n.node_key === 'collect_checkout_payment'
+    )!.config as Record<string, { variables: Record<string, string> }>;
+    for (const key of ['request_template', 'reminder_template']) {
+      const variables = payment[key].variables;
+      expect(Object.keys(variables)).toEqual(['1', '2', 'button_0']);
+      expect(variables.button_0).toContain('vars.payment_url_suffix');
+      expect(
+        paymentTemplateError(template.buttons, variables, ['https://rzp.io'])
+      ).toBeNull();
+    }
   });
   it('rejects a path that skips the COD confirmation summary', () => {
     const s = structuredClone(CHECKOUT_RECOVERY_SNAPSHOT);
