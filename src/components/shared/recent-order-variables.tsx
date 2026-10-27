@@ -6,14 +6,66 @@ import { Input } from '@/components/ui/input';
 
 type SampleOrder = Record<string, unknown>;
 
+interface Sample {
+  key: string;
+  title: string;
+  subtitle: string;
+  payload: SampleOrder;
+}
+
+/** Orders preview Shopify orders; checkouts preview saved abandoned checkouts. */
+const SOURCES = {
+  orders: {
+    button: 'From recent order',
+    endpoint: '/api/shopify/orders/recent',
+    help: 'Preview an order, then select a field. Its value comes from the triggering order when the flow runs. Checkout triggers only provide fields present in their checkout payload.',
+    loading: 'Loading recent orders…',
+    loadError: 'Could not load recent orders.',
+    empty: 'No recent orders found.',
+    search: 'Search order payload',
+    toSamples: (body: { orders?: SampleOrder[] }): Sample[] =>
+      (body.orders ?? []).map((order) => ({
+        key: String(order.id),
+        title: `${String(order.name ?? order.order_number ?? order.id)} · ${String(order.total_price ?? '')} ${String(order.currency ?? '')}`,
+        subtitle: String(order.created_at ?? ''),
+        payload: order,
+      })),
+  },
+  checkouts: {
+    button: 'From recent checkout',
+    endpoint: '/api/shopify/checkouts/recent',
+    help: 'Preview a saved abandoned checkout, then select a field. Its value comes from the triggering checkout when the flow runs.',
+    loading: 'Loading recent checkouts…',
+    loadError: 'Could not load recent checkouts.',
+    empty: 'No saved checkouts yet. One appears after the next abandoned checkout.',
+    search: 'Search checkout payload',
+    toSamples: (body: {
+      checkouts?: Array<{
+        checkout_id: string;
+        created_at: string;
+        payload: SampleOrder;
+      }>;
+    }): Sample[] =>
+      (body.checkouts ?? []).map((checkout) => ({
+        key: checkout.checkout_id,
+        title: `${checkout.checkout_id} · ${String(checkout.payload.total_price ?? '')} ${String(checkout.payload.currency ?? '')}`,
+        subtitle: checkout.created_at,
+        payload: checkout.payload,
+      })),
+  },
+} as const;
+
 export function RecentOrderVariables({
   onInsert,
+  source = 'orders',
 }: {
   onInsert: (token: string) => void;
+  source?: keyof typeof SOURCES;
 }) {
+  const config = SOURCES[source];
   const [open, setOpen] = useState(false);
-  const [orders, setOrders] = useState<SampleOrder[] | null>(null);
-  const [selected, setSelected] = useState<SampleOrder | null>(null);
+  const [orders, setOrders] = useState<Sample[] | null>(null);
+  const [selected, setSelected] = useState<Sample | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
@@ -22,24 +74,21 @@ export function RecentOrderVariables({
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/shopify/orders/recent', {
+      const response = await fetch(config.endpoint, {
         cache: 'no-store',
       });
       const body = await response.json();
-      if (!response.ok)
-        throw new Error(body.error || 'Could not load recent orders.');
-      setOrders(body.orders);
+      if (!response.ok) throw new Error(body.error || config.loadError);
+      setOrders(config.toSamples(body));
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Could not load recent orders.'
-      );
+      setError(err instanceof Error ? err.message : config.loadError);
     } finally {
       setLoading(false);
     }
   }
 
   const fields = selected
-    ? recentOrderVariableOptions(selected).filter(({ label, value }) =>
+    ? recentOrderVariableOptions(selected.payload).filter(({ label, value }) =>
         `${label} ${value}`.toLowerCase().includes(query.toLowerCase())
       )
     : [];
@@ -55,18 +104,14 @@ export function RecentOrderVariables({
           if (!open && orders === null && !loading) void load();
         }}
       >
-        From recent order
+        {config.button}
       </button>
       {open && (
         <div className="space-y-2 px-2 pb-2">
-          <p className="text-muted-foreground text-[10px]">
-            Preview an order, then select a field. Its value comes from the
-            triggering order when the flow runs. Checkout triggers only provide
-            fields present in their checkout payload.
-          </p>
+          <p className="text-muted-foreground text-[10px]">{config.help}</p>
           {loading && (
             <p role="status" className="text-xs">
-              Loading recent orders…
+              {config.loading}
             </p>
           )}
           {error && (
@@ -83,31 +128,30 @@ export function RecentOrderVariables({
           )}
           {orders?.length === 0 && (
             <p className="text-muted-foreground text-xs">
-              No recent orders found.
+              {config.empty}
             </p>
           )}
-          {orders?.map((order) => (
+          {orders?.map((sample) => (
             <button
               type="button"
-              key={String(order.id)}
-              aria-pressed={selected === order}
-              className={`block w-full rounded border px-2 py-1.5 text-left text-xs ${selected === order ? 'border-primary bg-muted' : 'border-border hover:bg-muted'}`}
+              key={sample.key}
+              aria-pressed={selected === sample}
+              className={`block w-full rounded border px-2 py-1.5 text-left text-xs ${selected === sample ? 'border-primary bg-muted' : 'border-border hover:bg-muted'}`}
               onClick={() => {
-                setSelected(order);
+                setSelected(sample);
                 setQuery('');
               }}
             >
-              {String(order.name ?? order.order_number ?? order.id)} ·{' '}
-              {String(order.total_price ?? '')} {String(order.currency ?? '')}
+              {sample.title}
               <span className="text-muted-foreground block text-[10px]">
-                {String(order.created_at ?? '')}
+                {sample.subtitle}
               </span>
             </button>
           ))}
           {selected && (
             <>
               <Input
-                aria-label="Search order payload"
+                aria-label={config.search}
                 placeholder="Search fields or values…"
                 className="h-8 text-xs"
                 value={query}

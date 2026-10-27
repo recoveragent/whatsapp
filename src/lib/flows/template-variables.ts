@@ -26,6 +26,8 @@ export interface TemplateVariableGroup {
   label: string
   options: TemplateVariableOption[]
   recentShopifyOrders?: boolean
+  /** Checkout triggers read their own payload, which differs from an order's. */
+  recentShopifyCheckouts?: boolean
 }
 
 const CONTACT_OPTIONS: TemplateVariableOption[] = [
@@ -254,6 +256,9 @@ export function templateVariableGroupsForFlow(
       label: 'Trigger attributes',
       options: triggerOptions,
       recentShopifyOrders: triggerType?.startsWith('shopify_'),
+      recentShopifyCheckouts:
+        triggerType === 'shopify_checkout_abandoned' ||
+        triggerType === 'shopify_checkout_app_abandoned',
     })
   }
 
