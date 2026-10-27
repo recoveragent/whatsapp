@@ -1,6 +1,7 @@
 "use client";
 
-import { Copy, ExternalLink, Phone } from "lucide-react";
+import { useState } from "react";
+import { Copy, ExternalLink, ImageIcon, Phone } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { isMediaHeaderType } from "@/lib/inbox/template-message-display";
@@ -48,6 +49,9 @@ export function TemplateMobilePreview({
   const quickReplies = buttons.filter((b) => b.type === "QUICK_REPLY");
   const inlineButtons = buttons.filter((b) => b.type !== "QUICK_REPLY");
   const mediaUrl = headerMediaUrl?.trim() || null;
+  const [failedMediaUrl, setFailedMediaUrl] = useState<string | null>(null);
+  const isDynamicImage = !!mediaUrl && /\{\{[\s\S]*?\}\}/.test(mediaUrl);
+  const showImage = !!mediaUrl && !isDynamicImage && failedMediaUrl !== mediaUrl;
 
   return (
     <div
@@ -95,20 +99,33 @@ export function TemplateMobilePreview({
             </p>
           )}
 
-          {isMediaHeaderType(headerType) && mediaUrl && headerType === "image" && (
+          {headerType === "image" && showImage && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={mediaUrl}
               alt="Template header"
               className="block w-full max-h-36 object-cover"
+              onError={() => setFailedMediaUrl(mediaUrl)}
             />
           )}
 
-          {isMediaHeaderType(headerType) && !mediaUrl && (
+          {headerType === "image" && !showImage && (
+            <div className="relative flex h-32 flex-col items-center justify-center gap-2 overflow-hidden bg-gradient-to-br from-emerald-50 via-teal-100 to-emerald-200 text-teal-700">
+              <div className="absolute -bottom-8 -left-4 h-24 w-44 rotate-12 rounded-3xl bg-emerald-300/40" aria-hidden />
+              <div className="absolute -right-5 -top-6 h-24 w-24 rounded-full bg-white/50" aria-hidden />
+              <ImageIcon className="relative h-10 w-10" strokeWidth={1.5} aria-hidden />
+              <span className="relative text-[11px] font-medium">
+                {isDynamicImage ? "Dynamic image" : "Image header"}
+              </span>
+              {isDynamicImage && (
+                <span className="relative text-[10px] text-teal-700/75">Personalized when sent</span>
+              )}
+            </div>
+          )}
+
+          {isMediaHeaderType(headerType) && headerType !== "image" && !mediaUrl && (
             <div className="flex h-28 items-center justify-center bg-zinc-100 text-[11px] text-zinc-400">
-              {headerType === "image"
-                ? "Image header"
-                : headerType === "video"
+              {headerType === "video"
                   ? "Video header"
                   : "Document header"}
             </div>
