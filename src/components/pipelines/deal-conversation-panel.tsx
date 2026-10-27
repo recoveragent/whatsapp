@@ -40,10 +40,21 @@ export function DealConversationPanel({
     conversationIdRef.current = conversation?.id ?? null;
   }, [conversation?.id]);
 
-  useEffect(() => {
-    let cancelled = false;
+  // Show the loading state and drop the previous thread as soon as the
+  // contact changes. Done during render rather than in the load effect
+  // to avoid a cascading render.
+  const [loadedFor, setLoadedFor] = useState({ contactId, initialContact });
+  if (
+    loadedFor.contactId !== contactId ||
+    loadedFor.initialContact !== initialContact
+  ) {
+    setLoadedFor({ contactId, initialContact });
     setLoading(true);
     setMessages([]);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
 
     (async () => {
       const [conversationRes, contactRes] = await Promise.all([
