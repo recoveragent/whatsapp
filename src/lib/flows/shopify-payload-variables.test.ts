@@ -18,6 +18,10 @@ describe('recent Shopify order variables', () => {
       expect(templateVariableGroupsForFlow(trigger).find(group => group.id === 'trigger')?.recentShopifyOrders).toBe(true);
     }
     expect(templateVariableGroupsForFlow('keyword').some(group => group.recentShopifyOrders)).toBe(false);
+    for (const trigger of ['shopify_checkout_abandoned', 'shopify_checkout_app_abandoned'] as const) {
+      expect(templateVariableGroupsForFlow(trigger).find(group => group.id === 'trigger')?.recentShopifyCheckouts).toBe(true);
+    }
+    expect(templateVariableGroupsForFlow('shopify_order_placed').some(group => group.recentShopifyCheckouts)).toBe(false);
     expect(templateVariableGroupsForAutomation('shopify_order_placed').some(group => group.recentShopifyOrders)).toBe(false);
   });
 

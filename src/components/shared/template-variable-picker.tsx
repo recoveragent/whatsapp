@@ -131,6 +131,12 @@ export function TemplateVariablePicker({
                         </li>
                       ))}
                     </ul>
+                    {group.recentShopifyCheckouts && (
+                      <RecentOrderVariables
+                        onInsert={onInsert}
+                        source="checkouts"
+                      />
+                    )}
                     {group.recentShopifyOrders && (
                       <RecentOrderVariables onInsert={onInsert} />
                     )}
