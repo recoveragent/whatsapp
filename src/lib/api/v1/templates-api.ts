@@ -22,6 +22,7 @@ export async function listApprovedTemplates(
   const { data, error } = await db
     .from('message_templates')
     .select('*')
+    .not('name', 'ilike', 'auto\\_generated\\_%')
     .eq('account_id', accountId)
     .eq('status', 'APPROVED')
     .order('name', { ascending: true });

@@ -337,6 +337,7 @@ export function useApprovedTemplates() {
       const { data, error } = await supabase
         .from("message_templates")
         .select("*")
+        .not('name', 'ilike', 'auto\\_generated\\_%')
         .eq("account_id", accountId)
         .eq("status", "APPROVED")
         .order("name");

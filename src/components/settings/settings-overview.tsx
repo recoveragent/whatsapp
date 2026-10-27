@@ -93,10 +93,12 @@ export function SettingsOverview({
           supabase
             .from('message_templates')
             .select('id', { count: 'exact', head: true })
+            .not('name', 'ilike', 'auto\\_generated\\_%')
             .eq('account_id', accountId),
           supabase
             .from('message_templates')
             .select('id', { count: 'exact', head: true })
+            .not('name', 'ilike', 'auto\\_generated\\_%')
             .eq('account_id', accountId)
             .eq('status', 'PENDING'),
           supabase

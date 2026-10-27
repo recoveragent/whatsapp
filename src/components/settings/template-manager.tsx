@@ -271,6 +271,7 @@ export function TemplateManager() {
       let templatesQuery = supabase
         .from('message_templates')
         .select('*')
+        .not('name', 'ilike', 'auto\\_generated\\_%')
         .eq('account_id', id)
         .order('created_at', { ascending: false });
       if (syncConfigId) templatesQuery = templatesQuery.eq('whatsapp_config_id', syncConfigId);
