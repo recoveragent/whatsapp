@@ -256,7 +256,7 @@ export type ConditionOperator =
   | "present"
   | "absent";
 
-export type ConditionSubject = "var" | "tag" | "contact_field" | "shopify_payment" | "shopify_order" | "shopify_checkout";
+export type ConditionSubject = | "var" | "tag" | "contact_field" | "shopify_payment" | "shopify_order" | "shopify_checkout";
 
 export interface ConditionPredicate {
   subject: ConditionSubject;
@@ -421,6 +421,10 @@ export interface TimeBasedTriggerConfig {
  */
 export type FlowNodeConfig =
   | { node_type: "collect_payment"; config: import("./payment-config").CollectPaymentNodeConfig }
+  | {
+      node_type: 'recover_checkout';
+      config: import('./checkout-recovery-config').CheckoutRecoveryNodeConfig;
+    }
   | { node_type: "start"; config: StartNodeConfig }
   | { node_type: "send_message"; config: SendMessageNodeConfig }
   | { node_type: "send_buttons"; config: SendButtonsNodeConfig }

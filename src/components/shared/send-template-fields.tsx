@@ -8,7 +8,12 @@ import { Loader2, RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { VariableFallbackFields, type FallbackInputProps } from "@/components/shared/variable-fallback-fields";
-import { preserveVariableFallbacks, withoutVariableFallbacks } from "@/lib/flows/variable-fallback";
+import {
+  isMediaFallbackUrl,
+  MEDIA_FALLBACK_MESSAGE,
+  preserveVariableFallbacks,
+  withoutVariableFallbacks,
+} from "@/lib/flows/variable-fallback";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -292,7 +297,8 @@ function VariableMappingInput({
         onChange={onChange}
         {...(imageFallback && {
           FallbackInput: ImageFallbackUpload,
-          invalidMessage: "Upload an image to send when this variable is empty.",
+          invalidMessage: MEDIA_FALLBACK_MESSAGE,
+          isValidFallback: isMediaFallbackUrl,
         })}
       />
     </div>
@@ -337,6 +343,7 @@ export function useApprovedTemplates() {
       const { data, error } = await supabase
         .from("message_templates")
         .select("*")
+        .not('name', 'ilike', 'auto\\_generated\\_%')
         .eq("account_id", accountId)
         .eq("status", "APPROVED")
         .order("name");

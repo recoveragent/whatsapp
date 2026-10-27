@@ -46,6 +46,11 @@ const targets: BuilderNode[] = PAYMENT_BRANCHES.map((b) => ({
 }));
 
 describe('collect payment flow configuration', () => {
+  it('uses a checkout quote instead of a fixed amount and rejects conflicting payment modes', () => {
+    expect(paymentConfigErrors({ ...config, amount: 0, shopify_checkout_recovery: true, razorpay_checkout: 'upi' })).toEqual([]);
+    expect(paymentConfigErrors({ ...config, shopify_checkout_recovery: true, shopify_cod_to_prepaid: true }).some(e => e.field === 'shopify_checkout_recovery')).toBe(true);
+    expect(paymentConfigErrors({ ...config, razorpay_checkout: 'native' }).some(e => e.field === 'razorpay_checkout')).toBe(true);
+  });
   it('validates the optional Cashfree checkout choice', () => {
     for (const cashfree_checkout of ['upi_intent', 'hosted']) expect(paymentConfigErrors({ ...config, provider: 'cashfree', cashfree_checkout })).toEqual([]);
     expect(paymentConfigErrors({ ...config, provider: 'cashfree', cashfree_checkout: 'native' }).some(e => e.field === 'cashfree_checkout')).toBe(true);

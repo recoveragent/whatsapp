@@ -4,8 +4,9 @@
  */
 
 import type { FlowSnapshot } from './clone-flow-snapshot';
+import { CHECKOUT_RECOVERY_SNAPSHOT } from './checkout-recovery-preset';
 
-export const BUILTIN_FLOW_PRESET_SLUGS = ['product_recommendation'] as const;
+export const BUILTIN_FLOW_PRESET_SLUGS = ['product_recommendation', 'checkout_payment_recovery'] as const;
 
 export type BuiltinFlowPresetSlug = (typeof BUILTIN_FLOW_PRESET_SLUGS)[number];
 
@@ -114,6 +115,22 @@ const BUILTIN_FLOW_PRESETS: Record<
   BuiltinFlowPresetSlug,
   { view: AdminBuiltinFlowPresetView; snapshot: FlowSnapshot }
 > = {
+  checkout_payment_recovery: {
+    view: {
+      slug: 'checkout_payment_recovery',
+      title: 'Abandoned checkout — COD or UPI',
+      description: CHECKOUT_RECOVERY_SNAPSHOT.description ?? '',
+      source_flow_id: null,
+      source_brand_id: null,
+      source_brand_name: 'Built-in',
+      node_count: CHECKOUT_RECOVERY_SNAPSHOT.nodes.length,
+      trigger_type: CHECKOUT_RECOVERY_SNAPSHOT.trigger_type,
+      flow_name: CHECKOUT_RECOVERY_SNAPSHOT.name,
+      updated_at: '2026-10-26T00:00:00.000Z',
+      builtin: true,
+    },
+    snapshot: CHECKOUT_RECOVERY_SNAPSHOT,
+  },
   product_recommendation: {
     view: {
       slug: 'product_recommendation',

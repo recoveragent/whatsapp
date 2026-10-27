@@ -76,6 +76,7 @@ import {
 import type { TemplateQuickReplyButton } from "@/lib/flows/template-buttons";
 import { isShopifyFulfillmentFlowTrigger, isShopifyCheckoutAbandonmentFlowTrigger, isShopifyOrderFlowTrigger, type FlowTriggerType } from "@/lib/flows/trigger-types";
 import { useAccountPipelines } from "./use-account-pipelines";
+import { CheckoutRecoveryFields } from './checkout-recovery-fields';
 import { CollectPaymentFields } from "./collect-payment-fields";
 import { AiAgentFields } from "./ai-agent-fields";
 import { SendFlowFields, type SendFlowCfg as SendFlowFieldsCfg } from "./send-flow-fields";
@@ -151,6 +152,8 @@ function NodeConfigBody({
   const t = useTranslations("Flows.builder.form");
   const cfg = node.config;
   switch (node.node_type) {
+    case 'recover_checkout':
+      return <CheckoutRecoveryFields node={node} allNodes={allNodes} onChange={onUpdateConfig} />;
     case "collect_payment":
       return <CollectPaymentFields node={node} allNodes={allNodes} onChange={onUpdateConfig} triggerType={triggerType} triggerConfig={triggerConfig} />;
     case "start":

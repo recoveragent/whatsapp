@@ -172,6 +172,8 @@ export function buildDuplicatedNode(
 
 export function defaultConfigFor(type: NodeType): Record<string, unknown> {
   switch (type) {
+    case "recover_checkout":
+      return { action: 'prepare_cod', cod_mode: 'checkout', ready_next: '', checkout_next: '', failed_next: '' };
     case "collect_payment":
       return { provider: "razorpay", currency: "INR", amount: 199, description: "Order advance", expiry_hours: 24, reminder_minutes: 60, max_reminders: 2, request_template: { template_name: "", language: "en_US", variables: {}, next_node_key: "" }, reminder_template: { template_name: "", language: "en_US", variables: {}, next_node_key: "" }, paid_next: "", expired_next: "", failed_next: "" };
     case "start":

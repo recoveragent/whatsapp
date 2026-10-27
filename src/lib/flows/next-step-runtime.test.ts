@@ -8,6 +8,13 @@ const h = vi.hoisted(() => ({
   templateParams: [] as Array<Record<string, unknown>>,
   flowTokens: [] as string[],
   seq: 0,
+  confirmRecoveryCod: vi.fn(),
+  completeRecoveryOrder: vi.fn(),
+}));
+vi.mock('@/lib/shopify/recovery-orders', () => ({
+  confirmRecoveryCod: h.confirmRecoveryCod,
+  completeRecoveryOrder: h.completeRecoveryOrder,
+  prepareRecoveryOrder: vi.fn(),
 }));
 
 vi.mock('./admin-client', () => {
@@ -106,6 +113,10 @@ vi.mock('./backfill-outbound-prompt', () => ({
   ensureFlowOutboundPersisted: vi.fn(),
 }));
 vi.mock('./meta-send', () => ({
+  engineSendInteractiveButtons: vi.fn(async ({ bodyText }: { bodyText: string }) => {
+    h.sends.push(bodyText);
+    return { whatsapp_message_id: `wamid.${h.sends.length}` };
+  }),
   engineSendText: vi.fn(async ({ text }: { text: string }) => {
     h.sends.push(text);
     return { whatsapp_message_id: `wamid.${h.sends.length}` };
@@ -186,6 +197,8 @@ function due() {
   });
 }
 beforeEach(() => {
+  h.confirmRecoveryCod.mockReset().mockResolvedValue(undefined);
+  h.completeRecoveryOrder.mockReset().mockResolvedValue({ id: 'recovery-1', summary: 'Shirt × 2; INR 250.00', amount_paise: 25000, shopify_order_id: '99', order_name: '#1099' });
   h.tables = {
     flows: [{ ...flow }],
     flow_nodes: [
@@ -220,6 +233,22 @@ beforeEach(() => {
 });
 
 describe('independent Next step and no-response timeout', () => {
+  it('displays the order summary and accepts COD creation only after a button tap', async () => {
+    h.tables.flow_nodes = [
+      node('confirmation', 'send_buttons', { text: '{{ vars.checkout_order_summary }}\nConfirm COD?', buttons: [{ reply_id: 'confirm_cod', title: 'Confirm COD order', next_node_key: 'place_cod' }] }),
+      node('place_cod', 'recover_checkout', { action: 'place_cod', cod_mode: 'create_order', ready_next: 'thanks', checkout_next: 'end', failed_next: 'end' }),
+      node('thanks', 'send_message', { text: 'Order placed', next_node_key: 'end' }), node('end', 'end', {}),
+    ];
+    await startFlowForExternalEvent({ flow, contactId: 'contact', conversationId: 'conversation', initialVars: { checkout_recovery_id: 'recovery-1', checkout_order_summary: 'Shirt × 2; INR 250.00' } });
+    expect(h.sends[0]).toContain('Shirt × 2; INR 250.00');
+    await reply({ kind: 'text', text: 'Confirm COD order', meta_message_id: 'typed-confirm' });
+    expect(h.confirmRecoveryCod).not.toHaveBeenCalled();
+    expect(h.completeRecoveryOrder).not.toHaveBeenCalled();
+    await reply({ kind: 'interactive_reply', reply_id: 'confirm_cod', reply_title: 'Confirm COD order', meta_message_id: 'button-confirm' });
+    expect(h.confirmRecoveryCod).toHaveBeenCalledTimes(1);
+    expect(h.completeRecoveryOrder).toHaveBeenCalledTimes(1);
+    expect(h.sends).toContain('Order placed');
+  });
   it('uses the approved Cashfree template when a pending draft shares its name', async () => {
     h.tables.flow_nodes[0] = node('confirmation', 'send_template', { next_node_key: 'end', variables: {} });
     const approved = { status: 'APPROVED', id: 'tpl', user_id: 'user', account_id: 'account', name: 'confirmation', language: 'en_US', body_text: 'Advance.', buttons: [{ type: 'URL', text: 'Pay now', url: 'https://payments.cashfree.com/{{1}}', url_purpose: 'payment' }] };

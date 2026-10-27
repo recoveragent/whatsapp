@@ -1,4 +1,5 @@
 import 'server-only';
+import { prepareRecoveryOrder } from '@/lib/shopify/recovery-orders';
 import { paymentTemplateError, paymentOrigins } from './template-compatibility';
 import {
   cashfreeRequest,
@@ -162,14 +163,19 @@ export async function beginPaymentCollection(
   const cod = c.shopify_cod_to_prepaid
     ? await codOrderCollection(db, run)
     : null;
-  const amount = cod?.amount ?? c.amount;
-  const id = randomUUID();
   const now = Date.now();
+  const expiresAt = new Date(now + c.expiry_hours * 3_600_000).toISOString();
+  const recovery = c.shopify_checkout_recovery
+    ? await prepareRecoveryOrder(db, run, expiresAt)
+    : null;
+  const amount = recovery
+    ? Number(recovery.amount_paise) / 100
+    : (cod?.amount ?? c.amount);
+  const id = randomUUID();
   const reminderMinutes =
     Number.isFinite(c.reminder_minutes) && c.reminder_minutes > 0
       ? c.reminder_minutes
       : 60;
-  const expiresAt = new Date(now + c.expiry_hours * 3_600_000).toISOString();
   const description = interpolateTemplateString(c.description, run.vars).slice(
     0,
     255
@@ -189,6 +195,11 @@ export async function beginPaymentCollection(
       shopify_sync_status: 'pending',
       shopify_sync_next_at: new Date(now).toISOString(),
     }),
+    ...(recovery && {
+      checkout_recovery_id: recovery.id,
+      shopify_sync_status: 'pending',
+      shopify_sync_next_at: new Date(now).toISOString(),
+    }),
   });
   // Another invocation owns this run/node. It must finish parking or failing it;
   // the duplicate must not create a second link or follow the failure branch.
@@ -197,6 +208,27 @@ export async function beginPaymentCollection(
     throw new Error(
       'This run already has a payment request, or the request could not be saved.'
     );
+  if (recovery) {
+    const { data: claimed, error: claimError } = await db
+      .from('shopify_checkout_recoveries')
+      .update({ payment_request_id: id })
+      .eq('id', recovery.id)
+      .eq('account_id', run.account_id)
+      .eq('status', 'quoted')
+      .is('payment_request_id', null)
+      .is('shopify_order_id', null)
+      .select('id')
+      .maybeSingle();
+    if (claimError || !claimed) {
+      await db
+        .from('flow_payment_requests')
+        .update({ status: 'failed', last_error: 'Checkout already claimed.' })
+        .eq('id', id);
+      throw new Error(
+        'This checkout is already being completed. No payment link was created.'
+      );
+    }
+  }
   try {
     const link =
       c.provider === 'cashfree'
@@ -235,6 +267,7 @@ export async function beginPaymentCollection(
             {
               amount: Math.round(amount * 100),
               currency: 'INR',
+              ...(c.razorpay_checkout === 'upi' ? { upi_link: true } : {}),
               accept_partial: false,
               description,
               reference_id: id,

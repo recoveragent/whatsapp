@@ -84,54 +84,56 @@ export function DealForm({
   const [contactDetailOpen, setContactDetailOpen] = useState(false);
   const [localContact, setLocalContact] = useState<Contact | null>(null);
 
+  // The resets below run during render, when their inputs change,
+  // rather than in effects, so they never cause a cascading render.
+  // Each one mirrors the effect it used to be (including on mount).
+
   // Reset the form fields every time the sheet opens or its input
-  // props change. This is a legitimate prop-driven sync; the rule is
-  // over-cautious here, hence the block-level disable.
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
+  // props change.
+  if (useDepsChanged([open, deal, defaultStageId, stages])) {
     if (!open) {
       setStageMoveDialogOpen(false);
       setMoveReason("");
       setSheetView("deal");
-      return;
-    }
-    setConfirmDelete(false);
-    if (deal) {
-      // contact_id is nullable when the contact has been deleted
-      // (migration 004: ON DELETE SET NULL). "" means "no selection".
-      setContactId(deal.contact_id ?? "");
-      setStageId(deal.stage_id);
-      setAssignedTo(deal.assigned_to ?? "");
-      setNotes(deal.notes ?? "");
     } else {
-      setContactId("");
-      setStageId(defaultStageId || stages[0]?.id || "");
-      setAssignedTo("");
-      setNotes("");
+      setConfirmDelete(false);
+      if (deal) {
+        // contact_id is nullable when the contact has been deleted
+        // (migration 004: ON DELETE SET NULL). "" means "no selection".
+        setContactId(deal.contact_id ?? "");
+        setStageId(deal.stage_id);
+        setAssignedTo(deal.assigned_to ?? "");
+        setNotes(deal.notes ?? "");
+      } else {
+        setContactId("");
+        setStageId(defaultStageId || stages[0]?.id || "");
+        setAssignedTo("");
+        setNotes("");
+      }
     }
-  }, [open, deal, defaultStageId, stages]);
-  /* eslint-enable react-hooks/set-state-in-effect */
+  }
 
-  useEffect(() => {
+  if (useDepsChanged([open, deal?.id, deal?.contact])) {
     if (!open) {
       setContactDetailOpen(false);
-      return;
+    } else {
+      setLocalContact(deal?.contact ?? null);
     }
-    setLocalContact(deal?.contact ?? null);
-  }, [open, deal?.id, deal?.contact]);
+  }
 
+  const dealContactId = deal?.contact_id;
   const handleContactUpdated = useCallback(async () => {
-    if (!deal?.contact_id) return;
+    if (!dealContactId) return;
     const { data } = await supabase
       .from("contacts")
       .select("*")
-      .eq("id", deal.contact_id)
+      .eq("id", dealContactId)
       .maybeSingle();
     if (data) {
       setLocalContact(data as Contact);
     }
     onSaved();
-  }, [deal?.contact_id, onSaved, supabase]);
+  }, [dealContactId, onSaved, supabase]);
 
   // Load supporting data once the sheet is open
   useEffect(() => {
@@ -162,12 +164,16 @@ export function DealForm({
   }, [open, deal, supabase]);
 
   // Check whether this contact has a conversation (edit flow only).
+  if (
+    useDepsChanged([open, deal, contactId]) &&
+    (!open || !deal || !(deal.contact_id ?? contactId))
+  ) {
+    setHasConversation(false);
+  }
+
   useEffect(() => {
     const effectiveContactId = deal?.contact_id ?? contactId;
-    if (!open || !deal || !effectiveContactId) {
-      setHasConversation(false);
-      return;
-    }
+    if (!open || !deal || !effectiveContactId) return;
 
     let cancelled = false;
     (async () => {
@@ -185,20 +191,25 @@ export function DealForm({
     };
   }, [open, deal, contactId, supabase]);
 
-  useEffect(() => {
-    if (!open || !deal?.id) {
+  const timelineDealId = open ? deal?.id : undefined;
+  if (useDepsChanged([open, deal?.id])) {
+    if (!timelineDealId) {
       setStageEvents([]);
       setTimelineLoading(false);
-      return;
+    } else {
+      setTimelineLoading(true);
     }
+  }
+
+  useEffect(() => {
+    if (!timelineDealId) return;
 
     let cancelled = false;
-    setTimelineLoading(true);
     (async () => {
       const { data, error } = await supabase
         .from("deal_stage_events")
         .select("*")
-        .eq("deal_id", deal.id)
+        .eq("deal_id", timelineDealId)
         .order("created_at", { ascending: true });
 
       if (cancelled) return;
@@ -214,7 +225,7 @@ export function DealForm({
     return () => {
       cancelled = true;
     };
-  }, [open, deal?.id, supabase]);
+  }, [timelineDealId, supabase]);
 
   const timelineItems = useMemo(() => {
     if (!deal) return [];
@@ -620,4 +631,20 @@ export function DealForm({
     )}
     </>
   );
+}
+
+/**
+ * True on the first render and on every render where one of `deps`
+ * differs (Object.is) from the previous render's. Lets a component
+ * reset state in response to prop changes during render instead of in
+ * an effect: https://react.dev/learn/you-might-not-need-an-effect
+ */
+function useDepsChanged(deps: readonly unknown[]): boolean {
+  const [prevDeps, setPrevDeps] = useState<readonly unknown[] | null>(null);
+  const changed =
+    prevDeps === null ||
+    prevDeps.length !== deps.length ||
+    deps.some((dep, i) => !Object.is(dep, prevDeps[i]));
+  if (changed) setPrevDeps(deps);
+  return changed;
 }

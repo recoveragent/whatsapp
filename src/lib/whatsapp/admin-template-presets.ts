@@ -21,6 +21,8 @@ export const BUILTIN_PRESET_SLUGS = [
   'order_placed_cod',
   'fulfillment_update',
   'abandoned_checkout',
+  'recovery_payment_choice',
+  'recovery_payment_request',
   'cod_call_not_connected_v1',
   'cod_not_picked_up',
   'magic_message',
@@ -198,6 +200,54 @@ const COD_NOT_PICKED_UP: AdminTemplatePreset = {
 };
 
 const PRESETS: Record<string, AdminTemplatePreset> = {
+  recovery_payment_choice: {
+    slug: 'recovery_payment_choice',
+    title: 'Checkout recovery — payment choice',
+    description:
+      'Product image, customer, items, total and address, with COD and online payment replies. Pairs with the global checkout payment recovery flow.',
+    icon: 'cart',
+    name: 'recovery_payment_choice',
+    category: 'Marketing',
+    language: 'en_US',
+    header_format: 'image',
+    header_content: '',
+    header_media_url: '',
+    header_sample: '',
+    media_note:
+      'Upload a sample product image for approval. The flow sends the checkout product image at runtime.',
+    body_text:
+      'Hi {{1}}, your checkout for {{2}} is waiting.\nTotal: INR {{3}}\nShipping address: {{4}}\nHow would you like to complete your order?',
+    body_samples: [
+      'Mohan',
+      'Cotton shirt × 1',
+      '1299.00',
+      '12 Main Road, Bengaluru, Karnataka 560001',
+    ],
+    footer_text: 'Review and confirm before placing your order.',
+    buttons: [
+      { type: 'QUICK_REPLY', text: 'Cash on Delivery' },
+      { type: 'QUICK_REPLY', text: 'Pay by UPI' },
+    ],
+  },
+  recovery_payment_request: {
+    slug: 'recovery_payment_request',
+    title: 'Checkout recovery — payment request',
+    description:
+      'Send the verified checkout amount and gateway payment link. Used by the checkout recovery Collect payment step.',
+    icon: 'cart',
+    name: 'recovery_payment_request',
+    category: 'Utility',
+    language: 'en_US',
+    header_format: 'none',
+    header_content: '',
+    header_media_url: '',
+    header_sample: '',
+    body_text:
+      'Hi {{1}}, complete your requested order payment of INR {{2}} securely here: {{3}}\nYour order confirmation will follow after payment is verified.',
+    body_samples: ['Mohan', '1299.00', 'https://rzp.io/rzp/example'],
+    footer_text: '',
+    buttons: [],
+  },
   order_confirmation: ORDER_CONFIRMATION,
   order_placed_cod: ORDER_PLACED_COD,
   fulfillment_update: FULFILLMENT_UPDATE,

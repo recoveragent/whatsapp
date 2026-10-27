@@ -555,6 +555,7 @@
       "title": "제목",
       "titlePlaceholder": "딜 제목",
       "contact": "연락처",
+      "editContact": "연락처 수정",
       "selectContact": "연락처 선택",
       "linkToConversation": "대화에 연결",
       "value": "금액",

@@ -84,6 +84,7 @@ export function LeadCadencesSettings() {
     void supabase
       .from('message_templates')
       .select('name, status')
+      .not('name', 'ilike', 'auto\\_generated\\_%')
       .eq('account_id', accountId)
       .eq('status', 'APPROVED')
       .then(({ data }) => {

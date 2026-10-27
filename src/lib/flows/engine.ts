@@ -1,3 +1,6 @@
+import { executeCheckoutRecovery } from './execute-checkout-recovery';
+import { confirmRecoveryCod } from '@/lib/shopify/recovery-orders';
+import { withoutVariableFallbacks } from './variable-fallback';
 import { beginPaymentCollection } from "@/lib/payments/collect-payment";
 /**
  * Flow runner.
@@ -234,6 +237,7 @@ export function isAutoAdvancing(node_type: string): boolean {
     node_type === "send_message" ||
     node_type === "send_media" ||
     node_type === "send_product" ||
+    node_type === "recover_checkout" ||
     node_type === "condition" ||
     node_type === "switch" ||
     node_type === "set_tag" ||
@@ -566,7 +570,7 @@ async function sendButtonsAndSuspend(
     userId: run.user_id,
     conversationId: run.conversation_id!,
     contactId: run.contact_id!,
-    bodyText: cfg.text,
+    bodyText: interpolateVars(cfg.text, varsFor(run)),
     headerText: cfg.header_text,
     footerText: cfg.footer_text,
     buttons: cfg.buttons.map((b) => ({ id: b.reply_id, title: b.title })),
@@ -795,6 +799,10 @@ async function advanceFromNodeKey(
         currentKey = typeof node.config.failed_next === "string" ? node.config.failed_next : null;
         continue;
       }
+    }
+    if (node.node_type === 'recover_checkout') {
+      currentKey = await executeCheckoutRecovery(db, run, node);
+      continue;
     }
     if (node.node_type === "send_message") {
       const cfg = node.config as unknown as SendMessageNodeConfig;
@@ -1814,6 +1822,32 @@ async function handleReplyForActiveRun(
   }
 
   if (matched) {
+    const target = nodes.get(matched);
+    if (
+      target?.node_type === 'recover_checkout' &&
+      target.config.action === 'place_cod'
+    ) {
+      // COD creation requires a fresh button tap on the displayed summary.
+      if (
+        message.kind !== 'interactive_reply' ||
+        currentNode.node_type !== 'send_buttons' ||
+        !/\{\{\s*vars\.checkout_order_summary\s*\}\}/.test(
+          withoutVariableFallbacks(String(currentNode.config.text ?? ''))
+        )
+      )
+        return { consumed: true, flow_run_id: run.id, outcome: 'no_match' };
+      try {
+        await confirmRecoveryCod(db, run);
+      } catch (error) {
+        run.vars = {
+          ...run.vars,
+          checkout_recovery_error:
+            error instanceof Error ? error.message : 'COD confirmation failed.',
+        };
+        await db.from('flow_runs').update({ vars: run.vars }).eq('id', run.id);
+        matched = String(target.config.failed_next ?? '');
+      }
+    }
     if (
       CAPTURE_NODE_TYPES.has(currentNode.node_type) &&
       (await nextStepAlreadyStarted(db, run.id, currentNode.node_key))

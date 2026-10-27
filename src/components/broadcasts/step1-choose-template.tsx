@@ -43,6 +43,7 @@ export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack
         const { data, error: fetchError } = await supabase
           .from('message_templates')
           .select('*')
+          .not('name', 'ilike', 'auto\\_generated\\_%')
           .eq('account_id', accountId)
           .eq('status', 'APPROVED')
           .order('created_at', { ascending: false });

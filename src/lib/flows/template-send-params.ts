@@ -9,6 +9,7 @@
  */
 
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
+import { isMediaFallbackUrl } from './variable-fallback'
 
 /** True when the flow maps header media via {{ vars.* }} instead of a static URL. */
 export function isDynamicHeaderMediaMapping(value: string | undefined): boolean {
@@ -32,8 +33,12 @@ export function buildSendTimeParamsFromVariables(
   const headerText = headerRaw ? interpolate(String(headerRaw)) : undefined
 
   const headerMediaRaw = variables.header_media
-  const headerMediaUrl = headerMediaRaw
-    ? interpolate(String(headerMediaRaw)).trim() || undefined
+  const headerMediaValue = headerMediaRaw
+    ? interpolate(String(headerMediaRaw)).trim()
+    : ''
+  // Meta rejects a non-URL media link; leave it unset so the product image can fill it.
+  const headerMediaUrl = isMediaFallbackUrl(headerMediaValue)
+    ? headerMediaValue
     : undefined
 
   const buttonParams: Record<number, string> = {}

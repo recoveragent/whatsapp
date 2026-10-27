@@ -459,6 +459,8 @@ function AddNodeButton({ onAdd, t }: { onAdd: (type: NodeType) => void; t: Retur
     'send_message',
     'send_media',
     'send_product',
+    'recover_checkout',
+    'collect_payment',
     'send_template',
     'collect_input',
     'send_address',

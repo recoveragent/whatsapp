@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -50,14 +50,20 @@ function LoginPageInner() {
   const [showLegacyLogin, setShowLegacyLogin] = useState(() =>
     Boolean(inviteToken || searchParams.get('error'))
   );
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() =>
+    searchParams.get('error')
+  );
   const [loading, setLoading] = useState(false);
   const supabase = createClient();
 
-  useEffect(() => {
+  // Surface `?error=` again whenever the query string changes. Done
+  // during render rather than in an effect to avoid a cascading render.
+  const [prevSearchParams, setPrevSearchParams] = useState(searchParams);
+  if (searchParams !== prevSearchParams) {
+    setPrevSearchParams(searchParams);
     const urlError = searchParams.get('error');
     if (urlError) setError(urlError);
-  }, [searchParams]);
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

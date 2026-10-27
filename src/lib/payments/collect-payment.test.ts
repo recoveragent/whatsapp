@@ -10,7 +10,9 @@ const h = vi.hoisted(() => ({
   send: vi.fn(),
   codOrder: vi.fn(),
   syncOrder: vi.fn(),
+  recoveryOrder: vi.fn(),
 }));
+vi.mock('@/lib/shopify/recovery-orders', () => ({ prepareRecoveryOrder: h.recoveryOrder }));
 vi.mock('@/lib/flows/extended-nodes', () => ({ executeExtendedNode: h.send }));
 vi.mock('./shopify-order-sync', () => ({
   codOrderCollection: h.codOrder,
@@ -226,6 +228,27 @@ function newCollectionFixture() {
 }
 
 describe('starting a payment collection', () => {
+  it('collects the quoted checkout amount through a UPI link and claims the checkout', async () => {
+    const f = newCollectionFixture();
+    f.node.config.shopify_checkout_recovery = true;
+    f.node.config.razorpay_checkout = 'upi';
+    f.node.config.amount = 0;
+    f.tables.shopify_checkout_recoveries = [{ id: 'recovery-1', account_id: 'brand', status: 'quoted', payment_request_id: null, shopify_order_id: null }];
+    h.recoveryOrder.mockResolvedValue({ id: 'recovery-1', amount_paise: 149950 });
+    await beginPaymentCollection(f.db, f.run, f.node);
+    expect(JSON.parse(f.fetch.mock.calls[0][1].body)).toMatchObject({ amount: 149950, upi_link: true });
+    expect(f.tables.flow_payment_requests[0]).toMatchObject({ checkout_recovery_id: 'recovery-1', amount_paise: 149950, shopify_sync_status: 'pending' });
+    expect(f.tables.shopify_checkout_recoveries[0].payment_request_id).toBe(f.tables.flow_payment_requests[0].id);
+  });
+  it('creates no payment link if COD completion wins the checkout claim', async () => {
+    const f = newCollectionFixture();
+    f.node.config.shopify_checkout_recovery = true;
+    f.tables.shopify_checkout_recoveries = [{ id: 'recovery-1', account_id: 'brand', status: 'completing', payment_request_id: null, shopify_order_id: null }];
+    h.recoveryOrder.mockResolvedValue({ id: 'recovery-1', amount_paise: 149950 });
+    await expect(beginPaymentCollection(f.db, f.run, f.node)).rejects.toThrow('already being completed');
+    expect(f.fetch).not.toHaveBeenCalled();
+    expect(f.tables.flow_payment_requests[0].status).toBe('failed');
+  });
   it('creates an exact fixed-amount link, persists variables and waits', async () => {
     const f = newCollectionFixture();
     await beginPaymentCollection(f.db, f.run, f.node);
