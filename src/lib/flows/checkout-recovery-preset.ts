@@ -161,7 +161,9 @@ export const CHECKOUT_RECOVERY_SNAPSHOT: FlowSnapshot = {
           variables: {
             '1': '{{ vars.customer_name | "Customer" }}',
             '2': '{{ vars.payment_amount | "See payment page" }}',
-            '3': '{{ vars.payment_url | "Payment link unavailable. Please contact us." }}',
+            // Pay now button. The link is created before sending, and a
+            // mismatched link is refused, so the fallback is never sent.
+            button_0: '{{ vars.payment_url_suffix | "payment-link-unavailable" }}',
           },
           next_node_key: '',
         },
@@ -171,7 +173,9 @@ export const CHECKOUT_RECOVERY_SNAPSHOT: FlowSnapshot = {
           variables: {
             '1': '{{ vars.customer_name | "Customer" }}',
             '2': '{{ vars.payment_amount | "See payment page" }}',
-            '3': '{{ vars.payment_url | "Payment link unavailable. Please contact us." }}',
+            // Pay now button. The link is created before sending, and a
+            // mismatched link is refused, so the fallback is never sent.
+            button_0: '{{ vars.payment_url_suffix | "payment-link-unavailable" }}',
           },
           next_node_key: '',
         },

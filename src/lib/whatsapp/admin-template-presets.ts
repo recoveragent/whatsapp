@@ -7,6 +7,7 @@
  */
 
 import type { MessageTemplate, TemplateButton } from '@/types';
+import { suggestedCta } from './template-cta';
 
 export type AdminTemplatePresetIcon =
   | 'shopping'
@@ -233,7 +234,7 @@ const PRESETS: Record<string, AdminTemplatePreset> = {
     slug: 'recovery_payment_request',
     title: 'Checkout recovery — payment request',
     description:
-      'Send the verified checkout amount and gateway payment link. Used by the checkout recovery Collect payment step.',
+      'Send the verified checkout amount with a Razorpay Pay now button. Used by the checkout recovery Collect payment step.',
     icon: 'cart',
     name: 'recovery_payment_request',
     category: 'Utility',
@@ -243,10 +244,11 @@ const PRESETS: Record<string, AdminTemplatePreset> = {
     header_media_url: '',
     header_sample: '',
     body_text:
-      'Hi {{1}}, complete your requested order payment of INR {{2}} securely here: {{3}}\nYour order confirmation will follow after payment is verified.',
-    body_samples: ['Mohan', '1299.00', 'https://rzp.io/rzp/example'],
+      'Hi {{1}}, your order total is *₹{{2}}*.\nTap Pay now to pay securely by UPI. Your order is confirmed as soon as payment is verified.',
+    body_samples: ['Mohan', '1299.00'],
     footer_text: '',
-    buttons: [],
+    // The Collect payment step fills {{1}} with the Razorpay link path.
+    buttons: [suggestedCta('payment', '')],
   },
   order_confirmation: ORDER_CONFIRMATION,
   order_placed_cod: ORDER_PLACED_COD,
