@@ -67,6 +67,8 @@ export const RECOVERY_DRAFT_GET = `query RecoveryDraftLookup($id: ID!) { draftOr
 export const RECOVERY_DRAFT_COMPLETE = `mutation CompleteRecoveryDraft($id: ID!) {
   draftOrderComplete(id: $id) { draftOrder { ${RECOVERY_DRAFT_FIELDS} } userErrors { message } }
 }`;
+/** Separate from the draft fields: reading terms needs read_payment_terms (COD only). */
+export const RECOVERY_DRAFT_TERMS = `query RecoveryDraftTerms($id: ID!) { draftOrder(id: $id) { paymentTerms { id } } }`;
 export const RECOVERY_PAYMENT_TERMS = `query RecoveryPaymentTerms { paymentTermsTemplates(paymentTermsType: FULFILLMENT) { id } }`;
 export const RECOVERY_CUSTOMER = `query RecoveryCustomer($query: String!) { customers(first: 10, query: $query) { nodes { id defaultPhoneNumber { phoneNumber } defaultEmailAddress { emailAddress } } } }`;
 export const RECOVERY_CUSTOMER_CREATE = `mutation RecoveryCustomerCreate($input: CustomerInput!) {
@@ -368,9 +370,29 @@ async function findCustomer(
   return undefined;
 }
 
+/**
+ * COD orders stay unpaid until delivery through "due on fulfillment" terms.
+ * Setting terms needs the write_payment_terms permission; prepaid drafts skip it.
+ */
+async function codPaymentTerms(c: ShopifyConnection) {
+  const terms = await gql<{ paymentTermsTemplates: Array<{ id: string }> }>(
+    c,
+    RECOVERY_PAYMENT_TERMS,
+    {}
+  );
+  if (!terms.paymentTermsTemplates[0]?.id)
+    throw new Error(
+      'Shopify payment terms are unavailable. Continue on checkout.'
+    );
+  return {
+    paymentTerms: { paymentTermsTemplateId: terms.paymentTermsTemplates[0].id },
+  };
+}
+
 async function customerAndTerms(
   c: ShopifyConnection,
-  input: ReturnType<typeof recoveryCheckoutInput>
+  input: ReturnType<typeof recoveryCheckoutInput>,
+  method: RecoveryPaymentMethod
 ) {
   const phone = `+${input.phone.replace(/\D/g, '')}`;
   const email = String(input.draftInput.email ?? '').trim();
@@ -402,19 +424,9 @@ async function customerAndTerms(
           .join('; '),
       });
   }
-  const terms = await gql<{ paymentTermsTemplates: Array<{ id: string }> }>(
-    c,
-    RECOVERY_PAYMENT_TERMS,
-    {}
-  );
-  if (!terms.paymentTermsTemplates[0]?.id)
-    throw new Error(
-      'Shopify payment terms are unavailable. Continue on checkout.'
-    );
-  return {
-    purchasingEntity: { customerId },
-    paymentTerms: { paymentTermsTemplateId: terms.paymentTermsTemplates[0].id },
-  };
+  const purchasingEntity = { customerId };
+  if (method !== 'cod') return { purchasingEntity };
+  return { purchasingEntity, ...(await codPaymentTerms(c)) };
 }
 
 export async function prepareRecoveryOrder(
@@ -471,6 +483,8 @@ export async function prepareRecoveryOrder(
           lineItems: draftInput.lineItems,
           shippingLine: draftInput.shippingLine,
           reserveInventoryUntil,
+          // A draft first quoted for UPI has no terms; COD needs them.
+          ...(method === 'cod' ? await codPaymentTerms(c) : {}),
         },
       });
       const draft = draftFromResult(repriced.draftOrderUpdate);
@@ -534,7 +548,7 @@ export async function prepareRecoveryOrder(
     throw new Error('Another recovery is already preparing this checkout.');
   let paymentTerms: Awaited<ReturnType<typeof customerAndTerms>>;
   try {
-    paymentTerms = await customerAndTerms(c, input);
+    paymentTerms = await customerAndTerms(c, input, method);
   } catch (error) {
     await releaseClaim(db, claimed.id);
     throw error;
@@ -737,6 +751,16 @@ export async function completeRecoveryOrder(
       },
     });
     checkQuote(draftFromResult(labelled.draftOrderUpdate), recovery);
+    if (!prepaid) {
+      // Completing a draft without terms records it as paid: never for COD.
+      const terms = await gql<{
+        draftOrder: { paymentTerms: { id: string } | null } | null;
+      }>(c, RECOVERY_DRAFT_TERMS, { id: recovery.draft_order_id });
+      if (!terms.draftOrder?.paymentTerms)
+        throw new Error(
+          'COD payment terms are missing on the Shopify draft. Please use checkout or ask our team for help.'
+        );
+    }
     // Completion is bound to one Shopify draft. Retrying reads its existing order.
     const result = await gql<{
       draftOrderComplete: {
