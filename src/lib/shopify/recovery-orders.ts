@@ -10,6 +10,7 @@ import {
   draftInputFor,
   quotePaise,
   recoveryCheckoutInput,
+  shopifyPhone,
   type RecoveryPaymentMethod,
 } from './recovery-checkout-input';
 
@@ -394,7 +395,8 @@ async function customerAndTerms(
   input: ReturnType<typeof recoveryCheckoutInput>,
   method: RecoveryPaymentMethod
 ) {
-  const phone = `+${input.phone.replace(/\D/g, '')}`;
+  // Same +91 format as the draft; a bare 10-digit number is not "+<digits>".
+  const phone = shopifyPhone(input.phone) || input.phone;
   const email = String(input.draftInput.email ?? '').trim();
   let customerId = await findCustomer(c, phone, email);
   if (!customerId) {
