@@ -1,3 +1,4 @@
+import { shopifyPayloadVariables } from './shopify-payload-variables';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import {
@@ -6,11 +7,16 @@ import {
   ensureShopifyContact,
 } from '@/lib/shopify/ensure-contact';
 import { splitPublicUrlForWhatsApp } from '@/lib/shopify/order-links';
-import { runFlowsForTrigger, type FlowDispatchOutcome } from '@/lib/flows/dispatch-external';
+import {
+  runFlowsForTrigger,
+  type FlowDispatchOutcome,
+} from '@/lib/flows/dispatch-external';
 import type { FlowTriggerType } from '@/lib/flows/trigger-types';
 import type { WooCommerceEventContext } from '@/lib/woocommerce/types';
 
-function woocommerceOrderIdFromContext(ctx: WooCommerceEventContext): string | undefined {
+function woocommerceOrderIdFromContext(
+  ctx: WooCommerceEventContext
+): string | undefined {
   if (!ctx.resourceKey.startsWith('order:')) return undefined;
   const id = ctx.resourceKey.slice('order:'.length).trim();
   return id || undefined;
@@ -18,6 +24,7 @@ function woocommerceOrderIdFromContext(ctx: WooCommerceEventContext): string | u
 
 function contextToVars(ctx: WooCommerceEventContext): Record<string, unknown> {
   return {
+    ...shopifyPayloadVariables(ctx.triggerPayload, 'woocommerce_order'),
     customer_name: ctx.customerName,
     phone: ctx.phone,
     email: ctx.email,
@@ -31,7 +38,8 @@ function contextToVars(ctx: WooCommerceEventContext): Record<string, unknown> {
     payment_type: ctx.paymentType,
     fulfillment_status: ctx.fulfillmentStatus,
     order_status_url: ctx.orderStatusUrl,
-    order_status_url_suffix: splitPublicUrlForWhatsApp(ctx.orderStatusUrl).suffix,
+    order_status_url_suffix: splitPublicUrlForWhatsApp(ctx.orderStatusUrl)
+      .suffix,
     shop_name: ctx.storeName,
     store_name: ctx.storeName,
     name: ctx.customerName,
@@ -71,7 +79,7 @@ export async function dispatchWooCommerceFlows(args: {
     args.accountId,
     args.ownerUserId,
     phone,
-    args.context.customerName ?? phone,
+    args.context.customerName ?? phone
   );
   if (!contact) {
     return { ok: false, reason: 'no_contact', ...base };
@@ -81,7 +89,7 @@ export async function dispatchWooCommerceFlows(args: {
     args.db,
     args.accountId,
     args.ownerUserId,
-    contact.id,
+    contact.id
   );
   if (!conversation) {
     return { ok: false, reason: 'no_conversation', ...base };

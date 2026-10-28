@@ -31,13 +31,30 @@ const SOURCES = {
         payload: order,
       })),
   },
+  woocommerce: {
+    button: 'From recent WooCommerce order',
+    endpoint: '/api/woocommerce/orders/recent',
+    help: 'Preview an order, then select a field. Its value comes from the triggering WooCommerce order when the flow runs.',
+    loading: 'Loading recent orders…',
+    loadError: 'Could not load recent orders.',
+    empty: 'No recent orders found.',
+    search: 'Search WooCommerce order payload',
+    toSamples: (body: { orders?: SampleOrder[] }): Sample[] =>
+      (body.orders ?? []).map((order) => ({
+        key: String(order.id),
+        title: `#${String(order.number ?? order.id)} · ${String(order.total ?? '')} ${String(order.currency ?? '')}`,
+        subtitle: String(order.date_created ?? ''),
+        payload: order,
+      })),
+  },
   checkouts: {
     button: 'From recent checkout',
     endpoint: '/api/shopify/checkouts/recent',
     help: 'Preview a saved abandoned checkout, then select a field. Its value comes from the triggering checkout when the flow runs.',
     loading: 'Loading recent checkouts…',
     loadError: 'Could not load recent checkouts.',
-    empty: 'No saved checkouts yet. One appears after the next abandoned checkout.',
+    empty:
+      'No saved checkouts yet. One appears after the next abandoned checkout.',
     search: 'Search checkout payload',
     toSamples: (body: {
       checkouts?: Array<{
@@ -88,7 +105,10 @@ export function RecentOrderVariables({
   }
 
   const fields = selected
-    ? recentOrderVariableOptions(selected.payload).filter(({ label, value }) =>
+    ? recentOrderVariableOptions(
+        selected.payload,
+        source === 'woocommerce' ? 'woocommerce_order' : 'shopify_order'
+      ).filter(({ label, value }) =>
         `${label} ${value}`.toLowerCase().includes(query.toLowerCase())
       )
     : [];
@@ -127,9 +147,7 @@ export function RecentOrderVariables({
             </div>
           )}
           {orders?.length === 0 && (
-            <p className="text-muted-foreground text-xs">
-              {config.empty}
-            </p>
+            <p className="text-muted-foreground text-xs">{config.empty}</p>
           )}
           {orders?.map((sample) => (
             <button

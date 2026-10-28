@@ -137,6 +137,13 @@ export function TemplateVariablePicker({
                         source="checkouts"
                       />
                     )}
+                    {group.recentWooCommerceOrders && (
+                      <RecentOrderVariables
+                        key="woocommerce"
+                        onInsert={onInsert}
+                        source="woocommerce"
+                      />
+                    )}
                     {group.recentShopifyOrders && (
                       <RecentOrderVariables onInsert={onInsert} />
                     )}

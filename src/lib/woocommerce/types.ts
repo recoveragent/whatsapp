@@ -90,6 +90,7 @@ export interface WooCommerceLineItem {
 }
 
 export interface WooCommerceEventContext {
+  triggerPayload?: WooCommerceOrderPayload;
   resourceKey: string;
   phone: string | null;
   customerName: string | null;

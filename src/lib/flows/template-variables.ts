@@ -25,6 +25,7 @@ export interface TemplateVariableGroup {
   id: string
   label: string
   options: TemplateVariableOption[]
+  recentWooCommerceOrders?: boolean
   recentShopifyOrders?: boolean
   /** Checkout triggers read their own payload, which differs from an order's. */
   recentShopifyCheckouts?: boolean
@@ -255,6 +256,7 @@ export function templateVariableGroupsForFlow(
       id: 'trigger',
       label: 'Trigger attributes',
       options: triggerOptions,
+      recentWooCommerceOrders: !!triggerType && isWooCommerceOrderFlowTrigger(triggerType),
       recentShopifyOrders: triggerType?.startsWith('shopify_'),
       recentShopifyCheckouts:
         triggerType === 'shopify_checkout_abandoned' ||

@@ -7,7 +7,9 @@ import { normalizeStoreUrl } from './normalize-store-url';
 import { WOOCOMMERCE_API_VERSION } from './config';
 
 function buildAuthHeader(consumerKey: string, consumerSecret: string): string {
-  const token = Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
+  const token = Buffer.from(`${consumerKey}:${consumerSecret}`).toString(
+    'base64'
+  );
   return `Basic ${token}`;
 }
 
@@ -22,7 +24,7 @@ async function wooFetch<T>(
   consumerKey: string,
   consumerSecret: string,
   path: string,
-  init?: RequestInit,
+  init?: RequestInit
 ): Promise<T> {
   const url = `${apiBase(storeUrl)}${path.startsWith('/') ? path : `/${path}`}`;
   const res = await fetch(url, {
@@ -38,7 +40,9 @@ async function wooFetch<T>(
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(
-      body ? `WooCommerce API error (${res.status}): ${body.slice(0, 200)}` : `WooCommerce API error (${res.status})`,
+      body
+        ? `WooCommerce API error (${res.status}): ${body.slice(0, 200)}`
+        : `WooCommerce API error (${res.status})`
     );
   }
 
@@ -54,7 +58,7 @@ export async function verifyWooCommerceCredentials(args: {
     args.storeUrl,
     args.consumerKey,
     args.consumerSecret,
-    '/orders?per_page=1',
+    '/orders?per_page=1'
   );
 
   const normalized = normalizeStoreUrl(args.storeUrl);
@@ -92,12 +96,12 @@ export async function registerWooCommerceWebhooks(args: {
     args.storeUrl,
     args.consumerKey,
     args.consumerSecret,
-    '/webhooks?per_page=100',
+    '/webhooks?per_page=100'
   );
 
   for (const topic of WEBHOOK_TOPICS) {
     const match = existing.find(
-      (hook) => hook.topic === topic && hook.delivery_url === args.callbackUrl,
+      (hook) => hook.topic === topic && hook.delivery_url === args.callbackUrl
     );
 
     if (match?.id) {
@@ -112,7 +116,7 @@ export async function registerWooCommerceWebhooks(args: {
             secret: args.webhookSecret,
             status: 'active',
           }),
-        },
+        }
       );
       continue;
     }
@@ -131,7 +135,7 @@ export async function registerWooCommerceWebhooks(args: {
           secret: args.webhookSecret,
           status: 'active',
         }),
-      },
+      }
     );
   }
 }
@@ -140,13 +144,13 @@ export async function fetchOrder(
   storeUrl: string,
   consumerKey: string,
   consumerSecret: string,
-  orderId: number | string,
+  orderId: number | string
 ): Promise<WooCommerceOrderPayload> {
   return wooFetch<WooCommerceOrderPayload>(
     storeUrl,
     consumerKey,
     consumerSecret,
-    `/orders/${orderId}`,
+    `/orders/${orderId}`
   );
 }
 
@@ -154,7 +158,7 @@ export async function fetchOrdersByPhone(
   storeUrl: string,
   consumerKey: string,
   consumerSecret: string,
-  phone: string,
+  phone: string
 ): Promise<WooCommerceOrderPayload[]> {
   const digits = phone.replace(/\D/g, '');
   const suffix = digits.length >= 10 ? digits.slice(-10) : digits;
@@ -164,7 +168,7 @@ export async function fetchOrdersByPhone(
     storeUrl,
     consumerKey,
     consumerSecret,
-    `/orders?search=${encodeURIComponent(suffix)}&per_page=20&orderby=date&order=desc`,
+    `/orders?search=${encodeURIComponent(suffix)}&per_page=20&orderby=date&order=desc`
   );
 }
 
@@ -172,7 +176,7 @@ export async function fetchOrdersByEmail(
   storeUrl: string,
   consumerKey: string,
   consumerSecret: string,
-  email: string,
+  email: string
 ): Promise<WooCommerceOrderPayload[]> {
   const normalized = email.trim().toLowerCase();
   if (!normalized) return [];
@@ -181,7 +185,7 @@ export async function fetchOrdersByEmail(
     storeUrl,
     consumerKey,
     consumerSecret,
-    `/orders?search=${encodeURIComponent(normalized)}&per_page=20&orderby=date&order=desc`,
+    `/orders?search=${encodeURIComponent(normalized)}&per_page=20&orderby=date&order=desc`
   );
 }
 
@@ -190,20 +194,20 @@ export async function fetchCustomersPage(
   consumerKey: string,
   consumerSecret: string,
   page: number,
-  perPage = 100,
+  perPage = 100
 ): Promise<WooCommerceCustomerPayload[]> {
   return wooFetch<WooCommerceCustomerPayload[]>(
     storeUrl,
     consumerKey,
     consumerSecret,
-    `/customers?per_page=${perPage}&page=${page}&orderby=registered_date&order=asc`,
+    `/customers?per_page=${perPage}&page=${page}&orderby=registered_date&order=asc`
   );
 }
 
 export async function fetchCustomersTotal(
   storeUrl: string,
   consumerKey: string,
-  consumerSecret: string,
+  consumerSecret: string
 ): Promise<number> {
   const url = `${apiBase(storeUrl)}/customers?per_page=1&page=1`;
   const res = await fetch(url, {
@@ -219,7 +223,7 @@ export async function fetchCustomersTotal(
     throw new Error(
       body
         ? `WooCommerce API error (${res.status}): ${body.slice(0, 200)}`
-        : `WooCommerce API error (${res.status})`,
+        : `WooCommerce API error (${res.status})`
     );
   }
 
@@ -237,17 +241,20 @@ export async function fetchCustomer(
   storeUrl: string,
   consumerKey: string,
   consumerSecret: string,
-  customerId: number | string,
+  customerId: number | string
 ): Promise<WooCommerceCustomerPayload> {
   return wooFetch<WooCommerceCustomerPayload>(
     storeUrl,
     consumerKey,
     consumerSecret,
-    `/customers/${customerId}`,
+    `/customers/${customerId}`
   );
 }
 
-export function buildWooCommerceAdminOrderUrl(storeUrl: string, orderId: string | number): string {
+export function buildWooCommerceAdminOrderUrl(
+  storeUrl: string,
+  orderId: string | number
+): string {
   const normalized = normalizeStoreUrl(storeUrl);
   if (!normalized) return '';
   return `${normalized}/wp-admin/post.php?post=${orderId}&action=edit`;
@@ -256,7 +263,7 @@ export function buildWooCommerceAdminOrderUrl(storeUrl: string, orderId: string 
 export function buildWooCommerceOrderStatusUrl(
   storeUrl: string,
   orderId: string | number,
-  orderKey?: string | null,
+  orderKey?: string | null
 ): string | null {
   const normalized = normalizeStoreUrl(storeUrl);
   if (!normalized) return null;
@@ -264,4 +271,18 @@ export function buildWooCommerceOrderStatusUrl(
     return `${normalized}/checkout/order-received/${orderId}/?key=${orderKey}`;
   }
   return `${normalized}/my-account/view-order/${orderId}/`;
+}
+
+/** Full payloads for previewing trigger variables in the flow editor. */
+export async function fetchRecentOrderPayloads(
+  storeUrl: string,
+  consumerKey: string,
+  consumerSecret: string
+): Promise<WooCommerceOrderPayload[]> {
+  return wooFetch(
+    storeUrl,
+    consumerKey,
+    consumerSecret,
+    '/orders?per_page=10&orderby=date&order=desc'
+  );
 }

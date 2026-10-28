@@ -1,7 +1,10 @@
 import { normalizePhone } from '@/lib/whatsapp/phone-utils';
 import { buildWooCommerceOrderStatusUrl } from './admin-api';
 import { extractOrderEmail, extractOrderPhone } from './extract-context';
-import { classifyWooCommercePayment, normalizeWooCommerceGatewayId } from './payment-type';
+import {
+  classifyWooCommercePayment,
+  normalizeWooCommerceGatewayId,
+} from './payment-type';
 import type { WooCommerceEventContext, WooCommerceOrderPayload } from './types';
 
 function fullName(first?: string, last?: string): string {
@@ -9,7 +12,7 @@ function fullName(first?: string, last?: string): string {
 }
 
 function formatLineItems(
-  items: WooCommerceOrderPayload['line_items'],
+  items: WooCommerceOrderPayload['line_items']
 ): string | null {
   if (!items?.length) return null;
   return items
@@ -21,7 +24,10 @@ function formatLineItems(
     .join(', ');
 }
 
-function formatMoney(amount: string | undefined, currency: string | undefined): string | null {
+function formatMoney(
+  amount: string | undefined,
+  currency: string | undefined
+): string | null {
   if (!amount) return null;
   return currency ? `${amount} ${currency}` : amount;
 }
@@ -34,15 +40,17 @@ function mapFulfillmentStatus(status: string | undefined): string {
 
 export function contextFromOrder(
   order: WooCommerceOrderPayload,
-  storeUrl: string,
+  storeUrl: string
 ): WooCommerceEventContext {
   const phoneRaw = extractOrderPhone(order);
   const phone = phoneRaw ? normalizePhone(phoneRaw) : null;
   const customerName =
     fullName(order.billing?.first_name, order.billing?.last_name) || null;
-  const storeName = storeUrl.replace(/^https?:\/\//, '').split('/')[0] ?? storeUrl;
+  const storeName =
+    storeUrl.replace(/^https?:\/\//, '').split('/')[0] ?? storeUrl;
 
   return {
+    triggerPayload: order,
     resourceKey: `order:${order.id}`,
     phone: phone && phone.length >= 8 ? phone : null,
     customerName,
@@ -55,7 +63,11 @@ export function contextFromOrder(
     paymentMethodTitle: order.payment_method_title?.trim() || null,
     paymentType: classifyWooCommercePayment(order),
     fulfillmentStatus: mapFulfillmentStatus(order.status),
-    orderStatusUrl: buildWooCommerceOrderStatusUrl(storeUrl, order.id, order.order_key),
+    orderStatusUrl: buildWooCommerceOrderStatusUrl(
+      storeUrl,
+      order.id,
+      order.order_key
+    ),
     storeName,
   };
 }
