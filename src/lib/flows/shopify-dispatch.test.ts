@@ -5,11 +5,13 @@ const {
   ensureConversation,
   deleteConversationIfEmpty,
   runFlowsForTrigger,
+  hasActiveFlowsForTrigger,
 } = vi.hoisted(() => ({
   ensureShopifyContact: vi.fn(),
   ensureConversation: vi.fn(),
   deleteConversationIfEmpty: vi.fn(),
   runFlowsForTrigger: vi.fn(),
+  hasActiveFlowsForTrigger: vi.fn(),
 }))
 
 vi.mock('@/lib/shopify/ensure-contact', () => ({
@@ -18,7 +20,7 @@ vi.mock('@/lib/shopify/ensure-contact', () => ({
   deleteConversationIfEmpty,
 }))
 
-vi.mock('./dispatch-external', () => ({ runFlowsForTrigger }))
+vi.mock('./dispatch-external', () => ({ runFlowsForTrigger, hasActiveFlowsForTrigger }))
 
 import type { ShopifyEventContext } from '@/lib/shopify/types'
 
@@ -55,7 +57,8 @@ describe('dispatchShopifyFlows', () => {
       id: 'contact-1',
       phone: '919591141699',
     })
-    ensureConversation.mockResolvedValue({ id: 'conv-1' })
+    ensureConversation.mockResolvedValue({ id: 'conv-1', created: true })
+    hasActiveFlowsForTrigger.mockResolvedValue(true)
   })
 
   it('passes structured data and the order identity through fulfillment dispatch', async () => {
@@ -64,7 +67,7 @@ describe('dispatchShopifyFlows', () => {
     expect(runFlowsForTrigger).toHaveBeenCalledWith(expect.objectContaining({ context: { vars: expect.objectContaining({ shopify_order_id: '123', shopify_condition_data: { resource_type: 'order', total: 599 } }) } }))
   })
 
-  it('always attempts empty-shell cleanup (active runs guarded inside helper)', async () => {
+  it('attempts empty-shell cleanup for a conversation it created (active runs guarded inside helper)', async () => {
     runFlowsForTrigger.mockResolvedValue({
       started: [],
       skipped: [
@@ -118,5 +121,39 @@ describe('dispatchShopifyFlows', () => {
       'conv-1',
       { accountId: 'acc-1', contactId: 'contact-1' },
     )
+  })
+
+  it('never deletes a conversation another webhook created or found', async () => {
+    ensureConversation.mockResolvedValue({ id: 'conv-1', created: false })
+    runFlowsForTrigger.mockResolvedValue({ started: [], skipped: [], no_active_flows: true })
+
+    await dispatchShopifyFlows({
+      db: {} as never,
+      accountId: 'acc-1',
+      ownerUserId: 'user-1',
+      triggerType: 'shopify_order_placed',
+      context: baseContext,
+    })
+
+    expect(deleteConversationIfEmpty).not.toHaveBeenCalled()
+  })
+
+  it('skips contact and conversation setup when no active flow matches the trigger', async () => {
+    hasActiveFlowsForTrigger.mockResolvedValue(false)
+
+    const outcome = await dispatchShopifyFlows({
+      db: {} as never,
+      accountId: 'acc-1',
+      ownerUserId: 'user-1',
+      triggerType: 'shopify_order_updated',
+      context: baseContext,
+    })
+
+    expect(hasActiveFlowsForTrigger).toHaveBeenCalledWith('acc-1', 'shopify_order_updated')
+    expect(ensureShopifyContact).not.toHaveBeenCalled()
+    expect(ensureConversation).not.toHaveBeenCalled()
+    expect(runFlowsForTrigger).not.toHaveBeenCalled()
+    expect(deleteConversationIfEmpty).not.toHaveBeenCalled()
+    expect(outcome).toMatchObject({ ok: false, dispatch: { no_active_flows: true } })
   })
 })

@@ -76,7 +76,7 @@ describe('ensureConversationForContact', () => {
       { whatsappConfigId: 'config-1' },
     )
 
-    expect(result).toEqual({ id: 'conv-1' })
+    expect(result).toEqual({ id: 'conv-1', created: false })
     expect(insert).not.toHaveBeenCalled()
   })
 
@@ -118,7 +118,7 @@ describe('ensureConversationForContact', () => {
       { createStatus: 'closed', whatsappConfigId: 'config-1' },
     )
 
-    expect(result).toEqual({ id: 'new-conv' })
+    expect(result).toEqual({ id: 'new-conv', created: true })
   })
 
   it('re-selects after a unique-index race on insert', async () => {
@@ -165,7 +165,7 @@ describe('ensureConversationForContact', () => {
       { whatsappConfigId: 'config-1' },
     )
 
-    expect(result).toEqual({ id: 'raced-conv' })
+    expect(result).toEqual({ id: 'raced-conv', created: false })
     expect(selectCalls).toBe(2)
   })
 
@@ -200,7 +200,7 @@ describe('ensureConversationForContact', () => {
 
     await expect(
       ensureConversationForContact(db as never, 'acc-1', 'user-1', 'contact-1'),
-    ).resolves.toEqual({ id: 'new-conv' })
+    ).resolves.toEqual({ id: 'new-conv', created: true })
 
     expect(inserted).toHaveBeenCalledWith(expect.objectContaining({
       whatsapp_config_id: 'default-config',

@@ -182,7 +182,7 @@ export async function sendShopifyCampaign(args: {
       error_message: message,
     });
     const sentToMeta = isMetaSentDbInsertFailed(message);
-    if (!sentToMeta) {
+    if (!sentToMeta && conversation.created) {
       await deleteConversationIfEmpty(db, conversation.id, {
         accountId,
         contactId: contact.id,

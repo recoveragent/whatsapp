@@ -309,10 +309,12 @@ export async function processRecoverAgentAbandonedCheckout(args: {
     campaignOk = result.ok || result.error === 'already sent';
   }
 
-  await deleteConversationIfEmpty(args.db, conversation.id, {
-    accountId: args.accountId,
-    contactId: contact.id,
-  });
+  if (conversation.created) {
+    await deleteConversationIfEmpty(args.db, conversation.id, {
+      accountId: args.accountId,
+      contactId: contact.id,
+    });
+  }
 
   if (flowStarted || campaignOk) {
     return { ok: true };

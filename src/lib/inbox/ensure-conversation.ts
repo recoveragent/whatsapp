@@ -93,6 +93,14 @@ export async function pickCanonicalConversationId(
   return sorted[0]?.id ?? null;
 }
 
+export interface EnsuredConversation {
+  id: string;
+  /** True only when this call inserted the row. Callers that clean up
+   *  empty shells must only delete threads they created — another
+   *  webhook may be mid-dispatch on a thread it found or created. */
+  created: boolean;
+}
+
 /**
  * Find or create the single inbox thread for a contact. Handles
  * duplicate rows left over from pre-067 races and concurrent inserts
@@ -104,7 +112,7 @@ export async function ensureConversationForContact(
   ownerUserId: string,
   contactId: string,
   opts?: { createStatus?: ConversationCreateStatus; whatsappConfigId?: string | null },
-): Promise<{ id: string } | null> {
+): Promise<EnsuredConversation | null> {
   const createStatus = opts?.createStatus ?? 'closed';
   const whatsappConfigId =
     opts?.whatsappConfigId ??
@@ -114,7 +122,7 @@ export async function ensureConversationForContact(
     db, accountId, contactId,
   );
   const canonicalId = await pickCanonicalConversationId(db, existing);
-  if (canonicalId) return { id: canonicalId };
+  if (canonicalId) return { id: canonicalId, created: false };
 
   const { data: created, error } = await db
     .from('conversations')
@@ -134,11 +142,11 @@ export async function ensureConversationForContact(
         db, accountId, contactId,
       );
       const racedId = await pickCanonicalConversationId(db, raced);
-      if (racedId) return { id: racedId };
+      if (racedId) return { id: racedId, created: false };
     }
     console.error('[inbox] ensureConversationForContact failed:', error.message);
     return null;
   }
 
-  return created;
+  return { id: created.id, created: true };
 }

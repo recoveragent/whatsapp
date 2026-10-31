@@ -3,7 +3,11 @@ import { shopifyPayloadVariables } from './shopify-payload-variables'
 
 import { ensureShopifyContact, ensureConversation, deleteConversationIfEmpty } from '@/lib/shopify/ensure-contact'
 import type { ShopifyEventContext } from '@/lib/shopify/types'
-import { runFlowsForTrigger, type FlowDispatchOutcome } from './dispatch-external'
+import {
+  hasActiveFlowsForTrigger,
+  runFlowsForTrigger,
+  type FlowDispatchOutcome,
+} from './dispatch-external'
 import { shopifyTopicToFlowTrigger, type FlowTriggerType } from './trigger-types'
 
 function shopifyOrderIdFromContext(ctx: ShopifyEventContext): string | undefined {
@@ -78,6 +82,17 @@ export async function dispatchShopifyFlows(args: {
     return { ok: false, reason: 'no_phone', ...base }
   }
 
+  // Shopify fires orders/updated within ~1s of orders/create (Fastrr,
+  // Shiprocket tagging). Without this, that no-op dispatch ensured and
+  // then deleted the same conversation the order-placed run was using.
+  if (!(await hasActiveFlowsForTrigger(args.accountId, args.triggerType))) {
+    return {
+      ok: false,
+      ...base,
+      dispatch: { started: [], skipped: [], no_active_flows: true },
+    }
+  }
+
   const contact = await ensureShopifyContact(
     args.db,
     args.accountId,
@@ -107,10 +122,14 @@ export async function dispatchShopifyFlows(args: {
     context: { vars: contextToVars(args.context) },
   })
 
-  await deleteConversationIfEmpty(args.db, conversation.id, {
-    accountId: args.accountId,
-    contactId: contact.id,
-  })
+  // Only remove a shell this call created: a concurrent webhook may be
+  // starting a run on a thread it found here.
+  if (conversation.created) {
+    await deleteConversationIfEmpty(args.db, conversation.id, {
+      accountId: args.accountId,
+      contactId: contact.id,
+    })
+  }
 
   return {
     ok: dispatch.started.length > 0,
