@@ -187,6 +187,29 @@ function shopifyShipmentMismatchReason(
 }
 
 /**
+ * Cheap pre-check so order webhooks with no matching flow (e.g. every
+ * `orders/updated` on accounts without an "order updated" flow) skip
+ * contact/conversation setup entirely. Errors count as "has flows" so a
+ * DB hiccup never silently drops a dispatch.
+ */
+export async function hasActiveFlowsForTrigger(
+  accountId: string,
+  triggerType: FlowTriggerType,
+): Promise<boolean> {
+  const { count, error } = await supabaseAdmin()
+    .from('flows')
+    .select('id', { count: 'exact', head: true })
+    .eq('account_id', accountId)
+    .eq('status', 'active')
+    .eq('trigger_type', triggerType)
+  if (error) {
+    console.error('[flows] hasActiveFlowsForTrigger failed:', error.message)
+    return true
+  }
+  return (count ?? 0) > 0
+}
+
+/**
  * Fire all active flows matching an external trigger for an account.
  */
 export async function runFlowsForTrigger(

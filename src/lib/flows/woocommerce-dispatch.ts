@@ -8,6 +8,7 @@ import {
 } from '@/lib/shopify/ensure-contact';
 import { splitPublicUrlForWhatsApp } from '@/lib/shopify/order-links';
 import {
+  hasActiveFlowsForTrigger,
   runFlowsForTrigger,
   type FlowDispatchOutcome,
 } from '@/lib/flows/dispatch-external';
@@ -74,6 +75,16 @@ export async function dispatchWooCommerceFlows(args: {
     return { ok: false, reason: 'no_phone', ...base };
   }
 
+  // Skip contact/conversation setup when nothing would run, so no-op
+  // order.updated webhooks don't race the order-placed dispatch.
+  if (!(await hasActiveFlowsForTrigger(args.accountId, args.triggerType))) {
+    return {
+      ok: false,
+      ...base,
+      dispatch: { started: [], skipped: [], no_active_flows: true },
+    };
+  }
+
   const contact = await ensureShopifyContact(
     args.db,
     args.accountId,
@@ -103,10 +114,13 @@ export async function dispatchWooCommerceFlows(args: {
     context: { vars: contextToVars(args.context) },
   });
 
-  await deleteConversationIfEmpty(args.db, conversation.id, {
-    accountId: args.accountId,
-    contactId: contact.id,
-  });
+  // Only remove a shell this call created (see shopify-dispatch.ts).
+  if (conversation.created) {
+    await deleteConversationIfEmpty(args.db, conversation.id, {
+      accountId: args.accountId,
+      contactId: contact.id,
+    });
+  }
 
   return {
     ok: dispatch.started.length > 0,

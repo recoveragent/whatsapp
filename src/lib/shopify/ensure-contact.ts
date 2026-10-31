@@ -4,6 +4,7 @@ import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe';
 import {
   ensureConversationForContact,
   type ConversationCreateStatus,
+  type EnsuredConversation,
 } from '@/lib/inbox/ensure-conversation';
 import { canonicalContactPhone, normalizePhone } from '@/lib/whatsapp/phone-utils';
 
@@ -77,7 +78,7 @@ export async function ensureConversation(
   ownerUserId: string,
   contactId: string,
   opts?: { createStatus?: ConversationCreateStatus; whatsappConfigId?: string | null },
-): Promise<{ id: string } | null> {
+): Promise<EnsuredConversation | null> {
   return ensureConversationForContact(db, accountId, ownerUserId, contactId, {
     createStatus: opts?.createStatus ?? 'closed',
     whatsappConfigId: opts?.whatsappConfigId ?? null,
