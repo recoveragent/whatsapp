@@ -52,6 +52,22 @@ describe('typed comparisons', () => {
       })
     ).toBe(true);
   });
+  it('ignores case in text and list comparisons', () => {
+    const product = 'Personalized Baby Birth Frame - Design 1 / A4 (8x12 inch)';
+    const cases: Array<[Parameters<typeof compareCondition>[0], boolean]> = [
+      [{ operator: 'contains', subjectValue: product, configValue: 'baby birth' }, true],
+      [{ operator: 'not_contains', subjectValue: product, configValue: 'BABY BIRTH' }, false],
+      [{ operator: 'equals', subjectValue: 'Chennai', configValue: 'chennai' }, true],
+      [{ operator: 'not_equals', subjectValue: 'Chennai', configValue: 'CHENNAI' }, false],
+      [{ operator: 'starts_with', subjectValue: product, configValue: 'personalized' }, true],
+      [{ operator: 'ends_with', subjectValue: product, configValue: 'INCH)' }, true],
+      [{ operator: 'in', subjectValue: 'Tamil Nadu', configValue: 'kerala, tamil nadu' }, true],
+      [{ operator: 'contains', subjectValue: ['VIP', 'Repeat'], configValue: 'vip' }, true],
+      [{ operator: 'contains_all', subjectValue: ['VIP', 'Repeat'], configValue: 'vip, repeat' }, true],
+    ];
+    for (const [args, expected] of cases)
+      expect(compareCondition(args)).toBe(expected);
+  });
   it('uses inclusive range boundaries', () => {
     for (const subjectValue of [2, 3, 5])
       expect(
