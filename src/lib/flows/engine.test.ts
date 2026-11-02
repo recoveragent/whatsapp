@@ -296,7 +296,7 @@ describe("evaluateConditionPredicate", () => {
     ).toBe(false);
   });
 
-  it("equals: exact string comparison; case-sensitive", () => {
+  it("equals: exact string comparison; case-insensitive", () => {
     expect(
       evaluateConditionPredicate({
         operator: "equals",
@@ -308,6 +308,13 @@ describe("evaluateConditionPredicate", () => {
       evaluateConditionPredicate({
         operator: "equals",
         subjectValue: "vip",
+        configValue: "VIP",
+      }),
+    ).toBe(true);
+    expect(
+      evaluateConditionPredicate({
+        operator: "equals",
+        subjectValue: "vip club",
         configValue: "VIP",
       }),
     ).toBe(false);

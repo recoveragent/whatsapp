@@ -830,7 +830,7 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
         .eq('account_id', args.automation.account_id)
         .maybeSingle()
       const v = (data as Record<string, unknown> | null)?.[cfg.operand]
-      return v != null && String(v) === String(cfg.value ?? '')
+      return v != null && String(v).toLowerCase() === String(cfg.value ?? '').toLowerCase()
     }
     case 'message_content': {
       const text = (args.context.message_text ?? '').toString()

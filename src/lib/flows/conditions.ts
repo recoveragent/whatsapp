@@ -299,33 +299,36 @@ export function compareCondition(args: {
   // Preserve legacy variable semantics; Shopify unknown values are handled by the resolver.
   if (raw == null) return operator === 'not_equals';
   const text = typeof raw === 'object' ? JSON.stringify(raw) : String(raw);
+  // Text comparisons ignore case; dates and numbers use the raw values.
+  const lower = text.toLowerCase();
+  const expected = configValue.toLowerCase();
   const same =
     type === 'number'
       ? conditionNumber(raw) !== undefined &&
         conditionNumber(raw) === conditionNumber(configValue)
-      : text === configValue;
-  const values = conditionList(configValue);
+      : lower === expected;
+  const values = conditionList(configValue).map((v) => v.toLowerCase());
   const includes = (v: string) =>
     Array.isArray(raw)
-      ? raw.some((item) => String(item) === v)
-      : text.includes(v);
+      ? raw.some((item) => String(item).toLowerCase() === v)
+      : lower.includes(v);
   switch (operator) {
     case 'equals':
       return same;
     case 'not_equals':
       return !same;
     case 'contains':
-      return includes(configValue);
+      return includes(expected);
     case 'not_contains':
-      return !includes(configValue);
+      return !includes(expected);
     case 'starts_with':
-      return text.startsWith(configValue);
+      return lower.startsWith(expected);
     case 'ends_with':
-      return text.endsWith(configValue);
+      return lower.endsWith(expected);
     case 'in':
-      return values.includes(text);
+      return values.includes(lower);
     case 'not_in':
-      return !values.includes(text);
+      return !values.includes(lower);
     case 'contains_any':
       return values.length > 0 && values.some(includes);
     case 'contains_all':
