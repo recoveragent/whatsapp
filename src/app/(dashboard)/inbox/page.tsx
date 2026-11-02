@@ -369,6 +369,22 @@ function InboxPageInner() {
     };
   }, []);
 
+  /**
+   * Bumps the "N new messages" bar. The first pending message also freezes
+   * the list's order and membership (from the last committed state) so rows
+   * don't jump under the agent until they click the bar.
+   */
+  const addPendingInbound = useCallback((count: number) => {
+    if (count <= 0) return;
+    setPendingInboundCount((n) => n + count);
+    const snapshot = conversationsForDeepLinkRef.current;
+    setFrozenListActivity(
+      (prev) =>
+        prev ??
+        Object.fromEntries(snapshot.map((c) => [c.id, c.last_message_at ?? null])),
+    );
+  }, []);
+
   // Handle realtime message events
   const handleMessageEvent = useCallback(
     (event: { eventType: string; new: Message; old: Partial<Message> }) => {
@@ -439,13 +455,7 @@ function InboxPageInner() {
           newMsg.sender_type === "customer" &&
           activeConversation?.id !== newMsg.conversation_id
         ) {
-          setPendingInboundCount((n) => n + 1);
-          const snapshot = conversationsForDeepLinkRef.current;
-          setFrozenListActivity(
-            (prev) =>
-              prev ??
-              Object.fromEntries(snapshot.map((c) => [c.id, c.last_message_at ?? null])),
-          );
+          addPendingInbound(1);
         }
 
         // Update conversation list preview. We need to know *synchronously*
@@ -488,7 +498,7 @@ function InboxPageInner() {
         );
       }
     },
-    [activeConversation, hydrateConversation]
+    [activeConversation, hydrateConversation, addPendingInbound]
   );
 
   // Handle realtime conversation events
@@ -1082,6 +1092,7 @@ function InboxPageInner() {
             pendingMessageCount={pendingInboundCount}
             frozenActivity={frozenListActivity}
             onPendingMessagesCleared={handlePendingInboundCleared}
+            onMissedMessages={addPendingInbound}
           />
         </div>
         )}

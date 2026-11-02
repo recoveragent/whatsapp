@@ -42,14 +42,16 @@ interface ConversationListProps {
   conversations: Conversation[];
   onConversationsLoaded: (conversations: Conversation[]) => void;
   /**
-   * Increment to force the fetch effect below to refire. The parent
-   * bumps this on realtime reconnect / tab visibility → visible so the
-   * list catches up on any events sent while the WS was disconnected
-   * or the tab was throttled. Optional so existing callers keep working.
+   * Bumped by the parent on realtime reconnect / tab visibility → visible.
+   * The list does NOT reload on it: it quietly checks the first page for
+   * inbound messages missed while the WS was down and reports them via
+   * `onMissedMessages`, so they show up in the "N new messages" bar.
    */
   resyncToken?: number;
   /** Inbound messages received since the list was last fetched. */
   pendingMessageCount?: number;
+  /** Called with the count of inbound messages found by a background resync. */
+  onMissedMessages?: (count: number) => void;
   /** Called after every full list fetch so the parent can reset the count. */
   onPendingMessagesCleared?: () => void;
   /**
@@ -96,6 +98,7 @@ export function ConversationList({
   resyncToken = 0,
   pendingMessageCount = 0,
   onPendingMessagesCleared,
+  onMissedMessages,
   frozenActivity = null,
   onConversationCreated,
   onListViewChange,
@@ -142,12 +145,20 @@ export function ConversationList({
 
   const onConversationsLoadedRef = useRef(onConversationsLoaded);
   const onPendingMessagesClearedRef = useRef(onPendingMessagesCleared);
+  const onMissedMessagesRef = useRef(onMissedMessages);
+  const activeConversationIdRef = useRef(activeConversationId);
+  const listViewParamsRef = useRef({ filter, search, sort });
   const conversationsRef = useRef(conversations);
   const moreRequestRef = useRef<AbortController | null>(null);
   const listGenerationRef = useRef(0);
+  /** Unread counts already reported by background resyncs since the last full fetch. */
+  const resyncBaselineRef = useRef<Map<string, number>>(new Map());
   useEffect(() => {
     onConversationsLoadedRef.current = onConversationsLoaded;
     onPendingMessagesClearedRef.current = onPendingMessagesCleared;
+    onMissedMessagesRef.current = onMissedMessages;
+    activeConversationIdRef.current = activeConversationId;
+    listViewParamsRef.current = { filter, search, sort };
   });
   useEffect(() => {
     conversationsRef.current = conversations;
@@ -191,6 +202,7 @@ export function ConversationList({
 
         const loaded = normalizeConversations(body.conversations ?? []);
         conversationsRef.current = loaded;
+        resyncBaselineRef.current.clear();
         onConversationsLoadedRef.current(loaded);
         onPendingMessagesClearedRef.current?.();
         const cursor = loaded.at(-1)?.last_message_at ?? null;
@@ -212,7 +224,58 @@ export function ConversationList({
       controller.abort();
       moreRequestRef.current?.abort();
     };
-  }, [filter, refreshToken, resyncToken, search, sort]);
+  }, [filter, refreshToken, search, sort]);
+
+  // Background resync (tab refocus / WS reconnect): never replace the list —
+  // that reset scroll and flashed a spinner every time the agent came back to
+  // the tab. Only count inbound messages realtime missed so the bar shows them;
+  // the agent loads them by clicking the bar.
+  useEffect(() => {
+    if (resyncToken === 0) return;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const { filter, search, sort } = listViewParamsRef.current;
+        const params = new URLSearchParams({ sort, filter });
+        if (search.trim()) params.set('search', search.trim());
+        const response = await fetch(
+          `/api/inbox/conversations/page?${params}`,
+          { cache: 'no-store', signal: controller.signal }
+        );
+        if (!response.ok || controller.signal.aborted) return;
+        const body = (await response.json()) as {
+          conversations?: Conversation[];
+        };
+        if (controller.signal.aborted) return;
+
+        const known = new Map(
+          conversationsRef.current.map((c) => [c.id, c])
+        );
+        let missed = 0;
+        for (const fetched of normalizeConversations(
+          body.conversations ?? []
+        )) {
+          if (fetched.id === activeConversationIdRef.current) continue;
+          // Counted-but-not-loaded unreads live in the baseline so a second
+          // refocus doesn't count the same messages again.
+          const baseline = Math.max(
+            known.get(fetched.id)?.unread_count ?? 0,
+            resyncBaselineRef.current.get(fetched.id) ?? 0
+          );
+          missed += Math.max(0, fetched.unread_count - baseline);
+          resyncBaselineRef.current.set(
+            fetched.id,
+            Math.max(baseline, fetched.unread_count)
+          );
+        }
+        if (missed > 0) onMissedMessagesRef.current?.(missed);
+      } catch (error) {
+        if (!controller.signal.aborted)
+          console.error('Failed to resync conversations:', error);
+      }
+    })();
+    return () => controller.abort();
+  }, [resyncToken]);
 
   const loadMoreConversations = useCallback(
     async (pageSize = CONVERSATIONS_PER_PAGE) => {
