@@ -3,6 +3,29 @@ import { describe, expect, it } from 'vitest'
 import { enrichCheckoutAppWebhookVars } from './checkout-app-webhook'
 
 describe('enrichCheckoutAppWebhookVars', () => {
+  it('replaces a single-product summary with all mirrored checkout items', () => {
+    const vars = enrichCheckoutAppWebhookVars(
+      { shopify_order: { items: [
+        { name: 'Personalised Wallet', quantity: 1 },
+        { title: 'Acrylic Photo Frame', quantity: 2 },
+      ] } },
+      { order_items: 'Personalised Wallet' },
+    )
+    expect(vars.order_items).toBe('Personalised Wallet, Acrylic Photo Frame × 2')
+  })
+
+  it('reads flattened item arrays and keeps the summary when items are unavailable', () => {
+    const vars = enrichCheckoutAppWebhookVars({}, {
+      order_items: 'Wallet',
+      'shopify_order.items': JSON.stringify([{ name: 'Wallet' }, { name: 'Frame' }]),
+    })
+    expect(vars.order_items).toBe('Wallet, Frame')
+    expect(enrichCheckoutAppWebhookVars({}, { order_items: 'Wallet' }).order_items).toBe('Wallet')
+    expect(enrichCheckoutAppWebhookVars({}, {
+      order_items: 'Wallet', 'shopify_order.items': 'invalid JSON',
+    }).order_items).toBe('Wallet')
+  })
+
   it('fills vars from common checkout-app payload shapes', () => {
     const payload = {
       phone: '+919876543210',

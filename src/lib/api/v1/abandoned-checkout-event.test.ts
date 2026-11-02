@@ -44,6 +44,17 @@ describe('validateRecoverAgentAbandonedCheckoutEvent', () => {
 });
 
 describe('contextFromRecoverAgentEvent', () => {
+  it('uses all raw checkout products instead of the single product summary', () => {
+    const context = contextFromRecoverAgentEvent({
+      product: 'Wallet',
+      raw: { shopify_order: { items: [
+        { name: 'Wallet', quantity: 1 },
+        { name: 'Frame', quantity: 2 },
+      ] } },
+    });
+    expect(context.orderItems).toBe('Wallet, Frame × 2');
+  });
+
   it('maps Recover Agent fields into Shopify-like context', () => {
     const context = contextFromRecoverAgentEvent({
       checkout_id: 'abc123',

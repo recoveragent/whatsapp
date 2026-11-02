@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { badRequest } from '@/lib/api/v1/respond';
 import { resolveOwnerUserId } from '@/lib/api/v1/external-send';
 import { runFlowsForTrigger } from '@/lib/flows/dispatch-external';
-import { enrichCheckoutAppWebhookVars } from '@/lib/flows/checkout-app-webhook';
+import { checkoutAppOrderItems, enrichCheckoutAppWebhookVars } from '@/lib/flows/checkout-app-webhook';
 import {
   deleteConversationIfEmpty,
   ensureConversation,
@@ -101,7 +101,7 @@ export function contextFromRecoverAgentEvent(
       typeof event.amount === 'number' && Number.isFinite(event.amount)
         ? String(event.amount)
         : null,
-    orderItems: event.product?.trim() || null,
+    orderItems: checkoutAppOrderItems(event.raw ?? event, event.flat) ?? (event.product?.trim() || null),
     productImage: null,
     shippingAddress: formatShippingAddress(event),
     shippingAddressFields:

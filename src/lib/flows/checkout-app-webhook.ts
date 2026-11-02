@@ -66,6 +66,8 @@ const CHECKOUT_ID_PATHS = [
 ]
 
 const LINE_ITEM_PATHS = [
+  'shopify_order.items',
+  'shopify_order.line_items',
   'line_items',
   'data.line_items',
   'items',
@@ -161,6 +163,22 @@ function resolveCustomerName(payload: unknown): string | null {
   return null
 }
 
+/** Prefer the complete cart over a provider's single-product summary. */
+export function checkoutAppOrderItems(
+  payload: unknown,
+  vars: Record<string, unknown> = {},
+): string | null {
+  for (const path of LINE_ITEM_PATHS) {
+    let items = extractByPath(payload, path) ?? vars[path];
+    if (typeof items === 'string') {
+      try { items = JSON.parse(items); } catch { continue; }
+    }
+    const summary = formatLineItems(items);
+    if (summary) return summary;
+  }
+  return null;
+}
+
 /** Fill Shopify-like template vars from common checkout-app webhook shapes. */
 export function enrichCheckoutAppWebhookVars(
   payload: unknown,
@@ -208,15 +226,8 @@ export function enrichCheckoutAppWebhookVars(
     }
   }
 
-  if (!next.order_items) {
-    for (const path of LINE_ITEM_PATHS) {
-      const orderItems = formatLineItems(extractByPath(payload, path));
-      if (orderItems) {
-        next.order_items = orderItems;
-        break;
-      }
-    }
-  }
+  const orderItems = checkoutAppOrderItems(payload, next);
+  if (orderItems) next.order_items = orderItems;
 
   if (!next.product_image) {
     // Also check already-flattened vars (e.g. `event.flat` keys like
