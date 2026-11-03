@@ -59,6 +59,8 @@ export interface ProviderResult {
 
 /** Outcome of a generation call. */
 export interface GenerateResult {
+  /** Validated customer answer labels, rendered as WhatsApp reply buttons. */
+  quickReplies?: string[]
   /** The reply text, with any handoff sentinel stripped. */
   text: string
   /** True when the model asked to hand off to a human (auto-reply mode). */

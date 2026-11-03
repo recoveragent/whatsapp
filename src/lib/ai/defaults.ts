@@ -1,4 +1,5 @@
 import type { AiProvider } from './types';
+import { QUICK_REPLIES_INSTRUCTIONS } from './quick-replies';
 
 // ============================================================
 // Tunables + prompt scaffold for the AI reply assistant.
@@ -135,6 +136,7 @@ export function buildSystemPrompt(args: {
   ];
 
   if (mode === 'auto_reply') {
+    parts.push(QUICK_REPLIES_INSTRUCTIONS);
     parts.push(
       'You are replying automatically with no human in the loop. Your job is to resolve the customer’s message yourself whenever the information in this prompt allows it. ' +
         'Answer greetings, questions about what the store sells, and any policy, shipping, payment, product or order question that the business context, store profile, knowledge base or order data below covers — including answers that follow directly from it (for example: if processing plus delivery takes several days, next-day or same-day delivery is not possible; if a product is not in the catalog, say the store does not seem to carry it and suggest the closest thing it does). ' +

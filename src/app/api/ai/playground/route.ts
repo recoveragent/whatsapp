@@ -8,6 +8,7 @@ import {
 import { loadAiConfig } from '@/lib/ai/config';
 import { retrieveKnowledge } from '@/lib/ai/knowledge';
 import { generateReply } from '@/lib/ai/generate';
+import { replyButtonsForMessage } from '@/lib/ai/quick-replies';
 import {
   buildSystemPrompt,
   handoffMessage,
@@ -171,7 +172,7 @@ export async function POST(request: Request) {
       storeProfile,
     });
 
-    const { text, handoff } = await generateReply({
+    const { text, handoff, quickReplies } = await generateReply({
       config,
       systemPrompt,
       messages,
@@ -182,12 +183,18 @@ export async function POST(request: Request) {
         ? buildPlaygroundProductCarousel(recommendedProducts, true)
         : null;
 
+    const reply = handoff
+      ? handoffReplyText(text, config.handoffMessage)
+      : !hasCarouselProducts
+        ? appendRecommendationText(text, recommendedProducts, shopifyConfig)
+        : text;
+
     return NextResponse.json({
-      reply: handoff
-        ? handoffReplyText(text, config.handoffMessage)
-        : !hasCarouselProducts
-          ? appendRecommendationText(text, recommendedProducts, shopifyConfig)
-          : text,
+      reply,
+      quick_replies:
+        handoff || productCarousel
+          ? []
+          : replyButtonsForMessage(reply, quickReplies),
       handoff,
       // What the customer would be sent on handoff in a live chat.
       handoff_message: handoff ? handoffMessage(config.handoffMessage) : null,

@@ -109,6 +109,16 @@ const request = (content: string) =>
   });
 
 describe('playground guided selling', () => {
+  it('returns reply choices for a question in the playground', async () => {
+    h.generate.mockResolvedValueOnce({ text: 'Would you like help choosing a size?', handoff: false, quickReplies: ['Yes, help me', 'Not now'] });
+    const body = await (await POST(request('hi'))).json();
+    expect(body.quick_replies).toEqual(['Yes, help me', 'Not now']);
+  });
+  it('suppresses reply choices on handoff', async () => {
+    h.generate.mockResolvedValueOnce({ text: 'The team can help.', handoff: true, quickReplies: ['Yes', 'No'] });
+    const body = await (await POST(request('hi'))).json();
+    expect(body.quick_replies).toEqual([]);
+  });
   it('shows only the price- and size-compatible product, even with no carousel', async () => {
     const response = await POST(request('Show hoodies under INR 1000 size L'));
     expect(response.status).toBe(200);

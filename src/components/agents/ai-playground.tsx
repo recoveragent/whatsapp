@@ -23,6 +23,7 @@ import {
 import { useAuth } from '@/hooks/use-auth';
 import { createClient } from '@/lib/supabase/client';
 import type { PlaygroundProductCarousel } from '@/lib/ai/playground-carousel';
+import { withQuickReplyContext } from '@/lib/ai/quick-replies';
 import type { Contact } from '@/types';
 
 import { PlaygroundProductCarouselPreview } from './playground-product-carousel';
@@ -36,6 +37,7 @@ interface Turn {
   /** assistant-only: the agent signalled a human handoff on this turn. */
   handoff?: boolean;
   productCarousel?: PlaygroundProductCarousel | null;
+  quickReplies?: string[];
 }
 
 function contactLabel(contact: Contact): string {
@@ -120,8 +122,8 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [turns, sending]);
 
-  const send = async () => {
-    const text = input.trim();
+  const send = async (choice?: string) => {
+    const text = (choice ?? input).trim();
     if (!text || sending) return;
 
     const next: Turn[] = [...turns, { role: 'user', content: text }];
@@ -134,7 +136,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
         headers: { 'Content-Type': 'application/json' },
         // Send only role+content — the server ignores anything else.
         body: JSON.stringify({
-          messages: next.map((t) => ({ role: t.role, content: t.content })),
+          messages: next.map((t) => ({ role: t.role, content: withQuickReplyContext(t.content, t.quickReplies) })),
           ...(contactId ? { contact_id: contactId } : {}),
         }),
       });
@@ -164,6 +166,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
                 : '',
           handoff: Boolean(data.handoff),
           productCarousel: data.product_carousel ?? null,
+          quickReplies: data.quick_replies ?? [],
         },
       ]);
       // Ticks "Replies tested" on the go-live checklist.
@@ -331,6 +334,22 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
               )}
             >
               {t.content && <p className="whitespace-pre-wrap">{t.content}</p>}
+              {t.role === 'assistant' && !t.handoff && !!t.quickReplies?.length && (
+                <div className="mt-2 flex flex-wrap gap-2" aria-label="Reply choices">
+                  {t.quickReplies.map((choice) => (
+                    <Button
+                      key={choice}
+                      variant="outline"
+                      size="sm"
+                      className="h-auto min-h-8 whitespace-normal px-3 py-1.5 text-xs"
+                      disabled={sending || i !== turns.length - 1}
+                      onClick={() => void send(choice)}
+                    >
+                      {choice}
+                    </Button>
+                  ))}
+                </div>
+              )}
               {t.role === 'assistant' && t.productCarousel && (
                 <PlaygroundProductCarouselPreview
                   carousel={t.productCarousel}
@@ -374,7 +393,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
         />
         <Button
           size="sm"
-          onClick={send}
+          onClick={() => void send()}
           disabled={!input.trim() || sending}
           className="h-9 w-9 shrink-0 p-0"
         >

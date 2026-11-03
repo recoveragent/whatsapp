@@ -9,6 +9,7 @@ function fakeDb(rows: unknown[]): SupabaseClient {
     from: () => chain,
     select: () => chain,
     eq: () => chain,
+    in: () => chain,
     order: () => chain,
     limit: () => Promise.resolve({ data: rows, error: null }),
   }
@@ -16,6 +17,18 @@ function fakeDb(rows: unknown[]): SupabaseClient {
 }
 
 describe('buildConversationContext', () => {
+  it('keeps the button question and options before the customer selection', async () => {
+    const out = await buildConversationContext(fakeDb([
+      { sender_type: 'customer', content_text: 'A4' },
+      { sender_type: 'bot', content_text: 'Which size?', interactive_payload: {
+        kind: 'buttons', buttons: [{ id: '1', title: 'A4' }, { id: '2', title: 'A3' }],
+      } },
+    ]), 'conv-1');
+    expect(out).toEqual([
+      { role: 'assistant', content: 'Which size?\nReply choices: A4 | A3' },
+      { role: 'user', content: 'A4' },
+    ]);
+  });
   it('maps sender_type to role and returns chronological order', async () => {
     // DB returns newest-first (created_at DESC); the fn reverses it.
     const rows = [

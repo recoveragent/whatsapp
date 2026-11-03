@@ -9,6 +9,7 @@ import { HANDOFF_SENTINEL, MAX_OUTPUT_TOKENS, aiRequestTimeoutMs } from './defau
 import { generateOpenAi } from './providers/openai'
 import { generateAnthropic } from './providers/anthropic'
 import type { ProviderArgs } from './providers/shared'
+import { parseQuickReplies, replyButtonsForMessage } from './quick-replies'
 
 export interface GenerateArgs {
   config: AiConfig
@@ -72,7 +73,7 @@ function callProvider(
 }
 
 /**
- * Split the raw model output into `{ text, handoff, usage }`. The
+ * Split raw output into reply text, handoff, optional quick replies and usage. The
  * sentinel can appear alone or trailing a partial reply; either way we
  * treat the turn as a handoff and strip the marker from any remaining
  * text. `usage` is passed straight through (null when the provider
@@ -83,6 +84,8 @@ export function parseGeneration(
   usage: AiUsage | null = null,
 ): GenerateResult {
   const handoff = raw.includes(HANDOFF_SENTINEL)
-  const text = raw.split(HANDOFF_SENTINEL).join('').trim()
-  return { text, handoff, usage }
+  const parsed = parseQuickReplies(raw.split(HANDOFF_SENTINEL).join(''))
+  const text = parsed.text
+  const quickReplies = handoff ? [] : replyButtonsForMessage(text, parsed.quickReplies)
+  return { text, handoff, usage, ...(quickReplies.length ? { quickReplies } : {}) }
 }
