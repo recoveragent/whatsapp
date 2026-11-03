@@ -66,6 +66,13 @@ describe('extractProductSearchTerms', () => {
 });
 
 describe('buildProductSearchQuery', () => {
+  it('removes order-request phrasing from product searches', () => {
+    expect(
+      buildProductSearchQuery([
+        { role: 'user', content: 'want to order baby birth frame' },
+      ])
+    ).toBe('baby birth frame');
+  });
   it('searches product keywords without budget/size syntax', () => {
     expect(
       buildProductSearchQuery([
@@ -95,15 +102,39 @@ describe('buildProductSearchQuery', () => {
 });
 
 describe('shouldOfferProductCarousel', () => {
+  it.each([
+    'want to order baby birth frame',
+    'I would like to order a hoodie',
+    'Can I order a sofa?',
+    'How do I order a serum?',
+    'I am ready to place a new order for headphones',
+  ])('starts catalog recommendations for %s', (content) => {
+    expect(shouldOfferProductCarousel([{ role: 'user', content }])).toBe(true);
+  });
+  it('keeps shopping context through a new-order request and size follow-up', () => {
+    const messages: ChatMessage[] = [
+      { role: 'user', content: 'Show hoodies under INR 1500' },
+      { role: 'user', content: 'I want to order a hoodie' },
+      { role: 'assistant', content: 'Which size?' },
+      { role: 'user', content: 'XL' },
+    ];
+    expect(shouldOfferProductCarousel(messages)).toBe(true);
+    expect(buildProductSearchQuery(messages)).toBe('hoodies hoodie');
+  });
   it.each(['but different design', 'other designs', 'show other styles'])(
     'offers product choices after order support when asked for %s',
     (content) => {
-      expect(shouldOfferProductCarousel([
-        { role: 'user', content: 'Where is my order?' },
-        { role: 'assistant', content: 'Your Baby Birth Frame, Design 1 is pending payment.' },
-        { role: 'user', content },
-      ])).toBe(true);
-    },
+      expect(
+        shouldOfferProductCarousel([
+          { role: 'user', content: 'Where is my order?' },
+          {
+            role: 'assistant',
+            content: 'Your Baby Birth Frame, Design 1 is pending payment.',
+          },
+          { role: 'user', content },
+        ])
+      ).toBe(true);
+    }
   );
   it.each([
     'Where is my order?',
@@ -113,6 +144,8 @@ describe('shouldOfferProductCarousel', () => {
     'My gift arrived damaged',
     'What is the shipping policy?',
     'Do you have a size guide?',
+    'I want to order status',
+    'Can I order a refund?',
   ])('stops browsing when the topic changes to %s', (content) => {
     expect(
       shouldOfferProductCarousel([

@@ -8,7 +8,11 @@ import {
 
 import type { ChatMessage } from './types';
 import { latestUserMessage } from './query';
-import { isOrderSupportQuery, isHumanSupportQuery } from './commerce-intent';
+import {
+  isOrderSupportQuery,
+  isHumanSupportQuery,
+  isNewPurchaseQuery,
+} from './commerce-intent';
 import {
   extractProductPreferences,
   productMatchesPreferences,
@@ -56,6 +60,13 @@ const SEARCH_STOP_WORDS = new Set([
   'buy',
   'shop',
   'purchase',
+  'order',
+  'place',
+  'placing',
+  'ready',
+  'plan',
+  'planning',
+  'wish',
   'browse',
   'catalog',
   'catalogue',
@@ -127,7 +138,10 @@ export function isProductRecommendationQuery(text: string): boolean {
   if (!trimmed) return false;
   return (
     PRODUCT_INTENT_PATTERN.test(trimmed) ||
-    /\b(?:different|other|another|alternative|more)\s+(?:\w+\s+)?(?:designs?|styles?|options?|colou?rs?|models?)\b/i.test(trimmed)
+    isNewPurchaseQuery(trimmed) ||
+    /\b(?:different|other|another|alternative|more)\s+(?:\w+\s+)?(?:designs?|styles?|options?|colou?rs?|models?)\b/i.test(
+      trimmed
+    )
   );
 }
 
@@ -309,7 +323,9 @@ export function weightedSearchTerms(terms: string[]): Map<string, number> {
     weighted.set(term, GENERIC_TERMS.has(term) ? 0.25 : 1);
   }
   for (const term of terms) {
-    for (const related of RELATED_TERMS[term] ?? RELATED_TERMS[singular(term)] ?? []) {
+    for (const related of RELATED_TERMS[term] ??
+      RELATED_TERMS[singular(term)] ??
+      []) {
       if (!weighted.has(related)) weighted.set(related, 0.75);
     }
   }
@@ -325,7 +341,10 @@ export function productMatchScore(
   let score = 0;
   for (const [term, weight] of weighted) {
     // Word-start match: "men" hits "Men's Wallet" but not "Women's".
-    const wordStart = new RegExp(`(?:^|[^\\p{L}\\p{N}])${escapeRegExp(term)}`, 'u');
+    const wordStart = new RegExp(
+      `(?:^|[^\\p{L}\\p{N}])${escapeRegExp(term)}`,
+      'u'
+    );
     if (wordStart.test(text)) score += weight;
   }
   return score;
@@ -352,7 +371,12 @@ export async function searchRecommendedProducts(
   if (terms.length === 0) {
     // Open-ended "show me products" with no gift/occasion terms only.
     return carouselReady(
-      await searchShopifyProducts({ db, accountId, limit: 50, inStockOnly: true }),
+      await searchShopifyProducts({
+        db,
+        accountId,
+        limit: 50,
+        inStockOnly: true,
+      }),
       max,
       preferences
     );
@@ -372,7 +396,10 @@ export async function searchRecommendedProducts(
     )
   );
 
-  const byVariant = new Map<number, { product: ShopifyCatalogProduct; score: number }>();
+  const byVariant = new Map<
+    number,
+    { product: ShopifyCatalogProduct; score: number }
+  >();
   batches.forEach((batch, index) => {
     // Rows found by the customer's own words always qualify; rows found
     // only through a related word must actually match it as a word.
