@@ -7,7 +7,7 @@ import {
   SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_DEFAULT,
   SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_MAX,
   SHOPIFY_CHECKOUT_ABANDONMENT_DELAY_MIN,
-} from '@/lib/shopify/abandoned-checkout-delay'
+} from '@/lib/shopify/abandoned-checkout-constants'
 
 /**
  * Flow trigger types — parity with automations where applicable.

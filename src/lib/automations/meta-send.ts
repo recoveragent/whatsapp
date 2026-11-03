@@ -1,6 +1,7 @@
 import { recordApiAcceptance, type ApiDeliveryTiming } from '@/lib/whatsapp/delivery-diagnostics'
 import { withMetaAcceptance } from '@/lib/inbox/delivery-hold'
-import { sendTextMessage, sendTemplateMessage } from '@/lib/whatsapp/meta-api'
+import { sendTextMessage } from '@/lib/whatsapp/meta-api'
+import { sendTemplateMessage } from '@/lib/whatsapp/recoverable-template-send'
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body'
 import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'

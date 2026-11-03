@@ -22,6 +22,7 @@ import { QuickRepliesManager } from '@/components/settings/quick-replies-manager
 import { FieldsAndTagsPanel } from '@/components/settings/fields-and-tags-panel';
 import { InboxFollowupSettings } from '@/components/settings/inbox-followup-settings';
 import { InboxMagicMessageSettings } from '@/components/settings/inbox-magic-message-settings';
+import { SmartRetrySettings } from '@/components/settings/smart-retry-settings';
 import { DealsSettings } from '@/components/settings/deals-settings';
 import { MembersTab } from '@/components/settings/members-tab';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
@@ -95,6 +96,7 @@ function SettingsPageInner() {
     fields: <FieldsAndTagsPanel />,
     inbox: (
       <>
+        <SmartRetrySettings />
         <InboxMagicMessageSettings />
         <InboxFollowupSettings />
       </>

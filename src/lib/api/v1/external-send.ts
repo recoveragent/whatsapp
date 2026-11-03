@@ -20,7 +20,7 @@ import {
   debitWalletForTemplateSend,
   InsufficientWalletBalanceError,
 } from '@/lib/wallet/billing';
-import { sendTemplateMessage } from '@/lib/whatsapp/meta-api';
+import { sendTemplateMessage } from '@/lib/whatsapp/recoverable-template-send';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import {
   contactPhoneAfterSuccessfulSend,

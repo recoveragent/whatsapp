@@ -1,4 +1,5 @@
 import { recordDeliveryStatus } from '@/lib/whatsapp/delivery-diagnostics'
+import { acceptRecovery, handleRecoveryStatus, isRecoveryPayload } from '@/lib/whatsapp/smart-retry'
 import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
@@ -313,6 +314,11 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }, delivery
         for (const status of value.statuses) {
           await recordDeliveryStatus(supabaseAdmin(), value.metadata.phone_number_id, status, deliveryWebhookReceivedAt)
           await handleStatusUpdate(status)
+          try {
+            await handleRecoveryStatus(supabaseAdmin(), value.metadata.phone_number_id, status)
+          } catch (error) {
+            console.error('[smart-retry] status processing failed:', error)
+          }
         }
       }
 
@@ -932,7 +938,16 @@ async function processMessage(
 
   // Run flows before inbox reopen so a template quick-reply path that
   // closes the conversation can suppress the reopen.
-  const flowResult = await dispatchInboundToFlows({
+  const recoveryToken = message.button?.payload ?? message.interactive?.button_reply?.id
+  const recoveryReply = isRecoveryPayload(recoveryToken)
+  if (recoveryReply) {
+    try {
+      await acceptRecovery(supabaseAdmin(), accountId, whatsappConfigId, message.from, recoveryToken!, message.context?.id, conversation.id)
+    } catch (error) {
+      console.error('[smart-retry] acceptance failed:', error)
+    }
+  }
+  const flowResult = recoveryReply ? { consumed: true, suppress_inbox_reopen: false } : await dispatchInboundToFlows({
     accountId,
     userId: configOwnerUserId,
     contactId: contactRecord.id,
@@ -1042,8 +1057,8 @@ async function processMessage(
   // customer message with no prior outbound from us (also catches
   // manually-imported contacts). We dispatch both so users can pick
   // whichever semantic they want.
-  if (contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
-  if (isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
+  if (!recoveryReply && contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
+  if (!recoveryReply && isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
   // Awaited — not fire-and-forget. We're inside the route's `after()`
   // block, which only keeps the function alive for promises it can see, so
   // a detached dispatch can be frozen part-way through: the log row is

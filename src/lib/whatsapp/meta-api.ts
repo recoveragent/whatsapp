@@ -604,12 +604,10 @@ export interface SendTemplateMessageArgs {
  *     The full components array is built from the row so media
  *     headers + URL buttons land correctly.
  */
-export async function sendTemplateMessage(
+export function buildTemplateMessagePayload(
   args: SendTemplateMessageArgs
-): Promise<MetaSendResult> {
+): Record<string, unknown> {
   const {
-    phoneNumberId,
-    accessToken,
     to,
     templateName,
     language = 'en_US',
@@ -618,7 +616,6 @@ export async function sendTemplateMessage(
     messageParams,
     contextMessageId,
   } = args
-  const url = `${META_API_BASE}/${phoneNumberId}/messages`
 
   const templatePayload: Record<string, unknown> = {
     name: templateName,
@@ -662,6 +659,14 @@ export async function sendTemplateMessage(
   if (contextMessageId) {
     body.context = { message_id: contextMessageId }
   }
+
+  return body
+}
+
+export async function sendTemplateMessage(args: SendTemplateMessageArgs): Promise<MetaSendResult> {
+  const { phoneNumberId, accessToken } = args
+  const url = `${META_API_BASE}/${phoneNumberId}/messages`
+  const body = buildTemplateMessagePayload(args)
 
   const startedAt = new Date().toISOString()
   const started = performance.now()
