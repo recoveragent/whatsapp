@@ -12,6 +12,7 @@ export interface ProductPreferences {
   ambiguousCurrency?: boolean;
   size?: string;
   unsupportedSize?: boolean;
+  excludedTerms?: string[];
 }
 
 const ISO_CURRENCIES = new Set(Intl.supportedValuesOf('currency'));
@@ -100,6 +101,20 @@ export function extractProductPreferences(
   const preferences: ProductPreferences = {};
   for (const message of shoppingUserMessages(messages)) {
     const text = message.content;
+    const exclusions = [
+      ...text.matchAll(
+        /\b(?:not|no|without|except)\s+(?:a|an|any|the)?\s*((?:photo\s+)?(?:frames?|wallets?|clocks?|lamps?|mugs?|jewell?ery|rings?))\b/gi
+      ),
+    ];
+    if (exclusions.length)
+      preferences.excludedTerms = [
+        ...new Set([
+          ...(preferences.excludedTerms ?? []),
+          ...exclusions.map((match) =>
+            match[1].toLowerCase().replace(/s$/, '')
+          ),
+        ]),
+      ];
     if (/\b(no budget|any budget|no price limit)\b/i.test(text)) {
       delete preferences.minPrice;
       delete preferences.maxPrice;
@@ -176,6 +191,9 @@ export function extractProductPreferences(
       preferences.currency = text.trim().replace(/[.!]$/, '').toUpperCase();
       preferences.ambiguousCurrency = false;
     }
+    const dimensions = text.match(
+      /\b(?:size\s*)?(\d+(?:\.\d+)?)\s*(?:inch(?:es)?)/i
+    );
     const sizes = [
       ...text.matchAll(
         new RegExp(`\\b(?:size|in)\\s*:?\\s*(${SIZE})\\b(?![.\\d])`, 'gi')
@@ -186,6 +204,9 @@ export function extractProductPreferences(
       .match(new RegExp(`^(${SIZE})[.!]?$`, 'i'));
     if (/\bany size\b/i.test(text)) {
       delete preferences.size;
+      delete preferences.unsupportedSize;
+    } else if (dimensions) {
+      preferences.size = `${dimensions[1]}inches`;
       delete preferences.unsupportedSize;
     } else if (sizes.length) {
       preferences.size = normalizeProductSize(sizes.at(-1)![1]);
@@ -206,6 +227,19 @@ export function productMatchesPreferences(
   product: ShopifyCatalogProduct,
   preferences: ProductPreferences
 ): boolean {
+  const title = `${product.title} ${product.variant_title ?? ''}`.toLowerCase();
+  if (
+    preferences.excludedTerms?.some((term) => {
+      const parts = term.split(/\s+/);
+      return parts.every((part) =>
+        new RegExp(
+          `\\b${part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}s?\\b`,
+          'i'
+        ).test(title)
+      );
+    })
+  )
+    return false;
   if (
     !product.in_stock ||
     preferences.ambiguousCurrency ||
@@ -253,7 +287,15 @@ export function productMatchesPreferences(
       .toLowerCase()
       .split(/\s*[/,|]\s*|\s+-\s+/)
       .map(normalizeProductSize);
-    if (!parts.includes(preferences.size)) return false;
+    if (preferences.size.endsWith('inches')) {
+      const inches = preferences.size.slice(0, -6);
+      if (
+        !new RegExp(`\\b${inches}(?:\\s*(?:inches|inch|in))\\b`, 'i').test(
+          variant
+        )
+      )
+        return false;
+    } else if (!parts.includes(preferences.size)) return false;
   }
   return true;
 }
@@ -264,6 +306,11 @@ export function stripProductPreferenceTerms(
   stripStandaloneBudget = false
 ): string {
   const cleaned = text
+    .replace(
+      /\b(?:not|no|without|except)\s+(?:a|an|any|the)?\s*(?:photo\s+)?(?:frames?|wallets?|clocks?|lamps?|mugs?|rings?)\b/gi,
+      ' '
+    )
+    .replace(/\b(?:size\s*)?\d+(?:\.\d+)?\s*(?:inches|inch)\b/gi, ' ')
     .replace(
       new RegExp(`\\bbetween\\s+${AMOUNT}\\s+(?:and|to)\\s+${AMOUNT}`, 'gi'),
       ' '

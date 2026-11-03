@@ -28,6 +28,7 @@ import {
 import {
   appendRecommendationText,
   loadRecommendationStore,
+  safeProductIntro,
 } from '@/lib/ai/product-delivery';
 import { retrieveShopifyContext } from '@/lib/ai/shopify-context';
 import { buildPlaygroundProductCarousel } from '@/lib/ai/playground-carousel';
@@ -231,10 +232,14 @@ export async function POST(request: Request) {
       /^[a-z0-9-]+$/i.test(collectionResult.collection.handle)
         ? `https://${shopifyConfig!.shopDomain}/collections/${collectionResult.collection.handle}`
         : null;
+    const intro =
+      recommendedProducts.length > 0 && !handoff
+        ? safeProductIntro(generatedText)
+        : generatedText;
     const text =
       collectionUrl && recommendedProducts.length > 0 && !handoff
-        ? `${generatedText}\n\nBrowse the collection: ${collectionUrl}`
-        : generatedText;
+        ? `${intro}\n\nBrowse the collection: ${collectionUrl}`
+        : intro;
 
     const productCarousel =
       !handoff && hasProductCards

@@ -27,7 +27,7 @@ import {
 } from './product-preferences';
 
 const PRODUCT_INTENT_PATTERN =
-  /\b(recommend|suggestion|suggest|show(?:\s+me)?|looking\s+for|browse|catalog|catalogue|products?|collection|buy|shop|purchase|what\s+do\s+you\s+have|do\s+you\s+have|any\s+.+\s+available|new\s+arrivals?|best\s+sellers?|gift|gifts|anniversary|birthday|present|in\s+stock|do\s+you\s+sell)\b/i;
+  /\b(recommend|suggestion|suggest|find|show(?:\s+me)?|looking\s+for|browse|catalog|catalogue|products?|collection|buy|shop|purchase|what\s+do\s+you\s+have|do\s+you\s+have|any\s+.+\s+available|new\s+arrivals?|best\s+sellers?|gift|gifts|anniversary|birthday|present|in\s+stock|do\s+you\s+sell)\b/i;
 
 /** Stripped from catalog search — keep meaningful product/gift terms only. */
 const SEARCH_STOP_WORDS = new Set([
@@ -84,6 +84,9 @@ const SEARCH_STOP_WORDS = new Set([
   'suggest',
   'suggestion',
   'something',
+  'find',
+  'above',
+  'below',
   'options',
   'in',
   'and',
@@ -360,6 +363,35 @@ export function productMatchScore(
   return score;
 }
 
+/** A named product category is a hard relevance constraint. */
+function requestedCategories(query: string): string[] {
+  const categories =
+    query
+      .toLowerCase()
+      .match(
+        /\b(?:clocks?|wallets?|frames?|lamps?|mugs?|clutches|clutch|passport|cubes?|stand(?:y|ies)|rings?|bicycles?)\b/g
+      ) ?? [];
+  return [
+    ...new Set(
+      categories.map((word) =>
+        word === 'clutches' ? 'clutch' : singular(word)
+      )
+    ),
+  ];
+}
+function fitsRequestedCategory(
+  product: ShopifyCatalogProduct,
+  categories: string[]
+): boolean {
+  if (!categories.length) return true;
+  const title = `${product.title} ${product.variant_title ?? ''}`.toLowerCase();
+  return categories.every((category) =>
+    new RegExp(`(?:^|[^\\p{L}\\p{N}])${escapeRegExp(category)}`, 'u').test(
+      title
+    )
+  );
+}
+
 /**
  * Search the synced Shopify catalog for carousel candidates. Searches each
  * conversation term (plus related catalogue words), ranks rows by how many
@@ -378,6 +410,7 @@ export async function searchRecommendedProducts(
 ): Promise<ShopifyCatalogProduct[]> {
   const max = Math.min(Math.max(limit, MIN_CAROUSEL_LIMIT), MAX_CAROUSEL_LIMIT);
   const terms = extractProductSearchTerms(query);
+  const categories = requestedCategories(query);
 
   if (terms.length === 0) {
     // Open-ended "show me products" with no gift/occasion terms only.
@@ -430,9 +463,14 @@ export async function searchRecommendedProducts(
   // that only shares a generic word like "gift" is not a recommendation —
   // better to show nothing and let the agent ask than to show a wedding
   // frame for a 7-year-old.
-  const specific = terms.some((term) => !GENERIC_TERMS.has(singular(term)));
+  const specificTerms = terms.filter((term) => !GENERIC_TERMS.has(singular(term)));
+  const specificWeights = weightedSearchTerms(specificTerms);
   const ranked = [...byVariant.values()]
-    .filter((entry) => !specific || entry.score >= STRONG_MATCH_SCORE)
+    .filter(
+      (entry) =>
+        fitsRequestedCategory(entry.product, categories) &&
+        (specificTerms.length === 0 || productMatchScore(entry.product, specificWeights) >= STRONG_MATCH_SCORE)
+    )
     .sort(
       (a, b) =>
         b.score - a.score || Number(a.product.price) - Number(b.product.price)
@@ -471,7 +509,7 @@ export async function productsFromKnowledgeVariantIds(
   preferences: ProductPreferences = {},
   excluded: ReadonlySet<number> = new Set()
 ): Promise<ShopifyCatalogProduct[]> {
-  const max = Math.min(Math.max(limit, MIN_CAROUSEL_LIMIT), MAX_CAROUSEL_LIMIT);
+  const max = Math.min(Math.max(limit, 1), 20);
   const products = await Promise.all(
     variantIds
       .slice(0, 20)
@@ -581,14 +619,32 @@ export async function resolveRecommendedProducts(
     // Variant links are the merchant's own pick (e.g. Design 1–4 of one
     // frame), so keep each one rather than one card per product.
     // productsFromKnowledgeVariantIds already applies preferences + limit.
-    return productsFromKnowledgeVariantIds(
+    const curated = await productsFromKnowledgeVariantIds(
       db,
       accountId,
       variantIds,
-      max,
-      preferences,
-      excluded
+      20,
+      {},
+      new Set()
     );
+    const terms = extractProductSearchTerms(query);
+    const specificTerms = terms.filter((term) => !GENERIC_TERMS.has(singular(term)));
+    const weighted = weightedSearchTerms(specificTerms.length ? specificTerms : terms);
+    const categories = requestedCategories(query);
+    const relevant = curated.filter(
+      (product) =>
+        fitsRequestedCategory(product, categories) &&
+        (weighted.size === 0 ||
+          productMatchScore(product, weighted) >= STRONG_MATCH_SCORE)
+    );
+    if (relevant.length)
+      return relevant
+        .filter(
+          (product) =>
+            !excluded.has(product.shopify_variant_id) &&
+            productMatchesPreferences(product, preferences)
+        )
+        .slice(0, max);
   }
 
   // Knowledge-base product names are a hint, not a curation: a policy or
@@ -605,13 +661,17 @@ export async function resolveRecommendedProducts(
     ),
     searchRecommendedProducts(db, accountId, query, max, preferences, excluded),
   ]);
-  const weighted = weightedSearchTerms(extractProductSearchTerms(query));
+  const terms = extractProductSearchTerms(query);
+  const specificTerms = terms.filter((term) => !GENERIC_TERMS.has(singular(term)));
+  const weighted = weightedSearchTerms(specificTerms.length ? specificTerms : terms);
   const fittingHints = hinted.filter(
-    (product) => productMatchScore(product, weighted) >= STRONG_MATCH_SCORE
+    (product) =>
+      fitsRequestedCategory(product, requestedCategories(query)) &&
+      productMatchScore(product, weighted) >= STRONG_MATCH_SCORE
   );
 
   return carouselReady(
-    [...fittingHints, ...searched, ...(searched.length === 0 ? hinted : [])],
+    [...fittingHints, ...searched],
     max,
     preferences,
     excluded

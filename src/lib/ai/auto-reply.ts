@@ -40,6 +40,7 @@ import {
   appendRecommendationText,
   canDeliverProductCarousel,
   loadRecommendationStore,
+  safeProductIntro,
 } from './product-delivery';
 import {
   engineSendText,
@@ -254,10 +255,14 @@ export async function dispatchInboundToAiReply(
       /^[a-z0-9-]+$/i.test(collectionResult.collection.handle)
         ? `https://${recommendationStore!.shopDomain}/collections/${collectionResult.collection.handle}`
         : null;
-    const text =
-      collectionUrl && recommendedProducts.length > 0
-        ? `${generated.text}\n\nBrowse the collection: ${collectionUrl}`
+    const intro =
+      recommendedProducts.length > 0 && !handoff
+        ? safeProductIntro(generated.text)
         : generated.text;
+    const text =
+      collectionUrl && recommendedProducts.length > 0 && !handoff
+        ? `${intro}\n\nBrowse the collection: ${collectionUrl}`
+        : intro;
 
     // Record token spend on the account's BYO key. Fire-and-forget so it
     // never adds latency to the customer-facing send: `logAiUsage`

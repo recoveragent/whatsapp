@@ -92,3 +92,17 @@ export function appendRecommendationText(
     ? `${text.slice(0, Math.max(0, 4096 - details.length - 2))}\n\n${details}`
     : text;
 }
+
+/** Avoid sending an intro that contradicts cards or exposes generation instructions. */
+export function safeProductIntro(text: string): string {
+  const cleaned = text.trim();
+  if (
+    !cleaned ||
+    /\b(?:no|not|don['’]t have|do not have|couldn['’]t find|cannot find|can['’]t find|not seeing|don['’]t see|do not see|nothing|unable to find)\b.{0,80}\b(?:additional|more|designs?|options?|products?|items?|match|available|show|find|carry)\b|\b(?:system will|quick replies needed|reply choices|after message trailer)\b/i.test(
+      cleaned
+    )
+  ) {
+    return 'Here are some options you can explore.';
+  }
+  return cleaned;
+}

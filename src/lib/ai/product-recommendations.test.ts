@@ -180,6 +180,7 @@ describe('constraint-aware catalog resolution', () => {
     vi.mocked(searchShopifyProducts).mockResolvedValue([
       ...Array.from({ length: 4 }, (_, i) => ({
         ...SAMPLE_PRODUCT,
+        title: 'Hoodie',
         shopify_variant_id: 100 + i,
         price: '2000',
       })),
@@ -205,6 +206,7 @@ describe('constraint-aware catalog resolution', () => {
     vi.mocked(getShopifyCatalogProduct).mockImplementation(
       async ({ shopifyVariantId }) => ({
         ...SAMPLE_PRODUCT,
+        title: 'Hoodie',
         shopify_variant_id: Number(shopifyVariantId),
         price: Number(shopifyVariantId) === 101 ? '2000' : '500',
       })
@@ -224,6 +226,7 @@ describe('constraint-aware catalog resolution', () => {
     vi.mocked(getShopifyCatalogProduct).mockImplementation(
       async ({ shopifyVariantId }) => ({
         ...SAMPLE_PRODUCT,
+        title: 'Baby Birth Frame',
         shopify_variant_id: Number(shopifyVariantId),
       })
     );
@@ -243,7 +246,10 @@ describe('constraint-aware catalog resolution', () => {
     ]);
   });
   it('does not substitute an unrelated catalog item when curated choices fail constraints', async () => {
-    vi.mocked(getShopifyCatalogProduct).mockResolvedValue(SAMPLE_PRODUCT);
+    vi.mocked(getShopifyCatalogProduct).mockResolvedValue({
+      ...SAMPLE_PRODUCT,
+      title: 'Hoodie',
+    });
     const result = await resolveRecommendedProducts(
       {} as never,
       'acct-1',
@@ -346,5 +352,60 @@ describe('ranked catalog search', () => {
     expect(
       productMatchScore(row(2, 21, "Customized Men's Wallet"), weighted)
     ).toBe(0.75);
+  });
+});
+
+describe('observed storefront regressions', () => {
+  const product = (
+    id: number,
+    title: string,
+    variant: string | null = null
+  ): ShopifyCatalogProduct => ({
+    ...SAMPLE_PRODUCT,
+    id: String(id),
+    shopify_product_id: id,
+    shopify_variant_id: id,
+    title,
+    variant_title: variant,
+  });
+  it.each([
+    'I want a 3D crystal photo cube',
+    'I want a customized passport cover',
+    'Find something above ₹1500',
+  ])('recognizes a purchase request: %s', (message) => {
+    expect(
+      shouldOfferProductCarousel([{ role: 'user', content: message }])
+    ).toBe(true);
+  });
+  it('does not let unrelated pinned frames override a mug search', async () => {
+    const baby = product(11, 'Personalized Baby Birth Frame');
+    const mug = product(22, 'Personalised Magic Mug');
+    vi.mocked(getShopifyCatalogProduct).mockResolvedValue(baby);
+    vi.mocked(searchShopifyProducts).mockImplementation(async ({ query }) =>
+      mug.title.toLowerCase().includes(String(query)) ? [mug] : []
+    );
+    const found = await resolveRecommendedProducts(
+      {} as never,
+      'acct',
+      'personalized mug',
+      ['https://example.com/products/frame?variant=11']
+    );
+    expect(found.map((p) => p.title)).toEqual(['Personalised Magic Mug']);
+  });
+  it('does not add a wallet or wall frame when clocks are requested', async () => {
+    const catalog = [
+      product(1, 'Photo Wall clock'),
+      product(2, 'Wall photo frame'),
+      product(3, 'Money Clip Wallet'),
+    ];
+    vi.mocked(searchShopifyProducts).mockImplementation(async ({ query }) =>
+      catalog.filter((p) => p.title.toLowerCase().includes(String(query)))
+    );
+    const found = await resolveRecommendedProducts(
+      {} as never,
+      'acct',
+      'photo wall clocks'
+    );
+    expect(found.map((p) => p.title)).toEqual(['Photo Wall clock']);
   });
 });

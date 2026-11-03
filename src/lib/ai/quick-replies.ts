@@ -34,6 +34,11 @@ export function parseQuickReplies(raw: string): {
   text: string;
   quickReplies: string[];
 } {
+  // Discard malformed metadata and obvious model drafting after a bracket marker.
+  const malformed = raw.search(
+    /\[\[(?!QUICK_REPLIES\]\]|HANDOFF\]\])[^\]]{0,40}\]\]/
+  );
+  if (malformed >= 0) raw = raw.slice(0, malformed);
   const index = raw.indexOf(QUICK_REPLIES_MARKER);
   if (index < 0) return { text: raw.trim(), quickReplies: [] };
   const text = raw.slice(0, index).trim();

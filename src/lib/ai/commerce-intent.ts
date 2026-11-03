@@ -14,6 +14,12 @@ export function isNewPurchaseQuery(text: string): boolean {
     /\b(?:where|when)\b.*\b(?:order|arrive|delivery)\b/i.test(text)
   )
     return false;
+  if (
+    /\b(?:i|we)\s+(?:want|need|would like|am looking for|are looking for)\s+(?:a|an|some|the)\s+\w+/i.test(
+      text
+    )
+  )
+    return true;
   return /\b(?:want|need|like|ready|plan|planning|wish)\s+(?:to\s+)?order\b|\b(?:can|could|may)\s+(?:i|we)\s+order\b|\bhow\s+(?:(?:can|do)\s+(?:i|we)\s+|to\s+)order\b|\b(?:place|placing)\s+(?:(?:a|an|another|new)\s+){0,2}order\b|^\s*(?:please\s+)?order\s+(?:a|an|some)\b/i.test(
     text
   );
