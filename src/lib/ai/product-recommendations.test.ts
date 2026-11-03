@@ -95,6 +95,16 @@ describe('buildProductSearchQuery', () => {
 });
 
 describe('shouldOfferProductCarousel', () => {
+  it.each(['but different design', 'other designs', 'show other styles'])(
+    'offers product choices after order support when asked for %s',
+    (content) => {
+      expect(shouldOfferProductCarousel([
+        { role: 'user', content: 'Where is my order?' },
+        { role: 'assistant', content: 'Your Baby Birth Frame, Design 1 is pending payment.' },
+        { role: 'user', content },
+      ])).toBe(true);
+    },
+  );
   it.each([
     'Where is my order?',
     'Cancel my order',

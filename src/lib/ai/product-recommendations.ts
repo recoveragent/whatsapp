@@ -125,7 +125,10 @@ export function aiProductCarouselLimit(): number {
 export function isProductRecommendationQuery(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
-  return PRODUCT_INTENT_PATTERN.test(trimmed);
+  return (
+    PRODUCT_INTENT_PATTERN.test(trimmed) ||
+    /\b(?:different|other|another|alternative|more)\s+(?:\w+\s+)?(?:designs?|styles?|options?|colou?rs?|models?)\b/i.test(trimmed)
+  );
 }
 
 /** Meaningful tokens for catalog title search (stop words removed). */
