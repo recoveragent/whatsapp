@@ -294,6 +294,45 @@ describe('independent Next step and no-response timeout', () => {
     expect(h.sends).toEqual([]);
   });
 
+  describe('off-script text on a template prompt', () => {
+    function waitingOnTemplate(promptStatus: string) {
+      h.tables.flows = [{ ...flow, fallback_policy: { on_unknown_reply: 'reprompt', max_reprompts: 2, on_exhaust: 'handoff' } }];
+      h.tables.messages = [{ id: 'prompt', status: promptStatus, message_id: 'wamid.prompt' }];
+      h.tables.flow_runs = [{ id: 'run', account_id: 'account', flow_id: flow.id, user_id: 'user', contact_id: 'contact', conversation_id: 'conversation', current_node_key: 'confirmation', status: 'active', vars: {}, reprompt_count: 0, last_prompt_message_id: 'prompt' }];
+    }
+    const hi = { kind: 'text', text: 'Hi', meta_message_id: 'hi' } as const;
+
+    it('passes the message on and keeps waiting for a button tap', async () => {
+      waitingOnTemplate('delivered');
+      const result = await reply(hi);
+      expect(result.consumed).toBe(false);
+      expect(h.tables.flow_runs[0]).toMatchObject({ status: 'active', reprompt_count: 0 });
+      expect(h.sends).toEqual([]);
+    });
+
+    it('ends the run when the template never reached the customer', async () => {
+      waitingOnTemplate('failed');
+      const result = await reply(hi);
+      expect(result.consumed).toBe(false);
+      expect(h.tables.flow_runs[0]).toMatchObject({ status: 'failed', end_reason: 'prompt_undelivered' });
+    });
+
+    it('keeps the run while Smart Retry may still deliver the template', async () => {
+      waitingOnTemplate('failed');
+      h.tables.smart_retry_messages = [{ id: 'retry', original_message_id: 'wamid.prompt', status: 'awaiting_acceptance' }];
+      const result = await reply(hi);
+      expect(result.consumed).toBe(false);
+      expect(h.tables.flow_runs[0].status).toBe('active');
+    });
+
+    it('still advances on a button tap', async () => {
+      waitingOnTemplate('delivered');
+      const result = await reply({ kind: 'interactive_reply', reply_id: 'yes', reply_title: 'Yes', meta_message_id: 'tap' });
+      expect(result.consumed).toBe(true);
+      expect(h.sends).toContain('Thanks');
+    });
+  });
+
   it('supports timeout on a template with no quick-reply buttons', async () => {
     const config = h.tables.flow_nodes[0].config as Row;
     delete config.buttons;

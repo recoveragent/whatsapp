@@ -715,6 +715,40 @@ function varsFor(run: FlowRunRow): Record<string, unknown> {
   return { ...(contactVarsByRun.get(run) ?? {}), ...(run.vars ?? {}) };
 }
 
+/** Smart Retry statuses where the failed prompt may still reach the customer. */
+const LIVE_RECOVERY_STATUSES = [
+  "prompting",
+  "awaiting_acceptance",
+  "retrying",
+  "resent",
+  "delivered",
+];
+
+/**
+ * True when the run's waiting prompt failed at Meta and no Smart Retry
+ * recovery is in flight to re-deliver it.
+ */
+async function promptWasUndelivered(
+  db: AdminClient,
+  run: FlowRunRow,
+): Promise<boolean> {
+  if (!run.last_prompt_message_id) return false;
+  const { data: prompt } = await db
+    .from("messages")
+    .select("status, message_id")
+    .eq("id", run.last_prompt_message_id)
+    .maybeSingle();
+  if (prompt?.status !== "failed") return false;
+  if (!prompt.message_id) return true;
+  const { data: recovery } = await db
+    .from("smart_retry_messages")
+    .select("id")
+    .eq("original_message_id", prompt.message_id)
+    .in("status", LIVE_RECOVERY_STATUSES)
+    .limit(1);
+  return !recovery?.length;
+}
+
 async function endRun(
   db: AdminClient,
   runId: string,
@@ -1112,6 +1146,8 @@ async function advanceFromNodeKey(
         branch === "true" ? cfg.true_next : cfg.false_next;
       await logEvent(db, run.id, "node_entered", node.node_key, {
         condition_result: branch,
+        condition_match: cfg.rules ? (cfg.match ?? "all") : undefined,
+        condition_rule_count: cfg.rules?.length ?? 1,
         condition_checks: evaluator.traces,
         advancing_to: currentKey,
       });
@@ -1883,10 +1919,37 @@ async function handleReplyForActiveRun(
     };
   }
 
+  // The customer can't be answering a prompt Meta never delivered (e.g.
+  // 131049). End the run so it stops capturing their messages, and let the
+  // AI / automations respond instead.
+  if (await promptWasUndelivered(db, run)) {
+    await logEvent(db, run.id, "fallback_fired", run.current_node_key, {
+      action: "release",
+      reason: "prompt_undelivered",
+    });
+    await endRun(db, run.id, "failed", "prompt_undelivered");
+    return { consumed: false, flow_run_id: run.id, outcome: "no_match" };
+  }
+
   // No match → fallback. Apply the policy.
   const policy = resolveFallbackPolicy(
     (await loadFlow(db, run.flow_id))?.fallback_policy,
   );
+
+  // A template can't be re-sent as a reprompt (it's a paid, possibly
+  // throttled send), so "reprompt" on one would silently swallow the
+  // message. Leave the run waiting for a button tap and pass it on.
+  if (
+    currentNode.node_type === "send_template" &&
+    policy.on_unknown_reply === "reprompt"
+  ) {
+    await logEvent(db, run.id, "fallback_fired", run.current_node_key, {
+      action: "ignore",
+      reason: "template_not_repromptable",
+    });
+    return { consumed: false, flow_run_id: run.id, outcome: "no_match" };
+  }
+
   const newReprompts = run.reprompt_count + 1;
   await db
     .from("flow_runs")
