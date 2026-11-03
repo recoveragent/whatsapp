@@ -41,6 +41,7 @@ import {
   engineSendInteractiveButtons,
 } from '@/lib/flows/meta-send';
 import { replyButtonsForMessage } from './quick-replies';
+import { formatReplyGuidance, loadReplyGuidance } from './reply-guidance';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 interface DispatchArgs {
@@ -124,8 +125,13 @@ export async function dispatchInboundToAiReply(
     const productSearchQuery = buildProductSearchQuery(messages);
     const productPreferences = extractProductPreferences(messages);
 
-    const [knowledge, shopifyContext, recommendationStore, storeProfile] =
-      await Promise.all([
+    const [
+      knowledge,
+      shopifyContext,
+      recommendationStore,
+      storeProfile,
+      replyGuidance,
+    ] = await Promise.all([
         retrieveKnowledge(db, accountId, config, latestQuestion),
         retrieveShopifyContext(db, accountId, contactId, {
           refresh: shouldRefreshShopifyOrders(messages),
@@ -134,6 +140,7 @@ export async function dispatchInboundToAiReply(
           ? loadRecommendationStore(db, accountId)
           : Promise.resolve(null),
         loadStoreProfile(db, accountId),
+        loadReplyGuidance(db, accountId, latestQuestion),
       ]);
 
     const recommendedProducts =
@@ -171,6 +178,7 @@ export async function dispatchInboundToAiReply(
         wantsProductCarousel && recommendedProducts.length === 0,
       storeProfile,
       flowGoal: conv.ai_flow_goal,
+      replyGuidance: formatReplyGuidance(replyGuidance),
     });
 
     let generated: Awaited<ReturnType<typeof generateReply>>;

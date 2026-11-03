@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { CornerUpLeft, Copy, SmilePlus } from "lucide-react";
+import { CornerUpLeft, Copy, GraduationCap, SmilePlus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -20,6 +20,8 @@ interface MessageActionsProps {
   message: Message;
   onReply: () => void;
   onReact: (emoji: string) => void;
+  /** Opens the "train this reply" dialog; shown only on AI replies. */
+  onTrain?: () => void;
   children: ReactNode;
   /** Brief visual pulse after jumping here from a reply quote. */
   highlighted?: boolean;
@@ -34,6 +36,7 @@ export function MessageActions({
   message,
   onReply,
   onReact,
+  onTrain,
   children,
   highlighted = false,
 }: MessageActionsProps) {
@@ -151,6 +154,21 @@ export function MessageActions({
         >
           <Copy className="h-3.5 w-3.5" />
         </button>
+        {onTrain && message.ai_generated && (
+          <button
+            type="button"
+            onClick={() => {
+              onTrain();
+              setTouchOpen(false);
+            }}
+            className="flex h-5 items-center gap-1 rounded-full px-1.5 text-[11px] font-medium text-primary hover:bg-muted"
+            aria-label="Train this reply"
+            title="Train the AI agent on this reply"
+          >
+            <GraduationCap className="h-3.5 w-3.5" />
+            Train
+          </button>
+        )}
       </div>
       </div>
     </div>

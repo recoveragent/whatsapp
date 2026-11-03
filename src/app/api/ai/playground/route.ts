@@ -15,6 +15,10 @@ import {
   handoffReplyText,
 } from '@/lib/ai/defaults';
 import { loadStoreProfile } from '@/lib/ai/store-profile';
+import {
+  formatReplyGuidance,
+  loadReplyGuidance,
+} from '@/lib/ai/reply-guidance';
 import { knowledgeSearchText } from '@/lib/ai/knowledge-query';
 import { shouldRefreshShopifyOrders } from '@/lib/ai/commerce-intent';
 import {
@@ -123,7 +127,7 @@ export async function POST(request: Request) {
     const productSearchQuery = buildProductSearchQuery(messages);
     const productPreferences = extractProductPreferences(messages);
 
-    const [knowledge, shopifyContext, shopifyConfig, storeProfile] = await Promise.all([
+    const [knowledge, shopifyContext, shopifyConfig, storeProfile, replyGuidance] = await Promise.all([
       retrieveKnowledge(supabase, accountId, config, latestQuestion),
       contactId
         ? retrieveShopifyContext(supabase, accountId, contactId, {
@@ -134,6 +138,7 @@ export async function POST(request: Request) {
         ? loadRecommendationStore(supabase, accountId)
         : Promise.resolve(null),
       loadStoreProfile(supabase, accountId),
+      loadReplyGuidance(supabase, accountId, latestQuestion),
     ]);
 
     const recommendedProducts =
@@ -170,6 +175,7 @@ export async function POST(request: Request) {
       productBrowseNoMatches:
         wantsProductCarousel && recommendedProducts.length === 0,
       storeProfile,
+      replyGuidance: formatReplyGuidance(replyGuidance),
     });
 
     const { text, handoff, quickReplies } = await generateReply({

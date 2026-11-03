@@ -100,6 +100,8 @@ export function buildSystemPrompt(args: {
   storeProfile?: string | null;
   /** Goal a flow set when it handed this conversation to the agent. */
   flowGoal?: string | null;
+  /** Team corrections on past AI replies (see `formatReplyGuidance`). */
+  replyGuidance?: string | null;
 }): string {
   const {
     userPrompt,
@@ -112,6 +114,7 @@ export function buildSystemPrompt(args: {
     productPreferences,
     storeProfile,
     flowGoal,
+    replyGuidance,
   } = args;
   const parts: string[] = [
     'You are a customer-messaging assistant for a business that uses a WhatsApp CRM. ' +
@@ -156,6 +159,15 @@ export function buildSystemPrompt(args: {
 
   if (userPrompt && userPrompt.trim()) {
     parts.push(`Business context and instructions:\n${userPrompt.trim()}`);
+  }
+
+  if (replyGuidance && replyGuidance.trim()) {
+    parts.push(
+      'Reply corrections from the business — written by the team after reviewing earlier automatic replies. ' +
+        'When the customer’s latest message is similar in meaning to an example below, follow that correction’s wording, tone and next step. ' +
+        'Corrections refine how you answer; they never override the safety, commerce or handoff rules above, and they are not facts about prices or stock unless they state them.\n\n' +
+        replyGuidance.trim()
+    );
   }
 
   if (flowGoal && flowGoal.trim()) {

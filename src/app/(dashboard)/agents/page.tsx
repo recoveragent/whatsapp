@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bot, Sparkles, Settings2, BarChart3 } from 'lucide-react';
+import {
+  Bot,
+  Sparkles,
+  Settings2,
+  BarChart3,
+  GraduationCap,
+} from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AiPlayground } from '@/components/agents/ai-playground';
@@ -13,8 +19,9 @@ import { canEditSettings } from '@/lib/auth/roles';
 import { AgentOnboarding } from '@/components/agents/agent-onboarding';
 import { AgentTraining } from '@/components/agents/agent-training';
 import { AgentReadiness } from '@/components/agents/agent-readiness';
+import { AgentReplyGuidance } from '@/components/agents/agent-reply-guidance';
 
-type Tab = 'playground' | 'train' | 'setup' | 'usage';
+type Tab = 'playground' | 'train' | 'corrections' | 'setup' | 'usage';
 
 export default function AgentsPage() {
   const router = useRouter();
@@ -107,6 +114,9 @@ export default function AgentsPage() {
               <TabsTrigger value="train">
                 <Bot className="mr-1.5 h-4 w-4" /> Train Agent
               </TabsTrigger>
+              <TabsTrigger value="corrections">
+                <GraduationCap className="mr-1.5 h-4 w-4" /> Reply Corrections
+              </TabsTrigger>
               <TabsTrigger value="playground">
                 <Sparkles className="mr-1.5 h-4 w-4" /> Playground
               </TabsTrigger>
@@ -122,6 +132,10 @@ export default function AgentsPage() {
 
             <TabsContent value="train" className="mt-4">
               <AgentTraining key={accountId} canEdit={canViewUsage} />
+            </TabsContent>
+
+            <TabsContent value="corrections" className="mt-4">
+              <AgentReplyGuidance key={accountId} canEdit={canViewUsage} />
             </TabsContent>
 
             <TabsContent value="playground" className="mt-4">

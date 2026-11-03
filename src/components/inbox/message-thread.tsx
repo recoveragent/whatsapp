@@ -71,6 +71,8 @@ import {
 } from '@/components/catalog/product-picker';
 import { PrivateNoteBubble } from './private-note-bubble';
 import { AiThreadBanner } from './ai-thread-banner';
+import { TrainReplyDialog } from './train-reply-dialog';
+import { canEditSettings } from '@/lib/auth/roles';
 import { buildReplyPreview } from './reply-quote';
 import {
   buildTemplateMessageSnapshot,
@@ -239,7 +241,8 @@ export function MessageThread({
   // Desktop lifts the conversation header into the shell's top bar.
   const headerInTopBar = useTopBarSlotActive('center');
 
-  const { user, accountId, isShopifyBrand } = useAuth();
+  const { user, accountId, isShopifyBrand, accountRole, isAiAgentsEnabled } =
+    useAuth();
   const { getPresence, getRow, now } = usePresence();
   const [directSendAvailability, setDirectSendAvailability] = useState<{ key: string; status: DirectSendStatus } | null>(null);
   const directSendConversationId = conversation?.id;
@@ -1211,6 +1214,20 @@ export function MessageThread({
     return map;
   }, [messages]);
 
+  // "Train this reply" on AI messages — admins only, matching the API.
+  const canTrainAi =
+    isAiAgentsEnabled && !!accountRole && canEditSettings(accountRole);
+  const [trainTarget, setTrainTarget] = useState<Message | null>(null);
+  const trainCustomerMessage = useMemo(() => {
+    if (!trainTarget) return null;
+    const at = messages.findIndex((m) => m.id === trainTarget.id);
+    for (let i = at - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.sender_type === 'customer' && m.content_text) return m.content_text;
+    }
+    return null;
+  }, [trainTarget, messages]);
+
   // Images + videos in the thread, in order — the set the media viewer
   // pages through with ← / →.
   const mediaGallery = useMemo(
@@ -1746,6 +1763,11 @@ export function MessageThread({
                         onReact={(emoji) => {
                           if (emoji) void postReaction(msg.id, emoji);
                         }}
+                        onTrain={
+                          canTrainAi && msg.ai_generated
+                            ? () => setTrainTarget(msg)
+                            : undefined
+                        }
                       >
                         <MessageBubble
                           message={msg}
@@ -1848,6 +1870,16 @@ export function MessageThread({
         onOpenChange={setProductModalOpen}
         onSelect={(product) => void handleSendProduct(product)}
       />
+
+      {canTrainAi && (
+        <TrainReplyDialog
+          message={trainTarget}
+          customerMessage={trainCustomerMessage}
+          onOpenChange={(open) => {
+            if (!open) setTrainTarget(null);
+          }}
+        />
+      )}
 
       {/* Mobile contact details — desktop uses the permanent sidebar. */}
       <Sheet open={contactSheetOpen} onOpenChange={setContactSheetOpen}>
