@@ -454,7 +454,7 @@ function ConditionChecks({ payload }: { payload: Record<string, unknown> }) {
                   {check.missing ? (
                     <span className="text-amber-400">no value</span>
                   ) : typeof check.actual === "string" ? (
-                    <span className="text-foreground">"{check.actual}"</span>
+                    <span className="text-foreground">&quot;{check.actual}&quot;</span>
                   ) : (
                     <span className="opacity-70">not recorded</span>
                   )}
