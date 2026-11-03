@@ -1,5 +1,6 @@
 import type { ShopifyCatalogProduct } from '@/lib/shopify/product-store';
 import { formatShopifyProductPrice } from '@/lib/shopify/send-product-card';
+import { DEFAULT_PRODUCT_BUTTON_LABELS } from '@/lib/shopify/product-checkout-url';
 
 export interface PlaygroundCarouselProduct {
   title: string;
@@ -23,7 +24,8 @@ export function buildPlaygroundProductCarousel(
   liveReady: boolean,
 ): PlaygroundProductCarousel {
   return {
-    button_label: 'Buy now',
+    // Matches the live AI carousel, which links to the product page.
+    button_label: DEFAULT_PRODUCT_BUTTON_LABELS.product_page,
     live_ready: liveReady,
     products: products.map((product) => ({
       title: product.title,
