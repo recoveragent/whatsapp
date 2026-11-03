@@ -46,7 +46,13 @@ function contactLabel(contact: Contact): string {
   return contact.phone;
 }
 
-export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
+export function AiPlayground({
+  onGoToSetup,
+  onTested,
+}: {
+  onGoToSetup?: () => void;
+  onTested?: () => void;
+}) {
   const { isShopifyBrand, accountId } = useAuth();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
@@ -136,7 +142,10 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
         headers: { 'Content-Type': 'application/json' },
         // Send only role+content — the server ignores anything else.
         body: JSON.stringify({
-          messages: next.map((t) => ({ role: t.role, content: withQuickReplyContext(t.content, t.quickReplies) })),
+          messages: next.map((t) => ({
+            role: t.role,
+            content: withQuickReplyContext(t.content, t.quickReplies),
+          })),
           ...(contactId ? { contact_id: contactId } : {}),
         }),
       });
@@ -172,6 +181,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
       // Ticks "Replies tested" on the go-live checklist.
       try {
         localStorage.setItem(playgroundTestedKey(accountId), '1');
+        onTested?.();
       } catch {
         // Storage blocked — the checklist just keeps the step open.
       }
@@ -192,7 +202,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
   };
 
   return (
-    <div className="border-border bg-card flex h-[60vh] min-h-[420px] flex-col rounded-xl border">
+    <div className="border-border bg-card mx-auto flex h-[70vh] min-h-[420px] w-full max-w-[380px] flex-col overflow-hidden rounded-2xl border shadow-sm">
       {/* Header */}
       <div className="border-border space-y-2 border-b px-4 py-3">
         <div className="flex items-center justify-between gap-3">
@@ -200,9 +210,6 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
             <Bot className="text-primary h-4 w-4 shrink-0" />
             <span className="text-foreground text-sm font-medium">
               Playground
-            </span>
-            <span className="text-muted-foreground hidden text-xs sm:inline">
-              — test replies as if you were a customer
             </span>
           </div>
           <Button
@@ -263,7 +270,10 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
       </div>
 
       {/* Transcript */}
-      <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto p-4">
+      <div
+        ref={scrollRef}
+        className="dark:bg-muted/30 flex-1 space-y-4 overflow-y-auto bg-[#efeae2] p-4"
+      >
         {turns.length === 0 && (
           <div className="text-muted-foreground flex h-full flex-col items-center justify-center text-center text-sm">
             <Bot className="text-muted-foreground/60 mb-2 h-8 w-8" />
@@ -327,29 +337,34 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
             <div
               className={cn(
                 t.productCarousel ? 'max-w-[92%]' : 'max-w-[80%]',
-                'rounded-2xl px-3.5 py-2 text-sm',
+                'min-w-0 rounded-2xl px-3.5 py-2 text-sm [overflow-wrap:anywhere] break-words',
                 t.role === 'user'
                   ? 'bg-primary text-primary-foreground rounded-br-sm'
                   : 'bg-muted text-foreground rounded-bl-sm'
               )}
             >
               {t.content && <p className="whitespace-pre-wrap">{t.content}</p>}
-              {t.role === 'assistant' && !t.handoff && !!t.quickReplies?.length && (
-                <div className="mt-2 flex flex-wrap gap-2" aria-label="Reply choices">
-                  {t.quickReplies.map((choice) => (
-                    <Button
-                      key={choice}
-                      variant="outline"
-                      size="sm"
-                      className="h-auto min-h-8 whitespace-normal px-3 py-1.5 text-xs"
-                      disabled={sending || i !== turns.length - 1}
-                      onClick={() => void send(choice)}
-                    >
-                      {choice}
-                    </Button>
-                  ))}
-                </div>
-              )}
+              {t.role === 'assistant' &&
+                !t.handoff &&
+                !!t.quickReplies?.length && (
+                  <div
+                    className="mt-2 flex flex-wrap gap-2"
+                    aria-label="Reply choices"
+                  >
+                    {t.quickReplies.map((choice) => (
+                      <Button
+                        key={choice}
+                        variant="outline"
+                        size="sm"
+                        className="h-auto min-h-8 px-3 py-1.5 text-xs whitespace-normal"
+                        disabled={sending || i !== turns.length - 1}
+                        onClick={() => void send(choice)}
+                      >
+                        {choice}
+                      </Button>
+                    ))}
+                  </div>
+                )}
               {t.role === 'assistant' && t.productCarousel && (
                 <PlaygroundProductCarouselPreview
                   carousel={t.productCarousel}

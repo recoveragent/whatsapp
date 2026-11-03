@@ -87,6 +87,7 @@ export function AgentReadiness({
 
   const live = isAgentLive(checks);
   const done = checks.filter((c) => c.done).length;
+  if (done === checks.length) return null;
 
   return (
     <section className="border-border bg-card mt-6 rounded-2xl border p-5">
@@ -109,12 +110,17 @@ export function AgentReadiness({
           </h2>
           <p className="text-muted-foreground mt-0.5 text-xs">
             {done} of {checks.length} done
-            {live && done < checks.length ? ' · optional steps improve answers' : ''}
+            {live && done < checks.length
+              ? ' · optional steps improve answers'
+              : ''}
           </p>
         </div>
         <div className="bg-muted h-1.5 w-40 overflow-hidden rounded-full">
           <div
-            className={cn('h-full rounded-full', live ? 'bg-emerald-500' : 'bg-primary')}
+            className={cn(
+              'h-full rounded-full',
+              live ? 'bg-emerald-500' : 'bg-primary'
+            )}
             style={{ width: `${Math.round((done / checks.length) * 100)}%` }}
           />
         </div>
@@ -147,9 +153,13 @@ export function AgentReadiness({
                   </span>
                 )}
               </p>
-              <p className="text-muted-foreground mt-0.5 text-xs">{check.detail}</p>
+              <p className="text-muted-foreground mt-0.5 text-xs">
+                {check.detail}
+              </p>
             </div>
-            {!check.done && <CheckAction check={check} onNavigate={onNavigate} />}
+            {!check.done && (
+              <CheckAction check={check} onNavigate={onNavigate} />
+            )}
           </li>
         ))}
       </ul>
@@ -184,7 +194,9 @@ function CheckAction({
       size="sm"
       variant="ghost"
       className="shrink-0"
-      onClick={() => onNavigate(check.action as 'train' | 'setup' | 'playground')}
+      onClick={() =>
+        onNavigate(check.action as 'train' | 'setup' | 'playground')
+      }
     >
       Open <ArrowRight className="ml-1 h-3.5 w-3.5" />
     </Button>
