@@ -267,6 +267,7 @@ export async function dispatchInboundToAiReply(
           shopifyVariantIds: recommendedProducts.map(
             (product) => product.shopify_variant_id
           ),
+          linkTarget: 'product_page',
           skipAssigneeCheck: true,
           aiGenerated: true,
         });

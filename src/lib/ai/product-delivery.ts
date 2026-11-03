@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ShopifyCatalogProduct } from '@/lib/shopify/product-store';
-import { buildShopifyCartCheckoutUrl } from '@/lib/shopify/product-checkout-url';
+import { buildProductCardUrl } from '@/lib/shopify/product-checkout-url';
 
 export interface RecommendationStore {
   shopDomain: string;
@@ -65,9 +65,13 @@ export function buildRecommendationText(
           ? ` (${product.variant_title.replace(/[\r\n]+/g, ' ').slice(0, 80)})`
           : '';
       const price = `${product.currency ?? ''} ${product.price}`.trim();
-      const url = buildShopifyCartCheckoutUrl({
+      // Personalised products collect photos and names on the product page,
+      // so link there (falls back to the cart permalink without a handle).
+      const url = buildProductCardUrl({
+        linkTarget: 'product_page',
         shopDomain: store.shopDomain,
         variantId: product.shopify_variant_id,
+        handle: product.handle,
       });
       // Respect the merchant's product-send switch. Informational catalog
       // text can still answer questions, but checkout links require opt-in.

@@ -29,6 +29,16 @@ describe('catalog recommendation delivery', () => {
     expect(text).toContain('https://gifts.myshopify.com/cart/101:1');
     expect(canDeliverProductCarousel([product], store)).toBe(false);
   });
+  it('links to the product page when the catalog has a handle', () => {
+    const text = buildRecommendationText(
+      [{ ...product, handle: 'photo-wall-clock' }],
+      store
+    );
+    expect(text).toContain(
+      'https://gifts.myshopify.com/products/photo-wall-clock?variant=101'
+    );
+    expect(text).not.toContain('/cart/');
+  });
   it('selects text when an image is absent or carousels are disabled', () => {
     expect(
       canDeliverProductCarousel(
