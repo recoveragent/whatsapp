@@ -220,6 +220,28 @@ describe('constraint-aware catalog resolution', () => {
     expect(result.map((product) => product.shopify_variant_id)).toEqual([102]);
     expect(searchShopifyProducts).not.toHaveBeenCalled();
   });
+  it('keeps every curated design of the same product', async () => {
+    vi.mocked(getShopifyCatalogProduct).mockImplementation(
+      async ({ shopifyVariantId }) => ({
+        ...SAMPLE_PRODUCT,
+        shopify_variant_id: Number(shopifyVariantId),
+      })
+    );
+    const result = await resolveRecommendedProducts(
+      {} as never,
+      'acct-1',
+      'baby birth frame',
+      [
+        [101, 102, 103, 104, 105]
+          .map((id) => `https://store.test/products/frame?variant=${id}`)
+          .join('\n'),
+      ],
+      4
+    );
+    expect(result.map((product) => product.shopify_variant_id)).toEqual([
+      101, 102, 103, 104,
+    ]);
+  });
   it('does not substitute an unrelated catalog item when curated choices fail constraints', async () => {
     vi.mocked(getShopifyCatalogProduct).mockResolvedValue(SAMPLE_PRODUCT);
     const result = await resolveRecommendedProducts(

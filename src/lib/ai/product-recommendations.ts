@@ -557,14 +557,13 @@ export async function resolveRecommendedProducts(
   const variantIds = extractVariantIdsFromKnowledge(knowledge);
 
   if (variantIds.length > 0) {
-    return carouselReady(
-      await productsFromKnowledgeVariantIds(
-        db,
-        accountId,
-        variantIds,
-        max,
-        preferences
-      ),
+    // Variant links are the merchant's own pick (e.g. Design 1–4 of one
+    // frame), so keep each one rather than one card per product.
+    // productsFromKnowledgeVariantIds already applies preferences + limit.
+    return productsFromKnowledgeVariantIds(
+      db,
+      accountId,
+      variantIds,
       max,
       preferences
     );
