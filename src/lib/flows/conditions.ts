@@ -103,7 +103,21 @@ export const SHOPIFY_CONDITION_FIELDS: ConditionField[] = [
   { key: 'product_ids', label: 'Product IDs', type: 'list' },
   { key: 'variant_ids', label: 'Variant IDs', type: 'list' },
   { key: 'skus', label: 'Product SKUs', type: 'list' },
-  { key: 'product_names', label: 'Product names', type: 'list' },
+  {
+    key: 'product_names',
+    label: 'Product names',
+    type: 'list',
+    operators: [
+      'contains',
+      'not_contains',
+      'equals',
+      'not_equals',
+      'contains_any',
+      'contains_all',
+      'present',
+      'absent',
+    ],
+  },
   {
     key: 'collection_ids',
     label: 'Product collections',
@@ -247,9 +261,7 @@ export function operatorsForField(
 export function operatorsForConditionField(
   field: ConditionField
 ): ConditionOperator[] {
-  return field.operators
-    ? [...field.operators]
-    : operatorsForField(field.type);
+  return field.operators ? [...field.operators] : operatorsForField(field.type);
 }
 
 export function shopifyConditionFields(subject: string): ConditionField[] {
@@ -284,16 +296,25 @@ export function conditionNumber(value: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/** Empty text/list entries are absent; false and zero are real values. */
+export function conditionIsAbsent(value: unknown): boolean {
+  if (value == null) return true;
+  if (typeof value === 'string') return value.trim().length === 0;
+  if (Array.isArray(value)) return value.every(conditionIsAbsent);
+  return false;
+}
+
 export function compareCondition(args: {
   operator: ConditionOperator;
   subjectValue: unknown;
   configValue?: string;
   valueTo?: string;
   type?: ConditionFieldType;
+  /** Product names support partial text; identifiers and tags stay exact. */
+  listMatch?: 'exact' | 'substring';
 }): boolean {
   const { operator, subjectValue: raw, configValue = '', valueTo, type } = args;
-  const missing =
-    raw == null || raw === '' || (Array.isArray(raw) && raw.length === 0);
+  const missing = conditionIsAbsent(raw);
   if (operator === 'present') return !missing;
   if (operator === 'absent') return missing;
   // Preserve legacy variable semantics; Shopify unknown values are handled by the resolver.
@@ -306,12 +327,30 @@ export function compareCondition(args: {
     type === 'number'
       ? conditionNumber(raw) !== undefined &&
         conditionNumber(raw) === conditionNumber(configValue)
-      : lower === expected;
+      : Array.isArray(raw) && args.listMatch === 'substring'
+        ? raw.some(
+            (item) =>
+              typeof item === 'string' &&
+              item.trim().toLowerCase() === expected.trim()
+          )
+        : lower === expected;
   const values = conditionList(configValue).map((v) => v.toLowerCase());
   const includes = (v: string) =>
     Array.isArray(raw)
-      ? raw.some((item) => String(item).toLowerCase() === v)
+      ? raw.some((item) =>
+          args.listMatch === 'substring'
+            ? String(item).toLowerCase().includes(v)
+            : String(item).toLowerCase() === v
+        )
       : lower.includes(v);
+  // Invalid or stale rules must not match every string via includes('').
+  if (
+    ['contains', 'not_contains', 'starts_with', 'ends_with'].includes(
+      operator
+    ) &&
+    !expected.trim()
+  )
+    return false;
   switch (operator) {
     case 'equals':
       return same;
@@ -468,12 +507,12 @@ export function validateConditionPredicate(
     errors.push('Pick a supported status.');
   if (
     field?.key === 'item_quantity' &&
-    (!(CONDITION_ITEM_KEYS as readonly string[]).includes(
-      raw.item_key ?? ''
-    ) ||
+    (!(CONDITION_ITEM_KEYS as readonly string[]).includes(raw.item_key ?? '') ||
       !raw.item_value?.trim())
   )
-    errors.push('Select the product, variant, SKU, name or collection to count.');
+    errors.push(
+      'Select the product, variant, SKU, name or collection to count.'
+    );
   if (
     field?.key === 'item_quantity' &&
     raw.item_key === 'collection_id' &&
