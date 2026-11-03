@@ -1,3 +1,4 @@
+import { sendTemplateMessage } from '@/lib/whatsapp/recoverable-template-send';
 import { DIRECT_SEND_UNAVAILABLE_MESSAGE } from '@/lib/whatsapp/direct-send';
 import { recordDirectSendRejection } from '@/lib/whatsapp/direct-send-store';
 import { recordApiAcceptance, type ApiDeliveryTiming } from './delivery-diagnostics';
@@ -27,7 +28,6 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import {
   sendTextMessage,
-  sendTemplateMessage,
   sendMediaMessage,
   sendInteractiveButtons,
   sendInteractiveList,

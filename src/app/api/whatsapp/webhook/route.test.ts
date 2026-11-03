@@ -6,6 +6,7 @@ const h = vi.hoisted(() => ({
   dispatchInboundToFlows: vi.fn(),
   dispatchInboundToAiReply: vi.fn(),
   dispatchWebhookEvent: vi.fn(),
+  acceptRecovery: vi.fn(),
   state: {
     // Result the message upsert's .select() resolves to. A genuine insert
     // returns the row; a replayed delivery conflicts and returns [].
@@ -31,6 +32,12 @@ const h = vi.hoisted(() => ({
     /** Error the next storage upload resolves with, if any. */
     storageUploadError: null as { message: string } | null,
   },
+}))
+
+vi.mock('@/lib/whatsapp/smart-retry', () => ({
+  acceptRecovery: h.acceptRecovery,
+  handleRecoveryStatus: vi.fn(),
+  isRecoveryPayload: (value?: string) => value?.startsWith('smart_retry:') ?? false,
 }))
 
 vi.mock('next/server', () => ({
@@ -404,6 +411,15 @@ describe('inbound webhook: atomic unread bump (#369)', () => {
 })
 
 describe('inbound webhook: template quick-reply buttons (#478)', () => {
+  it('routes recovery acceptance exclusively to Smart Retry', async () => {
+    const token = 'smart_retry:11111111-1111-4111-8111-111111111111'
+    await runWebhook({ id: 'wamid.RECOVERY', from: '15551230000', timestamp: '1700000000', type: 'button', button: { text: 'Receive message', payload: token }, context: { id: 'wamid.PROMPT' } })
+    expect(h.acceptRecovery).toHaveBeenCalledWith(expect.anything(), 'acc-1', expect.anything(), '15551230000', token, 'wamid.PROMPT', 'conv-1')
+    expect(h.dispatchInboundToFlows).not.toHaveBeenCalled()
+    expect(h.runAutomationsForTrigger).not.toHaveBeenCalled()
+    expect(h.dispatchInboundToAiReply).not.toHaveBeenCalled()
+    expect(h.state.upsertCalls).toHaveLength(1)
+  })
   // A customer tapping a QUICK_REPLY button on a broadcast template.
   // `context.id` points at the template message we sent — which the
   // broadcast path never wrote to `messages`, so the parent lookup

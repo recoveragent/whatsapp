@@ -36,7 +36,7 @@ import {
   contactPhoneAfterSuccessfulSend,
 } from '@/lib/whatsapp/phone-utils';
 import { decrypt } from '@/lib/whatsapp/encryption';
-import { sendTemplateMessage } from '@/lib/whatsapp/meta-api';
+import { sendTemplateMessage } from '@/lib/whatsapp/recoverable-template-send';
 
 export async function POST(request: Request) {
   try {

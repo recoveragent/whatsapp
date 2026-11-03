@@ -1,3 +1,4 @@
+import { sendTemplateMessage } from '@/lib/whatsapp/recoverable-template-send';
 import { DIRECT_SEND_UNAVAILABLE_MESSAGE } from '@/lib/whatsapp/direct-send';
 import { recordDirectSendRejection } from '@/lib/whatsapp/direct-send-store';
 import { NextResponse, after } from 'next/server';
@@ -8,7 +9,6 @@ import { createClient } from '@/lib/supabase/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import {
   sendTextMessage,
-  sendTemplateMessage,
   sendMediaMessage,
   type MediaKind,
 } from '@/lib/whatsapp/meta-api';

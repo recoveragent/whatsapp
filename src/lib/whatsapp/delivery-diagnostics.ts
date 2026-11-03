@@ -72,7 +72,7 @@ export async function recordApiAcceptance(
 export async function recordDeliveryStatus(
   db: SupabaseClient,
   phoneNumberId: string,
-  status: { id: string; status: string; timestamp: string },
+  status: { id: string; status: string; timestamp: string; errors?: { code?: number }[] },
   receivedAt = new Date().toISOString()
 ) {
   if (
@@ -96,6 +96,7 @@ export async function recordDeliveryStatus(
       event_type: status.status,
       occurred_at: date.toISOString(),
       received_at: receivedAt,
+      ...(status.errors?.length ? { details: { errors: status.errors } } : {}),
     });
   } catch {
     console.error('[delivery-diagnostics] could not resolve WhatsApp account');
