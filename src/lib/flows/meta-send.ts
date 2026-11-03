@@ -281,6 +281,7 @@ export async function engineSendMedia(
 }
 
 interface SendInteractiveButtonsEngineArgs {
+  aiGenerated?: boolean
   accountId: string
   userId: string
   conversationId: string
@@ -292,6 +293,7 @@ interface SendInteractiveButtonsEngineArgs {
 }
 
 interface SendInteractiveListEngineArgs {
+  aiGenerated?: boolean
   accountId: string
   userId: string
   conversationId: string
@@ -457,6 +459,7 @@ async function sendInteractiveViaMeta(
       content_type: 'interactive',
       content_text: input.bodyText,
       interactive_payload: interactivePayload,
+      ai_generated: input.aiGenerated ?? false,
       message_id: waMessageId,
       status: 'sent',
     },

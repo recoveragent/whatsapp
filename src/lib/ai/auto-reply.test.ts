@@ -15,6 +15,7 @@ const h = vi.hoisted(() => ({
   sendShopifyProductCarousel: vi.fn(),
   generateReply: vi.fn(),
   engineSendText: vi.fn(),
+  engineSendInteractiveButtons: vi.fn(),
   state: {
     conv: null as Record<string, unknown> | null,
     autoResponders: [] as { id: string }[],
@@ -59,7 +60,10 @@ vi.mock('@/lib/shopify/send-product-carousel', () => ({
   sendShopifyProductCarousel: h.sendShopifyProductCarousel,
 }));
 vi.mock('./generate', () => ({ generateReply: h.generateReply }));
-vi.mock('@/lib/flows/meta-send', () => ({ engineSendText: h.engineSendText }));
+vi.mock('@/lib/flows/meta-send', () => ({
+  engineSendText: h.engineSendText,
+  engineSendInteractiveButtons: h.engineSendInteractiveButtons,
+}));
 vi.mock('./admin-client', () => ({
   supabaseAdmin: () => ({
     from: (table: string) => {
@@ -156,9 +160,31 @@ beforeEach(() => {
   });
   h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false });
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' });
+  h.engineSendInteractiveButtons.mockResolvedValue({ whatsapp_message_id: 'buttons1' });
 });
 
 describe('dispatchInboundToAiReply — eligibility gates', () => {
+  it('sends one interactive question with validated AI reply choices', async () => {
+    h.generateReply.mockResolvedValueOnce({ text: 'Would you like help choosing a size?', handoff: false, quickReplies: ['Yes, help me', 'Not now'] });
+    await dispatchInboundToAiReply(ARGS);
+    expect(h.engineSendInteractiveButtons).toHaveBeenCalledWith(expect.objectContaining({
+      accountId: 'acct-1', bodyText: 'Would you like help choosing a size?', aiGenerated: true,
+      buttons: [{ id: 'ai_reply_1', title: 'Yes, help me' }, { id: 'ai_reply_2', title: 'Not now' }],
+    }));
+    expect(h.engineSendText).not.toHaveBeenCalled();
+  });
+  it('keeps a handoff as text even if the model supplied choices', async () => {
+    h.generateReply.mockResolvedValueOnce({ text: 'The team can help.', handoff: true, quickReplies: ['Yes', 'No'] });
+    await dispatchInboundToAiReply(ARGS);
+    expect(h.engineSendInteractiveButtons).not.toHaveBeenCalled();
+    expect(h.engineSendText).toHaveBeenCalled();
+  });
+  it('does not send a duplicate text if interactive delivery fails ambiguously', async () => {
+    h.generateReply.mockResolvedValueOnce({ text: 'Need help?', handoff: false, quickReplies: ['Yes', 'No'] });
+    h.engineSendInteractiveButtons.mockRejectedValueOnce(new Error('timeout'));
+    await dispatchInboundToAiReply(ARGS);
+    expect(h.engineSendText).not.toHaveBeenCalled();
+  });
   it('passes customer constraints to catalog resolution', async () => {
     h.buildConversationContext.mockResolvedValue([
       { role: 'user', content: 'Show hoodies under INR 1500 size XL' },

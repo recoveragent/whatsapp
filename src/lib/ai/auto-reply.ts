@@ -36,7 +36,11 @@ import {
   canDeliverProductCarousel,
   loadRecommendationStore,
 } from './product-delivery';
-import { engineSendText } from '@/lib/flows/meta-send';
+import {
+  engineSendText,
+  engineSendInteractiveButtons,
+} from '@/lib/flows/meta-send';
+import { replyButtonsForMessage } from './quick-replies';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 interface DispatchArgs {
@@ -281,16 +285,34 @@ export async function dispatchInboundToAiReply(
       }
     }
 
+    const replyText = appendRecommendationText(
+      text,
+      recommendedProducts,
+      recommendationStore
+    );
+    const quickReplies = replyButtonsForMessage(replyText, generated.quickReplies);
+    if (quickReplies.length) {
+      await engineSendInteractiveButtons({
+        accountId,
+        userId: configOwnerUserId,
+        conversationId,
+        contactId,
+        bodyText: replyText,
+        buttons: quickReplies.map((title, index) => ({
+          id: `ai_reply_${index + 1}`,
+          title,
+        })),
+        aiGenerated: true,
+      });
+      return;
+    }
+
     await engineSendText({
       accountId,
       userId: configOwnerUserId,
       conversationId,
       contactId,
-      text: appendRecommendationText(
-        text,
-        recommendedProducts,
-        recommendationStore
-      ),
+      text: replyText,
       aiGenerated: true,
     });
   } catch (err) {
