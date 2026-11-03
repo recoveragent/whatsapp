@@ -567,7 +567,9 @@ export function MessageBubble({
       )}
       <div
         className={cn(
-          "relative overflow-hidden rounded-2xl px-3 py-2",
+          "relative max-w-full overflow-hidden rounded-2xl px-3 py-2",
+          (message.content_type === "image" || message.content_type === "video") &&
+            "w-fit max-w-[min(100%,16.5rem)]",
           isAgent
             ? "rounded-br-md bg-primary text-primary-foreground"
             : "rounded-bl-md bg-muted text-foreground",
