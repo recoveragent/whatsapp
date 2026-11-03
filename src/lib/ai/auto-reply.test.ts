@@ -22,6 +22,7 @@ const h = vi.hoisted(() => ({
     claim: true as boolean,
     updatePayload: null as Record<string, unknown> | null,
     rpcCalls: [] as { name: string; args: unknown }[],
+    outbound: [] as { sender_type: string; ai_generated: boolean }[],
     store: {
       status: 'connected',
       shop_domain: 'gifts.myshopify.com',
@@ -86,6 +87,18 @@ vi.mock('./admin-client', () => ({
         };
         return chain;
       }
+      if (table === 'messages') {
+        // .select().eq().in().order().limit() → newest outbound messages
+        const chain = {
+          select: () => chain,
+          eq: () => chain,
+          in: () => chain,
+          order: () => chain,
+          limit: () =>
+            Promise.resolve({ data: h.state.outbound, error: null }),
+        };
+        return chain;
+      }
       // conversations
       return {
         select: () => ({
@@ -96,7 +109,16 @@ vi.mock('./admin-client', () => ({
         }),
         update: (payload: Record<string, unknown>) => {
           h.state.updatePayload = payload;
-          return { eq: () => Promise.resolve({ error: null }) };
+          // Awaitable after .eq() (handoff) or after .select() (resume).
+          const chain = {
+            eq: () => chain,
+            is: () => chain,
+            select: () =>
+              Promise.resolve({ data: [{ id: 'conv-1' }], error: null }),
+            then: (resolve: (v: { error: null }) => unknown) =>
+              resolve({ error: null }),
+          };
+          return chain;
         },
       };
     },
@@ -141,6 +163,7 @@ beforeEach(() => {
   h.state.claim = true;
   h.state.updatePayload = null;
   h.state.rpcCalls = [];
+  h.state.outbound = [];
   h.state.store = {
     status: 'connected',
     shop_domain: 'gifts.myshopify.com',
@@ -162,6 +185,56 @@ beforeEach(() => {
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' });
   h.engineSendInteractiveButtons.mockResolvedValue({
     whatsapp_message_id: 'buttons1',
+  });
+});
+
+describe('dispatchInboundToAiReply — resuming after a handoff', () => {
+  beforeEach(() => {
+    h.state.conv = {
+      assigned_agent_id: null,
+      ai_autoreply_disabled: true,
+      ai_reply_count: 1,
+      ai_handoff_summary: '🤖 AI agent handed off without replying.',
+    };
+    h.state.outbound = [
+      { sender_type: 'bot', ai_generated: false }, // "Chat opened" note
+      { sender_type: 'bot', ai_generated: true }, // the handoff message
+    ];
+    h.buildConversationContext.mockResolvedValue([
+      { role: 'user', content: 'Where is my order?' },
+      { role: 'assistant', content: 'Passing this to our team.' },
+      { role: 'user', content: 'Want to buy baby birth frame' },
+    ]);
+  });
+  it('resumes for a new shopping request nobody has picked up', async () => {
+    await dispatchInboundToAiReply(ARGS);
+    expect(h.state.updatePayload).toEqual({
+      ai_autoreply_disabled: false,
+      ai_handoff_summary: null,
+    });
+    expect(h.generateReply).toHaveBeenCalled();
+    expect(h.engineSendText).toHaveBeenCalled();
+  });
+  it('stays paused when the customer is still on the handed-off issue', async () => {
+    h.buildConversationContext.mockResolvedValue([
+      { role: 'user', content: 'Still not delivered, where is my order?' },
+    ]);
+    await dispatchInboundToAiReply(ARGS);
+    expect(h.generateReply).not.toHaveBeenCalled();
+    expect(h.state.updatePayload).toBeNull();
+  });
+  it('stays paused once the team has replied after the handoff', async () => {
+    h.state.outbound = [
+      { sender_type: 'agent', ai_generated: false },
+      { sender_type: 'bot', ai_generated: true },
+    ];
+    await dispatchInboundToAiReply(ARGS);
+    expect(h.generateReply).not.toHaveBeenCalled();
+  });
+  it('stays paused when someone turned the agent off by hand', async () => {
+    h.state.conv = { ...h.state.conv, ai_handoff_summary: null };
+    await dispatchInboundToAiReply(ARGS);
+    expect(h.generateReply).not.toHaveBeenCalled();
   });
 });
 

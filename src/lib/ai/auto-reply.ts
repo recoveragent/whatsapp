@@ -27,6 +27,7 @@ import { buildHandoffSummary } from './handoff';
 import { logAiUsage } from './usage';
 import { knowledgeSearchText } from './knowledge-query';
 import { shouldRefreshShopifyOrders } from './commerce-intent';
+import { latestUserMessage } from './query';
 import {
   extractProductPreferences,
   formatProductPreferences,
@@ -96,13 +97,20 @@ export async function dispatchInboundToAiReply(
     const conv = await loadConversationState(db, conversationId);
     if (!conv) return;
     if (conv.assigned_agent_id) return; // a human owns this thread
-    if (conv.ai_autoreply_disabled) return; // handed off / turned off here
     // Cheap early-out; the authoritative cap check is the atomic claim
     // below (this read can race a concurrent inbound).
     if (conv.ai_reply_count >= config.autoReplyMaxPerConversation) return;
 
     const messages = await buildConversationContext(db, conversationId);
     if (messages.length === 0) return;
+
+    // Handed off / turned off here — unless the customer has moved on to a
+    // new shopping request after a handoff nobody has picked up yet.
+    if (
+      conv.ai_autoreply_disabled &&
+      !(await resumeAfterHandoffForNewTopic(db, conversationId, conv, messages))
+    )
+      return;
 
     // Account-wide throttle on the shared BYO key. The per-conversation
     // cap bounds one thread; this bounds a burst across many threads (a
@@ -334,13 +342,16 @@ interface ConversationState {
   ai_autoreply_disabled: boolean;
   ai_reply_count: number;
   ai_flow_goal: string | null;
+  /** Set only by a bot handoff; a manual pause leaves it empty. */
+  ai_handoff_summary: string | null;
 }
 
 async function loadConversationState(
   db: SupabaseClient,
   conversationId: string
 ): Promise<ConversationState | null> {
-  const base = 'assigned_agent_id, ai_autoreply_disabled, ai_reply_count';
+  const base =
+    'assigned_agent_id, ai_autoreply_disabled, ai_reply_count, ai_handoff_summary';
   let { data, error } = await db
     .from('conversations')
     .select(`${base}, ai_flow_goal`)
@@ -361,7 +372,58 @@ async function loadConversationState(
     ai_reply_count: data.ai_reply_count ?? 0,
     ai_flow_goal:
       'ai_flow_goal' in data ? ((data.ai_flow_goal as string | null) ?? null) : null,
+    ai_handoff_summary: data.ai_handoff_summary ?? null,
   };
+}
+
+/**
+ * After a bot handoff the agent stays paused until someone resumes it. If
+ * the customer then starts a new shopping request ("want to buy a birth
+ * frame") and no one from the team has replied since the handoff, the
+ * handed-off issue is not what they are asking about: resume the agent so
+ * the request isn't left waiting. A manual pause (no handoff note), a team
+ * reply, or a message that is still support/human-related stays paused.
+ */
+async function resumeAfterHandoffForNewTopic(
+  db: SupabaseClient,
+  conversationId: string,
+  conv: ConversationState,
+  messages: ChatMessage[]
+): Promise<boolean> {
+  if (!conv.ai_handoff_summary) return false;
+  const latest = latestUserMessage(messages);
+  if (!shouldOfferProductCarousel([{ role: 'user', content: latest }]))
+    return false;
+
+  // Walk back from the newest outbound message: a team reply before the
+  // agent's own handoff message means a person has picked the thread up.
+  const { data: outbound, error } = await db
+    .from('messages')
+    .select('sender_type, ai_generated')
+    .eq('conversation_id', conversationId)
+    .in('sender_type', ['agent', 'bot'])
+    .order('created_at', { ascending: false })
+    .limit(30);
+  if (error || !outbound) return false;
+  const lastActor = outbound.find(
+    (m) => m.sender_type === 'agent' || m.ai_generated
+  );
+  if (!lastActor || lastActor.sender_type === 'agent') return false;
+
+  // Only resume a thread that is still paused and unowned (a teammate may
+  // have just picked it up, or a concurrent inbound resumed it).
+  const { data: resumed, error: upErr } = await db
+    .from('conversations')
+    .update({ ai_autoreply_disabled: false, ai_handoff_summary: null })
+    .eq('id', conversationId)
+    .eq('ai_autoreply_disabled', true)
+    .is('assigned_agent_id', null)
+    .select('id');
+  if (upErr) {
+    console.error('[ai auto-reply] resume after handoff failed:', upErr);
+    return false;
+  }
+  return (resumed?.length ?? 0) > 0;
 }
 
 /**
