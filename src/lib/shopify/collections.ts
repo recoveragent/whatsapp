@@ -16,7 +16,7 @@ export const MAX_COLLECTION_PRODUCTS = 10;
 
 async function loadShopifyCredentials(
   db: SupabaseClient,
-  accountId: string,
+  accountId: string
 ): Promise<{ shopDomain: string; accessToken: string }> {
   const { data, error } = await db
     .from('shopify_config')
@@ -24,7 +24,12 @@ async function loadShopifyCredentials(
     .eq('account_id', accountId)
     .maybeSingle();
 
-  if (error || !data?.shop_domain || !data.access_token || data.status !== 'connected') {
+  if (
+    error ||
+    !data?.shop_domain ||
+    !data.access_token ||
+    data.status !== 'connected'
+  ) {
     throw new Error('Shopify is not connected for this workspace.');
   }
 
@@ -36,9 +41,12 @@ async function loadShopifyCredentials(
 
 export async function listShopifyCollections(
   db: SupabaseClient,
-  accountId: string,
+  accountId: string
 ): Promise<ShopifyCollectionSummary[]> {
-  const { shopDomain, accessToken } = await loadShopifyCredentials(db, accountId);
+  const { shopDomain, accessToken } = await loadShopifyCredentials(
+    db,
+    accountId
+  );
   return fetchCollections(shopDomain, accessToken);
 }
 
@@ -54,16 +62,51 @@ export async function resolveCollectionCatalogProducts(args: {
   limit?: number;
   requireImage?: boolean;
 }): Promise<ShopifyCatalogProduct[]> {
-  const { shopDomain, accessToken } = await loadShopifyCredentials(args.db, args.accountId);
-  const productIds = await fetchCollectionProductIds(shopDomain, accessToken, args.collectionId);
+  const { shopDomain, accessToken } = await loadShopifyCredentials(
+    args.db,
+    args.accountId
+  );
+  const productIds = await fetchCollectionProductIds(
+    shopDomain,
+    accessToken,
+    args.collectionId
+  );
   const products = await getShopifyCatalogProductsForProductIds({
     db: args.db,
     accountId: args.accountId,
     productIds,
   });
 
-  const limit = Math.min(Math.max(args.limit ?? MAX_COLLECTION_PRODUCTS, 1), MAX_COLLECTION_PRODUCTS);
+  const limit = Math.min(
+    Math.max(args.limit ?? MAX_COLLECTION_PRODUCTS, 1),
+    MAX_COLLECTION_PRODUCTS
+  );
   return products
-    .filter((product) => !args.requireImage || Boolean(product.image_url?.trim()))
+    .filter(
+      (product) => !args.requireImage || Boolean(product.image_url?.trim())
+    )
     .slice(0, limit);
+}
+
+/** All synced in-stock variants for the first page of a collection. */
+export async function resolveCollectionCatalogVariants(args: {
+  db: SupabaseClient;
+  accountId: string;
+  collectionId: string | number;
+}): Promise<ShopifyCatalogProduct[]> {
+  const { shopDomain, accessToken } = await loadShopifyCredentials(
+    args.db,
+    args.accountId
+  );
+  const productIds = await fetchCollectionProductIds(
+    shopDomain,
+    accessToken,
+    args.collectionId
+  );
+  return getShopifyCatalogProductsForProductIds({
+    db: args.db,
+    accountId: args.accountId,
+    productIds,
+    allVariants: true,
+  });
 }

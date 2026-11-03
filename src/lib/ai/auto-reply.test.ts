@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   retrieveShopifyContext: vi.fn(),
   searchRecommendedProducts: vi.fn(),
   sendShopifyProductCarousel: vi.fn(),
+  sendShopifyProductCard: vi.fn(),
   generateReply: vi.fn(),
   engineSendText: vi.fn(),
   engineSendInteractiveButtons: vi.fn(),
@@ -57,6 +58,9 @@ vi.mock('./product-recommendations', async (importOriginal) => {
     resolveRecommendedProducts: h.searchRecommendedProducts,
   };
 });
+vi.mock('@/lib/shopify/send-product-card', () => ({
+  sendShopifyProductCard: h.sendShopifyProductCard,
+}));
 vi.mock('@/lib/shopify/send-product-carousel', () => ({
   sendShopifyProductCarousel: h.sendShopifyProductCarousel,
 }));
@@ -94,8 +98,7 @@ vi.mock('./admin-client', () => ({
           eq: () => chain,
           in: () => chain,
           order: () => chain,
-          limit: () =>
-            Promise.resolve({ data: h.state.outbound, error: null }),
+          limit: () => Promise.resolve({ data: h.state.outbound, error: null }),
         };
         return chain;
       }
@@ -290,10 +293,11 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
       'hoodies',
       [],
       undefined,
-      expect.objectContaining({ maxPrice: 1500, currency: 'INR', size: 'xl' })
+      expect.objectContaining({ maxPrice: 1500, currency: 'INR', size: 'xl' }),
+      expect.any(Set)
     );
   });
-  it('delivers a single matched product as text with a catalog link', async () => {
+  it('delivers a single matched product as a View product card', async () => {
     h.buildConversationContext.mockResolvedValue([
       { role: 'user', content: 'Show me hoodies' },
     ]);
@@ -308,16 +312,19 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     ]);
     await dispatchInboundToAiReply(ARGS);
     expect(h.sendShopifyProductCarousel).not.toHaveBeenCalled();
-    expect(h.engineSendText).toHaveBeenCalledWith(
+    expect(h.sendShopifyProductCard).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: expect.stringContaining('https://gifts.myshopify.com/cart/101:1'),
+        shopifyVariantId: 101,
+        linkTarget: 'product_page',
+        aiGenerated: true,
       })
     );
+    expect(h.engineSendText).not.toHaveBeenCalled();
     expect(h.generateReply.mock.calls[0][0].systemPrompt).not.toContain(
       'nothing in the synced catalogue closely matches'
     );
   });
-  it('includes products in the text fallback after a carousel send fails', async () => {
+  it('sends product cards after a definite carousel failure', async () => {
     h.buildConversationContext.mockResolvedValue([
       { role: 'user', content: 'Show me hoodies' },
     ]);
@@ -334,9 +341,8 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
       new Error('Meta unavailable')
     );
     await dispatchInboundToAiReply(ARGS);
-    expect(h.engineSendText).toHaveBeenCalledWith(
-      expect.objectContaining({ text: expect.stringContaining('/cart/102:1') })
-    );
+    expect(h.sendShopifyProductCard).toHaveBeenCalledTimes(2);
+    expect(h.engineSendText).not.toHaveBeenCalled();
   });
   it('provides catalog details without checkout links when product sends are switched off', async () => {
     h.state.store.sell_on_whatsapp_enabled = false;

@@ -14,8 +14,12 @@ import {
   buildProductSearchQuery,
   formatProductRecommendationsForAi,
   resolveRecommendedProducts,
+  resolveRequestedCollection,
+  isMoreProductsRequest,
+  hasNamedCollectionRequest,
   shouldOfferProductCarousel,
 } from './product-recommendations';
+import { sendShopifyProductCard } from '@/lib/shopify/send-product-card';
 import { sendShopifyProductCarousel } from '@/lib/shopify/send-product-carousel';
 import {
   ProductCarouselAlreadySentError,
@@ -140,33 +144,61 @@ export async function dispatchInboundToAiReply(
       storeProfile,
       replyGuidance,
     ] = await Promise.all([
-        retrieveKnowledge(db, accountId, config, latestQuestion),
-        retrieveShopifyContext(db, accountId, contactId, {
-          refresh: shouldRefreshShopifyOrders(messages),
-        }),
-        wantsProductCarousel
-          ? loadRecommendationStore(db, accountId)
-          : Promise.resolve(null),
-        loadStoreProfile(db, accountId),
-        loadReplyGuidance(db, accountId, latestQuestion),
-      ]);
+      retrieveKnowledge(db, accountId, config, latestQuestion),
+      retrieveShopifyContext(db, accountId, contactId, {
+        refresh: shouldRefreshShopifyOrders(messages),
+      }),
+      wantsProductCarousel
+        ? loadRecommendationStore(db, accountId)
+        : Promise.resolve(null),
+      loadStoreProfile(db, accountId),
+      loadReplyGuidance(db, accountId, latestQuestion),
+    ]);
 
-    const recommendedProducts =
+    const collectionResult =
       wantsProductCarousel && recommendationStore
-        ? await resolveRecommendedProducts(
-            db,
+        ? await resolveRequestedCollection({
+            db: db,
             accountId,
-            productSearchQuery,
-            knowledge,
-            undefined,
-            productPreferences
-          ).catch(() => [])
-        : [];
+            messages,
+            preferences: productPreferences,
+          }).catch((error) => {
+            console.warn(
+              '[ai recommendations] collection lookup unavailable:',
+              error
+            );
+            return null;
+          })
+        : null;
+
+    const recommendedProducts = collectionResult
+      ? collectionResult.products
+      : hasNamedCollectionRequest(messages)
+        ? []
+        : wantsProductCarousel && recommendationStore
+          ? await resolveRecommendedProducts(
+              db,
+              accountId,
+              productSearchQuery,
+              knowledge,
+              undefined,
+              productPreferences,
+              new Set(
+                isMoreProductsRequest(messages.at(-1)?.content ?? '')
+                  ? messages.flatMap((m) =>
+                      m.role === 'assistant' ? (m.productVariantIds ?? []) : []
+                    )
+                  : []
+              )
+            ).catch(() => [])
+          : [];
 
     const hasCarouselProducts = canDeliverProductCarousel(
       recommendedProducts,
       recommendationStore
     );
+    const hasProductCards =
+      !!recommendationStore?.carouselEnabled && recommendedProducts.length > 0;
     const productRecommendations =
       recommendedProducts.length > 0
         ? formatProductRecommendationsForAi(recommendedProducts)
@@ -178,12 +210,18 @@ export async function dispatchInboundToAiReply(
       knowledge,
       shopifyContext,
       productRecommendations,
-      productDelivery: hasCarouselProducts ? 'carousel' : 'text',
+      productDelivery: hasProductCards ? 'carousel' : 'text',
       productPreferences: wantsProductCarousel
         ? formatProductPreferences(productPreferences)
         : undefined,
       productBrowseNoMatches:
         wantsProductCarousel && recommendedProducts.length === 0,
+      collectionLookupUnavailable:
+        hasNamedCollectionRequest(messages) && !collectionResult,
+      productBrowseExhausted:
+        !!collectionResult &&
+        isMoreProductsRequest(messages.at(-1)?.content ?? '') &&
+        recommendedProducts.length === 0,
       storeProfile,
       flowGoal: conv.ai_flow_goal,
       replyGuidance: formatReplyGuidance(replyGuidance),
@@ -210,7 +248,16 @@ export async function dispatchInboundToAiReply(
       });
       return;
     }
-    const { text, handoff, usage } = generated;
+    const { handoff, usage } = generated;
+    const collectionUrl =
+      collectionResult?.collection.handle &&
+      /^[a-z0-9-]+$/i.test(collectionResult.collection.handle)
+        ? `https://${recommendationStore!.shopDomain}/collections/${collectionResult.collection.handle}`
+        : null;
+    const text =
+      collectionUrl && recommendedProducts.length > 0
+        ? `${generated.text}\n\nBrowse the collection: ${collectionUrl}`
+        : generated.text;
 
     // Record token spend on the account's BYO key. Fire-and-forget so it
     // never adds latency to the customer-facing send: `logAiUsage`
@@ -296,10 +343,34 @@ export async function dispatchInboundToAiReply(
           return;
         }
         console.warn(
-          '[ai auto-reply] product carousel failed, falling back to text:',
+          '[ai auto-reply] product carousel failed; trying product cards:',
           carouselErr
         );
       }
+    }
+
+    if (hasProductCards) {
+      for (const [index, product] of recommendedProducts.entries()) {
+        try {
+          await sendShopifyProductCard({
+            db,
+            accountId,
+            userId: configOwnerUserId,
+            conversationId,
+            shopifyVariantId: product.shopify_variant_id,
+            introText: index === 0 ? text : undefined,
+            linkTarget: 'product_page',
+            skipAssigneeCheck: true,
+            aiGenerated: true,
+          });
+        } catch (error) {
+          // A failed request may already have reached Meta. Do not retry or
+          // send text links, which could duplicate the customer's message.
+          console.error('[ai auto-reply] product card delivery failed:', error);
+          return;
+        }
+      }
+      return;
     }
 
     const replyText = appendRecommendationText(
@@ -307,7 +378,10 @@ export async function dispatchInboundToAiReply(
       recommendedProducts,
       recommendationStore
     );
-    const quickReplies = replyButtonsForMessage(replyText, generated.quickReplies);
+    const quickReplies = replyButtonsForMessage(
+      replyText,
+      generated.quickReplies
+    );
     if (quickReplies.length) {
       await engineSendInteractiveButtons({
         accountId,
@@ -371,7 +445,9 @@ async function loadConversationState(
     ai_autoreply_disabled: !!data.ai_autoreply_disabled,
     ai_reply_count: data.ai_reply_count ?? 0,
     ai_flow_goal:
-      'ai_flow_goal' in data ? ((data.ai_flow_goal as string | null) ?? null) : null,
+      'ai_flow_goal' in data
+        ? ((data.ai_flow_goal as string | null) ?? null)
+        : null,
     ai_handoff_summary: data.ai_handoff_summary ?? null,
   };
 }

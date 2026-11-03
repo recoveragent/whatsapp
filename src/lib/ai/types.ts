@@ -38,6 +38,8 @@ export interface AiConfig {
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  /** IDs of product cards shown in this turn, for browse pagination. */
+  productVariantIds?: number[]
 }
 
 /**

@@ -27,7 +27,6 @@ import {
 } from '@/lib/ai/product-preferences';
 import {
   appendRecommendationText,
-  canDeliverProductCarousel,
   loadRecommendationStore,
 } from '@/lib/ai/product-delivery';
 import { retrieveShopifyContext } from '@/lib/ai/shopify-context';
@@ -36,6 +35,9 @@ import {
   buildProductSearchQuery,
   formatProductRecommendationsForAi,
   resolveRecommendedProducts,
+  resolveRequestedCollection,
+  isMoreProductsRequest,
+  hasNamedCollectionRequest,
   shouldOfferProductCarousel,
 } from '@/lib/ai/product-recommendations';
 import { AiError, type ChatMessage } from '@/lib/ai/types';
@@ -127,7 +129,13 @@ export async function POST(request: Request) {
     const productSearchQuery = buildProductSearchQuery(messages);
     const productPreferences = extractProductPreferences(messages);
 
-    const [knowledge, shopifyContext, shopifyConfig, storeProfile, replyGuidance] = await Promise.all([
+    const [
+      knowledge,
+      shopifyContext,
+      shopifyConfig,
+      storeProfile,
+      replyGuidance,
+    ] = await Promise.all([
       retrieveKnowledge(supabase, accountId, config, latestQuestion),
       contactId
         ? retrieveShopifyContext(supabase, accountId, contactId, {
@@ -141,22 +149,46 @@ export async function POST(request: Request) {
       loadReplyGuidance(supabase, accountId, latestQuestion),
     ]);
 
-    const recommendedProducts =
+    const collectionResult =
       wantsProductCarousel && shopifyConfig
-        ? await resolveRecommendedProducts(
-            supabase,
+        ? await resolveRequestedCollection({
+            db: supabase,
             accountId,
-            productSearchQuery,
-            knowledge,
-            undefined,
-            productPreferences
-          ).catch(() => [])
-        : [];
+            messages,
+            preferences: productPreferences,
+          }).catch((error) => {
+            console.warn(
+              '[ai recommendations] collection lookup unavailable:',
+              error
+            );
+            return null;
+          })
+        : null;
 
-    const hasCarouselProducts = canDeliverProductCarousel(
-      recommendedProducts,
-      shopifyConfig
-    );
+    const recommendedProducts = collectionResult
+      ? collectionResult.products
+      : hasNamedCollectionRequest(messages)
+        ? []
+        : wantsProductCarousel && shopifyConfig
+          ? await resolveRecommendedProducts(
+              supabase,
+              accountId,
+              productSearchQuery,
+              knowledge,
+              undefined,
+              productPreferences,
+              new Set(
+                isMoreProductsRequest(messages.at(-1)?.content ?? '')
+                  ? messages.flatMap((m) =>
+                      m.role === 'assistant' ? (m.productVariantIds ?? []) : []
+                    )
+                  : []
+              )
+            ).catch(() => [])
+          : [];
+
+    const hasProductCards =
+      !!shopifyConfig?.carouselEnabled && recommendedProducts.length > 0;
     const productRecommendations =
       recommendedProducts.length > 0
         ? formatProductRecommendationsForAi(recommendedProducts)
@@ -168,30 +200,50 @@ export async function POST(request: Request) {
       knowledge,
       shopifyContext,
       productRecommendations,
-      productDelivery: hasCarouselProducts ? 'carousel' : 'text',
+      productDelivery: hasProductCards ? 'carousel' : 'text',
       productPreferences: wantsProductCarousel
         ? formatProductPreferences(productPreferences)
         : undefined,
       productBrowseNoMatches:
         wantsProductCarousel && recommendedProducts.length === 0,
+      collectionLookupUnavailable:
+        hasNamedCollectionRequest(messages) && !collectionResult,
+      productBrowseExhausted:
+        !!collectionResult &&
+        isMoreProductsRequest(messages.at(-1)?.content ?? '') &&
+        recommendedProducts.length === 0,
       storeProfile,
       replyGuidance: formatReplyGuidance(replyGuidance),
     });
 
-    const { text, handoff, quickReplies } = await generateReply({
+    const {
+      text: generatedText,
+      handoff,
+      quickReplies,
+    } = await generateReply({
       config,
       systemPrompt,
       messages,
     });
 
+    const collectionUrl =
+      collectionResult?.collection.handle &&
+      /^[a-z0-9-]+$/i.test(collectionResult.collection.handle)
+        ? `https://${shopifyConfig!.shopDomain}/collections/${collectionResult.collection.handle}`
+        : null;
+    const text =
+      collectionUrl && recommendedProducts.length > 0 && !handoff
+        ? `${generatedText}\n\nBrowse the collection: ${collectionUrl}`
+        : generatedText;
+
     const productCarousel =
-      !handoff && hasCarouselProducts
+      !handoff && hasProductCards
         ? buildPlaygroundProductCarousel(recommendedProducts, true)
         : null;
 
     const reply = handoff
       ? handoffReplyText(text, config.handoffMessage)
-      : !hasCarouselProducts
+      : !hasProductCards
         ? appendRecommendationText(text, recommendedProducts, shopifyConfig)
         : text;
 

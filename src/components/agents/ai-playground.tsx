@@ -145,6 +145,13 @@ export function AiPlayground({
           messages: next.map((t) => ({
             role: t.role,
             content: withQuickReplyContext(t.content, t.quickReplies),
+            ...(t.role === 'assistant' && t.productCarousel
+              ? {
+                  productVariantIds: t.productCarousel.products.map(
+                    (p) => p.shopify_variant_id
+                  ),
+                }
+              : {}),
           })),
           ...(contactId ? { contact_id: contactId } : {}),
         }),

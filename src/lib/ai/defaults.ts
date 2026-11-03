@@ -48,9 +48,11 @@ export function handoffReplyText(
 ): string {
   const closing = handoffMessage(custom);
   const text = agentText.trim();
-  return text ? `${text}
+  return text
+    ? `${text}
 
-${closing}` : closing;
+${closing}`
+    : closing;
 }
 
 /** Cap on generated reply length — keeps WhatsApp replies short and
@@ -96,6 +98,8 @@ export function buildSystemPrompt(args: {
   productPreferences?: string;
   /** Customer wants product ideas but the catalogue had no close match. */
   productBrowseNoMatches?: boolean;
+  productBrowseExhausted?: boolean;
+  collectionLookupUnavailable?: boolean;
   /** Brand name + catalog sample (see `loadStoreProfile`). */
   storeProfile?: string | null;
   /** Goal a flow set when it handed this conversation to the agent. */
@@ -110,6 +114,8 @@ export function buildSystemPrompt(args: {
     shopifyContext,
     productRecommendations,
     productBrowseNoMatches,
+    productBrowseExhausted,
+    collectionLookupUnavailable,
     productDelivery = 'carousel',
     productPreferences,
     storeProfile,
@@ -233,7 +239,7 @@ export function buildSystemPrompt(args: {
     parts.push(
       'Product recommendations — matched items from the synced Shopify catalogue (and any relevant knowledge-base excerpts above). ' +
         (productDelivery === 'carousel'
-          ? 'The system will send a swipeable WhatsApp carousel (2–4 products) with your reply. '
+          ? 'The system will send product cards with a View product button with your reply. '
           : 'The system will append the matched product names, catalog prices and any enabled checkout links to your reply as text. ') +
         "Recommend only from the list below; prioritise items that match the customer's occasion, recipient, relationship, preferences, budget, and personalisation needs. " +
         'Write a short, friendly intro (1–2 sentences) — do not list product names, prices, or links in your text; the system supplies those. ' +
@@ -241,6 +247,14 @@ export function buildSystemPrompt(args: {
         'Only direct them to checkout or explain website personalisation when they ask for that step or have selected a product. ' +
         `${noInvent}\n\n` +
         productRecommendations
+    );
+  } else if (collectionLookupUnavailable) {
+    parts.push(
+      'The requested collection could not be verified. Do not claim that products belong to it or that the collection is empty; offer to help find an alternative or have the team check.'
+    );
+  } else if (productBrowseExhausted) {
+    parts.push(
+      'The checked collection results contain no additional eligible products not already shown. Say you could not find more in the checked results and ask whether the customer wants a different collection. Do not claim the whole store has no more products.'
     );
   } else if (productBrowseNoMatches) {
     const fallback =

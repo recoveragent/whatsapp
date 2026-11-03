@@ -115,6 +115,7 @@ export async function getShopifyCatalogProductsForProductIds(args: {
   db: SupabaseClient;
   accountId: string;
   productIds: number[];
+  allVariants?: boolean;
 }): Promise<ShopifyCatalogProduct[]> {
   if (args.productIds.length === 0) return [];
 
@@ -129,6 +130,18 @@ export async function getShopifyCatalogProductsForProductIds(args: {
     .order('shopify_variant_id', { ascending: true });
 
   if (error) throw new Error(error.message);
+
+  if (args.allVariants) {
+    const order = new Map(args.productIds.map((id, index) => [id, index]));
+    return (data ?? [])
+      .map((row) => rowToCatalogProduct(row as Record<string, unknown>))
+      .filter((product) => product.in_stock)
+      .sort(
+        (a, b) =>
+          (order.get(a.shopify_product_id) ?? 0) -
+          (order.get(b.shopify_product_id) ?? 0)
+      );
+  }
 
   const byProduct = new Map<number, ShopifyCatalogProduct>();
   for (const row of data ?? []) {

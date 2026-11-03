@@ -110,36 +110,35 @@ const request = (content: string) =>
 
 describe('playground guided selling', () => {
   it('returns reply choices for a question in the playground', async () => {
-    h.generate.mockResolvedValueOnce({ text: 'Would you like help choosing a size?', handoff: false, quickReplies: ['Yes, help me', 'Not now'] });
+    h.generate.mockResolvedValueOnce({
+      text: 'Would you like help choosing a size?',
+      handoff: false,
+      quickReplies: ['Yes, help me', 'Not now'],
+    });
     const body = await (await POST(request('hi'))).json();
     expect(body.quick_replies).toEqual(['Yes, help me', 'Not now']);
   });
   it('suppresses reply choices on handoff', async () => {
-    h.generate.mockResolvedValueOnce({ text: 'The team can help.', handoff: true, quickReplies: ['Yes', 'No'] });
+    h.generate.mockResolvedValueOnce({
+      text: 'The team can help.',
+      handoff: true,
+      quickReplies: ['Yes', 'No'],
+    });
     const body = await (await POST(request('hi'))).json();
     expect(body.quick_replies).toEqual([]);
   });
-  it('shows only the price- and size-compatible product, even with no carousel', async () => {
-    const response = await POST(request('Show hoodies under INR 1000 size L'));
-    expect(response.status).toBe(200);
-    const body = await response.json();
-    expect(body.product_carousel).toBeNull();
-    expect(body.reply).toContain('INR 900.00');
-    expect(body.reply).toContain('/cart/101:1');
-    expect(body.reply).not.toContain('/cart/102:1');
-    expect(body.reply).not.toContain('/cart/103:1');
-    expect(h.eq).toHaveBeenCalledWith('account_id', 'acct-1');
-    expect(h.generate.mock.calls[0][0].systemPrompt).toContain(
-      'append the matched product names'
-    );
-  });
-  it('does not promise a carousel for a single result even when enabled', async () => {
-    h.carouselEnabled = true;
+  it('shows a single matching product as a View product card', async () => {
     const body = await (
       await POST(request('Show hoodies under INR 1000 size L'))
     ).json();
-    expect(body.product_carousel).toBeNull();
-    expect(body.reply).toContain('/cart/101:1');
+    expect(body.product_carousel.button_label).toBe('View product');
+    expect(
+      body.product_carousel.products.map(
+        (p: { shopify_variant_id: number }) => p.shopify_variant_id
+      )
+    ).toEqual([101]);
+    expect(body.reply).not.toContain('/cart/');
+    expect(h.eq).toHaveBeenCalledWith('account_id', 'acct-1');
   });
   it('asks for clarification when currency is ambiguous instead of showing arbitrary prices', async () => {
     const body = await (await POST(request('Show hoodies under $50'))).json();

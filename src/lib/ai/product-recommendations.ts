@@ -6,6 +6,11 @@ import {
   type ShopifyCatalogProduct,
 } from '@/lib/shopify/product-store';
 
+import {
+  listShopifyCollections,
+  resolveCollectionCatalogVariants,
+} from '@/lib/shopify/collections';
+import type { ShopifyCollectionSummary } from '@/lib/shopify/admin-api';
 import type { ChatMessage } from './types';
 import { latestUserMessage } from './query';
 import {
@@ -234,7 +239,8 @@ export function shouldOfferProductCarousel(messages: ChatMessage[]): boolean {
 function carouselReady(
   products: ShopifyCatalogProduct[],
   limit: number,
-  preferences: ProductPreferences = {}
+  preferences: ProductPreferences = {},
+  excluded: ReadonlySet<number> = new Set()
 ): ShopifyCatalogProduct[] {
   // One card per product: two sizes of the same frame read as a repeat,
   // not as a choice. Stores also list colours or designs as separate
@@ -244,7 +250,11 @@ function carouselReady(
   const seenTitles = new Set<string>();
   return products
     .filter((product) => {
-      if (!productMatchesPreferences(product, preferences)) return false;
+      if (
+        excluded.has(product.shopify_variant_id) ||
+        !productMatchesPreferences(product, preferences)
+      )
+        return false;
       const baseTitle = product.title.split(' - ')[0].trim().toLowerCase();
       if (seenProducts.has(product.shopify_product_id)) return false;
       if (seenTitles.has(baseTitle)) return false;
@@ -363,7 +373,8 @@ export async function searchRecommendedProducts(
   accountId: string,
   query: string,
   limit: number = aiProductCarouselLimit(),
-  preferences: ProductPreferences = {}
+  preferences: ProductPreferences = {},
+  excluded: ReadonlySet<number> = new Set()
 ): Promise<ShopifyCatalogProduct[]> {
   const max = Math.min(Math.max(limit, MIN_CAROUSEL_LIMIT), MAX_CAROUSEL_LIMIT);
   const terms = extractProductSearchTerms(query);
@@ -378,7 +389,8 @@ export async function searchRecommendedProducts(
         inStockOnly: true,
       }),
       max,
-      preferences
+      preferences,
+      excluded
     );
   }
 
@@ -427,7 +439,7 @@ export async function searchRecommendedProducts(
     )
     .map((entry) => entry.product);
 
-  return carouselReady(ranked, max, preferences);
+  return carouselReady(ranked, max, preferences, excluded);
 }
 
 /** One specific word (or a related one) — more than a lone "gift". */
@@ -456,7 +468,8 @@ export async function productsFromKnowledgeVariantIds(
   accountId: string,
   variantIds: number[],
   limit: number = aiProductCarouselLimit(),
-  preferences: ProductPreferences = {}
+  preferences: ProductPreferences = {},
+  excluded: ReadonlySet<number> = new Set()
 ): Promise<ShopifyCatalogProduct[]> {
   const max = Math.min(Math.max(limit, MIN_CAROUSEL_LIMIT), MAX_CAROUSEL_LIMIT);
   const products = await Promise.all(
@@ -469,7 +482,9 @@ export async function productsFromKnowledgeVariantIds(
   return products
     .filter(
       (product): product is ShopifyCatalogProduct =>
-        !!product && productMatchesPreferences(product, preferences)
+        !!product &&
+        !excluded.has(product.shopify_variant_id) &&
+        productMatchesPreferences(product, preferences)
     )
     .slice(0, max);
 }
@@ -515,7 +530,8 @@ export async function productsFromKnowledgeHints(
   accountId: string,
   knowledge: string[],
   limit: number = aiProductCarouselLimit(),
-  preferences: ProductPreferences = {}
+  preferences: ProductPreferences = {},
+  excluded: ReadonlySet<number> = new Set()
 ): Promise<ShopifyCatalogProduct[]> {
   const hints = extractProductHintsFromKnowledge(knowledge);
   if (hints.length === 0) return [];
@@ -524,7 +540,7 @@ export async function productsFromKnowledgeHints(
   const byVariant = new Map<number, ShopifyCatalogProduct>();
 
   for (const hint of hints) {
-    if (byVariant.size >= max) break;
+    if (byVariant.size >= 50) break;
     const products = await searchShopifyProducts({
       db,
       accountId,
@@ -533,12 +549,16 @@ export async function productsFromKnowledgeHints(
       inStockOnly: true,
     });
     for (const product of products) {
-      if (!productMatchesPreferences(product, preferences)) continue;
+      if (
+        excluded.has(product.shopify_variant_id) ||
+        !productMatchesPreferences(product, preferences)
+      )
+        continue;
       byVariant.set(product.shopify_variant_id, product);
     }
   }
 
-  return carouselReady([...byVariant.values()], max, preferences);
+  return carouselReady([...byVariant.values()], max, preferences, excluded);
 }
 
 /**
@@ -551,7 +571,8 @@ export async function resolveRecommendedProducts(
   query: string,
   knowledge: string[] = [],
   limit: number = aiProductCarouselLimit(),
-  preferences: ProductPreferences = {}
+  preferences: ProductPreferences = {},
+  excluded: ReadonlySet<number> = new Set()
 ): Promise<ShopifyCatalogProduct[]> {
   const max = Math.min(Math.max(limit, MIN_CAROUSEL_LIMIT), MAX_CAROUSEL_LIMIT);
   const variantIds = extractVariantIdsFromKnowledge(knowledge);
@@ -565,7 +586,8 @@ export async function resolveRecommendedProducts(
       accountId,
       variantIds,
       max,
-      preferences
+      preferences,
+      excluded
     );
   }
 
@@ -573,8 +595,15 @@ export async function resolveRecommendedProducts(
   // FAQ line that happens to match a title must not crowd out products
   // that fit what the customer asked for.
   const [hinted, searched] = await Promise.all([
-    productsFromKnowledgeHints(db, accountId, knowledge, max, preferences),
-    searchRecommendedProducts(db, accountId, query, max, preferences),
+    productsFromKnowledgeHints(
+      db,
+      accountId,
+      knowledge,
+      max,
+      preferences,
+      excluded
+    ),
+    searchRecommendedProducts(db, accountId, query, max, preferences, excluded),
   ]);
   const weighted = weightedSearchTerms(extractProductSearchTerms(query));
   const fittingHints = hinted.filter(
@@ -584,7 +613,8 @@ export async function resolveRecommendedProducts(
   return carouselReady(
     [...fittingHints, ...searched, ...(searched.length === 0 ? hinted : [])],
     max,
-    preferences
+    preferences,
+    excluded
   );
 }
 
@@ -604,4 +634,152 @@ export function formatProductRecommendationsForAi(
       return `[${index + 1}] ${product.title}${product.variant_title ? ` (${product.variant_title})` : ''} — ${price}`;
     })
     .join('\n');
+}
+
+/** Match an explicitly requested collection, requiring all meaningful request words. */
+export function matchRequestedCollection(
+  query: string,
+  collections: ShopifyCollectionSummary[]
+): ShopifyCollectionSummary | null {
+  const normalize = (text: string) =>
+    text
+      .toLowerCase()
+      .replace(/[’']/g, '')
+      .replace(/\bwomens\b/g, 'women')
+      .replace(/\bmens\b/g, 'men');
+  const ignored = new Set([
+    'collection',
+    'collections',
+    'our',
+    'personalized',
+    'personalised',
+    'customized',
+    'customised',
+    'the',
+    'your',
+    'show',
+    'me',
+    'of',
+    'for',
+    'in',
+    'please',
+  ]);
+  const words =
+    normalize(query)
+      .match(/[\p{L}\p{N}]+/gu)
+      ?.filter((word) => word.length > 1 && !ignored.has(word)) ?? [];
+  if (!words.length) return null;
+  const matches = collections
+    .map((collection) => {
+      const title = normalize(
+        collection.title + ' ' + (collection.handle ?? '').replace(/-/g, ' ')
+      );
+      const tokens = new Set(
+        (title.match(/[\p{L}\p{N}]+/gu) ?? []).map(singular)
+      );
+      const overlap = words.filter((word) => tokens.has(singular(word))).length;
+      return { collection, overlap, extras: tokens.size - overlap };
+    })
+    .filter((item) => item.overlap === words.length)
+    .sort((a, b) => a.extras - b.extras);
+  if (matches.length > 1 && matches[0].extras === matches[1].extras)
+    return null;
+  return matches[0]?.collection ?? null;
+}
+
+export function isMoreProductsRequest(text: string): boolean {
+  return (
+    (/\b(?:more|other|different|another|next|alternative)\b/i.test(text) &&
+      /\b(?:products?|designs?|styles?|options?|ones?|choices?|items?)\b/i.test(
+        text
+      )) ||
+    /^\s*(?:show\s+me\s+)?more[.!?]*\s*$/i.test(text)
+  );
+}
+
+/** Resolve explicit collection requests against Shopify membership; null means unavailable or ambiguous. */
+export function hasNamedCollectionRequest(messages: ChatMessage[]): boolean {
+  const users = shoppingUserMessages(messages);
+  const latest = users.at(-1)?.content ?? '';
+  const request = isMoreProductsRequest(latest)
+    ? ([...users]
+        .reverse()
+        .find(
+          (m) =>
+            /\bcollections?\b/i.test(m.content) &&
+            !isMoreProductsRequest(m.content)
+        )?.content ?? '')
+    : latest;
+  return (
+    /\bcollections?\b/i.test(request) &&
+    extractProductSearchTerms(request).some(
+      (word) => !['collection', 'collections', 'our'].includes(word)
+    )
+  );
+}
+
+export async function resolveRequestedCollection(args: {
+  db: SupabaseClient;
+  accountId: string;
+  messages: ChatMessage[];
+  preferences: ProductPreferences;
+}): Promise<{
+  products: ShopifyCatalogProduct[];
+  collection: ShopifyCollectionSummary;
+} | null> {
+  const users = shoppingUserMessages(args.messages);
+  const latest = users.at(-1)?.content ?? '';
+  const more = isMoreProductsRequest(latest);
+  const request = more
+    ? [...users]
+        .reverse()
+        .find(
+          (m) =>
+            /\bcollections?\b/i.test(m.content) &&
+            !isMoreProductsRequest(m.content)
+        )?.content
+    : latest;
+  if (!request || !/\bcollections?\b/i.test(request)) return null;
+  const collectionQuery = stripProductPreferenceTerms(
+    request,
+    args.preferences.minPrice != null || args.preferences.maxPrice != null
+  ).replace(
+    /\b(?:size|in)\s*:?\s*(?:xs|s|m|l|xl|xxl|small|medium|large)\b/gi,
+    ' '
+  );
+  const collection = matchRequestedCollection(
+    collectionQuery,
+    await listShopifyCollections(args.db, args.accountId)
+  );
+  if (!collection) return null;
+  const shown = new Set(
+    more
+      ? args.messages.flatMap((m) =>
+          m.role === 'assistant' ? (m.productVariantIds ?? []) : []
+        )
+      : []
+  );
+  const candidates = await resolveCollectionCatalogVariants({
+    db: args.db,
+    accountId: args.accountId,
+    collectionId: collection.id,
+  });
+  const seenProducts = new Set(
+    candidates
+      .filter((product) => shown.has(product.shopify_variant_id))
+      .map((product) => product.shopify_product_id)
+  );
+  const products = candidates
+    .filter((product) => {
+      if (
+        !productMatchesPreferences(product, args.preferences) ||
+        shown.has(product.shopify_variant_id) ||
+        seenProducts.has(product.shopify_product_id)
+      )
+        return false;
+      seenProducts.add(product.shopify_product_id);
+      return true;
+    })
+    .slice(0, aiProductCarouselLimit());
+  return { products, collection };
 }

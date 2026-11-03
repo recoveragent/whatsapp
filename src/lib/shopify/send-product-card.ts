@@ -20,7 +20,10 @@ import {
 } from './product-checkout-url';
 import { getShopifyCatalogProduct } from './product-store';
 
-export function formatShopifyProductPrice(price: string, currency: string | null): string {
+export function formatShopifyProductPrice(
+  price: string,
+  currency: string | null
+): string {
   const normalized = price.trim() || '0.00';
   if (currency === 'INR') return `₹${normalized}`;
   if (currency) return `${currency} ${normalized}`;
@@ -79,6 +82,7 @@ export interface SendShopifyProductCardArgs {
   skipAssigneeCheck?: boolean;
   recoverySend?: boolean;
   skipRecoverySchedule?: boolean;
+  aiGenerated?: boolean;
   /** Text shown above the product title/price line. */
   introText?: string;
   /** CTA button label; defaults by link target ("Buy now" / "View product"). */
@@ -99,7 +103,7 @@ export interface SendShopifyProductCardResult {
 }
 
 export async function sendShopifyProductCard(
-  args: SendShopifyProductCardArgs,
+  args: SendShopifyProductCardArgs
 ): Promise<SendShopifyProductCardResult> {
   const product = await getShopifyCatalogProduct({
     db: args.db,
@@ -108,7 +112,9 @@ export async function sendShopifyProductCard(
   });
 
   if (!product) {
-    throw new Error('Product not found. Sync your Shopify catalog and try again.');
+    throw new Error(
+      'Product not found. Sync your Shopify catalog and try again.'
+    );
   }
 
   if (!product.in_stock) {
@@ -145,17 +151,21 @@ export async function sendShopifyProductCard(
   }
 
   if (!args.flowRunId && !args.skipAssigneeCheck) {
-    const assigneeId = (conversation.assigned_agent_id as string | null) ?? null;
+    const assigneeId =
+      (conversation.assigned_agent_id as string | null) ?? null;
     if (!assigneeId || assigneeId !== args.userId) {
       throw new Error(
         assigneeId
           ? 'This chat is assigned to someone else — reassign it to yourself before sending'
-          : 'Self-assign this chat before sending',
+          : 'Self-assign this chat before sending'
       );
     }
   }
 
-  const contact = conversation.contact as { id?: string; phone?: string } | null;
+  const contact = conversation.contact as {
+    id?: string;
+    phone?: string;
+  } | null;
   if (!contact?.phone) {
     throw new Error('Contact phone number not found');
   }
@@ -196,7 +206,8 @@ export async function sendShopifyProductCard(
   });
   const intro = args.introText?.trim();
   const bodyText = intro ? `${intro}\n\n${productLine}` : productLine;
-  const buttonLabel = args.buttonLabel?.trim() || DEFAULT_PRODUCT_BUTTON_LABELS[linkTarget];
+  const buttonLabel =
+    args.buttonLabel?.trim() || DEFAULT_PRODUCT_BUTTON_LABELS[linkTarget];
 
   let contextMessageId: string | undefined;
   if (args.replyToMessageId) {
@@ -272,8 +283,15 @@ export async function sendShopifyProductCard(
     .from('messages')
     .insert({
       conversation_id: args.conversationId,
-      sender_type: args.flowRunId || args.recoverySend ? 'bot' : 'agent',
-      sender_id: args.flowRunId || args.recoverySend ? null : args.userId,
+      sender_type:
+        args.flowRunId || args.recoverySend || args.aiGenerated
+          ? 'bot'
+          : 'agent',
+      sender_id:
+        args.flowRunId || args.recoverySend || args.aiGenerated
+          ? null
+          : args.userId,
+      ai_generated: args.aiGenerated ?? false,
       content_type: 'interactive',
       content_text: bodyText,
       media_url: product.image_url,
@@ -287,7 +305,7 @@ export async function sendShopifyProductCard(
 
   if (messageError || !messageRecord?.id) {
     throw new Error(
-      `Message sent to Meta but failed to save to DB: ${messageError?.message ?? 'unknown error'}`,
+      `Message sent to Meta but failed to save to DB: ${messageError?.message ?? 'unknown error'}`
     );
   }
 
@@ -316,7 +334,10 @@ export async function sendShopifyProductCard(
     .single();
 
   if (productSendError) {
-    console.error('[shopify/product-card] product send audit failed:', productSendError);
+    console.error(
+      '[shopify/product-card] product send audit failed:',
+      productSendError
+    );
   } else if (!args.skipRecoverySchedule && productSendRow?.id) {
     await scheduleProductLinkRecovery({
       db: args.db,
@@ -330,7 +351,12 @@ export async function sendShopifyProductCard(
     });
   }
 
-  if (!args.flowRunId && !args.recoverySend && contact.id) {
+  if (
+    !args.flowRunId &&
+    !args.recoverySend &&
+    !args.aiGenerated &&
+    contact.id
+  ) {
     try {
       await supabaseAdmin()
         .from('flow_runs')

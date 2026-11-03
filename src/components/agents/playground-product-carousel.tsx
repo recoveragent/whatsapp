@@ -6,7 +6,9 @@ import { useRef } from 'react';
 import type { PlaygroundProductCarousel } from '@/lib/ai/playground-carousel';
 import { cn } from '@/lib/utils';
 
-function productLabel(product: PlaygroundProductCarousel['products'][number]): string {
+function productLabel(
+  product: PlaygroundProductCarousel['products'][number]
+): string {
   const variant = product.variant_title?.trim();
   if (
     variant &&
@@ -40,38 +42,42 @@ export function PlaygroundProductCarouselPreview({
   return (
     <div className={cn('mt-2 space-y-2', className)}>
       <div className="flex items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="text-muted-foreground inline-flex items-center gap-1 text-[10px] font-medium tracking-wide uppercase">
           <ShoppingBag className="h-3 w-3" />
-          Product carousel preview
+          {carousel.products.length === 1
+            ? 'Product card preview'
+            : 'Product carousel preview'}
         </span>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => scroll('left')}
-            className="rounded-md border border-border p-1 text-muted-foreground hover:bg-muted"
-            aria-label="Scroll carousel left"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => scroll('right')}
-            className="rounded-md border border-border p-1 text-muted-foreground hover:bg-muted"
-            aria-label="Scroll carousel right"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        {carousel.products.length > 1 && (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => scroll('left')}
+              className="border-border text-muted-foreground hover:bg-muted rounded-md border p-1"
+              aria-label="Scroll carousel left"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => scroll('right')}
+              className="border-border text-muted-foreground hover:bg-muted rounded-md border p-1"
+              aria-label="Scroll carousel right"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
       </div>
 
       <div
         ref={scrollerRef}
-        className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex snap-x snap-mandatory [scrollbar-width:none] gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
         {carousel.products.map((product) => (
           <article
             key={product.shopify_variant_id}
-            className="w-[168px] shrink-0 snap-start overflow-hidden rounded-xl border border-border bg-background"
+            className="border-border bg-background w-[168px] shrink-0 snap-start overflow-hidden rounded-xl border"
           >
             {product.image_url ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -81,16 +87,18 @@ export function PlaygroundProductCarouselPreview({
                 className="h-28 w-full object-cover"
               />
             ) : (
-              <div className="flex h-28 items-center justify-center bg-muted text-xs text-muted-foreground">
+              <div className="bg-muted text-muted-foreground flex h-28 items-center justify-center text-xs">
                 No image
               </div>
             )}
             <div className="space-y-1 p-2.5">
-              <p className="line-clamp-2 text-xs font-medium text-foreground">
+              <p className="text-foreground line-clamp-2 text-xs font-medium">
                 {productLabel(product)}
               </p>
-              <p className="text-xs text-muted-foreground">{product.formatted_price}</p>
-              <span className="inline-flex rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+              <p className="text-muted-foreground text-xs">
+                {product.formatted_price}
+              </p>
+              <span className="border-primary/30 bg-primary/10 text-primary inline-flex rounded-md border px-2 py-0.5 text-[10px] font-medium">
                 {carousel.button_label}
               </span>
             </div>
@@ -100,7 +108,8 @@ export function PlaygroundProductCarouselPreview({
 
       {!carousel.live_ready && (
         <p className="text-[10px] text-amber-600 dark:text-amber-500">
-          Preview only — enable Sell on WhatsApp to send this carousel on live WhatsApp.
+          Preview only — enable Sell on WhatsApp to send this carousel on live
+          WhatsApp.
         </p>
       )}
     </div>
