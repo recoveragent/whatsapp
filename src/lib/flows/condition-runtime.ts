@@ -26,8 +26,20 @@ export interface ConditionTrace {
   subject: string;
   field: string;
   source: string;
+  operator: string;
+  /** Configured comparison value(s), as written in the flow builder. */
+  expected?: string;
+  expected_to?: string;
+  /** What the engine actually compared, truncated for the run log. */
+  actual?: string;
   result: boolean;
   missing?: boolean;
+}
+
+function traceValue(value: unknown): string | undefined {
+  if (value == null) return undefined;
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return text.length > 200 ? `${text.slice(0, 200)}…` : text;
 }
 
 /** A scope is shared by all rules in one condition/switch, so fresh reads stay consistent. */
@@ -192,10 +204,12 @@ export function createConditionEvaluator(db: SupabaseClient, run: FlowRunRow) {
         typeof (value as Record<string, unknown>).formatted === 'string'
       )
         value = (value as Record<string, unknown>).formatted;
-      // Existing variable predicates used comma-joined arrays for these operators.
+      // Existing variable predicates use comma-joined arrays; keep positive and negative checks symmetric.
       if (
         Array.isArray(value) &&
-        ['equals', 'not_equals', 'contains'].includes(cfg.operator)
+        ['equals', 'not_equals', 'contains', 'not_contains'].includes(
+          cfg.operator
+        )
       )
         value = String(value);
     } else if (cfg.subject === 'tag') {
@@ -232,13 +246,21 @@ export function createConditionEvaluator(db: SupabaseClient, run: FlowRunRow) {
             configValue: cfg.value,
             valueTo: cfg.value_to,
             type,
+            listMatch:
+              isShopifySubject(cfg.subject) &&
+              cfg.subject_key === 'product_names'
+                ? 'substring'
+                : 'exact',
           });
     traces.push({
       subject: cfg.subject,
       field: cfg.subject_key,
       source,
+      operator: cfg.operator,
+      ...(cfg.value != null ? { expected: cfg.value } : {}),
+      ...(cfg.value_to != null ? { expected_to: cfg.value_to } : {}),
+      ...(missing ? { missing: true } : { actual: traceValue(value) }),
       result,
-      ...(missing ? { missing: true } : {}),
     });
     return result;
   }

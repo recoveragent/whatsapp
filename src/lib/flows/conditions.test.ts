@@ -25,6 +25,31 @@ const rule = (patch: Partial<ConditionPredicate> = {}): ConditionPredicate => ({
 });
 
 describe('typed comparisons', () => {
+  it.each(
+    [undefined, null, '', '  \n ', [], [null, '', '  ']].map((value) => [value])
+  )('treats empty values as absent (%j)', (subjectValue) => {
+    expect(compareCondition({ operator: 'present', subjectValue })).toBe(false);
+    expect(compareCondition({ operator: 'absent', subjectValue })).toBe(true);
+  });
+  it.each(
+    [false, 0, 'false', '0', [false], [0], ['', 'value']].map((value) => [
+      value,
+    ])
+  )('treats real values as present (%j)', (subjectValue) => {
+    expect(compareCondition({ operator: 'present', subjectValue })).toBe(true);
+    expect(compareCondition({ operator: 'absent', subjectValue })).toBe(false);
+  });
+  it('does not match invalid empty text patterns', () => {
+    for (const operator of [
+      'contains',
+      'not_contains',
+      'starts_with',
+      'ends_with',
+    ] as const)
+      expect(
+        compareCondition({ operator, subjectValue: 'value', configValue: '  ' })
+      ).toBe(false);
+  });
   it('compares money numerically and rejects formatted/invalid money', () => {
     expect(
       compareCondition({
@@ -55,15 +80,70 @@ describe('typed comparisons', () => {
   it('ignores case in text and list comparisons', () => {
     const product = 'Personalized Baby Birth Frame - Design 1 / A4 (8x12 inch)';
     const cases: Array<[Parameters<typeof compareCondition>[0], boolean]> = [
-      [{ operator: 'contains', subjectValue: product, configValue: 'baby birth' }, true],
-      [{ operator: 'not_contains', subjectValue: product, configValue: 'BABY BIRTH' }, false],
-      [{ operator: 'equals', subjectValue: 'Chennai', configValue: 'chennai' }, true],
-      [{ operator: 'not_equals', subjectValue: 'Chennai', configValue: 'CHENNAI' }, false],
-      [{ operator: 'starts_with', subjectValue: product, configValue: 'personalized' }, true],
-      [{ operator: 'ends_with', subjectValue: product, configValue: 'INCH)' }, true],
-      [{ operator: 'in', subjectValue: 'Tamil Nadu', configValue: 'kerala, tamil nadu' }, true],
-      [{ operator: 'contains', subjectValue: ['VIP', 'Repeat'], configValue: 'vip' }, true],
-      [{ operator: 'contains_all', subjectValue: ['VIP', 'Repeat'], configValue: 'vip, repeat' }, true],
+      [
+        {
+          operator: 'contains',
+          subjectValue: product,
+          configValue: 'baby birth',
+        },
+        true,
+      ],
+      [
+        {
+          operator: 'not_contains',
+          subjectValue: product,
+          configValue: 'BABY BIRTH',
+        },
+        false,
+      ],
+      [
+        { operator: 'equals', subjectValue: 'Chennai', configValue: 'chennai' },
+        true,
+      ],
+      [
+        {
+          operator: 'not_equals',
+          subjectValue: 'Chennai',
+          configValue: 'CHENNAI',
+        },
+        false,
+      ],
+      [
+        {
+          operator: 'starts_with',
+          subjectValue: product,
+          configValue: 'personalized',
+        },
+        true,
+      ],
+      [
+        { operator: 'ends_with', subjectValue: product, configValue: 'INCH)' },
+        true,
+      ],
+      [
+        {
+          operator: 'in',
+          subjectValue: 'Tamil Nadu',
+          configValue: 'kerala, tamil nadu',
+        },
+        true,
+      ],
+      [
+        {
+          operator: 'contains',
+          subjectValue: ['VIP', 'Repeat'],
+          configValue: 'vip',
+        },
+        true,
+      ],
+      [
+        {
+          operator: 'contains_all',
+          subjectValue: ['VIP', 'Repeat'],
+          configValue: 'vip, repeat',
+        },
+        true,
+      ],
     ];
     for (const [args, expected] of cases)
       expect(compareCondition(args)).toBe(expected);

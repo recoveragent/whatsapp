@@ -76,6 +76,125 @@ function mockDb(
 beforeEach(() => vi.resetAllMocks());
 
 describe('condition execution', () => {
+  it('keeps contains and not_contains inverse for captured list variables', async () => {
+    const { db } = mockDb();
+    const evaluator = createConditionEvaluator(db, {
+      ...run,
+      vars: { ...run.vars, products: ['Personalized Baby Birth Frame'] },
+    } as unknown as FlowRunRow);
+    for (const [operator, expected] of [
+      ['contains', true],
+      ['not_contains', false],
+    ] as const) {
+      expect(
+        await evaluator.group(
+          group([
+            predicate({
+              subject: 'var',
+              subject_key: 'products',
+              operator,
+              value: 'baby birth',
+            }),
+          ])
+        )
+      ).toBe(expected);
+    }
+  });
+
+  it('checks presence without treating false or zero as missing', async () => {
+    const { db } = mockDb();
+    for (const [value, present] of [
+      [undefined, false],
+      [null, false],
+      ['  ', false],
+      [[], false],
+      [[null, ''], false],
+      [false, true],
+      [0, true],
+    ] as const) {
+      const evaluator = createConditionEvaluator(db, {
+        ...run,
+        vars: { ...run.vars, answer: value },
+      } as unknown as FlowRunRow);
+      for (const operator of ['present', 'absent'] as const) {
+        expect(
+          await evaluator.group(
+            group([
+              predicate({
+                subject: 'var',
+                subject_key: 'answer',
+                operator,
+              }),
+            ])
+          )
+        ).toBe(operator === 'present' ? present : !present);
+      }
+    }
+  });
+
+  it.each(['shopify_order', 'shopify_checkout'] as const)(
+    'matches partial product titles for %s without making IDs or tags partial',
+    async (subject) => {
+      const { db } = mockDb();
+      const evaluator = createConditionEvaluator(db, {
+        ...run,
+        vars: {
+          ...run.vars,
+          shopify_condition_data: {
+            resource_type: subject === 'shopify_order' ? 'order' : 'checkout',
+            line_items: [
+              { title: 'Personalized Baby Birth Frame', product_id: '12345' },
+              { name: 'Engraved Gift Box - Large' },
+            ],
+            product_ids: ['12345'],
+            tags: ['VIP-new'],
+          },
+        },
+      } as unknown as FlowRunRow);
+      const cases: Array<[Partial<ConditionPredicate>, boolean]> = [
+        [{ operator: 'contains', value: 'baby birth' }, true],
+        [{ operator: 'equals', value: 'baby birth' }, false],
+        [{ operator: 'equals', value: 'personalized baby birth frame' }, true],
+        [{ operator: 'not_equals', value: 'baby birth' }, true],
+        [
+          { operator: 'not_equals', value: 'Personalized Baby Birth Frame' },
+          false,
+        ],
+        [{ operator: 'contains', value: 'BABY BIRTH' }, true],
+        [
+          { operator: 'contains', value: 'Personalized Baby Birth Frame' },
+          true,
+        ],
+        [{ operator: 'contains', value: 'gift box' }, true],
+        [{ operator: 'contains', value: 'wedding' }, false],
+        [{ operator: 'not_contains', value: 'baby birth' }, false],
+        [{ operator: 'not_contains', value: 'wedding' }, true],
+        [{ operator: 'contains_any', value: 'wedding, baby birth' }, true],
+        [{ operator: 'contains_all', value: 'baby birth, gift box' }, true],
+        [{ operator: 'contains_all', value: 'baby birth, wedding' }, false],
+        [
+          { subject_key: 'product_ids', operator: 'contains', value: '123' },
+          false,
+        ],
+        [{ subject_key: 'tags', operator: 'contains', value: 'VIP' }, false],
+      ];
+      for (const [patch, expected] of cases) {
+        expect(
+          await evaluator.group(
+            group([
+              predicate({
+                subject,
+                subject_key: 'product_names',
+                ...patch,
+              }),
+            ])
+          )
+        ).toBe(expected);
+      }
+      expect(db.from).not.toHaveBeenCalled();
+    }
+  );
+
   it('looks up collections for the triggering products once per node', async () => {
     const { db } = mockDb();
     vi.mocked(fetchProductCollectionMembership).mockResolvedValue(
