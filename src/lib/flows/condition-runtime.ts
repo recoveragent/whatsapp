@@ -26,8 +26,20 @@ export interface ConditionTrace {
   subject: string;
   field: string;
   source: string;
+  operator: string;
+  /** Configured comparison value(s), as written in the flow builder. */
+  expected?: string;
+  expected_to?: string;
+  /** What the engine actually compared, truncated for the run log. */
+  actual?: string;
   result: boolean;
   missing?: boolean;
+}
+
+function traceValue(value: unknown): string | undefined {
+  if (value == null) return undefined;
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return text.length > 200 ? `${text.slice(0, 200)}…` : text;
 }
 
 /** A scope is shared by all rules in one condition/switch, so fresh reads stay consistent. */
@@ -244,8 +256,11 @@ export function createConditionEvaluator(db: SupabaseClient, run: FlowRunRow) {
       subject: cfg.subject,
       field: cfg.subject_key,
       source,
+      operator: cfg.operator,
+      ...(cfg.value != null ? { expected: cfg.value } : {}),
+      ...(cfg.value_to != null ? { expected_to: cfg.value_to } : {}),
+      ...(missing ? { missing: true } : { actual: traceValue(value) }),
       result,
-      ...(missing ? { missing: true } : {}),
     });
     return result;
   }

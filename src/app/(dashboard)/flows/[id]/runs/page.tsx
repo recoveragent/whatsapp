@@ -354,20 +354,129 @@ function EventLine({ ev, runStartedAt }: { ev: EventRow; runStartedAt: string })
           <span className="block truncate">{summarizePayload(ev.payload ?? {})}</span>
           {typeof ev.payload.detail === 'string' && <p className="mt-1 break-words">{ev.payload.detail}</p>}
           {Array.isArray(ev.payload.condition_checks) && ev.payload.condition_checks.length > 0 && (
-            <details className="mt-1">
-              <summary className="cursor-pointer">Condition checks</summary>
-              <ul className="mt-1 space-y-1">
-                {ev.payload.condition_checks.map((raw, index) => {
-                  if (!raw || typeof raw !== 'object') return null;
-                  const check = raw as Record<string, unknown>;
-                  return <li key={index} className="break-words">{String(check.subject)}.{String(check.field)} · {String(check.source).replaceAll('_', ' ')} · {check.missing ? 'Data unavailable' : check.result ? 'Matched' : 'Did not match'}</li>;
-                })}
-              </ul>
-            </details>
+            <ConditionChecks payload={ev.payload} />
           )}
         </div>
       )}
     </div>
+  );
+}
+
+const OPERATOR_LABEL: Record<string, string> = {
+  equals: "equals",
+  not_equals: "does not equal",
+  contains: "contains",
+  not_contains: "does not contain",
+  present: "is present",
+  absent: "is absent",
+  gt: ">",
+  gte: "≥",
+  lt: "<",
+  lte: "≤",
+  between: "is between",
+};
+
+function ConditionChecks({ payload }: { payload: Record<string, unknown> }) {
+  const checks = (payload.condition_checks as unknown[]).filter(
+    (raw): raw is Record<string, unknown> => !!raw && typeof raw === "object",
+  );
+  const result = payload.condition_result;
+  const match = payload.condition_match;
+  const ruleCount =
+    typeof payload.condition_rule_count === "number"
+      ? payload.condition_rule_count
+      : null;
+  const unchecked = ruleCount !== null ? ruleCount - checks.length : 0;
+  return (
+    <details className="mt-1" open>
+      <summary className="cursor-pointer">
+        Condition checks
+        {(result === "true" || result === "false") && (
+          <span
+            className={cn(
+              "ml-2 rounded px-1 py-0.5 font-medium",
+              result === "true"
+                ? "bg-emerald-500/10 text-emerald-400"
+                : "bg-red-500/10 text-red-400",
+            )}
+          >
+            {result === "true" ? "Yes branch" : "No branch"}
+          </span>
+        )}
+        {(match === "all" || match === "any") && ruleCount !== null && (
+          <span className="ml-2">
+            · match {match === "all" ? "ALL" : "ANY"} of {ruleCount} rule
+            {ruleCount === 1 ? "" : "s"}
+          </span>
+        )}
+      </summary>
+      <ul className="mt-1 space-y-1">
+        {checks.map((check, index) => {
+          const passed = check.result === true;
+          const operator =
+            typeof check.operator === "string"
+              ? (OPERATOR_LABEL[check.operator] ??
+                check.operator.replaceAll("_", " "))
+              : null;
+          const expected =
+            typeof check.expected === "string"
+              ? typeof check.expected_to === "string"
+                ? `"${check.expected}" and "${check.expected_to}"`
+                : `"${check.expected}"`
+              : null;
+          return (
+            <li
+              key={index}
+              className="flex items-start gap-1.5 rounded border border-border/60 px-1.5 py-1"
+            >
+              {passed ? (
+                <CircleCheck className="mt-px h-3 w-3 shrink-0 text-emerald-400" />
+              ) : (
+                <CircleAlert className="mt-px h-3 w-3 shrink-0 text-red-400" />
+              )}
+              <div className="min-w-0 break-words">
+                <div>
+                  <code className="text-foreground">
+                    {String(check.subject)}.{String(check.field)}
+                  </code>
+                  {operator && <> {operator}</>}
+                  {expected && (
+                    <span className="text-foreground"> {expected}</span>
+                  )}
+                  {check.source !== "snapshot" && (
+                    <span className="ml-1 opacity-70">
+                      ({String(check.source).replaceAll("_", " ")})
+                    </span>
+                  )}
+                </div>
+                <div>
+                  Actual:{" "}
+                  {check.missing ? (
+                    <span className="text-amber-400">no value</span>
+                  ) : typeof check.actual === "string" ? (
+                    <span className="text-foreground">"{check.actual}"</span>
+                  ) : (
+                    <span className="opacity-70">not recorded</span>
+                  )}
+                  <span className={passed ? "text-emerald-400" : "text-red-400"}>
+                    {" "}
+                    → {passed ? "matched" : "did not match"}
+                  </span>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      {unchecked > 0 && (
+        <p className="mt-1 opacity-70">
+          {unchecked} more rule{unchecked === 1 ? "" : "s"} not checked —{" "}
+          {match === "any"
+            ? "ANY stops at the first rule that matches."
+            : "ALL stops at the first rule that fails."}
+        </p>
+      )}
+    </details>
   );
 }
 
