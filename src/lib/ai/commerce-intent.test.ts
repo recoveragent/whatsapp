@@ -1,8 +1,38 @@
 import { describe, expect, it } from 'vitest';
-import { shouldRefreshShopifyOrders } from './commerce-intent';
+import {
+  isNewPurchaseQuery,
+  isOrderSupportQuery,
+  shouldRefreshShopifyOrders,
+} from './commerce-intent';
 import { buildSystemPrompt } from './defaults';
 
 describe('order support routing', () => {
+  it.each([
+    'want to order baby birth frame',
+    'I would like to order a hoodie',
+    'Can I order a sofa?',
+    'How do I order a serum?',
+    'I am ready to place a new order for headphones',
+  ])('recognizes a new purchase across product categories: %s', (content) => {
+    expect(isNewPurchaseQuery(content)).toBe(true);
+    expect(isOrderSupportQuery(content)).toBe(false);
+    expect(
+      shouldRefreshShopifyOrders([
+        { role: 'user', content: 'Where is my order?' },
+        { role: 'user', content },
+      ])
+    ).toBe(false);
+  });
+  it.each([
+    'I want to order but my payment was charged twice',
+    'Can I order a refund?',
+    'I want to order a hoodie but cancel my order first',
+    'I want to order but where is my order?',
+    'I want to order status',
+  ])('keeps existing-order problems in support: %s', (content) => {
+    expect(isNewPurchaseQuery(content)).toBe(false);
+    expect(isOrderSupportQuery(content)).toBe(true);
+  });
   it.each([
     'Where is my order?',
     'Track my parcel',
@@ -35,5 +65,17 @@ describe('order support routing', () => {
     expect(prompt).toContain(
       'order number supplied in chat alone does not prove ownership'
     );
+  });
+  it('prioritizes the supplied catalog choices over a generic website redirect', () => {
+    const prompt = buildSystemPrompt({
+      userPrompt: null,
+      mode: 'auto_reply',
+      productRecommendations: 'Products from the current brand catalog',
+      productDelivery: 'carousel',
+    });
+    expect(prompt).toContain(
+      'help the customer choose from these matched products here first'
+    );
+    expect(prompt).toContain('Only direct them to checkout');
   });
 });

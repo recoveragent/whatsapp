@@ -160,27 +160,48 @@ beforeEach(() => {
   });
   h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false });
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' });
-  h.engineSendInteractiveButtons.mockResolvedValue({ whatsapp_message_id: 'buttons1' });
+  h.engineSendInteractiveButtons.mockResolvedValue({
+    whatsapp_message_id: 'buttons1',
+  });
 });
 
 describe('dispatchInboundToAiReply — eligibility gates', () => {
   it('sends one interactive question with validated AI reply choices', async () => {
-    h.generateReply.mockResolvedValueOnce({ text: 'Would you like help choosing a size?', handoff: false, quickReplies: ['Yes, help me', 'Not now'] });
+    h.generateReply.mockResolvedValueOnce({
+      text: 'Would you like help choosing a size?',
+      handoff: false,
+      quickReplies: ['Yes, help me', 'Not now'],
+    });
     await dispatchInboundToAiReply(ARGS);
-    expect(h.engineSendInteractiveButtons).toHaveBeenCalledWith(expect.objectContaining({
-      accountId: 'acct-1', bodyText: 'Would you like help choosing a size?', aiGenerated: true,
-      buttons: [{ id: 'ai_reply_1', title: 'Yes, help me' }, { id: 'ai_reply_2', title: 'Not now' }],
-    }));
+    expect(h.engineSendInteractiveButtons).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: 'acct-1',
+        bodyText: 'Would you like help choosing a size?',
+        aiGenerated: true,
+        buttons: [
+          { id: 'ai_reply_1', title: 'Yes, help me' },
+          { id: 'ai_reply_2', title: 'Not now' },
+        ],
+      })
+    );
     expect(h.engineSendText).not.toHaveBeenCalled();
   });
   it('keeps a handoff as text even if the model supplied choices', async () => {
-    h.generateReply.mockResolvedValueOnce({ text: 'The team can help.', handoff: true, quickReplies: ['Yes', 'No'] });
+    h.generateReply.mockResolvedValueOnce({
+      text: 'The team can help.',
+      handoff: true,
+      quickReplies: ['Yes', 'No'],
+    });
     await dispatchInboundToAiReply(ARGS);
     expect(h.engineSendInteractiveButtons).not.toHaveBeenCalled();
     expect(h.engineSendText).toHaveBeenCalled();
   });
   it('does not send a duplicate text if interactive delivery fails ambiguously', async () => {
-    h.generateReply.mockResolvedValueOnce({ text: 'Need help?', handoff: false, quickReplies: ['Yes', 'No'] });
+    h.generateReply.mockResolvedValueOnce({
+      text: 'Need help?',
+      handoff: false,
+      quickReplies: ['Yes', 'No'],
+    });
     h.engineSendInteractiveButtons.mockRejectedValueOnce(new Error('timeout'));
     await dispatchInboundToAiReply(ARGS);
     expect(h.engineSendText).not.toHaveBeenCalled();
@@ -319,7 +340,9 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     await dispatchInboundToAiReply(ARGS);
     // Only the handoff notice goes out — no product links.
     expect(h.engineSendText).toHaveBeenCalledTimes(1);
-    expect(h.engineSendText.mock.calls[0][0].text).not.toContain('myshopify.com');
+    expect(h.engineSendText.mock.calls[0][0].text).not.toContain(
+      'myshopify.com'
+    );
     expect(h.sendShopifyProductCarousel).not.toHaveBeenCalled();
   });
   it('claims a slot and sends on the happy path', async () => {
@@ -344,42 +367,43 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(systemPrompt).toContain('Returns accepted within 30 days.');
   });
 
-  it('sends a product carousel when catalog matches are found', async () => {
-    h.buildConversationContext.mockResolvedValue([
-      { role: 'user', content: 'show me your best sellers' },
-    ]);
-    h.searchRecommendedProducts.mockResolvedValue([
-      {
-        shopify_variant_id: 101,
-        title: 'Shirt',
-        price: '500',
-        currency: 'INR',
-        image_url: 'https://cdn.test/1.jpg',
-      },
-      {
-        shopify_variant_id: 102,
-        title: 'Hoodie',
-        price: '900',
-        currency: 'INR',
-        image_url: 'https://cdn.test/2.jpg',
-      },
-    ]);
-    h.generateReply.mockResolvedValue({
-      text: 'Here are a few picks you might like!',
-      handoff: false,
-    });
+  it.each(['show me your best sellers', 'I want to order a hoodie'])(
+    'sends a product carousel when catalog matches are found for %s',
+    async (content) => {
+      h.buildConversationContext.mockResolvedValue([{ role: 'user', content }]);
+      h.searchRecommendedProducts.mockResolvedValue([
+        {
+          shopify_variant_id: 101,
+          title: 'Shirt',
+          price: '500',
+          currency: 'INR',
+          image_url: 'https://cdn.test/1.jpg',
+        },
+        {
+          shopify_variant_id: 102,
+          title: 'Hoodie',
+          price: '900',
+          currency: 'INR',
+          image_url: 'https://cdn.test/2.jpg',
+        },
+      ]);
+      h.generateReply.mockResolvedValue({
+        text: 'Here are a few picks you might like!',
+        handoff: false,
+      });
 
-    await dispatchInboundToAiReply(ARGS);
+      await dispatchInboundToAiReply(ARGS);
 
-    expect(h.sendShopifyProductCarousel).toHaveBeenCalledWith(
-      expect.objectContaining({
-        bodyText: 'Here are a few picks you might like!',
-        shopifyVariantIds: [101, 102],
-        aiGenerated: true,
-      })
-    );
-    expect(h.engineSendText).not.toHaveBeenCalled();
-  });
+      expect(h.sendShopifyProductCarousel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bodyText: 'Here are a few picks you might like!',
+          shopifyVariantIds: [101, 102],
+          aiGenerated: true,
+        })
+      );
+      expect(h.engineSendText).not.toHaveBeenCalled();
+    }
+  );
 
   it('grounds the reply in synced Shopify orders', async () => {
     h.retrieveShopifyContext.mockResolvedValue(
@@ -509,7 +533,9 @@ describe('dispatchInboundToAiReply — handoff', () => {
     expect(h.engineSendText.mock.calls[0][0].text).toBe(
       "Sorry it arrived broken! Please share your order number and a photo.\n\nThanks for your patience! I'm passing this to our team — someone will reply here shortly."
     );
-    expect(h.state.updatePayload).toMatchObject({ ai_autoreply_disabled: true });
+    expect(h.state.updatePayload).toMatchObject({
+      ai_autoreply_disabled: true,
+    });
   });
 
   it('hands off instead of going silent when the provider fails', async () => {
@@ -518,7 +544,9 @@ describe('dispatchInboundToAiReply — handoff', () => {
       new AiError('bad key', { code: 'invalid_key', status: 401 })
     );
     await dispatchInboundToAiReply(ARGS);
-    expect(h.state.updatePayload).toMatchObject({ ai_autoreply_disabled: true });
+    expect(h.state.updatePayload).toMatchObject({
+      ai_autoreply_disabled: true,
+    });
     expect(h.state.updatePayload?.ai_handoff_summary).toContain(
       'rejected the API key'
     );

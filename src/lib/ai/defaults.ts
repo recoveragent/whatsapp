@@ -225,6 +225,8 @@ export function buildSystemPrompt(args: {
           : 'The system will append the matched product names, catalog prices and any enabled checkout links to your reply as text. ') +
         "Recommend only from the list below; prioritise items that match the customer's occasion, recipient, relationship, preferences, budget, and personalisation needs. " +
         'Write a short, friendly intro (1–2 sentences) — do not list product names, prices, or links in your text; the system supplies those. ' +
+        'For a new purchase request, help the customer choose from these matched products here first; do not replace the supplied recommendations with a generic instruction to visit the website. ' +
+        'Only direct them to checkout or explain website personalisation when they ask for that step or have selected a product. ' +
         `${noInvent}\n\n` +
         productRecommendations
     );
