@@ -398,6 +398,11 @@ describe('independent Next step and no-response timeout', () => {
     due();
     await resumeFlowPendingExecutions();
     expect(h.sends).toContain('softcopy');
+    const followUp = h.tables.flow_runs.find((row) => row.id === wait.flow_run_id);
+    expect(followUp?.current_node_key).toBe('softcopy');
+    await reply({ kind: 'interactive_reply', reply_id: 'approve', reply_title: 'Approve', meta_message_id: 'softcopy-reply' });
+    expect(h.sends).toContain('Thanks');
+    expect(followUp?.status).toBe('completed');
   });
 
   it('keeps the follow-up when a button reply finishes its original run', async () => {

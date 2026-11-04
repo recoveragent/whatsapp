@@ -2384,7 +2384,7 @@ export async function resumeFlowPendingExecutions(flowRunId?: string): Promise<n
     }
 
     if (p.source_node_key && runRow.current_node_key !== p.source_node_key) continue;
-    const run = { ...(runRow as FlowRunRow), vars: p.vars, status: "active" as const };
+    const run = { ...(runRow as FlowRunRow), vars: p.vars, status: "active" as const, current_node_key: p.next_node_key };
     let resumeQuery = db.from("flow_runs").update({
       status: "active", vars: p.vars, current_node_key: p.next_node_key, last_advanced_at: now,
     }).eq("id", p.flow_run_id).eq("status", "waiting");
