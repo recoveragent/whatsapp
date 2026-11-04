@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Bot,
-  Sparkles,
   Settings2,
   BarChart3,
   GraduationCap,
@@ -21,7 +20,7 @@ import { AgentTraining } from '@/components/agents/agent-training';
 import { AgentReadiness } from '@/components/agents/agent-readiness';
 import { AgentReplyGuidance } from '@/components/agents/agent-reply-guidance';
 
-type Tab = 'playground' | 'train' | 'corrections' | 'setup' | 'usage';
+type Tab = 'train' | 'corrections' | 'setup' | 'usage';
 
 export default function AgentsPage() {
   const router = useRouter();
@@ -33,7 +32,8 @@ export default function AgentsPage() {
     profileLoading,
   } = useAuth();
   const canViewUsage = accountRole ? canEditSettings(accountRole) : false;
-  const [tab, setTab] = useState<Tab>('playground');
+  const [tab, setTab] = useState<Tab>('train');
+  const playgroundRef = useRef<HTMLElement>(null);
   const [decided, setDecided] = useState(false);
   const [introductory, setIntroductory] = useState(false);
   // Bumped on tab changes so the checklist reflects what was just saved.
@@ -49,7 +49,7 @@ export default function AgentsPage() {
     }
   }, [profileLoading, isAiAgentsEnabled, router]);
 
-  // Land first-time users on training, returning users on the Playground.
+  // Show onboarding for agents that have not been configured yet.
   useEffect(() => {
     if (!isAiAgentsEnabled) return;
     let cancelled = false;
@@ -58,7 +58,6 @@ export default function AgentsPage() {
         const res = await fetch('/api/ai/config');
         const data = await res.json().catch(() => ({}));
         if (!cancelled) {
-          setTab(data?.configured ? 'playground' : 'train');
           setIntroductory(!data?.configured);
         }
       } catch {
@@ -89,7 +88,14 @@ export default function AgentsPage() {
             <AgentReadiness
               accountId={accountId}
               refreshKey={readinessKey}
-              onNavigate={changeTab}
+              onNavigate={(next) => {
+                if (next === 'playground') {
+                  playgroundRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  playgroundRef.current?.focus({ preventScroll: true });
+                } else {
+                  changeTab(next);
+                }
+              }}
             />
           )}
           <Tabs
@@ -104,9 +110,6 @@ export default function AgentsPage() {
                 </TabsTrigger>
                 <TabsTrigger value="corrections">
                   <GraduationCap className="mr-1.5 h-4 w-4" /> Reply Corrections
-                </TabsTrigger>
-                <TabsTrigger value="playground">
-                  <Sparkles className="mr-1.5 h-4 w-4" /> Playground
                 </TabsTrigger>
                 <TabsTrigger value="setup">
                   <Settings2 className="mr-1.5 h-4 w-4" /> Setup
@@ -140,18 +143,6 @@ export default function AgentsPage() {
                   <AgentReplyGuidance key={accountId} canEdit={canViewUsage} />
                 </TabsContent>
 
-                <TabsContent value="playground" className="mt-4">
-                  <div className="border-border bg-card rounded-xl border p-6">
-                    <h2 className="text-foreground font-semibold">
-                      Test your agent
-                    </h2>
-                    <p className="text-muted-foreground mt-2 text-sm">
-                      Use the mobile preview to try questions and see how your
-                      agent replies to customers.
-                    </p>
-                  </div>
-                </TabsContent>
-
                 <TabsContent value="setup" className="mt-4">
                   {isShopifyBrand && (
                     <AgentOnboarding
@@ -170,6 +161,8 @@ export default function AgentsPage() {
                 )}
               </div>
               <aside
+                ref={playgroundRef}
+                tabIndex={-1}
                 className="min-w-0 lg:sticky lg:top-16"
                 aria-label="Customer mobile playground preview"
               >
