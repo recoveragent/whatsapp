@@ -63,7 +63,7 @@ export function TrainReplyDialog({
 
   return (
     <Dialog open={!!message} onOpenChange={onOpenChange}>
-      <DialogContent className="border-border bg-popover sm:max-w-lg">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] grid-cols-[minmax(0,1fr)] overflow-y-auto border-border bg-popover sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-popover-foreground">
             <GraduationCap className="h-4 w-4 text-primary" />
@@ -79,14 +79,14 @@ export function TrainReplyDialog({
           {customerMessage && (
             <div>
               <p className="mb-1 text-xs font-medium text-muted-foreground">Customer wrote</p>
-              <p className="max-h-24 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted px-3 py-2 text-foreground">
+              <p className="max-h-24 overflow-y-auto whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md bg-muted px-3 py-2 text-foreground">
                 {customerMessage}
               </p>
             </div>
           )}
           <div>
             <p className="mb-1 text-xs font-medium text-muted-foreground">AI replied</p>
-            <p className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted px-3 py-2 text-foreground">
+            <p className="max-h-32 overflow-y-auto whitespace-pre-wrap [overflow-wrap:anywhere] rounded-md bg-muted px-3 py-2 text-foreground">
               {message?.content_text || "(no text)"}
             </p>
           </div>
