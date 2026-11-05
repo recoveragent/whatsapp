@@ -4,50 +4,30 @@ import {
   isMissingColumnError,
 } from '@/lib/auth/brand-accounts';
 import { AiError, type AiConfig, type ChatMessage } from './types';
-import { loadStoreProfile } from './store-profile';
 import { supabaseAdmin } from './admin-client';
+import { generateAgentReply } from './agent-reply';
 import { loadAiConfig } from './config';
 import { buildConversationContext } from './context';
-import { retrieveKnowledge } from './knowledge';
-import { retrieveShopifyContext } from './shopify-context';
-import {
-  buildProductSearchQuery,
-  formatProductRecommendationsForAi,
-  resolveRecommendedProducts,
-  resolveRequestedCollection,
-  isMoreProductsRequest,
-  hasNamedCollectionRequest,
-  shouldOfferProductCarousel,
-} from './product-recommendations';
+import { shouldOfferProductCarousel } from './product-recommendations';
 import { sendShopifyProductCard } from '@/lib/shopify/send-product-card';
 import { sendShopifyProductCarousel } from '@/lib/shopify/send-product-carousel';
 import {
   ProductCarouselAlreadySentError,
   ProductCarouselDeliveryUncertainError,
 } from '@/lib/shopify/product-delivery-error';
-import { generateReply } from './generate';
-import { buildSystemPrompt, handoffReplyText } from './defaults';
+import { handoffReplyText } from './defaults';
 import { buildHandoffSummary } from './handoff';
 import { logAiUsage } from './usage';
-import { knowledgeSearchText } from './knowledge-query';
-import { shouldRefreshShopifyOrders } from './commerce-intent';
 import { latestUserMessage } from './query';
-import {
-  extractProductPreferences,
-  formatProductPreferences,
-} from './product-preferences';
 import {
   appendRecommendationText,
   canDeliverProductCarousel,
-  loadRecommendationStore,
-  safeProductIntro,
 } from './product-delivery';
 import {
   engineSendText,
   engineSendInteractiveButtons,
 } from '@/lib/flows/meta-send';
 import { replyButtonsForMessage } from './quick-replies';
-import { formatReplyGuidance, loadReplyGuidance } from './reply-guidance';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 interface DispatchArgs {
@@ -133,109 +113,23 @@ export async function dispatchInboundToAiReply(
       return;
     }
 
-    const latestQuestion = knowledgeSearchText(messages);
-    const wantsProductCarousel = shouldOfferProductCarousel(messages);
-    const productSearchQuery = buildProductSearchQuery(messages);
-    const productPreferences = extractProductPreferences(messages);
-
-    const [
-      knowledge,
-      shopifyContext,
-      recommendationStore,
-      storeProfile,
-      replyGuidance,
-    ] = await Promise.all([
-      retrieveKnowledge(db, accountId, config, latestQuestion),
-      retrieveShopifyContext(db, accountId, contactId, {
-        refresh: shouldRefreshShopifyOrders(messages),
-      }),
-      wantsProductCarousel
-        ? loadRecommendationStore(db, accountId)
-        : Promise.resolve(null),
-      loadStoreProfile(db, accountId),
-      loadReplyGuidance(db, accountId, latestQuestion),
-    ]);
-
-    const collectionResult =
-      wantsProductCarousel && recommendationStore
-        ? await resolveRequestedCollection({
-            db: db,
-            accountId,
-            messages,
-            preferences: productPreferences,
-          }).catch((error) => {
-            console.warn(
-              '[ai recommendations] collection lookup unavailable:',
-              error
-            );
-            return null;
-          })
-        : null;
-
-    const recommendedProducts = collectionResult
-      ? collectionResult.products
-      : hasNamedCollectionRequest(messages)
-        ? []
-        : wantsProductCarousel && recommendationStore
-          ? await resolveRecommendedProducts(
-              db,
-              accountId,
-              productSearchQuery,
-              knowledge,
-              undefined,
-              productPreferences,
-              new Set(
-                isMoreProductsRequest(messages.at(-1)?.content ?? '')
-                  ? messages.flatMap((m) =>
-                      m.role === 'assistant' ? (m.productVariantIds ?? []) : []
-                    )
-                  : []
-              )
-            ).catch(() => [])
-          : [];
-
-    const hasCarouselProducts = canDeliverProductCarousel(
-      recommendedProducts,
-      recommendationStore
-    );
-    const hasProductCards =
-      !!recommendationStore?.carouselEnabled && recommendedProducts.length > 0;
-    const productRecommendations =
-      recommendedProducts.length > 0
-        ? formatProductRecommendationsForAi(recommendedProducts)
-        : null;
-
-    const systemPrompt = buildSystemPrompt({
-      userPrompt: config.systemPrompt,
-      mode: 'auto_reply',
-      knowledge,
-      shopifyContext,
-      productRecommendations,
-      productDelivery: hasProductCards ? 'carousel' : 'text',
-      productPreferences: wantsProductCarousel
-        ? formatProductPreferences(productPreferences)
-        : undefined,
-      productBrowseNoMatches:
-        wantsProductCarousel && recommendedProducts.length === 0,
-      collectionLookupUnavailable:
-        hasNamedCollectionRequest(messages) && !collectionResult,
-      productBrowseExhausted:
-        !!collectionResult &&
-        isMoreProductsRequest(messages.at(-1)?.content ?? '') &&
-        recommendedProducts.length === 0,
-      storeProfile,
+    const outcome = await generateAgentReply({
+      db,
+      accountId,
+      config,
+      messages,
+      // WhatsApp proves the customer owns this contact's phone number.
+      verifiedContactId: contactId,
       flowGoal: conv.ai_flow_goal,
-      replyGuidance: formatReplyGuidance(replyGuidance),
     });
-
-    let generated: Awaited<ReturnType<typeof generateReply>>;
-    try {
-      generated = await generateReply({ config, systemPrompt, messages });
-    } catch (genErr) {
+    if (outcome.status === 'generation_failed') {
       // A provider failure (bad key, quota, outage, empty output after
       // the retry) used to end here with only a log line, leaving the
       // customer unanswered. Hand the thread to the team instead.
-      console.error('[ai auto-reply] generation failed, handing off:', genErr);
+      console.error(
+        '[ai auto-reply] generation failed, handing off:',
+        outcome.error
+      );
       await handOffToHuman({
         db,
         accountId,
@@ -245,24 +139,23 @@ export async function dispatchInboundToAiReply(
         config,
         conv,
         messages,
-        failureReason: describeFailure(genErr),
+        failureReason: describeFailure(outcome.error),
       });
       return;
     }
-    const { handoff, usage } = generated;
-    const collectionUrl =
-      collectionResult?.collection.handle &&
-      /^[a-z0-9-]+$/i.test(collectionResult.collection.handle)
-        ? `https://${recommendationStore!.shopDomain}/collections/${collectionResult.collection.handle}`
-        : null;
-    const intro =
-      recommendedProducts.length > 0 && !handoff
-        ? safeProductIntro(generated.text)
-        : generated.text;
-    const text =
-      collectionUrl && recommendedProducts.length > 0 && !handoff
-        ? `${intro}\n\nBrowse the collection: ${collectionUrl}`
-        : intro;
+    const {
+      text,
+      handoff,
+      quickReplies: generatedQuickReplies,
+      usage,
+      recommendedProducts,
+      recommendationStore,
+      hasProductCards,
+    } = outcome.reply;
+    const hasCarouselProducts = canDeliverProductCarousel(
+      recommendedProducts,
+      recommendationStore
+    );
 
     // Record token spend on the account's BYO key. Fire-and-forget so it
     // never adds latency to the customer-facing send: `logAiUsage`
@@ -385,7 +278,7 @@ export async function dispatchInboundToAiReply(
     );
     const quickReplies = replyButtonsForMessage(
       replyText,
-      generated.quickReplies
+      generatedQuickReplies
     );
     if (quickReplies.length) {
       await engineSendInteractiveButtons({
