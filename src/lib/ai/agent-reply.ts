@@ -43,6 +43,8 @@ export interface AgentReplyArgs {
   verifiedContactId?: string | null;
   /** Goal set by a flow's AI agent node, if one is steering this thread. */
   flowGoal?: string | null;
+  /** Where the customer is chatting. Defaults to WhatsApp. */
+  channel?: 'whatsapp' | 'website';
 }
 
 export interface AgentReply {
@@ -77,7 +79,15 @@ export type AgentReplyOutcome =
 export async function generateAgentReply(
   args: AgentReplyArgs
 ): Promise<AgentReplyOutcome> {
-  const { db, accountId, config, messages, verifiedContactId, flowGoal } = args;
+  const {
+    db,
+    accountId,
+    config,
+    messages,
+    verifiedContactId,
+    flowGoal,
+    channel,
+  } = args;
 
   const latestQuestion = knowledgeSearchText(messages);
   const wantsProductCarousel = shouldOfferProductCarousel(messages);
@@ -152,6 +162,7 @@ export async function generateAgentReply(
   const systemPrompt = buildSystemPrompt({
     userPrompt: config.systemPrompt,
     mode: 'auto_reply',
+    channel,
     knowledge,
     shopifyContext,
     productRecommendations,

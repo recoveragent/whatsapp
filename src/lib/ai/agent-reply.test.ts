@@ -64,6 +64,23 @@ describe('generateAgentReply', () => {
     );
   });
 
+  it('keeps the WhatsApp prompt by default', async () => {
+    await generateAgentReply(baseArgs);
+
+    const { systemPrompt } = h.generateReply.mock.calls[0][0];
+    expect(systemPrompt).toContain('recent WhatsApp conversation');
+    expect(systemPrompt).not.toContain('Website chat rule');
+  });
+
+  it('tells the website agent where it is and not to collect order numbers', async () => {
+    await generateAgentReply({ ...baseArgs, channel: 'website' });
+
+    const { systemPrompt } = h.generateReply.mock.calls[0][0];
+    expect(systemPrompt).not.toMatch(/whatsapp/i);
+    expect(systemPrompt).toContain('chat widget');
+    expect(systemPrompt).toContain('do not ask for an order number');
+  });
+
   it('returns the reply for the channel to deliver', async () => {
     const outcome = await generateAgentReply(baseArgs);
 

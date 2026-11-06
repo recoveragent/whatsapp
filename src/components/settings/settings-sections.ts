@@ -5,6 +5,7 @@ import {
   Inbox,
   KeyRound,
   LayoutGrid,
+  MessageCircle,
   PhoneCall,
   Palette,
   PlugZap,
@@ -38,6 +39,7 @@ export const SETTINGS_SECTIONS = [
   'security',
   'appearance',
   'whatsapp',
+  'website_widget',
   'shopify',
   'woocommerce',
   'google_sheets',
@@ -69,6 +71,12 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   security: { id: 'security', label: 'Login & security', icon: Shield, group: 'account' },
   appearance: { id: 'appearance', label: 'Appearance', icon: Palette, group: 'account' },
   whatsapp: { id: 'whatsapp', label: 'WhatsApp number', icon: PlugZap, group: 'workspace' },
+  website_widget: {
+    id: 'website_widget',
+    label: 'Website widget',
+    icon: MessageCircle,
+    group: 'workspace',
+  },
   shopify: { id: 'shopify', label: 'Shopify', icon: ShoppingBag, group: 'workspace' },
   woocommerce: { id: 'woocommerce', label: 'WooCommerce', icon: Store, group: 'workspace' },
   google_sheets: {

@@ -121,6 +121,7 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // widget.js loads on every page of merchants' stores and needs no session.
+    '/((?!_next/static|_next/image|favicon.ico|widget\\.js$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

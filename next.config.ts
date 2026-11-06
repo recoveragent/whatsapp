@@ -160,7 +160,13 @@ const nextConfig: NextConfig = {
         headers: [{ key: "Cache-Control", value: "no-store" }],
       },
       {
-        source: "/:path((?!_next/static|_next/image|api|sso).*)",
+        // Loaded on every page of merchants' stores. A short cache keeps
+        // that cheap while still letting fixes reach them within minutes.
+        source: "/widget.js",
+        headers: [{ key: "Cache-Control", value: "public, max-age=300" }],
+      },
+      {
+        source: "/:path((?!_next/static|_next/image|api|sso|widget\\.js).*)",
         headers: [
           {
             key: "Cache-Control",

@@ -173,6 +173,14 @@ export const RATE_LIMITS = {
    *  capping a stampede; excess inbounds simply don't get an auto-reply
    *  (they still land in the inbox for a human). */
   aiAutoReplyAccount: { limit: 30, windowMs: 60_000 },
+  /** Public website widget, per visitor IP: config loads and chat requests
+   *  before any lookup, so a stranger can't hammer the database. */
+  widgetConfig: { limit: 60, windowMs: 60_000 },
+  /** Public website widget, AI replies per visitor per brand. */
+  widgetVisitor: { limit: 10, windowMs: 60_000 },
+  /** Public website widget, AI replies per brand. Separate from
+   *  `aiAutoReplyAccount` so web traffic can't starve WhatsApp replies. */
+  widgetAccount: { limit: 30, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't

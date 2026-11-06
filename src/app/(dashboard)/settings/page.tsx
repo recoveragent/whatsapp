@@ -26,6 +26,7 @@ import { SmartRetrySettings } from '@/components/settings/smart-retry-settings';
 import { DealsSettings } from '@/components/settings/deals-settings';
 import { MembersTab } from '@/components/settings/members-tab';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
+import { WebsiteWidgetSettings } from '@/components/settings/website-widget-settings';
 import {
   resolveSection,
   isSettingsSectionVisible,
@@ -87,6 +88,7 @@ function SettingsPageInner() {
     security: <SecurityPanel />,
     appearance: <AppearancePanel />,
     whatsapp: <WhatsAppBrandConnection />,
+    website_widget: <WebsiteWidgetSettings />,
     shopify: <ShopifyBrandConnection />,
     woocommerce: <WooCommerceBrandConnection />,
     google_sheets: <GoogleSheetsBrandConnection />,
