@@ -12,7 +12,7 @@ const member = '22222222-2222-4222-8222-222222222222';
 
 const migration = readFileSync(
   resolve(
-    'supabase/migrations/20261106100000_lock_down_security_definer_rpcs.sql'
+    'supabase/migrations/20261106110000_lock_down_security_definer_rpcs.sql'
   ),
   'utf8'
 );
