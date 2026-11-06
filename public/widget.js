@@ -272,8 +272,11 @@
   }
 
   function mount() {
-    var host = el('div');
+    // Not a div: everything lives in the shadow root, so the host matches
+    // :empty, and Shopify themes commonly ship `div:empty { display: none }`.
+    var host = el('chat-widget-host');
     host.id = 'chat-widget-root';
+    host.style.setProperty('display', 'block', 'important');
     var shadow = host.attachShadow({ mode: 'open' });
 
     var style = el('style');
@@ -413,26 +416,26 @@
     '@media (max-width:480px){.root{right:16px;bottom:16px}.panel.open{position:fixed;inset:0;width:100%;height:100%;max-height:none;border-radius:0}.input{font-size:16px}.composer{padding-bottom:max(10px,env(safe-area-inset-bottom))}}',
   ].join('');
 
-  // A wrong key or unlisted site gets a 404, and the widget simply stays off.
+  // A wrong key or unlisted site gets a 404 with no CORS headers, which the
+  // browser reports as a failed fetch, so this catch is what tells the merchant.
+  // It only warns: a chat widget error must never reach the merchant's page.
   fetch(apiBase + '/api/widget/config?key=' + encodeURIComponent(key), {
     credentials: 'omit',
   })
     .then(function (response) {
-      if (!response.ok) {
-        console.warn(
-          '[chat widget] Not shown: check the widget is on and this domain is allowed.'
-        );
-        return null;
-      }
+      if (!response.ok) throw new Error('Not available');
       return response.json();
     })
     .then(function (data) {
-      if (!data) return;
       config = data;
       if (document.body) mount();
       else document.addEventListener('DOMContentLoaded', mount);
     })
     .catch(function () {
-      /* Never let a chat widget error reach the merchant's page. */
+      console.warn(
+        '[chat widget] Not shown: check the widget is on and this domain (' +
+          location.hostname +
+          ') is allowed.'
+      );
     });
 })();
