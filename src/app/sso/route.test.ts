@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   completeSsoLogin: vi.fn(),
   importConnection: vi.fn(),
   importWooConnection: vi.fn(),
+  ensureWorkspace: vi.fn(),
   sessionClient: {},
 }));
 
@@ -25,6 +26,9 @@ vi.mock("@/lib/shopify/recover-agent-import", () => ({
 }));
 vi.mock("@/lib/woocommerce/recover-agent-import", () => ({
   importRecoverAgentWooCommerceConnection: mocks.importWooConnection,
+}));
+vi.mock("@/lib/auth/dashboard-signup-workspace", () => ({
+  ensureDashboardSignupWorkspace: mocks.ensureWorkspace,
 }));
 vi.mock("@/lib/auth/site-url", () => ({
   getServerRedirectOrigin: () => "https://wa.recoveragent.ai",
@@ -88,6 +92,51 @@ describe("SSO Shopify handoff", () => {
     expect(await response.text()).toContain("Expired ticket");
     expect(response.cookies.get("session")).toBeUndefined();
     expect(mocks.importConnection).not.toHaveBeenCalled();
+  });
+
+  describe("dashboard signup workspace", () => {
+    const workspace = { company_id: "company-1", name: "Asha Stores", ecommerce_platform: "shopify" };
+
+    beforeEach(() => {
+      mocks.ensureWorkspace.mockReset();
+      mocks.ensureWorkspace.mockResolvedValue(undefined);
+    });
+
+    it("creates the workspace before importing the store connection", async () => {
+      mocks.completeSsoLogin.mockResolvedValue({
+        identity: { email: "owner@example.com" },
+        signup_workspace: workspace,
+        shopify_connection: { shop_domain: "brand.myshopify.com", access_token: "test-token" },
+      });
+      const response = await GET(request());
+      expect(response.status).toBe(307);
+      expect(mocks.ensureWorkspace).toHaveBeenCalledWith({
+        sessionClient: mocks.sessionClient,
+        workspace,
+      });
+      expect(mocks.ensureWorkspace.mock.invocationCallOrder[0]).toBeLessThan(
+        mocks.importConnection.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("shows a retry message and no session when it fails", async () => {
+      mocks.completeSsoLogin.mockResolvedValue({
+        identity: { email: "owner@example.com" },
+        signup_workspace: workspace,
+      });
+      mocks.ensureWorkspace.mockRejectedValue(new Error("database detail"));
+      const response = await GET(request());
+      const html = await response.text();
+      expect(response.status).toBe(400);
+      expect(html).toContain("set up your WhatsApp workspace");
+      expect(html).not.toContain("database detail");
+      expect(response.cookies.get("session")).toBeUndefined();
+    });
+
+    it("does nothing for existing brands", async () => {
+      await GET(request());
+      expect(mocks.ensureWorkspace).not.toHaveBeenCalled();
+    });
   });
 
   it("opens the inbox when no Shopify connection is supplied", async () => {

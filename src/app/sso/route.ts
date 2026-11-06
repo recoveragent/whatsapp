@@ -10,6 +10,7 @@ import {
   SsoError,
   ssoErrorHtml,
 } from "@/lib/auth/sso";
+import { ensureDashboardSignupWorkspace } from "@/lib/auth/dashboard-signup-workspace";
 import { importRecoverAgentShopifyConnection } from "@/lib/shopify/recover-agent-import";
 import { importRecoverAgentWooCommerceConnection } from "@/lib/woocommerce/recover-agent-import";
 
@@ -81,6 +82,20 @@ export async function GET(request: NextRequest) {
 
   try {
     const consumed = await completeSsoLogin(ticket, supabase);
+    if (consumed.signup_workspace) {
+      try {
+        await ensureDashboardSignupWorkspace({
+          sessionClient: supabase,
+          workspace: consumed.signup_workspace,
+        });
+      } catch (workspaceError) {
+        console.error(
+          "[sso] Dashboard signup workspace failed:",
+          workspaceError instanceof Error ? workspaceError.message : String(workspaceError),
+        );
+        return errorResponse("We couldn't set up your WhatsApp workspace. Go back to the dashboard and try again.");
+      }
+    }
     if (consumed.woocommerce_connection) {
       try {
         await importRecoverAgentWooCommerceConnection({

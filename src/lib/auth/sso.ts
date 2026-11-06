@@ -59,6 +59,26 @@ export interface SsoConsumeResponse {
   hashed_token?: string;
   shopify_connection?: RecoverAgentShopifyConnection;
   woocommerce_connection?: RecoverAgentWooCommerceConnection;
+  signup_workspace?: DashboardSignupWorkspace;
+}
+
+/** Sent only for the person who created this company through dashboard signup. */
+export interface DashboardSignupWorkspace {
+  company_id: string;
+  name: string;
+  ecommerce_platform: "shopify" | "woocommerce";
+}
+
+function parseSignupWorkspace(raw: unknown): DashboardSignupWorkspace | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const body = raw as Record<string, unknown>;
+  const companyId = asNonEmptyString(body.company_id);
+  const name = asNonEmptyString(body.name);
+  const platform = body.ecommerce_platform;
+  if (!companyId || !name || (platform !== "shopify" && platform !== "woocommerce")) {
+    return undefined;
+  }
+  return { company_id: companyId, name, ecommerce_platform: platform };
 }
 
 export interface RecoverAgentWooCommerceConnection {
@@ -157,6 +177,7 @@ export function parseSsoConsumeResponse(raw: unknown): SsoConsumeResponse {
       roles: identityObj.roles,
     },
     hashed_token: hashed,
+    signup_workspace: parseSignupWorkspace(body.signup_workspace),
     woocommerce_connection: woocommerceConnection,
     shopify_connection:
       shopDomain && accessToken
