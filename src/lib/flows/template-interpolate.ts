@@ -26,6 +26,25 @@ export function resolveTemplateVar(
   return undefined;
 }
 
+/** Variable keys referenced in `template` that resolve empty and have no fallback. */
+export function missingTemplateVariables(
+  template: string,
+  vars: Record<string, unknown>,
+  messageText?: string
+): string[] {
+  const missing: string[] = [];
+  for (const match of template.matchAll(
+    /\{\{\s*([\w.]+)\s*(?:\|\s*("(?:\\.|[^"\\])*"|'[^']*'))?\s*\}\}/g
+  )) {
+    const [, key, quoted] = match;
+    if (quoted && decodeVariableFallback(quoted).trim()) continue;
+    const resolved = resolveTemplateVar(key, vars, messageText);
+    if ((resolved === undefined || resolved.trim() === '') && !missing.includes(key))
+      missing.push(key);
+  }
+  return missing;
+}
+
 export function interpolateTemplateString(
   template: string,
   vars: Record<string, unknown>,

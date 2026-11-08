@@ -347,6 +347,10 @@ function NodeConfigBody({
             onChange={(patch) => onUpdateConfig({ ...patch })}
             variableGroups={templateVariableGroupsForFlow(triggerType, triggerConfig)}
             variableHint="Focus a field, then pick a variable from the list. User attributes come from the contact; trigger attributes depend on your flow trigger."
+            showFailIfMissingOption
+            failIfMissingVariables={
+              (cfg as { fail_if_missing_variables?: boolean }).fail_if_missing_variables === true
+            }
           />
         </>
       );

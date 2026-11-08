@@ -344,6 +344,8 @@ export interface SendTemplateNodeConfig {
   }>;
   /** Optional on canvas when quick-reply buttons exist; used at runtime when the template has no quick-reply buttons. */
   next_node_key: string;
+  /** Fail the send when a mapped variable is empty and has no fallback (fallbacks then optional). */
+  fail_if_missing_variables?: boolean;
 }
 
 export interface WaitNodeConfig {
