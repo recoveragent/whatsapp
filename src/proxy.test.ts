@@ -28,10 +28,10 @@ describe('Settings navigation caching', () => {
     expect(response.headers.get('cache-control')).toContain('no-store');
   });
 
-  it('does not cache the signed-in login redirect to Dashboard', async () => {
+  it('does not cache the signed-in login redirect to Inbox', async () => {
     getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } });
     const response = await proxy(new NextRequest('https://wa.test/login'));
-    expect(response.headers.get('location')).toBe('https://wa.test/dashboard');
+    expect(response.headers.get('location')).toBe('https://wa.test/inbox');
     expect(response.headers.get('cache-control')).toContain('no-store');
   });
 });

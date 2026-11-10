@@ -176,7 +176,7 @@ export default function JoinPage() {
       toast.success('Welcome to the team');
       // Full reload (not router.push) so AuthProvider re-fetches
       // the profile with the new account_id and account_role.
-      window.location.href = '/dashboard';
+      window.location.href = '/inbox';
       return true;
     } catch (err) {
       console.error('[join] redeem error:', err);

@@ -49,7 +49,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         >
           <Menu className="h-5 w-5" />
         </button>
-        <Link href="/dashboard" className="flex min-w-0 items-center gap-2.5">
+        <Link href="/inbox" className="flex min-w-0 items-center gap-2.5">
           <Image
             src={BRAND_ICON_PATH}
             alt=""

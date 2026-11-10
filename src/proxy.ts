@@ -46,17 +46,17 @@ export async function proxy(request: NextRequest) {
 
   const respond = <T extends NextResponse>(response: T): T => {
     // Include redirects: caching a prefetched /settings -> /login response
-    // can bounce a signed-in user through /login back to /dashboard.
+    // can bounce a signed-in user through /login back to /inbox.
     response.headers.set('Cache-Control', 'private, no-store, max-age=0')
     return finalizeFrameHeaders(request, withRefreshedCookies(response))
   }
 
-  // Auth pages - redirect to dashboard if already logged in.
+  // Auth pages - redirect to inbox if already logged in.
   // Exception: when an invite token is in the query string we
   // send the already-signed-in user to /join/<token> instead so
   // they can accept the invitation in one click. Without this,
   // a forwarded invite link to someone who's already signed in
-  // would silently drop them on /dashboard.
+  // would silently drop them on /inbox.
   //
   // Public signup is disabled — /signup without ?invite= redirects
   // to login.
@@ -88,7 +88,7 @@ export async function proxy(request: NextRequest) {
       // Recover Agent iframe SSO — keep phone/embed query params and land on inbox.
       url.pathname = '/inbox'
     } else {
-      url.pathname = '/dashboard'
+      url.pathname = '/inbox'
       url.search = ''
     }
     return respond(NextResponse.redirect(url))

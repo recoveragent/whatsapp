@@ -61,7 +61,7 @@ export default function ResetPasswordPage() {
 
     setSuccess(true);
     setLoading(false);
-    setTimeout(() => router.push("/dashboard"), 2000);
+    setTimeout(() => router.push("/inbox"), 2000);
   };
 
   if (success) {
@@ -76,7 +76,7 @@ export default function ResetPasswordPage() {
               Password updated
             </CardTitle>
             <CardDescription className="text-muted-foreground">
-              Redirecting you to the dashboard…
+              Redirecting you to the inbox…
             </CardDescription>
           </CardHeader>
         </Card>
