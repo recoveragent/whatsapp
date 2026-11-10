@@ -382,7 +382,7 @@ export default function PipelinesPage() {
 
   useEffect(() => {
     if (!profileLoading && !isLeadGenBrand) {
-      router.replace("/dashboard");
+      router.replace("/inbox");
     }
   }, [profileLoading, isLeadGenBrand, router]);
 

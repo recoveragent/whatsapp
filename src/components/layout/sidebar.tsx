@@ -35,10 +35,6 @@ interface NavItem {
   beta?: boolean;
 }
 
-const homeItems: NavItem[] = [
-  { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
-];
-
 const workspaceItems: NavItem[] = [
   { href: "/inbox", labelKey: "inbox", icon: MessageSquare },
   { href: "/contacts", labelKey: "contacts", icon: Users },
@@ -146,7 +142,7 @@ export function Sidebar({
           )}
         >
           <Link
-            href={opsOnlyNav ? "/admin/brands" : "/dashboard"}
+            href={opsOnlyNav ? "/admin/brands" : "/inbox"}
             className="flex min-w-0 flex-1 items-center gap-2.5"
           >
             <Image
@@ -176,15 +172,6 @@ export function Sidebar({
         <nav className="flex-1 overflow-y-auto px-3 py-3">
           {!opsOnlyNav ? (
             <>
-              <NavSection
-                label="Home"
-                collapsed={collapsed}
-                items={homeItems}
-                pathname={pathname}
-                totalUnread={totalUnread}
-                openInboxCount={openInboxCount}
-                t={t}
-              />
               <NavSection
                 label="Workspace"
                 collapsed={collapsed}
@@ -328,8 +315,7 @@ function NavSection({
       <ul className="flex flex-col gap-0.5">
         {items.map((item) => {
           const isActive =
-            pathname === item.href ||
-            (item.href !== "/dashboard" && pathname.startsWith(item.href));
+            pathname === item.href || pathname.startsWith(item.href);
           const isInbox = item.href === "/inbox";
           const showUnreadDot = isInbox && totalUnread > 0 && !isActive;
           return (

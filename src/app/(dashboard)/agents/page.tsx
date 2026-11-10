@@ -45,7 +45,7 @@ export default function AgentsPage() {
 
   useEffect(() => {
     if (!profileLoading && !isAiAgentsEnabled) {
-      router.replace('/dashboard');
+      router.replace('/inbox');
     }
   }, [profileLoading, isAiAgentsEnabled, router]);
 

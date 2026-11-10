@@ -73,7 +73,7 @@ export default function LeadsPage() {
 
   useEffect(() => {
     if (!profileLoading && !isLeadGenBrand) {
-      router.replace('/dashboard');
+      router.replace('/inbox');
     }
   }, [profileLoading, isLeadGenBrand, router]);
 

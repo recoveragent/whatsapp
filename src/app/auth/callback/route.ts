@@ -11,11 +11,11 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const origin = getServerRedirectOrigin(request);
   const code = searchParams.get("code");
-  const nextRaw = searchParams.get("next") ?? "/dashboard";
+  const nextRaw = searchParams.get("next") ?? "/inbox";
   // Only allow same-origin relative paths.
   const next = nextRaw.startsWith("/") && !nextRaw.startsWith("//")
     ? nextRaw
-    : "/dashboard";
+    : "/inbox";
 
   if (!code) {
     return NextResponse.redirect(

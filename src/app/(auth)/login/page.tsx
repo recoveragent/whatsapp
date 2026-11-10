@@ -100,7 +100,7 @@ function LoginPageInner() {
 
     const target = inviteToken
       ? `/join/${encodeURIComponent(inviteToken)}`
-      : '/dashboard';
+      : '/inbox';
     // Full navigation so proxy/middleware reads the fresh auth cookies.
     window.location.assign(target);
   };
