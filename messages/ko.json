@@ -1064,7 +1064,7 @@
       "beta": "베타",
       "description": "분기하는 버튼 기반 WhatsApp 대화를 만드세요. 메뉴, FAQ, 사람이 개입하기 전 1차 응대에 유용합니다.",
       "newFlow": "새 플로우",
-      "templates": "플로우 템플릿",
+      "templates": "템플릿",
       "statusDraft": "초안",
       "statusActive": "활성",
       "statusArchived": "보관됨",
