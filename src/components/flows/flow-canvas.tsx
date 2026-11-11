@@ -130,7 +130,7 @@ import {
   shipmentRoutesFromConfig,
   shipmentStatusFromHandle,
 } from '@/lib/flows/trigger-types';
-import type { CustomField } from '@/types';
+import type { CustomField, MessageTemplate } from '@/types';
 import type { PipelineOption, StageOption } from '@/lib/pipelines';
 import { parseExitConfig, summarizeExitConfig } from '@/lib/flows/exit-conditions';
 
@@ -146,7 +146,7 @@ interface NodeData extends Record<string, unknown> {
   stages: StageOption[];
   /** Body text of the approved template a send_template node points
    *  at, with mapped variables substituted. Null when unknown. */
-  templatePreview: string | null;
+  templatePreview: { body: string; header: string | null; imageUrl: string | null } | null;
 }
 
 // Approved templates keyed by `name|language` so the canvas can show
@@ -157,8 +157,8 @@ function templateKey(name: string, language: string) {
 
 function sendTemplatePreview(
   node: BuilderNode,
-  bodies: Map<string, string>,
-): string | null {
+  templates: Map<string, MessageTemplate>,
+): NodeData['templatePreview'] {
   if (node.node_type !== 'send_template') return null;
   const cfg = (node.config ?? {}) as {
     template_name?: unknown;
@@ -168,13 +168,28 @@ function sendTemplatePreview(
   const name = typeof cfg.template_name === 'string' ? cfg.template_name : '';
   if (!name) return null;
   const lang = typeof cfg.language === 'string' ? cfg.language : 'en_US';
-  const body = bodies.get(templateKey(name, lang));
-  if (!body) return null;
+  const template = templates.get(templateKey(name, lang));
+  if (!template) return null;
   const variables =
     cfg.variables && typeof cfg.variables === 'object'
       ? (cfg.variables as Record<string, string>)
       : {};
-  return renderPreviewBody(body, variables);
+  const media = variables.header_media?.trim() || template.header_media_url?.trim() || '';
+  const dynamicMedia = /\{\{[\s\S]*?\}\}/.test(media);
+  let header: string | null = null;
+  let imageUrl: string | null = null;
+  if (template.header_type === 'text' && template.header_content) {
+    header = template.header_content.replace(
+      /\{\{(\d+)\}\}/g,
+      (_, n) => variables[`header_${n}`]?.trim() || `{{${n}}}`,
+    );
+  } else if (template.header_type === 'image') {
+    if (dynamicMedia) header = 'Dynamic image';
+    else if (media) imageUrl = media;
+    else header = 'Image header';
+  } else if (template.header_type === 'video') header = 'Video header';
+  else if (template.header_type === 'document') header = 'Document header';
+  return { body: renderPreviewBody(template.body_text, variables), header, imageUrl };
 }
 
 const NODE_WIDTH = 260;
@@ -349,9 +364,14 @@ function FlowNodeCard({ id, data, selected }: NodeProps) {
       {templatePreview && (
         <div
           className="mt-2 rounded-md rounded-tl-none break-words bg-[var(--nc-soft)] px-2.5 py-1.5 text-[11px] leading-snug whitespace-pre-line text-foreground/85"
-          title={templatePreview}
+          title={[templatePreview.header, templatePreview.body].filter(Boolean).join('\n')}
         >
-          {templatePreview}
+          {templatePreview.imageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={templatePreview.imageUrl} alt="Template image header" className="mb-1.5 max-h-28 w-full rounded object-cover" />
+          )}
+          {templatePreview.header && <div className="mb-1 font-semibold">{templatePreview.header}</div>}
+          {templatePreview.body}
         </div>
       )}
 
@@ -499,12 +519,12 @@ function FlowCanvasInner() {
   const { customFields } = useCustomFields();
   const { pipelines, stages } = useAccountPipelines();
   const { templates: approvedTemplates } = useApprovedTemplates();
-  const templateBodies = useMemo(
+  const templatesByKey = useMemo(
     () =>
       new Map(
         approvedTemplates.map((tpl) => [
           templateKey(tpl.name, tpl.language ?? 'en_US'),
-          tpl.body_text,
+          tpl,
         ]),
       ),
     [approvedTemplates],
@@ -645,7 +665,7 @@ function FlowCanvasInner() {
           customFields,
           pipelines,
           stages,
-          templatePreview: sendTemplatePreview(n, templateBodies),
+          templatePreview: sendTemplatePreview(n, templatesByKey),
         },
       };
     });
@@ -671,7 +691,7 @@ function FlowCanvasInner() {
     entryNodeId,
     pipelines,
     stages,
-    templateBodies,
+    templatesByKey,
     flashKey,
     autoLayoutPositions,
     triggerPosition,
