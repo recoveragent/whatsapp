@@ -1064,6 +1064,7 @@
       "beta": "Beta",
       "description": "Build branching, button-driven WhatsApp conversations. Useful for menus, FAQs, and triage before a human steps in.",
       "newFlow": "New flow",
+      "templates": "Flow templates",
       "statusDraft": "Draft",
       "statusActive": "Active",
       "statusArchived": "Archived",

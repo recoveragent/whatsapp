@@ -237,6 +237,15 @@ export default function FlowsPage() {
         subtitle={t("description")}
         actions={
           <>
+            <GatedButton
+              variant="outline"
+              canAct={canCreate}
+              gateReason="create flows"
+              onClick={() => setCreateOpen(true)}
+            >
+              <FileText className="h-4 w-4" />
+              {t("templates")}
+            </GatedButton>
             <Button variant="outline" onClick={() => router.push("/flows/forms")}>
               <ClipboardList className="h-4 w-4" />
               WhatsApp forms
