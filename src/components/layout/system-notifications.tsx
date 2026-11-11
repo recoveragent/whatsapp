@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { TriangleAlert } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuth } from '@/hooks/use-auth';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -66,7 +67,22 @@ function DeliveryNotifications({ accountId }: { accountId: string }) {
           table: 'notifications',
           filter: `account_id=eq.${accountId}`,
         },
-        refresh
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            const alert = payload.new as Notification;
+            if (
+              alert.type === 'message_failed' ||
+              alert.type === 'whatsapp_disconnected'
+            ) {
+              toast.error(alert.title, {
+                id: alert.id,
+                description: alert.body,
+                duration: 10000,
+              });
+            }
+          }
+          refresh();
+        }
       )
       .subscribe();
     return () => {
