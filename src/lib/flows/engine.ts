@@ -1,5 +1,5 @@
 import { executeCheckoutRecovery } from './execute-checkout-recovery';
-import { confirmRecoveryCod } from '@/lib/shopify/recovery-orders';
+import { assertNoOrderSinceRecoveryStarted, confirmRecoveryCod, RecoveryAlreadyOrderedError } from '@/lib/shopify/recovery-orders';
 import { withoutVariableFallbacks } from './variable-fallback';
 import { beginPaymentCollection } from "@/lib/payments/collect-payment";
 /**
@@ -796,6 +796,21 @@ async function advanceFromNodeKey(
     closed_conversation?: boolean;
   } =>
     closedConversation ? { outcome, closed_conversation: true } : { outcome };
+  const finishAlreadyOrdered = async (nodeKey: string) => {
+    try {
+      const { whatsapp_message_id } = await engineSendText({
+        accountId: run.account_id, userId: run.user_id,
+        conversationId: run.conversation_id!, contactId: run.contact_id!,
+        text: 'We recently received an order from you after this checkout reminder. There is no need to place another order. Thank you!',
+      });
+      await logMessageSent(db, run, nodeKey, { node_type: 'send_message', whatsapp_message_id });
+      await endRun(db, run.id, 'completed', 'order_already_placed');
+    } catch (err) {
+      await logEvent(db, run.id, 'error', nodeKey, { reason: 'send_text_failed', detail: err instanceof Error ? err.message : String(err) });
+      await endRun(db, run.id, 'failed', 'send_text_failed');
+    }
+    return finish('completed');
+  };
   // Defensive cap — if a flow has a cycle (which the validator
   // SHOULD catch but doesn't yet in v1), we bail rather than loop.
   for (let safety = 0; safety < 64; safety += 1) {
@@ -824,9 +839,12 @@ async function advanceFromNodeKey(
     }
     if (node.node_type === "collect_payment") {
       try {
+        if (node.config.shopify_checkout_recovery === true)
+          await assertNoOrderSinceRecoveryStarted(db, run);
         await beginPaymentCollection(db, run, node);
         return finish("advanced");
       } catch (err) {
+        if (err instanceof RecoveryAlreadyOrderedError) return finishAlreadyOrdered(node.node_key);
         await logEvent(db, run.id, "error", node.node_key, {
           reason: err instanceof Error ? err.message : "Payment setup failed",
           ...(err instanceof Error && typeof err.cause === "string" && err.cause ? { cause: err.cause } : {}),
@@ -838,7 +856,9 @@ async function advanceFromNodeKey(
       }
     }
     if (node.node_type === 'recover_checkout') {
-      currentKey = await executeCheckoutRecovery(db, run, node);
+      const result = await executeCheckoutRecovery(db, run, node);
+      if (typeof result !== 'string') return finishAlreadyOrdered(node.node_key);
+      currentKey = result;
       continue;
     }
     if (node.node_type === "send_message") {

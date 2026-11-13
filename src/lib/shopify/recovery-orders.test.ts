@@ -14,6 +14,8 @@ import {
   completeRecoveryOrder,
   recoverySummary,
   RECOVERY_SUMMARY_MAX,
+  assertNoOrderSinceRecoveryStarted,
+  RecoveryAlreadyOrderedError,
 } from './recovery-orders';
 
 type Row = Record<string, unknown>;
@@ -95,6 +97,7 @@ function fixture() {
     id: 'run-1',
     account_id: 'brand-1',
     contact_id: 'contact-1',
+    started_at: new Date(Date.now() - 1800000).toISOString(),
     vars: { checkout_id: 'checkout-1', order_items: 'Shirt × 2' },
   } as unknown as FlowRunRow;
   const tables: Record<string, Row[]> = {
@@ -159,6 +162,7 @@ function fixture() {
   };
   /** Customers Shopify search returns after a create attempt (indexing delay). */
   let afterCreate: Row[] | null = null;
+  let identifierCustomer: Row | null = null;
   let draftResult: 'ok' | 'rejected' | 'lost' = 'ok';
   const draft = () => ({
     id: 'gid://shopify/DraftOrder/1',
@@ -195,14 +199,18 @@ function fixture() {
     if (input.lineItems) lines = input.lineItems;
     if (input.paymentTerms) draftTerms = true;
     let data: Row;
-    if (query.includes('RecoveryRecentOrders'))
+    if (query.includes('RecoveryJourneyOrders'))
+      data = { orders: { nodes: recentOrders, pageInfo: { hasNextPage: false } } };
+    else if (query.includes('RecoveryRecentOrders'))
       data = {
         orders: { nodes: recentOrders, pageInfo: { hasNextPage: false } },
       };
     else if (query.includes('RecoveryCustomerCreate')) {
       data = { customerCreate: createResult };
       if (afterCreate) customers = afterCreate;
-    } else if (query.includes('RecoveryCustomer'))
+    } else if (query.includes('RecoveryCustomerByPhone'))
+      data = { customerByIdentifier: identifierCustomer };
+    else if (query.includes('RecoveryCustomer'))
       data = { customers: { nodes: customers } };
     else if (query.includes('RecoveryDraftTerms'))
       data = { draftOrder: { paymentTerms: draftTerms ? { id: 'terms-1' } : null } };
@@ -265,6 +273,9 @@ function fixture() {
     setDraftTerms: (v: boolean) => {
       draftTerms = v;
     },
+    setIdentifierCustomer: (v: Row | null) => {
+      identifierCustomer = v;
+    },
     setCustomers: (v: Row[], create?: Row, after?: Row[]) => {
       customers = v;
       if (create) createResult = create;
@@ -297,6 +308,20 @@ const bodies = (f: ReturnType<typeof fixture>) =>
   f.fetch.mock.calls.map(([, o]) => JSON.parse(String(o.body)));
 
 describe('Shopify recovery order lifecycle', () => {
+  it('blocks a matching non-cancelled order placed after this journey started', async () => {
+    const f = fixture();
+    f.setRecentOrders([{ createdAt: new Date().toISOString(), phone: null, cancelledAt: null, shippingAddress: { phone: '+919876543210' } }]);
+    await expect(assertNoOrderSinceRecoveryStarted(f.db, f.run)).rejects.toBeInstanceOf(RecoveryAlreadyOrderedError);
+  });
+  it('ignores earlier, cancelled, and other customers orders', async () => {
+    const f = fixture();
+    f.setRecentOrders([
+      { createdAt: new Date(Date.now() - 7200000).toISOString(), phone: '+919876543210', cancelledAt: null, shippingAddress: null },
+      { createdAt: new Date().toISOString(), phone: '+919876543210', cancelledAt: new Date().toISOString(), shippingAddress: null },
+      { createdAt: new Date().toISOString(), phone: '+919111111111', cancelledAt: null, shippingAddress: null },
+    ]);
+    await expect(assertNoOrderSinceRecoveryStarted(f.db, f.run)).resolves.toBeUndefined();
+  });
   it('quotes the saved checkout, reserves inventory and reuses the same draft', async () => {
     const f = fixture();
     const first = await prepareRecoveryOrder(f.db, f.run, 'cod');
@@ -460,6 +485,18 @@ describe('Shopify recovery order lifecycle', () => {
     expect(
       bodies(f).filter((b) => b.query.includes('CompleteRecoveryDraft'))
     ).toHaveLength(0);
+  });
+  it('uses a customer found by phone identifier even when search misses them', async () => {
+    const f = fixture();
+    f.setCustomers([]);
+    f.setIdentifierCustomer({ id: 'gid://shopify/Customer/42' });
+    await prepareRecoveryOrder(f.db, f.run, 'cod');
+    const calls = bodies(f);
+    expect(calls.find((b) => b.query.includes('RecoveryCustomerByPhone')).variables)
+      .toEqual({ identifier: { phoneNumber: '+919876543210' } });
+    expect(calls.some((b) => b.query.includes('RecoveryCustomerCreate'))).toBe(false);
+    expect(calls.find((b) => b.query.includes('mutation RecoveryDraft')).variables.input.purchasingEntity)
+      .toEqual({ customerId: 'gid://shopify/Customer/42' });
   });
   it('links a returning customer found by email when the phone does not match', async () => {
     const f = fixture();
