@@ -1,11 +1,14 @@
 'use client';
 
-import { useId, type ComponentType } from 'react';
+import { createContext, useContext, useId, type ComponentType } from 'react';
 import { Input } from '@/components/ui/input';
 import {
   setVariableFallback,
   variableFallbacks,
 } from '@/lib/flows/variable-fallback';
+
+/** True when the surrounding form fails the send on a missing value, so fallbacks are optional. */
+export const OptionalFallbacksContext = createContext(false);
 
 export interface FallbackInputProps {
   id: string;
@@ -31,11 +34,13 @@ export function VariableFallbackFields({
   isValidFallback?: (fallback: string) => boolean;
 }) {
   const id = useId();
+  const optional = useContext(OptionalFallbacksContext);
   return variableFallbacks(value).map(({ key, fallback }, index) => {
-    const invalid =
-      !fallback.trim() ||
-      fallback.includes('{{') ||
-      (isValidFallback ? !isValidFallback(fallback) : false);
+    const empty = !fallback.trim();
+    const invalid = empty
+      ? !optional
+      : fallback.includes('{{') ||
+        (isValidFallback ? !isValidFallback(fallback) : false);
     const fieldId = `${id}-${index}`;
     const setFallback = (next: string) =>
       onChange(setVariableFallback(value, key, next));
@@ -45,7 +50,12 @@ export function VariableFallbackFields({
           htmlFor={fieldId}
           className="text-muted-foreground block text-xs"
         >
-          Fallback for {key} <span className="text-destructive">*</span>
+          Fallback for {key}{' '}
+          {optional ? (
+            <span className="text-[10px]">(optional)</span>
+          ) : (
+            <span className="text-destructive">*</span>
+          )}
         </label>
         {FallbackInput ? (
           <FallbackInput
@@ -58,10 +68,12 @@ export function VariableFallbackFields({
           <Input
             id={fieldId}
             value={fallback}
-            required
+            required={!optional}
             aria-invalid={invalid}
             aria-describedby={invalid ? `${fieldId}-error` : undefined}
-            placeholder="Value when empty (required)"
+            placeholder={
+              optional ? 'Empty: message fails' : 'Value when empty (required)'
+            }
             onChange={(event) => setFallback(event.target.value)}
             className="bg-muted text-xs"
           />

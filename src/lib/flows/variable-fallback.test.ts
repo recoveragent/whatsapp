@@ -89,3 +89,22 @@ describe('required variable fallbacks', () => {
     ).toEqual([]);
   });
 });
+
+describe('fail_if_missing_variables', () => {
+  it('makes empty fallbacks optional but still rejects variable fallbacks', async () => {
+    const { requiredFallbackIssues } = await import('./variable-fallback');
+    const variables = { '1': '{{ vars.order_number }}', '2': '{{ vars.name | "{{x}}" }}' };
+    expect(requiredFallbackIssues({ variables })).toHaveLength(2);
+    expect(
+      requiredFallbackIssues({ variables, fail_if_missing_variables: true })
+    ).toEqual([{ path: 'variables.2', key: 'vars.name' }]);
+  });
+
+  it('lists variables that resolve empty without a fallback', async () => {
+    const { missingTemplateVariables } = await import('./template-interpolate');
+    const vars = { order_number: '', name: 'Asha' };
+    expect(missingTemplateVariables('{{ vars.order_number }}', vars)).toEqual(['vars.order_number']);
+    expect(missingTemplateVariables('{{ vars.order_number | "#" }}', vars)).toEqual([]);
+    expect(missingTemplateVariables('{{ vars.name }}', vars)).toEqual([]);
+  });
+});

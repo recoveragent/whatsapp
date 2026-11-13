@@ -58,6 +58,38 @@ export function preserveVariableFallbacks(
   return next;
 }
 
+/** Send-template nodes may fail the send instead of using a fallback. */
+export function failsOnMissingVariables(config: unknown): boolean {
+  return (
+    !!config &&
+    typeof config === 'object' &&
+    (config as { fail_if_missing_variables?: unknown }).fail_if_missing_variables === true
+  );
+}
+
+/** Fallback issues for a node/step config; none when it fails on missing values. */
+export function requiredFallbackIssues(config: unknown) {
+  // Fallbacks are optional then, but one that is entered must still be literal text.
+  return failsOnMissingVariables(config)
+    ? invalidEnteredFallbacks(config)
+    : missingVariableFallbacks(config);
+}
+
+function invalidEnteredFallbacks(
+  value: unknown,
+  path = ''
+): { path: string; key: string }[] {
+  if (typeof value === 'string') {
+    return variableFallbacks(value)
+      .filter((item) => item.fallback.trim() && item.fallback.includes('{{'))
+      .map((item) => ({ path, key: item.key }));
+  }
+  if (!value || typeof value !== 'object') return [];
+  return Object.entries(value).flatMap(([key, child]) =>
+    invalidEnteredFallbacks(child, path ? `${path}.${key}` : key)
+  );
+}
+
 export function missingVariableFallbacks(
   value: unknown,
   path = ''

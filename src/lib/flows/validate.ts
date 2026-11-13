@@ -1,7 +1,8 @@
 import {
   isMediaFallbackUrl,
   MEDIA_FALLBACK_MESSAGE,
-  missingVariableFallbacks,
+  failsOnMissingVariables,
+  requiredFallbackIssues,
   variableFallbacks,
   withoutVariableFallbacks,
 } from './variable-fallback';
@@ -755,17 +756,23 @@ function validateNode(
   knownKeys: Set<string>,
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  for (const issue of missingVariableFallbacks(node.config)) {
+  const fallbackOptional = failsOnMissingVariables(node.config);
+  for (const issue of requiredFallbackIssues(node.config)) {
     if (issue.path === 'variables.header_media') continue;
     issues.push({ severity: "error", scope: "node", node_key: node.node_key,
-      field: issue.path, message: `Enter a required fallback for ${issue.key}.` });
+      field: issue.path, message: fallbackOptional
+        ? `The fallback for ${issue.key} must be plain text.`
+        : `Enter a required fallback for ${issue.key}.` });
   }
   const headerMedia = (node.config as { variables?: { header_media?: unknown } } | null)
     ?.variables?.header_media;
   // Header media fallbacks are uploaded images; Meta rejects plain-text links.
   if (
     typeof headerMedia === 'string' &&
-    variableFallbacks(headerMedia).some(({ fallback }) => !isMediaFallbackUrl(fallback))
+    variableFallbacks(headerMedia).some(
+      ({ fallback }) =>
+        !(fallbackOptional && !fallback.trim()) && !isMediaFallbackUrl(fallback)
+    )
   )
     issues.push({ severity: "error", scope: "node", node_key: node.node_key,
       field: 'variables.header_media', message: MEDIA_FALLBACK_MESSAGE });

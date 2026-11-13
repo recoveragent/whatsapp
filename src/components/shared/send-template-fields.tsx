@@ -7,7 +7,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 
-import { VariableFallbackFields, type FallbackInputProps } from "@/components/shared/variable-fallback-fields";
+import { OptionalFallbacksContext, VariableFallbackFields, type FallbackInputProps } from "@/components/shared/variable-fallback-fields";
+import { Switch } from "@/components/ui/switch";
 import {
   isMediaFallbackUrl,
   MEDIA_FALLBACK_MESSAGE,
@@ -51,6 +52,7 @@ export interface SendTemplateFieldsValue {
   variables?: Record<string, string>;
   buttons?: TemplateQuickReplyButton[];
   next_node_key?: string;
+  fail_if_missing_variables?: boolean;
 }
 
 interface SendTemplateFieldsProps {
@@ -72,6 +74,9 @@ interface SendTemplateFieldsProps {
   variableHint?: string;
   /** Grouped variables for the picker sidebar. */
   variableGroups?: TemplateVariableGroup[];
+  /** Offer "fail the message when a variable is empty" (makes fallbacks optional). */
+  showFailIfMissingOption?: boolean;
+  failIfMissingVariables?: boolean;
 }
 
 function bodyPlaceholders(body: string): string[] {
@@ -381,7 +386,10 @@ export function SendTemplateFields({
   onChange,
   variableHint = "Select a variable and enter its required fallback beside it. The fallback is used when the value is empty.",
   variableGroups = [],
+  showFailIfMissingOption = false,
+  failIfMissingVariables = false,
 }: SendTemplateFieldsProps) {
+  const failOnMissing = showFailIfMissingOption && failIfMissingVariables;
   const { accountId } = useAuth();
   const { templates: approvedTemplates, loading, reload } = useApprovedTemplates();
   const templates = useMemo(
@@ -592,6 +600,14 @@ export function SendTemplateFields({
     });
   };
 
+  const hasVariableFields =
+    placeholders.length > 0 ||
+    !!mediaHeaderType ||
+    urlSuffixButtons.length > 0 ||
+    (selectedTemplate?.header_type === "text" &&
+      !!selectedTemplate.header_content &&
+      extractVariableIndices(selectedTemplate.header_content).length > 0);
+
   const currentValue = templateName
     ? toTemplateOptionValue(templateName, lang)
     : "";
@@ -734,6 +750,7 @@ export function SendTemplateFields({
   ) : null;
 
   return (
+    <OptionalFallbacksContext.Provider value={failOnMissing}>
     <div className={cn("@container min-w-0", flowLayout ? "grid h-full min-h-0 min-w-[900px] grid-cols-[minmax(0,4fr)_minmax(0,3fr)_minmax(0,3fr)]" : "space-y-3")}>
       <div className={flowLayout ? "min-h-0 min-w-0 space-y-3 overflow-y-auto overscroll-contain p-5" : "space-y-3"}>
       {createTemplateLink}
@@ -770,6 +787,32 @@ export function SendTemplateFields({
           })()}
           {!flowLayout && preview}
 
+          {showFailIfMissingOption && hasVariableFields && (
+            <label className="flex items-start gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+              <Switch
+                checked={failOnMissing}
+                onCheckedChange={(checked) =>
+                  onChange({
+                    template_name: templateName,
+                    language: lang,
+                    variables,
+                    buttons,
+                    next_node_key: nextNodeKey,
+                    fail_if_missing_variables: checked,
+                  })
+                }
+              />
+              <span className="space-y-0.5">
+                <span className="block text-xs font-medium text-foreground">
+                  Fail message if a variable is missing
+                </span>
+                <span className="block text-[10px] text-muted-foreground">
+                  The template is not sent when a mapped variable is empty
+                  and has no fallback. Fallbacks become optional.
+                </span>
+              </span>
+            </label>
+          )}
           {placeholders.length > 0 && (
             <div className={flowLayout ? "space-y-3" : VARIABLE_FIELDS_LAYOUT}>
               <div className="min-w-0 space-y-2">
@@ -1024,5 +1067,6 @@ export function SendTemplateFields({
         </>
       )}
     </div>
+    </OptionalFallbacksContext.Provider>
   );
 }

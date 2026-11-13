@@ -18,7 +18,7 @@ import { ensureFlowOutboundPersisted } from '@/lib/flows/backfill-outbound-promp
 import { ensureConversation } from '@/lib/shopify/ensure-contact'
 import { buildSendTimeParamsFromVariables, isDynamicHeaderMediaMapping } from '@/lib/flows/template-send-params'
 import { resolveFlowProductImageUrl } from '@/lib/flows/resolve-product-image'
-import { interpolateTemplateString } from '@/lib/flows/template-interpolate'
+import { interpolateTemplateString, missingTemplateVariables } from '@/lib/flows/template-interpolate'
 import {
   buildTemplateMessageSnapshot,
   isMediaHeaderType,
@@ -55,6 +55,7 @@ export interface SendTemplateNodeConfig {
     next_node_key: string
   }>
   next_node_key: string
+  fail_if_missing_variables?: boolean
 }
 
 export interface SendWebhookNodeConfig {
@@ -216,6 +217,19 @@ export async function executeExtendedNode(
         )
         if (productImageUrl) {
           vars.product_image = productImageUrl
+        }
+        if (c.fail_if_missing_variables) {
+          const missing = [
+            ...new Set(
+              Object.values(c.variables ?? {}).flatMap((raw) =>
+                missingTemplateVariables(String(raw ?? ''), vars, messageText),
+              ),
+            ),
+          ]
+          if (missing.length)
+            throw new Error(
+              `Template not sent: missing value for ${missing.join(', ')}.`,
+            )
         }
         const messageParams = buildSendTimeParamsFromVariables(
           c.variables,
