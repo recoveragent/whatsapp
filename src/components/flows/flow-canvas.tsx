@@ -46,6 +46,7 @@ import {
   Controls,
   Handle,
   MiniMap,
+  MarkerType,
   Panel,
   Position,
   ReactFlow,
@@ -264,6 +265,15 @@ function slotColor(nodeType: NodeType, slotId: string, fallback: string) {
   return fallback;
 }
 
+// Canvas colors group related steps without changing the shared list/editor palette.
+function canvasNodeColors(type: string) {
+  const resolved = resolveNodeType(type);
+  if (nodeMetaFor(type).category === 'messaging') return nodeColors('send_template');
+  if (resolved === 'condition' || resolved === 'switch') return nodeColors('condition');
+  if (resolved === 'wait') return nodeColors('send_buttons');
+  return nodeColors('start');
+}
+
 function FlowNodeCard({ id, data, selected }: NodeProps) {
   const t = useTranslations('Flows.builder');
   const {
@@ -275,9 +285,9 @@ function FlowNodeCard({ id, data, selected }: NodeProps) {
     stages = [],
     templatePreview = null,
   } = data as NodeData;
-  const resolvedType = resolveNodeType(node.node_type);
   const meta = nodeMetaFor(node.node_type);
-  const c = nodeColorsFor(node.node_type);
+  const Icon = meta.icon;
+  const c = canvasNodeColors(node.node_type);
   const tSummary = useTranslations('Flows.summary');
   const summary = summarizeNode(node, {
     customFields,
@@ -309,14 +319,16 @@ function FlowNodeCard({ id, data, selected }: NodeProps) {
           '--nc-soft': c.soft,
           '--nc-ring': c.ring,
           '--nc-text': c.text,
-          borderColor: selected ? c.solid : undefined,
+          borderColor: selected ? c.solid : c.ring,
+          borderLeftColor: c.solid,
+          background: `linear-gradient(135deg, ${c.soft}, transparent 65%), var(--card)`,
           boxShadow: selected
             ? `0 0 0 1px ${c.solid}, 0 14px 36px -12px ${c.ring}`
             : undefined,
         } as React.CSSProperties
       }
       className={cn(
-        'bg-card relative max-w-[260px] min-w-[220px] rounded-xl border px-3.5 py-3 text-left shadow-[0_2px_6px_rgba(0,0,0,0.18)] transition-[box-shadow,border-color]',
+        'bg-card relative max-w-[260px] min-w-[220px] rounded-xl border border-l-4 px-3.5 py-3 text-left shadow-[0_4px_14px_rgba(0,0,0,0.12)] transition-[box-shadow,border-color]',
         selected
           ? 'border-[var(--nc)]'
           : 'border-border hover:border-[var(--nc-ring)]',
@@ -335,12 +347,9 @@ function FlowNodeCard({ id, data, selected }: NodeProps) {
       )}
 
       <div className="flex items-center gap-2">
-        <NodeIconChip
-          type={resolvedType}
-          size={24}
-          iconSize={14}
-          className="rounded-md"
-        />
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md" style={{ background: c.soft, color: c.solid }}>
+          <Icon size={14} />
+        </span>
         <span
           className="truncate text-[10.5px] font-semibold tracking-wider uppercase"
           style={{ color: c.text }}
@@ -480,7 +489,7 @@ function minimapNodeColor(n: RfNode): string {
   }
   const node = (n.data as NodeData | undefined)?.node;
   if (!node) return "var(--border)";
-  return nodeColorsFor(node.node_type).solid;
+  return canvasNodeColors(node.node_type).solid;
 }
 
 // ============================================================
@@ -715,18 +724,26 @@ function FlowCanvasInner() {
   const derivedRfEdges = useMemo(() => {
     const canvasEdges = deriveCanvasEdges(builderNodes);
 
-    const edges: RfEdge[] = canvasEdges.map((e) => ({
+    const edges: RfEdge[] = canvasEdges.map((e) => {
+      const source = builderNodes.find((node) => node.node_key === e.source);
+      const color = source
+        ? slotColor(source.node_type, e.sourceHandle ?? '', canvasNodeColors(source.node_type).solid)
+        : 'var(--primary)';
+      return ({
       id: e.id,
       source: e.source,
       target: e.target,
       sourceHandle: e.sourceHandle,
       label: e.label,
-      labelStyle: { fill: 'var(--muted-foreground)', fontSize: 11 },
-      labelBgStyle: { fill: 'var(--card)' },
-      labelBgPadding: [4, 2] as [number, number],
-      labelBgBorderRadius: 4,
-      style: { stroke: 'var(--border)', strokeWidth: 1.5 },
-    }));
+      labelStyle: { fill: 'var(--foreground)', fontSize: 11, fontWeight: 600 },
+      labelBgStyle: { fill: 'var(--card)', fillOpacity: 0.96, stroke: color, strokeOpacity: 0.45 },
+      labelBgPadding: [6, 3] as [number, number],
+      labelBgBorderRadius: 5,
+      style: { stroke: color, strokeWidth: 2.5 },
+      markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
+      interactionWidth: 20,
+    });
+    });
 
     for (const link of triggerLinks) {
       if (
@@ -745,7 +762,9 @@ function FlowCanvasInner() {
         labelBgStyle: { fill: "var(--card)" },
         labelBgPadding: [4, 2] as [number, number],
         labelBgBorderRadius: 4,
-        style: { stroke: "var(--primary)", strokeWidth: 2 },
+        style: { stroke: "var(--primary)", strokeWidth: 2.5 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "var(--primary)", width: 16, height: 16 },
+        interactionWidth: 20,
         animated: true,
         deletable: true,
       });
@@ -1018,7 +1037,7 @@ function FlowCanvasInner() {
               nodeStrokeWidth={0}
               nodeBorderRadius={3}
               maskColor="color-mix(in oklch, var(--background) 70%, transparent)"
-              className="!border-border !bg-card !rounded-xl !border !shadow-[0_6px_20px_-8px_rgba(0,0,0,0.5)]"
+              className="!hidden !border-border !bg-card !rounded-xl !border !shadow-[0_6px_20px_-8px_rgba(0,0,0,0.5)] sm:!block"
             />
             <Panel position="top-left" className="!top-4 !left-4">
               <CanvasAddNodeButton t={t} />
