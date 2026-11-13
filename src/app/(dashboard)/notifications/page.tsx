@@ -26,6 +26,7 @@ export default function NotificationsPage() {
   );
   const [error, setError] = useState<string | null>(null);
   const [markingAll, setMarkingAll] = useState(false);
+  const [filter, setFilter] = useState('all');
 
   const load = useCallback(async () => {
     if (!accountId) return;
@@ -34,13 +35,15 @@ export default function NotificationsPage() {
       .from("notifications")
       .select("*")
       .eq("account_id", accountId)
+      .gte("created_at", new Date(Date.now() - 30 * 86400_000).toISOString())
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(1000);
     if (fetchErr) {
       setError(fetchErr.message);
       return;
     }
     setNotifications((data ?? []) as Notification[]);
+    setError(null);
   }, [accountId]);
 
   useEffect(() => {
@@ -56,7 +59,7 @@ export default function NotificationsPage() {
       .channel("notifications-page")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "notifications" },
+        { event: "*", schema: "public", table: "notifications", filter: `account_id=eq.${accountId}` },
         (payload) => {
           if (payload.eventType === "INSERT") {
             const row = payload.new as Notification;
@@ -84,7 +87,7 @@ export default function NotificationsPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [accountId]);
 
   const markRead = useCallback(
     async (id: string) => {
@@ -137,13 +140,15 @@ export default function NotificationsPage() {
     const { error: updateErr } = await supabase
       .from("notifications")
       .update({ read_at: now })
+      .eq("account_id", accountId)
+      .gte("created_at", new Date(Date.now() - 30 * 86400_000).toISOString())
       .is("read_at", null);
     setMarkingAll(false);
     if (updateErr) {
       toast.error("Failed to mark all as read");
       load();
     }
-  }, [unreadIds.length, load]);
+  }, [unreadIds.length, load, accountId]);
 
   if (error) {
     return (
@@ -170,7 +175,7 @@ export default function NotificationsPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Notifications</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            WhatsApp delivery failures and conversation assignments show up here.
+            WhatsApp delivery failures and conversation assignments from the last 30 days.
           </p>
         </div>
         <Button
@@ -188,13 +193,22 @@ export default function NotificationsPage() {
         </Button>
       </div>
 
-      {notifications.length === 0 ? (
+      <label className="flex items-center gap-2 text-sm">Show
+        <select value={filter} onChange={(event) => setFilter(event.target.value)} className="rounded-md border bg-background px-3 py-2">
+          <option value="all">All notifications</option>
+          <option value="message_failed">Message failures</option>
+          <option value="payment">Meta payment issues</option>
+          <option value="whatsapp_disconnected">Connection issues</option>
+          <option value="unread">Unread</option>
+        </select>
+      </label>
+      {notifications.filter((n) => filter === 'all' || (filter === 'unread' ? !n.read_at : filter === 'payment' ? n.type === 'message_failed' && n.body?.includes('[131042]') : n.type === filter)).length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/40">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
             <Bell className="h-6 w-6 text-primary" />
           </div>
           <p className="mt-3 text-sm font-medium text-foreground">
-            No notifications yet
+            No matching notifications
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             Delivery failures and new conversation assignments will appear here.
@@ -202,7 +216,7 @@ export default function NotificationsPage() {
         </div>
       ) : (
         <ul className="space-y-2">
-          {notifications.map((n) => {
+          {notifications.filter((n) => filter === 'all' || (filter === 'unread' ? !n.read_at : filter === 'payment' ? n.type === 'message_failed' && n.body?.includes('[131042]') : n.type === filter)).map((n) => {
             const Icon = TYPE_ICON[n.type] ?? Bell;
             const isUnread = !n.read_at;
             return (
