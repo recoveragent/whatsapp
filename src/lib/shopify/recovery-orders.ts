@@ -263,18 +263,6 @@ export const RECOVERY_SUMMARY_MAX = 900;
 const clip = (value: string, max: number) =>
   value.length > max ? `${value.slice(0, max - 1).trimEnd()}…` : value;
 
-/** Visible personalization the customer can check, e.g. "Baby name: Asha". */
-function personalization(item: Draft['lineItems']['nodes'][number]) {
-  const details = (item.customAttributes ?? [])
-    .filter(
-      ({ key, value }) =>
-        !key.startsWith('_') && !!value?.trim() && !/^https?:\/\//i.test(value)
-    )
-    .map(({ key, value }) => `${key}: ${value!.trim()}`)
-    .join(', ');
-  return details ? ` (${clip(details, 200)})` : '';
-}
-
 export function recoverySummary(
   draft: Pick<Draft, 'lineItems' | 'shippingAddress'>,
   expectedPaise: number,
@@ -287,8 +275,7 @@ export function recoverySummary(
     300
   );
   const items = draft.lineItems.nodes.map(
-    (item) =>
-      `${clip(item.title, 80)} × ${item.quantity}${personalization(item)}`
+    (item) => `${clip(item.title, 80)} × ${item.quantity}`
   );
   const budget = RECOVERY_SUMMARY_MAX - total.length - address.length - 2;
   let shown = items.join(', ');
@@ -565,13 +552,15 @@ export async function prepareRecoveryOrder(
       id: existing.draft_order_id,
       input: { reserveInventoryUntil },
     });
-    checkQuote(draftFromResult(updated.draftOrderUpdate), existing);
+    const reservedDraft = draftFromResult(updated.draftOrderUpdate);
+    checkQuote(reservedDraft, existing);
+    const summary = recoverySummary(reservedDraft, expectedPaise, codChargePaise);
     const { error: reserveError } = await db
       .from('shopify_checkout_recoveries')
-      .update({ reserved_until: reserveInventoryUntil })
+      .update({ reserved_until: reserveInventoryUntil, summary })
       .eq('id', existing.id);
     if (reserveError) throw reserveError;
-    return { ...existing, reserved_until: reserveInventoryUntil };
+    return { ...existing, reserved_until: reserveInventoryUntil, summary };
   }
   if (existing)
     throw new Error(

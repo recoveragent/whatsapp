@@ -444,7 +444,7 @@ describe('Shopify recovery order lifecycle', () => {
       priceWithCurrency: { amount: '50.00', currencyCode: 'INR' },
     });
   });
-  it('carries personalization onto the order and shows only readable details to the customer', async () => {
+  it('keeps personalization on the order but excludes it from the customer summary', async () => {
     const f = fixture();
     const attributes = [
       { key: 'Engraving', value: 'Asha' },
@@ -461,9 +461,19 @@ describe('Shopify recovery order lifecycle', () => {
     const r = await prepareRecoveryOrder(f.db, f.run, 'cod');
     const create = bodies(f).find((b) => b.query.includes('mutation RecoveryDraft'));
     expect(create.variables.input.lineItems[0].customAttributes).toEqual(attributes);
-    expect(r.summary).toContain('Shirt × 2 (Engraving: Asha)');
+    expect(r.summary).toContain('Shirt × 2');
+    expect(r.summary).not.toContain('Engraving');
+    expect(r.summary).not.toContain('Asha');
     expect(r.summary).not.toContain('d-1');
     expect(r.summary).not.toContain('cdn.example.com');
+  });
+  it('refreshes an older saved summary when reusing a draft', async () => {
+    const f = fixture();
+    await prepareRecoveryOrder(f.db, f.run, 'cod');
+    f.tables.shopify_checkout_recoveries[0].summary = 'Shirt × 2 (Engraving: Asha)';
+    const reused = await prepareRecoveryOrder(f.db, f.run, 'cod');
+    expect(reused.summary).not.toContain('Engraving');
+    expect(f.tables.shopify_checkout_recoveries[0].summary).toBe(reused.summary);
   });
   it('refuses a confirmed COD order when the COD price changed after review', async () => {
     const f = fixture();
