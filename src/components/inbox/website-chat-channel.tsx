@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-type Chat = { id: string; last_message_at: string; last_message_text: string };
+type Chat = { id: string; last_message_at: string; last_message_text: string; phone: string | null };
 type Turn = { id: string; role: 'user' | 'assistant'; content: string; created_at: string };
 
 export function WebsiteChatChannel() {
@@ -12,6 +12,7 @@ export function WebsiteChatChannel() {
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const requestVersion = useRef(0);
+  const selectedChat = chats.find((chat) => chat.id === selected);
   const load = useCallback(async () => {
     const version = ++requestVersion.current;
     try {
@@ -45,6 +46,7 @@ export function WebsiteChatChannel() {
           <button key={chat.id} type="button" onClick={() => { setMessages([]); setSelected(chat.id); }}
             className={`block w-full border-b p-3 text-left hover:bg-muted ${selected === chat.id ? 'bg-muted' : ''}`}>
             <span className="block text-sm font-medium">Website visitor</span>
+            {chat.phone && <span className="block text-xs font-medium">{chat.phone}</span>}
             <span className="block truncate text-xs text-muted-foreground">{chat.last_message_text}</span>
             <span className="block text-xs text-muted-foreground">{new Date(chat.last_message_at).toLocaleString()}</span>
           </button>
@@ -53,6 +55,7 @@ export function WebsiteChatChannel() {
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="border-b p-3 text-sm font-semibold">{selected ? 'Website visitor' : 'Select a website chat'}</div>
         {selected && <>
+          {selectedChat?.phone && <div className="border-b px-3 py-2 text-sm">Mobile: {selectedChat.phone} <a className="ml-2 text-primary underline" href={`https://wa.me/${selectedChat.phone.slice(1)}`} target="_blank" rel="noopener noreferrer">Open WhatsApp</a></div>}
           <div className="flex-1 space-y-3 overflow-y-auto p-4">
             {messages.map((message) => <div key={message.id} className={`max-w-[85%] rounded-lg p-3 text-sm whitespace-pre-wrap ${message.role === 'user' ? 'bg-muted' : 'ml-auto bg-primary/10'}`}>
               <div className="mb-1 text-xs font-semibold text-muted-foreground">{message.role === 'user' ? 'Visitor' : 'AI assistant'}</div>

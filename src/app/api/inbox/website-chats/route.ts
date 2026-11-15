@@ -15,7 +15,7 @@ export async function GET(request: Request) {
     }
     const search = new URL(request.url).searchParams.get('search')?.trim().slice(0, 100) ?? '';
     let query = supabase.from('website_chat_sessions')
-      .select('id, last_message_at, last_message_text, created_at').eq('account_id', accountId);
+      .select('id, last_message_at, last_message_text, created_at, phone').eq('account_id', accountId);
     if (search) {
       const escaped = search.replace(/[\\%_]/g, (character) => `\\${character}`);
       const { data: matches, error: matchError } = await supabase.from('website_chat_messages')

@@ -147,6 +147,52 @@
     appendLinkified(bubble, item.content);
     row.appendChild(bubble);
 
+    if (item.phonePrompt && !item.saved) {
+      var phoneForm = el('form', 'phone-form');
+      var country = el('input', 'country-input');
+      country.type = 'tel';
+      country.value = '+91';
+      country.required = true;
+      country.pattern = '\\+[1-9][0-9]{0,2}';
+      country.setAttribute('aria-label', 'Country calling code');
+      var phone = el('input', 'phone-input');
+      phone.type = 'tel';
+      phone.inputMode = 'numeric';
+      phone.placeholder = '10-digit mobile number';
+      phone.setAttribute('aria-label', '10-digit mobile number');
+      phone.pattern = '[0-9]{10}';
+      phone.maxLength = 10;
+      phone.required = true;
+      var submitPhone = el('button', 'choice', 'Share number');
+      submitPhone.type = 'submit';
+      var phoneError = el('span', 'phone-error');
+      phoneError.setAttribute('role', 'alert');
+      phoneForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        if (!phoneForm.reportValidity()) return;
+        submitPhone.disabled = true;
+        phoneError.textContent = '';
+        fetch(apiBase + '/api/widget/phone?key=' + encodeURIComponent(key), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit',
+          body: JSON.stringify({ session_key: sessionKey, country_code: country.value, phone: phone.value }),
+        }).then(function (response) {
+          if (!response.ok) throw new Error('Unable to save');
+          item.saved = true;
+          item.content = 'Thanks! Our team can use your number to follow up on WhatsApp.';
+          saveItems();
+          render();
+        }).catch(function () {
+          phoneError.textContent = 'Could not save your number. Please try again.';
+          submitPhone.disabled = false;
+        });
+      });
+      phoneForm.appendChild(country);
+      phoneForm.appendChild(phone);
+      phoneForm.appendChild(submitPhone);
+      phoneForm.appendChild(phoneError);
+      row.appendChild(phoneForm);
+    }
+
     (item.products || []).forEach(function (product) {
       var card = renderProduct(product);
       if (card) row.appendChild(card);
@@ -170,6 +216,7 @@
       item.quickReplies.forEach(function (label) {
         var choice = el('button', 'choice', label);
         choice.type = 'button';
+        choice.disabled = needsPhone();
         choice.addEventListener('click', function () {
           send(label);
         });
@@ -185,7 +232,7 @@
     log.textContent = '';
     log.appendChild(renderItem({ role: 'assistant', content: config.greeting }, false));
     items.forEach(function (item, index) {
-      log.appendChild(renderItem(item, !sending && index === items.length - 1));
+      log.appendChild(renderItem(item, !sending && (index === items.length - 1 || (index === items.length - 2 && items[index + 1].phonePrompt))));
     });
     if (sending) {
       var typing = el('div', 'row row-bot');
@@ -198,14 +245,20 @@
       log.appendChild(typing);
     }
     log.scrollTop = log.scrollHeight;
-    refs.send.disabled = sending;
+    refs.send.disabled = sending || needsPhone();
+    refs.input.disabled = needsPhone();
+    refs.input.placeholder = needsPhone() ? 'Share your mobile number to continue' : 'Type your message';
+  }
+
+  function needsPhone() {
+    return items.some(function (item) { return item.phonePrompt && !item.saved; });
   }
 
   /** The transcript the server needs. Display-only fields stay in the browser. */
   function transcript() {
     return items
       .filter(function (item) {
-        return !item.isError;
+        return !item.isError && !item.phonePrompt;
       })
       .slice(-MAX_TURNS)
       .map(function (item) {
@@ -252,7 +305,7 @@
 
   function send(raw) {
     var text = String(raw || '').trim().slice(0, MAX_INPUT);
-    if (!text || sending) return;
+    if (!text || sending || needsPhone()) return;
     items.push({ role: 'user', content: text });
     sending = true;
     saveItems();
@@ -288,6 +341,9 @@
           whatsappUrl: body.handoff ? body.whatsapp_url : null,
           handoff: Boolean(body.handoff),
         });
+        if (!items.some(function (item) { return item.phonePrompt; })) {
+          items.push({ role: 'assistant', phonePrompt: true, content: 'If this chat closes, we can continue the conversation on WhatsApp. Please share your mobile number.' });
+        }
       })
       .catch(function () {
         items.push({ role: 'assistant', isError: true, content: DEFAULT_ERROR });
@@ -436,8 +492,8 @@
     '.close{width:32px;height:32px;padding:4px;border:0;border-radius:8px;background:transparent;color:inherit;flex:none}',
     '.close:focus-visible{outline-color:var(--on-accent)}',
     '.log{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:16px;background:#f6f7f8;display:flex;flex-direction:column;gap:10px}',
-    '.row{display:flex;flex-direction:column;gap:6px;max-width:85%}',
     '.privacy-notice{padding:6px 12px;background:#fff;color:#5b6470;font-size:12px;text-align:center}',
+    '.row{display:flex;flex-direction:column;gap:6px;max-width:85%}',
     '.row-user{align-self:flex-end;align-items:flex-end}',
     '.row-bot{align-self:flex-start;align-items:flex-start}',
     '.bubble{padding:9px 12px;border-radius:14px;white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;border:1px solid #e6e8eb}',
@@ -455,6 +511,10 @@
     '.handoff-disclosure{font-size:12px;color:#5b6470}',
     '.choices{display:flex;flex-wrap:wrap;gap:6px}',
     '.choice{padding:7px 12px;border-radius:999px;border:1px solid var(--accent);background:#fff;color:#1f2328}',
+    '.phone-form{display:flex;flex-wrap:wrap;gap:6px;width:100%}',
+    '.country-input,.phone-input{min-width:0;padding:8px;border:1px solid #d5d9de;border-radius:8px;font-size:14px}',
+    '.country-input{width:62px}.phone-input{flex:1;min-width:145px}',
+    '.phone-error{width:100%;font-size:12px;color:#b42318}',
     '.typing{display:flex;gap:4px;padding:13px 12px}',
     '.typing span{width:6px;height:6px;border-radius:50%;background:#8a93a0;animation:pulse 1.2s infinite}',
     '.typing span:nth-child(2){animation-delay:.2s}',
