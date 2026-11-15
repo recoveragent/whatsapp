@@ -35,13 +35,14 @@
   var config = null;
   var items = loadItems();
   var sending = false;
+  var sessionVersion = 0;
   var refs = {};
 
-  function loadSessionKey() {
+  function loadSessionKey(forceNew) {
     var storageName = storageKey + ':session';
     try {
       var existing = sessionStorage.getItem(storageName);
-      if (existing && /^[0-9a-f]{64}$/.test(existing)) return existing;
+      if (!forceNew && existing && /^[0-9a-f]{64}$/.test(existing)) return existing;
     } catch { /* Continue with an in-memory session. */ }
     var bytes = new Uint8Array(32);
     crypto.getRandomValues(bytes);
@@ -171,17 +172,20 @@
         event.preventDefault();
         if (!phoneForm.reportValidity()) return;
         submitPhone.disabled = true;
+        var requestVersion = sessionVersion;
         phoneError.textContent = '';
         fetch(apiBase + '/api/widget/phone?key=' + encodeURIComponent(key), {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit',
           body: JSON.stringify({ session_key: sessionKey, country_code: country.value, phone: phone.value }),
         }).then(function (response) {
           if (!response.ok) throw new Error('Unable to save');
+          if (requestVersion !== sessionVersion) return;
           item.saved = true;
           item.content = 'Thanks! Our team can use your number to follow up on WhatsApp.';
           saveItems();
           render();
         }).catch(function () {
+          if (requestVersion !== sessionVersion) return;
           phoneError.textContent = 'Could not save your number. Please try again.';
           submitPhone.disabled = false;
         });
@@ -285,6 +289,7 @@
       return;
     }
     popup.opener = null;
+    var requestVersion = sessionVersion;
     button.disabled = true;
     fetch(apiBase + '/api/widget/handoff?key=' + encodeURIComponent(key), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit',
@@ -293,6 +298,7 @@
       if (!response.ok) throw new Error('Handoff unavailable');
       return response.json();
     }).then(function (body) {
+      if (requestVersion !== sessionVersion) { popup.close(); return; }
       var url = httpsUrl(body.url);
       if (!url || new URL(url).hostname !== 'wa.me') throw new Error('Invalid handoff');
       popup.location.href = url;
@@ -308,6 +314,7 @@
     if (!text || sending || needsPhone()) return;
     items.push({ role: 'user', content: text });
     sending = true;
+    var requestVersion = sessionVersion;
     saveItems();
     render();
 
@@ -323,6 +330,7 @@
         });
       })
       .then(function (result) {
+        if (requestVersion !== sessionVersion) return;
         var body = result.body || {};
         if (!result.ok || typeof body.reply !== 'string') {
           items.push({
@@ -346,14 +354,27 @@
         }
       })
       .catch(function () {
+        if (requestVersion !== sessionVersion) return;
         items.push({ role: 'assistant', isError: true, content: DEFAULT_ERROR });
       })
       .then(function () {
+        if (requestVersion !== sessionVersion) return;
         sending = false;
         saveItems();
         render();
         if (refs.panel.classList.contains('open')) refs.input.focus();
       });
+  }
+
+  function resetChat() {
+    sessionVersion++;
+    sessionKey = loadSessionKey(true);
+    items = [];
+    sending = false;
+    refs.input.value = '';
+    saveItems();
+    render();
+    refs.input.focus();
   }
 
   function setOpen(open) {
@@ -412,6 +433,12 @@
 
     var header = el('div', 'header');
     header.appendChild(el('div', 'title', config.title));
+    var headerActions = el('div', 'header-actions');
+    var reset = el('button', 'reset', 'Reset chat');
+    reset.type = 'button';
+    reset.setAttribute('aria-label', 'Reset chat');
+    reset.addEventListener('click', resetChat);
+    headerActions.appendChild(reset);
     var close = el('button', 'close');
     close.type = 'button';
     close.setAttribute('aria-label', 'Close chat');
@@ -419,7 +446,8 @@
     close.addEventListener('click', function () {
       setOpen(false);
     });
-    header.appendChild(close);
+    headerActions.appendChild(close);
+    header.appendChild(headerActions);
 
     var log = el('div', 'log');
     log.setAttribute('role', 'log');
@@ -452,7 +480,6 @@
     });
 
     panel.appendChild(header);
-    panel.appendChild(el('div', 'privacy-notice', 'Our team can review this chat to help you.'));
     panel.appendChild(log);
     var whatsapp = config.whatsapp_url && httpsUrl(config.whatsapp_url);
     if (whatsapp) {
@@ -489,10 +516,12 @@
     '.panel.open{display:flex}',
     '.header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 12px 12px 16px;background:var(--accent);color:var(--on-accent)}',
     '.title{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.header-actions{display:flex;align-items:center;gap:4px;flex:none}',
+    '.reset{border:0;border-radius:8px;background:transparent;color:inherit;padding:6px 8px;font-size:12px}',
+    '.reset:hover,.close:hover{background:rgba(255,255,255,.14)}',
     '.close{width:32px;height:32px;padding:4px;border:0;border-radius:8px;background:transparent;color:inherit;flex:none}',
     '.close:focus-visible{outline-color:var(--on-accent)}',
     '.log{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:16px;background:#f6f7f8;display:flex;flex-direction:column;gap:10px}',
-    '.privacy-notice{padding:6px 12px;background:#fff;color:#5b6470;font-size:12px;text-align:center}',
     '.row{display:flex;flex-direction:column;gap:6px;max-width:85%}',
     '.row-user{align-self:flex-end;align-items:flex-end}',
     '.row-bot{align-self:flex-start;align-items:flex-start}',
