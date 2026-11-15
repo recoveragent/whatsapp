@@ -21,6 +21,8 @@ import { SettingsPanelHead } from './settings-panel-head';
 
 interface WidgetForm {
   enabled: boolean;
+  desktop_position: 'left' | 'right';
+  mobile_position: 'left' | 'right';
   domains: string;
   title: string;
   greeting: string;
@@ -31,6 +33,8 @@ interface WidgetForm {
 
 interface WidgetSettings {
   public_key: string;
+  desktop_position: 'left' | 'right';
+  mobile_position: 'left' | 'right';
   enabled: boolean;
   allowed_domains: string[];
   title: string;
@@ -43,6 +47,8 @@ interface WidgetSettings {
 
 const DEFAULT_FORM: WidgetForm = {
   enabled: false,
+  desktop_position: 'right',
+  mobile_position: 'right',
   domains: '',
   title: 'Chat with us',
   greeting: 'Hi! How can we help you today?',
@@ -54,6 +60,8 @@ const DEFAULT_FORM: WidgetForm = {
 function toForm(settings: WidgetSettings): WidgetForm {
   return {
     enabled: settings.enabled,
+    desktop_position: settings.desktop_position ?? 'right',
+    mobile_position: settings.mobile_position ?? 'right',
     domains: settings.allowed_domains.join('\n'),
     title: settings.title,
     greeting: settings.greeting,
@@ -110,6 +118,8 @@ export function WebsiteWidgetSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           enabled: form.enabled,
+          desktop_position: form.desktop_position,
+          mobile_position: form.mobile_position,
           allowed_domains: form.domains
             .split(/[\s,]+/)
             .map((domain) => domain.trim())
@@ -191,6 +201,31 @@ export function WebsiteWidgetSettings() {
                   onCheckedChange={(checked) => update('enabled', checked)}
                 />
               </div>
+
+              <fieldset className="space-y-3 rounded-lg border border-border p-3">
+                <legend className="px-1 text-sm font-medium">Chat bubble position</legend>
+                <p className="text-xs text-muted-foreground">
+                  Choose which bottom corner displays the chat bubble on each device.
+                </p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {(['desktop', 'mobile'] as const).map((device) => {
+                    const field = `${device}_position` as const;
+                    return (
+                      <div key={device} className="space-y-2">
+                        <p className="text-sm font-medium capitalize">{device}</p>
+                        <div className="flex gap-2">
+                          {(['left', 'right'] as const).map((position) => (
+                            <label key={position} className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm capitalize ${form[field] === position ? 'border-primary bg-primary/10 text-primary' : 'border-border'} ${disabled ? 'cursor-default opacity-60' : ''}`}>
+                              <input type="radio" name={field} value={position} checked={form[field] === position} disabled={disabled} onChange={() => update(field, position)} />
+                              {position}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </fieldset>
 
               <div className="space-y-1.5">
                 <Label htmlFor="widget-domains">Website domains</Label>

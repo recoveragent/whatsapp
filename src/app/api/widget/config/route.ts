@@ -44,6 +44,8 @@ export async function GET(request: Request) {
       title: widget.title,
       greeting: widget.greeting,
       accent_color: widget.accent_color,
+      desktop_position: widget.desktop_position,
+      mobile_position: widget.mobile_position,
       whatsapp_url: buildWhatsAppUrl(widget.whatsapp_number),
     },
     { headers: widgetCorsHeaders(origin) }

@@ -334,7 +334,7 @@
     style.textContent = CSS;
     shadow.appendChild(style);
 
-    var root = el('div', 'root');
+    var root = el('div', 'root desktop-' + (config.desktop_position === 'left' ? 'left' : 'right') + ' mobile-' + (config.mobile_position === 'left' ? 'left' : 'right'));
     root.style.setProperty('--accent', config.accent_color);
     root.style.setProperty('--on-accent', contrastColor(config.accent_color));
 
@@ -423,6 +423,7 @@
     ':host{all:initial}',
     '*{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}',
     '.root{position:fixed;right:20px;bottom:20px;z-index:2147483000;color:#1f2328;font-size:14px;line-height:1.45}',
+    '@media (min-width:481px){.root.desktop-left{left:20px;right:auto}}',
     'svg{width:24px;height:24px;fill:currentColor;display:block}',
     'button{cursor:pointer;font:inherit}',
     'a:focus-visible,button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}',
@@ -467,7 +468,7 @@
     '.send svg{width:20px;height:20px}',
     '.send:disabled{opacity:.5;cursor:default}',
     // Full screen on phones. 16px input text stops iOS zooming in on focus.
-    '@media (max-width:480px){.root{right:16px;bottom:16px}.panel.open{position:fixed;inset:0;width:100%;height:100%;max-height:none;border-radius:0}.input{font-size:16px}.composer{padding-bottom:max(10px,env(safe-area-inset-bottom))}}',
+    '@media (max-width:480px){.root{right:16px;bottom:16px}.root.mobile-left{left:16px;right:auto}.root.mobile-right{left:auto;right:16px}.panel.open{position:fixed;inset:0;width:100%;height:100%;max-height:none;border-radius:0}.input{font-size:16px}.composer{padding-bottom:max(10px,env(safe-area-inset-bottom))}}',
   ].join('');
 
   // A wrong key or unlisted site gets a 404 with no CORS headers, which the

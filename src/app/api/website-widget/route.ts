@@ -6,11 +6,13 @@ import {
 } from '@/lib/website-widget/config';
 
 const SETTINGS_COLUMNS =
-  'public_key, enabled, allowed_domains, title, greeting, accent_color, whatsapp_number, daily_reply_limit, replies_today, replies_day';
+  'public_key, enabled, desktop_position, mobile_position, allowed_domains, title, greeting, accent_color, whatsapp_number, daily_reply_limit, replies_today, replies_day';
 
 interface SettingsRow {
   public_key: string;
   enabled: boolean;
+  desktop_position: 'left' | 'right';
+  mobile_position: 'left' | 'right';
   allowed_domains: string[];
   title: string;
   greeting: string;
@@ -61,6 +63,10 @@ export async function PATCH(request: Request) {
     if (!body || typeof body !== 'object') return invalid('Invalid request');
 
     if (typeof body.enabled !== 'boolean') return invalid('Invalid request');
+    const desktopPosition = body.desktop_position ?? 'right';
+    const mobilePosition = body.mobile_position ?? 'right';
+    if (!['left', 'right'].includes(desktopPosition) || !['left', 'right'].includes(mobilePosition))
+      return invalid('Invalid chat bubble position');
 
     if (!Array.isArray(body.allowed_domains)) return invalid('Invalid request');
     const domains = new Set<string>();
@@ -105,6 +111,8 @@ export async function PATCH(request: Request) {
         {
           account_id: accountId,
           enabled: body.enabled,
+          desktop_position: desktopPosition,
+          mobile_position: mobilePosition,
           allowed_domains: [...domains],
           title,
           greeting,

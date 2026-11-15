@@ -15,6 +15,8 @@ export interface WidgetConfigRow {
   account_id: string;
   public_key: string;
   enabled: boolean;
+  desktop_position: 'left' | 'right';
+  mobile_position: 'left' | 'right';
   allowed_domains: string[];
   title: string;
   greeting: string;
@@ -24,7 +26,7 @@ export interface WidgetConfigRow {
 }
 
 const WIDGET_COLUMNS =
-  'account_id, public_key, enabled, allowed_domains, title, greeting, accent_color, whatsapp_number, daily_reply_limit';
+  'account_id, public_key, enabled, desktop_position, mobile_position, allowed_domains, title, greeting, accent_color, whatsapp_number, daily_reply_limit';
 
 /** An enabled widget by its public key, or null. Never distinguishes why. */
 export async function loadEnabledWidget(
