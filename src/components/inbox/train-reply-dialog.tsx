@@ -15,11 +15,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { MAX_INSTRUCTION_LENGTH } from "@/lib/ai/reply-guidance";
-import type { Message } from "@/types";
 
 interface TrainReplyDialogProps {
   /** The AI reply being corrected; null closes the dialog. */
-  message: Message | null;
+  message: { id: string; content_text: string | null } | null;
+  source?: "website";
   /** Customer text the AI was answering (display only; the server re-reads it). */
   customerMessage: string | null;
   onOpenChange: (open: boolean) => void;
@@ -31,15 +31,17 @@ interface TrainReplyDialogProps {
  */
 export function TrainReplyDialog({
   message,
+  source,
   customerMessage,
   onOpenChange,
 }: TrainReplyDialogProps) {
   const [instruction, setInstruction] = useState("");
   const [saving, setSaving] = useState(false);
+  const messageId = message?.id;
 
   useEffect(() => {
-    if (message) setInstruction("");
-  }, [message]);
+    if (messageId) setInstruction("");
+  }, [messageId]);
 
   const save = async () => {
     if (!message || !instruction.trim()) return;
@@ -48,7 +50,7 @@ export function TrainReplyDialog({
       const res = await fetch("/api/ai/reply-guidance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message_id: message.id, instruction }),
+        body: JSON.stringify({ message_id: message.id, instruction, source }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Could not save the correction.");

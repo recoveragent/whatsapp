@@ -1,11 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { GraduationCap } from 'lucide-react';
+import { useAuth } from '@/hooks/use-auth';
+import { canEditSettings } from '@/lib/auth/roles';
+import { TrainReplyDialog } from './train-reply-dialog';
 
 type Chat = { id: string; last_message_at: string; last_message_text: string; phone: string | null };
 type Turn = { id: string; role: 'user' | 'assistant'; content: string; created_at: string };
 
 export function WebsiteChatChannel() {
+  const { accountRole, isAiAgentsEnabled } = useAuth();
+  const canTrain = isAiAgentsEnabled && !!accountRole && canEditSettings(accountRole);
+  const [trainTarget, setTrainTarget] = useState<Turn | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [messages, setMessages] = useState<Turn[]>([]);
@@ -43,7 +50,7 @@ export function WebsiteChatChannel() {
         {error && <p role="alert" className="p-3 text-sm text-destructive">{error}</p>}
         {!error && chats.length === 0 && <p className="p-3 text-sm text-muted-foreground">{search ? 'No matching questions.' : 'No website chats yet.'}</p>}
         {chats.map((chat) => (
-          <button key={chat.id} type="button" onClick={() => { setMessages([]); setSelected(chat.id); }}
+          <button key={chat.id} type="button" onClick={() => { setTrainTarget(null); setMessages([]); setSelected(chat.id); }}
             className={`block w-full border-b p-3 text-left hover:bg-muted ${selected === chat.id ? 'bg-muted' : ''}`}>
             <span className="block text-sm font-medium">Website visitor</span>
             {chat.phone && <span className="block text-xs font-medium">{chat.phone}</span>}
@@ -60,11 +67,18 @@ export function WebsiteChatChannel() {
             {messages.map((message) => <div key={message.id} className={`max-w-[85%] rounded-lg p-3 text-sm whitespace-pre-wrap ${message.role === 'user' ? 'bg-muted' : 'ml-auto bg-primary/10'}`}>
               <div className="mb-1 text-xs font-semibold text-muted-foreground">{message.role === 'user' ? 'Visitor' : 'AI assistant'}</div>
               {message.content}
+              {canTrain && message.role === 'assistant' && <button type="button" onClick={() => setTrainTarget(message)} className="mt-2 flex items-center gap-1 text-xs font-medium text-primary hover:underline" aria-label="Train this reply"><GraduationCap className="h-4 w-4" />Train</button>}
             </div>)}
           </div>
           <div className="border-t p-3 text-xs text-muted-foreground">Website chats are view-only here. Visitors can continue with your team on WhatsApp.</div>
         </>}
       </div>
+      {canTrain && <TrainReplyDialog
+        message={trainTarget ? { id: trainTarget.id, content_text: trainTarget.content } : null}
+        source="website"
+        customerMessage={trainTarget ? messages.slice(0, messages.findIndex((message) => message.id === trainTarget.id)).reverse().find((message) => message.role === 'user')?.content ?? null : null}
+        onOpenChange={(open) => { if (!open) setTrainTarget(null); }}
+      />}
     </div>
   );
 }
