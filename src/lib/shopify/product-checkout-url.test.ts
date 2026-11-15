@@ -51,7 +51,7 @@ describe('buildShopifyProductPageUrl', () => {
         variantId: 42,
       }),
     ).toBe(
-      'https://gifts.myshopify.com/products/crystal-bracelet?variant=42&utm_source=whatsapp&utm_medium=wacrm',
+      'https://gifts.myshopify.com/products/crystal-bracelet?variant=42&utm_source=whatsapp&utm_medium=Recover_agent',
     );
   });
 });
