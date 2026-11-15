@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const h = vi.hoisted(() => ({ widget: null as unknown, update: vi.fn(), result: { data: { id: 'chat' }, error: null } as { data: unknown; error: unknown } }));
+const h = vi.hoisted(() => ({ widget: null as unknown, update: vi.fn(), select: vi.fn(), result: { data: { id: 'chat' }, error: null } as { data: unknown; error: unknown } }));
 vi.mock('@/lib/ai/admin-client', () => ({ supabaseAdmin: () => ({ from: () => ({
-  update: h.update,
+  update: h.update, select: h.select,
 }) }) }));
 vi.mock('@/lib/website-widget/config', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/lib/website-widget/config')>();
@@ -14,10 +14,15 @@ import { POST } from './route';
 beforeEach(() => {
   h.widget = { account_id: 'brand', allowed_domains: ['example.com'] };
   h.result = { data: { id: 'chat' }, error: null };
-  const chain = { eq: vi.fn(), select: vi.fn(), maybeSingle: vi.fn(async () => h.result) };
-  chain.eq.mockReturnValue(chain);
-  chain.select.mockReturnValue(chain);
-  h.update.mockReturnValue(chain);
+  const session = { eq: vi.fn(), maybeSingle: vi.fn(async () => h.result) };
+  session.eq.mockReturnValue(session);
+  const turns = { eq: vi.fn(), order: vi.fn(), limit: vi.fn(async () => ({ data: [], error: null })) };
+  turns.eq.mockReturnValue(turns);
+  turns.order.mockReturnValue(turns);
+  h.select.mockImplementation((columns: string) => columns === 'id' ? session : turns);
+  const updateChain = { eq: vi.fn() };
+  updateChain.eq.mockReturnValue(updateChain);
+  h.update.mockReturnValue(updateChain);
 });
 const req = (phone: string, country_code = '+91', origin = 'https://example.com') => new Request('https://app.test/api/widget/phone?key=x', {
   method: 'POST', headers: { origin }, body: JSON.stringify({ session_key: 'a'.repeat(64), phone, country_code }),
@@ -29,7 +34,8 @@ describe('website phone capture', () => {
     expect(h.update).toHaveBeenCalledWith({ phone: '+919876543210' });
     const chain = h.update.mock.results[0].value;
     expect(chain.eq).toHaveBeenCalledWith('account_id', 'brand');
-    expect(chain.eq).toHaveBeenCalledWith('session_hash', expect.stringMatching(/^[0-9a-f]{64}$/));
+    expect(chain.eq).toHaveBeenCalledWith('id', 'chat');
+    expect(h.select.mock.results[0].value.eq).toHaveBeenCalledWith('session_hash', expect.stringMatching(/^[0-9a-f]{64}$/));
   });
   it.each(['123456789', '12345678901', 'abcdefghij', '98765 4321'])('rejects invalid number %s', async (phone) => {
     expect((await POST(req(phone))).status).toBe(400);

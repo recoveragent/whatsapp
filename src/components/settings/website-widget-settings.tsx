@@ -347,9 +347,8 @@ export function WebsiteWidgetSettings() {
                     }
                   />
                   <p className="text-xs text-muted-foreground">
-                    With country code. Visitors who need your team continue
-                    here. Without a number, they&apos;re told to contact the
-                    store.
+                    Required when the widget is enabled. Use the number connected
+                    to this account so website handoffs reach your inbox.
                   </p>
                 </div>
                 <div className="space-y-1.5">

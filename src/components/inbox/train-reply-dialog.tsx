@@ -18,7 +18,7 @@ import { MAX_INSTRUCTION_LENGTH } from "@/lib/ai/reply-guidance";
 
 interface TrainReplyDialogProps {
   /** The AI reply being corrected; null closes the dialog. */
-  message: { id: string; content_text: string | null } | null;
+  message: { id: string; content_text?: string | null } | null;
   source?: "website";
   /** Customer text the AI was answering (display only; the server re-reads it). */
   customerMessage: string | null;
