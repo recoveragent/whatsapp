@@ -7,6 +7,7 @@ import { latestUserMessage } from '@/lib/ai/query';
 import { replyButtonsForMessage } from '@/lib/ai/quick-replies';
 import { logAiUsage } from '@/lib/ai/usage';
 import { fetchAccountWithCategory } from '@/lib/auth/brand-accounts';
+import { saveWebsiteTurn } from '@/lib/website-widget/inbox';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 import {
   buildWhatsAppUrl,
@@ -36,8 +37,7 @@ export function OPTIONS(request: Request) {
  *
  * The agent's next reply for a website visitor. Visitors are unverified, so
  * this must never pass a contact to the agent: no order data can be reached
- * from here. Stateless — the browser keeps the transcript, nothing is saved
- * to the inbox, and a handoff sends the visitor to WhatsApp.
+ * from here. A separate anonymous website session is saved for the inbox.
  */
 export async function POST(request: Request) {
   const origin = request.headers.get('origin');
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
 
   const raw = await request.text().catch(() => '');
   if (raw.length > MAX_BODY_BYTES) return fail(413, 'too_large');
-  let body: { messages?: unknown } | null = null;
+  let body: { messages?: unknown; session_key?: unknown } | null = null;
   try {
     body = JSON.parse(raw);
   } catch {
@@ -104,14 +104,18 @@ export async function POST(request: Request) {
     if (claimError) throw claimError;
     if (claimed !== true) return fail(429, 'busy');
 
-    const handedOff = (agentText: string) => {
+    await saveWebsiteTurn(db, widget.account_id, body?.session_key, 'user', latestUserMessage(messages)).catch((error) => console.error('[website widget] inbox save failed:', error));
+
+    const handedOff = async (agentText: string) => {
       const whatsappUrl = buildWhatsAppUrl(
         widget.whatsapp_number,
         latestUserMessage(messages)
       );
+      const reply = widgetHandoffText(agentText, whatsappUrl, account.brand_category);
+      await saveWebsiteTurn(db, widget.account_id, body?.session_key, 'assistant', reply).catch((error) => console.error('[website widget] inbox save failed:', error));
       return NextResponse.json(
         {
-          reply: widgetHandoffText(agentText, whatsappUrl),
+          reply,
           quick_replies: [],
           handoff: true,
           whatsapp_url: whatsappUrl,
@@ -127,11 +131,12 @@ export async function POST(request: Request) {
       config,
       messages,
       channel: 'website',
+      brandCategory: account.brand_category,
       // verifiedContactId is deliberately absent: see the note above.
     });
     if (outcome.status === 'generation_failed') {
       console.error('[website widget] generation failed:', outcome.error);
-      return handedOff('');
+      return await handedOff('');
     }
 
     const {
@@ -153,7 +158,7 @@ export async function POST(request: Request) {
       usage,
     });
 
-    if (handoff || !text) return handedOff(text);
+    if (handoff || !text) return await handedOff(text);
 
     const products =
       hasProductCards && recommendationStore
@@ -162,6 +167,11 @@ export async function POST(request: Request) {
     const reply = hasProductCards
       ? text
       : appendRecommendationText(text, recommendedProducts, recommendationStore);
+
+    const inboxReply = products.length
+      ? `${reply}\n\n${products.map((product) => `${product.title} — ${product.price}\n${product.url}`).join('\n')}`
+      : reply;
+    await saveWebsiteTurn(db, widget.account_id, body?.session_key, 'assistant', inboxReply).catch((error) => console.error('[website widget] inbox save failed:', error));
 
     return NextResponse.json(
       {

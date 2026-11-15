@@ -385,7 +385,7 @@ export function AiPlayground({
                   )}
                 >
                   <UserCircle2 className="h-3.5 w-3.5" />
-                  Would hand off to a human here
+                  Would hand off to a human here. Website chat offers Continue on WhatsApp when configured.
                 </p>
               )}
             </div>

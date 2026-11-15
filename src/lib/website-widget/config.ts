@@ -143,11 +143,14 @@ export function buildWhatsAppUrl(
  *  promises a reply "here", which this chat can't deliver. */
 export function widgetHandoffText(
   agentText: string,
-  whatsappUrl: string | null
+  whatsappUrl: string | null,
+  brandCategory?: 'lead_gen' | 'ecommerce'
 ): string {
   const closing = whatsappUrl
     ? 'Our team can take it from here on WhatsApp.'
-    : 'Please contact the store directly and our team will help you.';
+    : brandCategory === 'lead_gen'
+      ? 'Please contact our team directly for help.'
+      : 'Please contact the store directly and our team will help you.';
   const text = agentText.trim();
   return text ? `${text}\n\n${closing}` : closing;
 }

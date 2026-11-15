@@ -92,6 +92,8 @@ export async function PATCH(request: Request) {
         : '';
     if (whatsapp && !/^[0-9]{8,15}$/.test(whatsapp))
       return invalid('Enter the WhatsApp number with its country code');
+    if (body.enabled && !whatsapp)
+      return invalid('Add a WhatsApp number before turning the widget on');
 
     const limit = body.daily_reply_limit;
     if (!Number.isInteger(limit) || limit < 1 || limit > 100000)

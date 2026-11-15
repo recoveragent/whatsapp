@@ -21,6 +21,7 @@
 
   var apiBase = new URL(script.src).origin;
   var storageKey = 'chat-widget:' + key;
+  var sessionKey = loadSessionKey();
   var MAX_INPUT = 1000;
   var MAX_TURNS = 20;
   var MAX_SENT_REPLY = 4000;
@@ -35,6 +36,19 @@
   var items = loadItems();
   var sending = false;
   var refs = {};
+
+  function loadSessionKey() {
+    var storageName = storageKey + ':session';
+    try {
+      var existing = sessionStorage.getItem(storageName);
+      if (existing && /^[0-9a-f]{64}$/.test(existing)) return existing;
+    } catch { /* Continue with an in-memory session. */ }
+    var bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    var value = Array.from(bytes, function (byte) { return byte.toString(16).padStart(2, '0'); }).join('');
+    try { sessionStorage.setItem(storageName, value); } catch { /* In-memory only. */ }
+    return value;
+  }
 
   function loadItems() {
     try {
@@ -140,7 +154,15 @@
 
     var whatsapp = item.whatsappUrl && httpsUrl(item.whatsappUrl);
     if (whatsapp) {
-      row.appendChild(externalLink(whatsapp, 'whatsapp-cta', 'Continue on WhatsApp'));
+      if (item.handoff) {
+        row.appendChild(el('span', 'handoff-disclosure', 'Continuing shares this website conversation with our team on WhatsApp.'));
+        var handoffButton = el('button', 'whatsapp-cta', 'Continue on WhatsApp');
+        handoffButton.type = 'button';
+        handoffButton.addEventListener('click', function () { startHandoff(handoffButton); });
+        row.appendChild(handoffButton);
+      } else {
+        row.appendChild(externalLink(whatsapp, 'whatsapp-cta', 'Continue on WhatsApp'));
+      }
     }
 
     if (isLatest && item.quickReplies && item.quickReplies.length) {
@@ -200,6 +222,34 @@
       });
   }
 
+  function startHandoff(button) {
+    var turns = transcript();
+    while (turns.length && turns[turns.length - 1].role !== 'user') turns.pop();
+    if (!turns.length) return;
+    var popup = window.open('', '_blank');
+    if (!popup) {
+      button.textContent = 'Allow pop-ups to continue';
+      return;
+    }
+    popup.opener = null;
+    button.disabled = true;
+    fetch(apiBase + '/api/widget/handoff?key=' + encodeURIComponent(key), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit',
+      body: JSON.stringify({ messages: turns }),
+    }).then(function (response) {
+      if (!response.ok) throw new Error('Handoff unavailable');
+      return response.json();
+    }).then(function (body) {
+      var url = httpsUrl(body.url);
+      if (!url || new URL(url).hostname !== 'wa.me') throw new Error('Invalid handoff');
+      popup.location.href = url;
+      button.textContent = 'Continue on WhatsApp';
+    }).catch(function () {
+      popup.close();
+      button.textContent = 'Could not connect. Try again';
+    }).then(function () { button.disabled = false; });
+  }
+
   function send(raw) {
     var text = String(raw || '').trim().slice(0, MAX_INPUT);
     if (!text || sending) return;
@@ -212,7 +262,7 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'omit',
-      body: JSON.stringify({ messages: transcript() }),
+      body: JSON.stringify({ messages: transcript(), session_key: sessionKey }),
     })
       .then(function (response) {
         return response.json().then(function (body) {
@@ -236,6 +286,7 @@
           products: body.products || [],
           quickReplies: body.quick_replies || [],
           whatsappUrl: body.handoff ? body.whatsapp_url : null,
+          handoff: Boolean(body.handoff),
         });
       })
       .catch(function () {
@@ -345,6 +396,7 @@
     });
 
     panel.appendChild(header);
+    panel.appendChild(el('div', 'privacy-notice', 'Our team can review this chat to help you.'));
     panel.appendChild(log);
     var whatsapp = config.whatsapp_url && httpsUrl(config.whatsapp_url);
     if (whatsapp) {
@@ -384,6 +436,7 @@
     '.close:focus-visible{outline-color:var(--on-accent)}',
     '.log{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:16px;background:#f6f7f8;display:flex;flex-direction:column;gap:10px}',
     '.row{display:flex;flex-direction:column;gap:6px;max-width:85%}',
+    '.privacy-notice{padding:6px 12px;background:#fff;color:#5b6470;font-size:12px;text-align:center}',
     '.row-user{align-self:flex-end;align-items:flex-end}',
     '.row-bot{align-self:flex-start;align-items:flex-start}',
     '.bubble{padding:9px 12px;border-radius:14px;white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;border:1px solid #e6e8eb}',
@@ -397,7 +450,8 @@
     '.product-variant{color:#5b6470;font-size:13px}',
     '.product-price{font-size:13px}',
     '.product-cta{color:var(--accent);font-weight:600;font-size:13px;margin-top:2px}',
-    '.whatsapp-cta{display:inline-block;padding:9px 14px;border-radius:999px;background:#128c7e;color:#fff;font-weight:600;text-decoration:none}',
+    '.whatsapp-cta{display:inline-block;padding:9px 14px;border:0;border-radius:999px;background:#128c7e;color:#fff;font-weight:600;text-decoration:none}',
+    '.handoff-disclosure{font-size:12px;color:#5b6470}',
     '.choices{display:flex;flex-wrap:wrap;gap:6px}',
     '.choice{padding:7px 12px;border-radius:999px;border:1px solid var(--accent);background:#fff;color:#1f2328}',
     '.typing{display:flex;gap:4px;padding:13px 12px}',

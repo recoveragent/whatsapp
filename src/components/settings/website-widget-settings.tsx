@@ -64,7 +64,7 @@ function toForm(settings: WidgetSettings): WidgetForm {
 }
 
 export function WebsiteWidgetSettings() {
-  const { canEditSettings } = useAuth();
+  const { canEditSettings, isLeadGenBrand } = useAuth();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -171,9 +171,9 @@ export function WebsiteWidgetSettings() {
             <CardHeader>
               <CardTitle className="text-base">Settings</CardTitle>
               <CardDescription>
-                Visitors chat anonymously, so the agent answers from your
-                knowledge base and catalog but can&apos;t see orders. Chats
-                aren&apos;t saved to the inbox.
+                {isLeadGenBrand
+                  ? 'Visitors chat anonymously. The agent answers from your business knowledge and can offer a demo link included in that knowledge. Website chats can be viewed in the inbox.'
+                  : 'Visitors chat anonymously, so the agent answers from your knowledge base and catalog but cannot see orders. Website chats can be viewed in the inbox.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -271,9 +271,8 @@ export function WebsiteWidgetSettings() {
                     }
                   />
                   <p className="text-xs text-muted-foreground">
-                    With country code. Visitors who need your team continue
-                    here. Without a number, they&apos;re told to contact the
-                    store.
+                    Required when the widget is enabled. Use the number connected
+                    to this account so website handoffs reach your inbox.
                   </p>
                 </div>
                 <div className="space-y-1.5">
