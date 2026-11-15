@@ -15,6 +15,10 @@ export interface WidgetConfigRow {
   account_id: string;
   public_key: string;
   enabled: boolean;
+  desktop_side_offset: number;
+  desktop_bottom_offset: number;
+  mobile_side_offset: number;
+  mobile_bottom_offset: number;
   desktop_position: 'left' | 'right';
   mobile_position: 'left' | 'right';
   allowed_domains: string[];
@@ -29,7 +33,7 @@ export interface WidgetConfigRow {
 }
 
 const WIDGET_COLUMNS =
-  'account_id, public_key, enabled, desktop_position, mobile_position, allowed_domains, title, greeting, avatar_url, show_whatsapp_link, suggested_questions, accent_color, whatsapp_number, daily_reply_limit';
+  'account_id, public_key, enabled, desktop_side_offset, desktop_bottom_offset, mobile_side_offset, mobile_bottom_offset, desktop_position, mobile_position, allowed_domains, title, greeting, avatar_url, show_whatsapp_link, suggested_questions, accent_color, whatsapp_number, daily_reply_limit';
 
 /** An enabled widget by its public key, or null. Never distinguishes why. */
 export async function loadEnabledWidget(

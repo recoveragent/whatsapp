@@ -434,6 +434,13 @@
     shadow.appendChild(style);
 
     var root = el('div', 'root desktop-' + (config.desktop_position === 'left' ? 'left' : 'right') + ' mobile-' + (config.mobile_position === 'left' ? 'left' : 'right'));
+    function offset(value, fallback) {
+      return Number.isInteger(value) && value >= 0 && value <= 200 ? value + 'px' : fallback + 'px';
+    }
+    root.style.setProperty('--desktop-side', offset(config.desktop_side_offset, 20));
+    root.style.setProperty('--desktop-bottom', offset(config.desktop_bottom_offset, 20));
+    root.style.setProperty('--mobile-side', offset(config.mobile_side_offset, 16));
+    root.style.setProperty('--mobile-bottom', offset(config.mobile_bottom_offset, 16));
     root.style.setProperty('--accent', config.accent_color);
     root.style.setProperty('--on-accent', contrastColor(config.accent_color));
 
@@ -542,14 +549,14 @@
   var CSS = [
     ':host{all:initial}',
     '*{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}',
-    '.root{position:fixed;right:20px;bottom:20px;z-index:2147483000;color:#1f2328;font-size:14px;line-height:1.45}',
-    '@media (min-width:481px){.root.desktop-left{left:20px;right:auto}}',
+    '.root{position:fixed;right:var(--desktop-side);bottom:var(--desktop-bottom);z-index:2147483000;color:#1f2328;font-size:14px;line-height:1.45}',
+    '@media (min-width:481px){.root.desktop-left{left:var(--desktop-side);right:auto}}',
     'svg{width:24px;height:24px;fill:currentColor;display:block}',
     'button{cursor:pointer;font:inherit}',
     'a:focus-visible,button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}',
     '.launcher{width:56px;height:56px;border:0;border-radius:50%;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(0,0,0,.25)}',
     '.launcher.hidden{display:none}',
-    '.panel{display:none;flex-direction:column;width:370px;height:560px;max-height:calc(100vh - 40px);background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 18px 55px rgba(24,35,42,.22)}',
+    '.panel{display:none;flex-direction:column;width:370px;height:560px;max-height:calc(100vh - var(--desktop-bottom) - 20px);background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 18px 55px rgba(24,35,42,.22)}',
     '.panel.open{display:flex}',
     '.header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px;background:var(--accent);color:var(--on-accent)}',
     '.identity{display:flex;align-items:center;gap:10px;min-width:0}',
@@ -604,7 +611,7 @@
     '.send svg{width:20px;height:20px}',
     '.send:disabled{opacity:.5;cursor:default}',
     // Full screen on phones. 16px input text stops iOS zooming in on focus.
-    '@media (max-width:480px){.root{right:16px;bottom:16px}.root.mobile-left{left:16px;right:auto}.root.mobile-right{left:auto;right:16px}.panel.open{position:fixed;inset:0;width:100%;height:100%;max-height:none;border-radius:0}.input{font-size:16px}.composer{padding-bottom:max(10px,env(safe-area-inset-bottom))}}',
+    '@media (max-width:480px){.root{right:var(--mobile-side);bottom:var(--mobile-bottom)}.root.mobile-left{left:var(--mobile-side);right:auto}.root.mobile-right{left:auto;right:var(--mobile-side)}.panel.open{position:fixed;inset:0;width:100%;height:100%;max-height:none;border-radius:0}.input{font-size:16px}.composer{padding-bottom:max(10px,env(safe-area-inset-bottom))}}',
   ].join('');
 
   // A wrong key or unlisted site gets a 404 with no CORS headers, which the

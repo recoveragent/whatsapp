@@ -22,6 +22,10 @@ import { uploadAccountMedia } from '@/lib/storage/upload-media';
 
 interface WidgetForm {
   enabled: boolean;
+  desktop_side_offset: number;
+  desktop_bottom_offset: number;
+  mobile_side_offset: number;
+  mobile_bottom_offset: number;
   desktop_position: 'left' | 'right';
   mobile_position: 'left' | 'right';
   domains: string;
@@ -38,6 +42,10 @@ interface WidgetForm {
 interface WidgetSettings {
   public_key: string;
   enabled: boolean;
+  desktop_side_offset: number;
+  desktop_bottom_offset: number;
+  mobile_side_offset: number;
+  mobile_bottom_offset: number;
   desktop_position: 'left' | 'right';
   mobile_position: 'left' | 'right';
   allowed_domains: string[];
@@ -54,6 +62,10 @@ interface WidgetSettings {
 
 const DEFAULT_FORM: WidgetForm = {
   enabled: false,
+  desktop_side_offset: 20,
+  desktop_bottom_offset: 20,
+  mobile_side_offset: 16,
+  mobile_bottom_offset: 16,
   desktop_position: 'right',
   mobile_position: 'right',
   domains: '',
@@ -70,6 +82,10 @@ const DEFAULT_FORM: WidgetForm = {
 function toForm(settings: WidgetSettings): WidgetForm {
   return {
     enabled: settings.enabled,
+    desktop_side_offset: settings.desktop_side_offset ?? 20,
+    desktop_bottom_offset: settings.desktop_bottom_offset ?? 20,
+    mobile_side_offset: settings.mobile_side_offset ?? 16,
+    mobile_bottom_offset: settings.mobile_bottom_offset ?? 16,
     desktop_position: settings.desktop_position ?? 'right',
     mobile_position: settings.mobile_position ?? 'right',
     domains: settings.allowed_domains.join('\n'),
@@ -132,6 +148,10 @@ export function WebsiteWidgetSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           enabled: form.enabled,
+          desktop_side_offset: form.desktop_side_offset,
+          desktop_bottom_offset: form.desktop_bottom_offset,
+          mobile_side_offset: form.mobile_side_offset,
+          mobile_bottom_offset: form.mobile_bottom_offset,
           desktop_position: form.desktop_position,
           mobile_position: form.mobile_position,
           allowed_domains: form.domains
@@ -234,13 +254,23 @@ export function WebsiteWidgetSettings() {
 
               <fieldset className="space-y-3 rounded-lg border border-border p-3">
                 <legend className="px-1 text-sm font-medium">Chat bubble position</legend>
-                <p className="text-xs text-muted-foreground">Choose which bottom corner displays the chat bubble on each device.</p>
+                <p className="text-xs text-muted-foreground">Choose a bottom corner and its distance from the edges (0-200 px).</p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {(['desktop', 'mobile'] as const).map((device) => {
                     const field = `${device}_position` as const;
                     return <div key={device} className="space-y-2"><p className="text-sm font-medium capitalize">{device}</p><div className="flex gap-2">
                       {(['left', 'right'] as const).map((position) => <label key={position} className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm capitalize ${form[field] === position ? 'border-primary bg-primary/10 text-primary' : 'border-border'} ${disabled ? 'cursor-default opacity-60' : ''}`}><input type="radio" name={field} value={position} checked={form[field] === position} disabled={disabled} onChange={() => update(field, position)} />{position}</label>)}
-                    </div></div>;
+                    </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(['side', 'bottom'] as const).map((edge) => {
+                          const offsetField = `${device}_${edge}_offset` as const;
+                          return <div key={edge} className="space-y-1.5">
+                            <Label htmlFor={`widget-${offsetField}`}>{edge === 'side' ? 'From side' : 'From bottom'} (px)</Label>
+                            <Input id={`widget-${offsetField}`} type="number" min={0} max={200} step={1} value={form[offsetField]} disabled={disabled} onChange={(event) => update(offsetField, event.target.value === '' ? 0 : Number(event.target.value))} />
+                          </div>;
+                        })}
+                      </div>
+                    </div>;
                   })}
                 </div>
               </fieldset>
