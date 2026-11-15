@@ -8,13 +8,14 @@
  * lives inside a rounded "stage" that owns its own scroll/overflow, so
  * the canvas can fill available height and the list scrolls internally.
  *
- * Desktop uses the canvas view; mobile falls back to the list editor
- * because drag-to-connect on a small screen is impractical.
+ * The canvas is shared across desktop and mobile screen sizes.
  */
 
 import { useEffect, useState } from "react";
+import { Maximize2, Minimize2 } from "lucide-react";
 
-import { FlowBuilder } from "./flow-builder";
+import { cn } from "@/lib/utils";
+
 import { FlowCanvas } from "./flow-canvas";
 import { FlowEditorProvider } from "./flow-editor-state";
 import { EditorHeader } from "./header";
@@ -31,27 +32,46 @@ interface Props {
 
 export function FlowEditorShell({ initialFlow, initialNodes }: Props) {
   const isMobile = useMatchMedia(MOBILE_BREAKPOINT);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      // Let an open node editor handle Escape before closing the canvas.
+      if (event.key === "Escape" && !document.querySelector('[role="dialog"]')) {
+        setExpanded(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [expanded]);
 
   return (
     <FlowEditorProvider initialFlow={initialFlow} initialNodes={initialNodes}>
       <div className="flex h-full min-h-0 flex-col">
         <EditorHeader />
 
-        <div className="relative mx-6 min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-card-2">
-          {!isMobile ? (
-            <>
-              <FlowCanvas />
-              <ValidationPanel overlay />
-            </>
-          ) : (
-            <div className="absolute inset-0 overflow-y-auto">
-              <FlowBuilder />
-            </div>
+        <div
+          className={cn(
+            "relative mx-3 min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-card-2 sm:mx-6",
+            expanded && "!fixed !inset-0 !z-40 !m-0 !rounded-none",
           )}
+        >
+          <FlowCanvas />
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            aria-label={expanded ? "Exit full screen canvas" : "Expand canvas"}
+            title={expanded ? "Exit full screen" : "Expand canvas"}
+            className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-foreground shadow-md transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </button>
+          {(!isMobile || expanded) && <ValidationPanel overlay />}
         </div>
 
-        {isMobile && (
-          <div className="px-6 pb-5 pt-3">
+        {isMobile && !expanded && (
+          <div className="px-3 pb-3 pt-2 sm:px-6">
             <ValidationPanel />
           </div>
         )}

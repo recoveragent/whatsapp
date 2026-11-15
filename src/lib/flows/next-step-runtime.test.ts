@@ -10,11 +10,15 @@ const h = vi.hoisted(() => ({
   seq: 0,
   confirmRecoveryCod: vi.fn(),
   completeRecoveryOrder: vi.fn(),
+  assertNoOrder: vi.fn(),
+  AlreadyOrdered: class RecoveryAlreadyOrderedError extends Error {},
 }));
 vi.mock('@/lib/shopify/recovery-orders', () => ({
   confirmRecoveryCod: h.confirmRecoveryCod,
   completeRecoveryOrder: h.completeRecoveryOrder,
   prepareRecoveryOrder: vi.fn(),
+  assertNoOrderSinceRecoveryStarted: h.assertNoOrder,
+  RecoveryAlreadyOrderedError: h.AlreadyOrdered,
 }));
 
 vi.mock('./admin-client', () => {
@@ -197,6 +201,7 @@ function due() {
   });
 }
 beforeEach(() => {
+  h.assertNoOrder.mockReset().mockResolvedValue(undefined);
   h.confirmRecoveryCod.mockReset().mockResolvedValue(undefined);
   h.completeRecoveryOrder.mockReset().mockResolvedValue({ id: 'recovery-1', summary: 'Shirt × 2; INR 250.00', amount_paise: 25000, shopify_order_id: '99', order_name: '#1099' });
   h.tables = {
@@ -233,6 +238,32 @@ beforeEach(() => {
 });
 
 describe('independent Next step and no-response timeout', () => {
+  it.each(['prepare_cod', 'prepare_prepaid'])('sends an already-ordered message and stops %s recovery', async (action) => {
+    h.assertNoOrder.mockRejectedValue(new h.AlreadyOrdered());
+    h.tables.flow_nodes = [
+      node('confirmation', 'send_buttons', { text: 'Choose payment', buttons: [{ reply_id: 'choose', title: 'Choose', next_node_key: 'review' }] }),
+      node('review', 'recover_checkout', { action, cod_mode: 'checkout', ready_next: 'thanks', checkout_next: 'thanks', failed_next: 'end' }),
+      node('thanks', 'send_message', { text: 'Should not send', next_node_key: 'end' }), node('end', 'end', {}),
+    ];
+    await startFlowForExternalEvent({ flow, contactId: 'contact', conversationId: 'conversation', initialVars: { checkout_url: 'https://example.com/checkout' } });
+    await reply({ kind: 'interactive_reply', reply_id: 'choose', reply_title: 'Choose', meta_message_id: 'duplicate-choice' });
+    expect(h.sends.some((text) => text.includes('We recently received an order'))).toBe(true);
+    expect(h.sends).not.toContain('Should not send');
+    expect(h.tables.flow_runs[0]).toMatchObject({ status: 'completed', end_reason: 'order_already_placed' });
+  });
+  it('routes to assistance if Shopify order history cannot be checked', async () => {
+    h.assertNoOrder.mockRejectedValue(new Error('Shopify unavailable'));
+    h.tables.flow_nodes = [
+      node('confirmation', 'send_buttons', { text: 'Choose payment', buttons: [{ reply_id: 'choose', title: 'Choose', next_node_key: 'review' }] }),
+      node('review', 'recover_checkout', { action: 'prepare_cod', cod_mode: 'checkout', ready_next: 'thanks', checkout_next: 'thanks', failed_next: 'assistance' }),
+      node('thanks', 'send_message', { text: 'Continue checkout', next_node_key: 'end' }),
+      node('assistance', 'send_message', { text: 'Our team will help', next_node_key: 'end' }), node('end', 'end', {}),
+    ];
+    await startFlowForExternalEvent({ flow, contactId: 'contact', conversationId: 'conversation', initialVars: { checkout_url: 'https://example.com/checkout' } });
+    await reply({ kind: 'interactive_reply', reply_id: 'choose', reply_title: 'Choose', meta_message_id: 'unavailable-choice' });
+    expect(h.sends).toContain('Our team will help');
+    expect(h.sends).not.toContain('Continue checkout');
+  });
   it('displays the order summary and accepts COD creation only after a button tap', async () => {
     h.tables.flow_nodes = [
       node('confirmation', 'send_buttons', { text: '{{ vars.checkout_order_summary }}\nConfirm COD?', buttons: [{ reply_id: 'confirm_cod', title: 'Confirm COD order', next_node_key: 'place_cod' }] }),

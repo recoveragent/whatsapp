@@ -5,14 +5,26 @@ import type { CheckoutRecoveryNodeConfig } from './checkout-recovery-config';
 import {
   prepareRecoveryOrder,
   completeRecoveryOrder,
+  assertNoOrderSinceRecoveryStarted,
+  RecoveryAlreadyOrderedError,
 } from '@/lib/shopify/recovery-orders';
 
 export async function executeCheckoutRecovery(
   db: SupabaseClient,
   run: FlowRunRow,
   node: FlowNodeRow
-): Promise<string> {
+): Promise<string | { alreadyOrdered: true }> {
   const c = node.config as unknown as CheckoutRecoveryNodeConfig;
+  try {
+    await assertNoOrderSinceRecoveryStarted(db, run);
+  } catch (error) {
+    if (error instanceof RecoveryAlreadyOrderedError) return { alreadyOrdered: true };
+    const detail = error instanceof Error ? error.message : 'Recent order check failed.';
+    run.vars = { ...run.vars, checkout_recovery_error: detail };
+    await db.from('flow_runs').update({ vars: run.vars }).eq('id', run.id).eq('account_id', run.account_id);
+    await db.from('flow_run_events').insert({ flow_run_id: run.id, node_key: node.node_key, event_type: 'error', payload: { reason: 'recent_order_check_failed', detail } });
+    return c.failed_next;
+  }
   try {
     if (c.action === 'prepare_cod' && c.cod_mode === 'checkout') {
       const url = new URL(String(run.vars.checkout_url ?? ''));

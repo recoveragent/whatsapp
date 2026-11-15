@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
-import { encrypt } from '@/lib/whatsapp/encryption';
+import { decrypt, encrypt } from '@/lib/whatsapp/encryption';
+import { maskSecret } from '@/lib/payments/mask-secret';
 import { razorpayRequest } from '@/lib/payments/razorpay';
 import { paymentSetupError } from '@/lib/payments/setup-errors';
 
@@ -16,7 +17,7 @@ export async function GET(request: Request) {
     const { accountId } = await requireRole('agent');
     const { data, error } = await supabaseAdmin()
       .from('account_payment_connections')
-      .select('key_id, enabled')
+      .select('key_id, enabled, key_secret_encrypted, webhook_secret_encrypted')
       .eq('account_id', accountId)
       .maybeSingle();
     if (error) throw error;
@@ -26,6 +27,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       connected: Boolean(data?.enabled),
       keyId: data?.key_id ?? '',
+      keySecretMask: data?.key_secret_encrypted ? maskSecret(decrypt(data.key_secret_encrypted)) : '',
+      webhookSecretMask: data?.webhook_secret_encrypted ? maskSecret(decrypt(data.webhook_secret_encrypted)) : '',
       webhookUrl: `${origin}/api/payments/razorpay/webhook/${accountId}`,
     });
   } catch (err) {

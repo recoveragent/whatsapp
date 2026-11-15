@@ -18,12 +18,18 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { SettingsPanelHead } from './settings-panel-head';
+import { uploadAccountMedia } from '@/lib/storage/upload-media';
 
 interface WidgetForm {
   enabled: boolean;
+  desktop_position: 'left' | 'right';
+  mobile_position: 'left' | 'right';
   domains: string;
   title: string;
   greeting: string;
+  avatar_url: string;
+  show_whatsapp_link: boolean;
+  suggested_questions: string[];
   accent_color: string;
   whatsapp_number: string;
   daily_reply_limit: number;
@@ -32,9 +38,14 @@ interface WidgetForm {
 interface WidgetSettings {
   public_key: string;
   enabled: boolean;
+  desktop_position: 'left' | 'right';
+  mobile_position: 'left' | 'right';
   allowed_domains: string[];
   title: string;
   greeting: string;
+  avatar_url: string | null;
+  show_whatsapp_link: boolean;
+  suggested_questions: string[];
   accent_color: string;
   whatsapp_number: string | null;
   daily_reply_limit: number;
@@ -43,9 +54,14 @@ interface WidgetSettings {
 
 const DEFAULT_FORM: WidgetForm = {
   enabled: false,
+  desktop_position: 'right',
+  mobile_position: 'right',
   domains: '',
   title: 'Chat with us',
   greeting: 'Hi! How can we help you today?',
+  avatar_url: '',
+  show_whatsapp_link: true,
+  suggested_questions: ['Help me find something', 'I have a question'],
   accent_color: '#128C7E',
   whatsapp_number: '',
   daily_reply_limit: 500,
@@ -54,9 +70,14 @@ const DEFAULT_FORM: WidgetForm = {
 function toForm(settings: WidgetSettings): WidgetForm {
   return {
     enabled: settings.enabled,
+    desktop_position: settings.desktop_position ?? 'right',
+    mobile_position: settings.mobile_position ?? 'right',
     domains: settings.allowed_domains.join('\n'),
     title: settings.title,
     greeting: settings.greeting,
+    avatar_url: settings.avatar_url ?? '',
+    show_whatsapp_link: settings.show_whatsapp_link ?? true,
+    suggested_questions: settings.suggested_questions ?? [],
     accent_color: settings.accent_color,
     whatsapp_number: settings.whatsapp_number ?? '',
     daily_reply_limit: settings.daily_reply_limit,
@@ -64,10 +85,11 @@ function toForm(settings: WidgetSettings): WidgetForm {
 }
 
 export function WebsiteWidgetSettings() {
-  const { canEditSettings } = useAuth();
+  const { canEditSettings, isLeadGenBrand } = useAuth();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState<WidgetSettings | null>(null);
   const [form, setForm] = useState<WidgetForm>(DEFAULT_FORM);
@@ -110,12 +132,17 @@ export function WebsiteWidgetSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           enabled: form.enabled,
+          desktop_position: form.desktop_position,
+          mobile_position: form.mobile_position,
           allowed_domains: form.domains
             .split(/[\s,]+/)
             .map((domain) => domain.trim())
             .filter(Boolean),
           title: form.title,
           greeting: form.greeting,
+          avatar_url: form.avatar_url,
+          show_whatsapp_link: form.show_whatsapp_link,
+          suggested_questions: form.suggested_questions.map((question) => question.trim()).filter(Boolean),
           accent_color: form.accent_color,
           whatsapp_number: form.whatsapp_number,
           daily_reply_limit: form.daily_reply_limit,
@@ -147,7 +174,20 @@ export function WebsiteWidgetSettings() {
     }
   };
 
-  const disabled = !canEditSettings || saving;
+  const uploadPhoto = async (file: File | undefined) => {
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      toast.error('Choose a JPG, PNG, or WebP image under 5 MB'); return;
+    }
+    setUploading(true);
+    try {
+      const result = await uploadAccountMedia('flow-media', file);
+      update('avatar_url', result.publicUrl);
+      toast.success('Photo uploaded. Save your settings to apply it.');
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Could not upload photo'); }
+    finally { setUploading(false); }
+  };
+  const disabled = !canEditSettings || saving || uploading;
 
   return (
     <div className="space-y-4">
@@ -171,9 +211,9 @@ export function WebsiteWidgetSettings() {
             <CardHeader>
               <CardTitle className="text-base">Settings</CardTitle>
               <CardDescription>
-                Visitors chat anonymously, so the agent answers from your
-                knowledge base and catalog but can&apos;t see orders. Chats
-                aren&apos;t saved to the inbox.
+                {isLeadGenBrand
+                  ? 'Visitors chat anonymously. The agent answers from your business knowledge and can offer a demo link included in that knowledge. Website chats can be viewed in the inbox.'
+                  : 'Visitors chat anonymously, so the agent answers from your knowledge base and catalog but cannot see orders. Website chats can be viewed in the inbox.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -191,6 +231,19 @@ export function WebsiteWidgetSettings() {
                   onCheckedChange={(checked) => update('enabled', checked)}
                 />
               </div>
+
+              <fieldset className="space-y-3 rounded-lg border border-border p-3">
+                <legend className="px-1 text-sm font-medium">Chat bubble position</legend>
+                <p className="text-xs text-muted-foreground">Choose which bottom corner displays the chat bubble on each device.</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {(['desktop', 'mobile'] as const).map((device) => {
+                    const field = `${device}_position` as const;
+                    return <div key={device} className="space-y-2"><p className="text-sm font-medium capitalize">{device}</p><div className="flex gap-2">
+                      {(['left', 'right'] as const).map((position) => <label key={position} className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm capitalize ${form[field] === position ? 'border-primary bg-primary/10 text-primary' : 'border-border'} ${disabled ? 'cursor-default opacity-60' : ''}`}><input type="radio" name={field} value={position} checked={form[field] === position} disabled={disabled} onChange={() => update(field, position)} />{position}</label>)}
+                    </div></div>;
+                  })}
+                </div>
+              </fieldset>
 
               <div className="space-y-1.5">
                 <Label htmlFor="widget-domains">Website domains</Label>
@@ -210,7 +263,7 @@ export function WebsiteWidgetSettings() {
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor="widget-title">Title</Label>
+                  <Label htmlFor="widget-title">Assistant name</Label>
                   <Input
                     id="widget-title"
                     maxLength={60}
@@ -243,6 +296,29 @@ export function WebsiteWidgetSettings() {
                     />
                   </div>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="widget-avatar">Assistant profile photo</Label>
+                <div className="flex items-center gap-3">
+                  {form.avatar_url && <img src={form.avatar_url} alt="Assistant profile" className="size-12 rounded-full object-cover" />}
+                  <Input id="widget-avatar" type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled} onChange={(event) => { void uploadPhoto(event.target.files?.[0]); event.target.value = ''; }} />
+                  {form.avatar_url && <Button type="button" variant="outline" disabled={disabled} onClick={() => update('avatar_url', '')}>Remove</Button>}
+                </div>
+                <p className="text-xs text-muted-foreground">JPG, PNG or WebP, up to 5 MB. {uploading ? 'Uploading...' : 'Save to apply your photo.'}</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Suggested questions</Label>
+                <p className="text-xs text-muted-foreground">Optional. Add up to 5 conversation starters.</p>
+                {form.suggested_questions.map((question, index) => <div className="flex gap-2" key={index}>
+                  <Input aria-label={`Suggested question ${index + 1}`} maxLength={100} value={question} disabled={disabled} onChange={(event) => update('suggested_questions', form.suggested_questions.map((item, i) => i === index ? event.target.value : item))} />
+                  <Button type="button" variant="outline" disabled={disabled} onClick={() => update('suggested_questions', form.suggested_questions.filter((_, i) => i !== index))}>Remove</Button>
+                </div>)}
+                <Button type="button" variant="outline" size="sm" disabled={disabled || form.suggested_questions.length >= 5} onClick={() => update('suggested_questions', [...form.suggested_questions, ''])}>Add question</Button>
+              </div>
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-border px-3 py-3">
+                <div className="space-y-1"><Label htmlFor="widget-whatsapp-link">Show WhatsApp link</Label><p className="text-xs text-muted-foreground">Show the WhatsApp link at the bottom of the chat.</p></div>
+                <Switch id="widget-whatsapp-link" checked={form.show_whatsapp_link} disabled={disabled} onCheckedChange={(checked) => update('show_whatsapp_link', checked)} />
               </div>
 
               <div className="space-y-1.5">
@@ -304,7 +380,7 @@ export function WebsiteWidgetSettings() {
               {canEditSettings ? (
                 <Button
                   type="button"
-                  disabled={saving}
+                  disabled={saving || uploading}
                   onClick={() => void save()}
                 >
                   {saving ? <Loader2 className="size-4 animate-spin" /> : 'Save'}

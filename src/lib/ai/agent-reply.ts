@@ -45,6 +45,7 @@ export interface AgentReplyArgs {
   flowGoal?: string | null;
   /** Where the customer is chatting. Defaults to WhatsApp. */
   channel?: 'whatsapp' | 'website';
+  brandCategory?: 'lead_gen' | 'ecommerce';
 }
 
 export interface AgentReply {
@@ -87,10 +88,12 @@ export async function generateAgentReply(
     verifiedContactId,
     flowGoal,
     channel,
+    brandCategory,
   } = args;
 
   const latestQuestion = knowledgeSearchText(messages);
-  const wantsProductCarousel = shouldOfferProductCarousel(messages);
+  const leadWebsite = channel === 'website' && brandCategory === 'lead_gen';
+  const wantsProductCarousel = !leadWebsite && shouldOfferProductCarousel(messages);
   const productSearchQuery = buildProductSearchQuery(messages);
   const productPreferences = extractProductPreferences(messages);
 
@@ -110,7 +113,7 @@ export async function generateAgentReply(
     wantsProductCarousel
       ? loadRecommendationStore(db, accountId)
       : Promise.resolve(null),
-    loadStoreProfile(db, accountId),
+    leadWebsite ? Promise.resolve(null) : loadStoreProfile(db, accountId),
     loadReplyGuidance(db, accountId, latestQuestion),
   ]);
 
@@ -163,6 +166,7 @@ export async function generateAgentReply(
     userPrompt: config.systemPrompt,
     mode: 'auto_reply',
     channel,
+    brandCategory,
     knowledge,
     shopifyContext,
     productRecommendations,

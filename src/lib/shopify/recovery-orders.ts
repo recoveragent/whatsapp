@@ -72,12 +72,19 @@ export const RECOVERY_DRAFT_COMPLETE = `mutation CompleteRecoveryDraft($id: ID!)
 export const RECOVERY_DRAFT_TERMS = `query RecoveryDraftTerms($id: ID!) { draftOrder(id: $id) { paymentTerms { id } } }`;
 export const RECOVERY_PAYMENT_TERMS = `query RecoveryPaymentTerms { paymentTermsTemplates(paymentTermsType: FULFILLMENT) { id } }`;
 export const RECOVERY_CUSTOMER = `query RecoveryCustomer($query: String!) { customers(first: 10, query: $query) { nodes { id defaultPhoneNumber { phoneNumber } defaultEmailAddress { emailAddress } } } }`;
+export const RECOVERY_CUSTOMER_BY_PHONE = `query RecoveryCustomerByPhone($identifier: CustomerIdentifierInput!) { customerByIdentifier(identifier: $identifier) { id } }`;
 export const RECOVERY_CUSTOMER_CREATE = `mutation RecoveryCustomerCreate($input: CustomerInput!) {
   customerCreate(input: $input) { customer { id } userErrors { message } }
 }`;
 export const RECOVERY_RECENT_ORDERS = `query RecoveryRecentOrders($query: String!) {
   orders(first: 100, query: $query, sortKey: CREATED_AT, reverse: true) {
     nodes { id phone cancelledAt shippingAddress { phone } }
+    pageInfo { hasNextPage }
+  }
+}`;
+export const RECOVERY_JOURNEY_ORDERS = `query RecoveryJourneyOrders($query: String!) {
+  orders(first: 100, query: $query, sortKey: CREATED_AT, reverse: true) {
+    nodes { createdAt phone cancelledAt shippingAddress { phone } }
     pageInfo { hasNextPage }
   }
 }`;
@@ -99,6 +106,33 @@ async function connection(db: SupabaseClient, accountId: string) {
   const domain = normalizeShopDomain(data.shop_domain);
   if (!domain) throw new Error('Invalid Shopify store.');
   return { domain, token: decrypt(data.access_token) };
+}
+
+/** A real order after this journey began makes a further recovery unnecessary. */
+export class RecoveryAlreadyOrderedError extends Error {
+  constructor() {
+    super('Customer placed an order after this recovery journey started.');
+    this.name = 'RecoveryAlreadyOrderedError';
+  }
+}
+
+export async function assertNoOrderSinceRecoveryStarted(db: SupabaseClient, run: FlowRunRow) {
+  const start = Date.parse(run.started_at);
+  if (!Number.isFinite(start) || !run.contact_id)
+    throw new Error('Cannot verify recent orders for this recovery.');
+  const { data: contact, error } = await db.from('contacts').select('phone')
+    .eq('id', run.contact_id).eq('account_id', run.account_id).single();
+  if (error || !contact?.phone) throw new Error('Cannot verify the recovery customer.');
+  const c = await connection(db, run.account_id);
+  const result = await gql<{
+    orders: { nodes: Array<{ createdAt: string; phone: string | null; cancelledAt: string | null; shippingAddress: { phone: string | null } | null }>; pageInfo: { hasNextPage: boolean } };
+  }>(c, RECOVERY_JOURNEY_ORDERS, { query: `created_at:>=${new Date(start).toISOString()}` });
+  if (result.orders.nodes.some((order) =>
+    !order.cancelledAt && Date.parse(order.createdAt) >= start &&
+    [order.phone, order.shippingAddress?.phone].some((phone) => phone && phonesMatch(phone, contact.phone))
+  )) throw new RecoveryAlreadyOrderedError();
+  if (result.orders.pageInfo.hasNextPage)
+    throw new Error('Recent order history needs review before continuing.');
 }
 
 async function gql<T>(
@@ -229,18 +263,6 @@ export const RECOVERY_SUMMARY_MAX = 900;
 const clip = (value: string, max: number) =>
   value.length > max ? `${value.slice(0, max - 1).trimEnd()}…` : value;
 
-/** Visible personalization the customer can check, e.g. "Baby name: Asha". */
-function personalization(item: Draft['lineItems']['nodes'][number]) {
-  const details = (item.customAttributes ?? [])
-    .filter(
-      ({ key, value }) =>
-        !key.startsWith('_') && !!value?.trim() && !/^https?:\/\//i.test(value)
-    )
-    .map(({ key, value }) => `${key}: ${value!.trim()}`)
-    .join(', ');
-  return details ? ` (${clip(details, 200)})` : '';
-}
-
 export function recoverySummary(
   draft: Pick<Draft, 'lineItems' | 'shippingAddress'>,
   expectedPaise: number,
@@ -253,8 +275,7 @@ export function recoverySummary(
     300
   );
   const items = draft.lineItems.nodes.map(
-    (item) =>
-      `${clip(item.title, 80)} × ${item.quantity}${personalization(item)}`
+    (item) => `${clip(item.title, 80)} × ${item.quantity}`
   );
   const budget = RECOVERY_SUMMARY_MAX - total.length - address.length - 2;
   let shown = items.join(', ');
@@ -344,6 +365,14 @@ async function findCustomer(
   phone: string,
   email: string
 ): Promise<string | undefined> {
+  // Identifier lookup finds an existing unique phone even when customer search
+  // does not return it. Never create a duplicate merely because search missed it.
+  const direct = await gql<{ customerByIdentifier: { id: string } | null }>(
+    c,
+    RECOVERY_CUSTOMER_BY_PHONE,
+    { identifier: { phoneNumber: phone } }
+  );
+  if (direct.customerByIdentifier) return direct.customerByIdentifier.id;
   const queries = [
     `phone:${JSON.stringify(phone)}`,
     ...(email ? [`email:${JSON.stringify(email)}`] : []),
@@ -523,13 +552,15 @@ export async function prepareRecoveryOrder(
       id: existing.draft_order_id,
       input: { reserveInventoryUntil },
     });
-    checkQuote(draftFromResult(updated.draftOrderUpdate), existing);
+    const reservedDraft = draftFromResult(updated.draftOrderUpdate);
+    checkQuote(reservedDraft, existing);
+    const summary = recoverySummary(reservedDraft, expectedPaise, codChargePaise);
     const { error: reserveError } = await db
       .from('shopify_checkout_recoveries')
-      .update({ reserved_until: reserveInventoryUntil })
+      .update({ reserved_until: reserveInventoryUntil, summary })
       .eq('id', existing.id);
     if (reserveError) throw reserveError;
-    return { ...existing, reserved_until: reserveInventoryUntil };
+    return { ...existing, reserved_until: reserveInventoryUntil, summary };
   }
   if (existing)
     throw new Error(

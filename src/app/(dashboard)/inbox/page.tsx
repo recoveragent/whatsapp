@@ -16,6 +16,8 @@ import { isEmbedMode } from "@/lib/embed/query";
 import { notifyRecoverAgentConversationChanged, notifyRecoverAgentEmbedClose } from "@/lib/embed/recover-agent";
 import { pickValidE164Phone } from "@/lib/whatsapp/phone-utils";
 import { ConversationList } from "@/components/inbox/conversation-list";
+import { WebsiteChatChannel } from "@/components/inbox/website-chat-channel";
+import { Switch } from "@/components/ui/switch";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
 import { ContactDetailView } from "@/components/contacts/contact-detail-view";
@@ -66,6 +68,7 @@ function InboxPageInner() {
   const deepLinkConvId = searchParams.get("c");
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [showWebsiteChats, setShowWebsiteChats] = useState(false);
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
@@ -1072,7 +1075,15 @@ function InboxPageInner() {
         </div>
       )}
 
-      <div className="flex flex-1 overflow-hidden">
+      {!embedded && <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 text-sm">
+        <Switch id="show-website-chats" checked={showWebsiteChats} onCheckedChange={setShowWebsiteChats} />
+        <label htmlFor="show-website-chats">Show website chats</label>
+        <span className="text-xs text-muted-foreground">{showWebsiteChats ? 'Website channel' : 'WhatsApp channel'}</span>
+      </div>}
+      {showWebsiteChats && !embedded ? <WebsiteChatChannel onOpenWhatsApp={(phone) => {
+        setShowWebsiteChats(false);
+        router.push(`/inbox?phone=${encodeURIComponent(phone)}`);
+      }} /> : <div className="flex flex-1 overflow-hidden">
         {/* Left panel: Conversation list — hidden in Recover Agent embed. */}
         {!embedded && (
         <div
@@ -1145,7 +1156,7 @@ function InboxPageInner() {
             />
           </div>
         )}
-      </div>
+      </div>}
 
       <ContactDetailView
         open={contactDetailOpen}

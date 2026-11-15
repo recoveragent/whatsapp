@@ -29,7 +29,7 @@ export async function ensureShopifyContact(
 
   const existing = await findExistingContact(db, accountId, normalized);
   if (existing) {
-    if (name && name !== existing.name) {
+    if (name && normalizePhone(name) !== normalizePhone(phone) && name !== existing.name) {
       await db
         .from('contacts')
         .update({ name, updated_at: new Date().toISOString() })

@@ -17,6 +17,7 @@ import { templateVariableGroupsForFlow } from '@/lib/flows/template-variables';
 import type { FlowTriggerType } from '@/lib/flows/trigger-types';
 import type { BuilderNode } from '../shared';
 import { NextNodeRow, TextRow } from './fields';
+import { maskSecret } from '@/lib/payments/mask-secret';
 
 function PaymentConnection({
   provider,
@@ -29,6 +30,8 @@ function PaymentConnection({
   const [connection, setConnection] = useState<{
     connected: boolean;
     keyId: string;
+    keySecretMask?: string;
+    webhookSecretMask?: string;
     webhookUrl: string;
   } | null>(null);
   const [error, setError] = useState('');
@@ -69,7 +72,7 @@ function PaymentConnection({
       if (!response.ok)
         throw new Error(result.error || 'Could not connect Razorpay.');
       setConnection((previous) =>
-        previous ? { ...previous, connected: true, keyId } : previous
+        previous ? { ...previous, connected: true, keyId, keySecretMask: maskSecret(keySecret.trim()), webhookSecretMask: maskSecret(webhookSecret.trim()) } : previous
       );
       setKeySecret('');
       setWebhookSecret('');
@@ -128,7 +131,9 @@ function PaymentConnection({
                 value={keySecret}
                 onChange={(e) => setKeySecret(e.target.value)}
                 autoComplete="new-password"
+                placeholder={connection.keySecretMask || undefined}
               />
+              {connection.keySecretMask && <span className="text-muted-foreground">Saved · enter a new secret to replace it</span>}
             </label>
             {cashfree && (
               <label className="block text-xs">
@@ -151,8 +156,9 @@ function PaymentConnection({
                   value={webhookSecret}
                   onChange={(e) => setWebhookSecret(e.target.value)}
                   autoComplete="new-password"
-                  placeholder="At least 16 characters"
+                  placeholder={connection.webhookSecretMask || 'At least 16 characters'}
                 />
+                {connection.webhookSecretMask && <span className="text-muted-foreground">Saved · enter a new secret to replace it</span>}
               </label>
             )}
             <p className="text-muted-foreground text-xs">

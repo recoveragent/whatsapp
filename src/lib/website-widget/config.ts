@@ -15,16 +15,21 @@ export interface WidgetConfigRow {
   account_id: string;
   public_key: string;
   enabled: boolean;
+  desktop_position: 'left' | 'right';
+  mobile_position: 'left' | 'right';
   allowed_domains: string[];
   title: string;
   greeting: string;
+  avatar_url: string | null;
+  show_whatsapp_link: boolean;
+  suggested_questions: string[];
   accent_color: string;
   whatsapp_number: string | null;
   daily_reply_limit: number;
 }
 
 const WIDGET_COLUMNS =
-  'account_id, public_key, enabled, allowed_domains, title, greeting, accent_color, whatsapp_number, daily_reply_limit';
+  'account_id, public_key, enabled, desktop_position, mobile_position, allowed_domains, title, greeting, avatar_url, show_whatsapp_link, suggested_questions, accent_color, whatsapp_number, daily_reply_limit';
 
 /** An enabled widget by its public key, or null. Never distinguishes why. */
 export async function loadEnabledWidget(
@@ -143,11 +148,14 @@ export function buildWhatsAppUrl(
  *  promises a reply "here", which this chat can't deliver. */
 export function widgetHandoffText(
   agentText: string,
-  whatsappUrl: string | null
+  whatsappUrl: string | null,
+  brandCategory?: 'lead_gen' | 'ecommerce'
 ): string {
   const closing = whatsappUrl
     ? 'Our team can take it from here on WhatsApp.'
-    : 'Please contact the store directly and our team will help you.';
+    : brandCategory === 'lead_gen'
+      ? 'Please contact our team directly for help.'
+      : 'Please contact the store directly and our team will help you.';
   const text = agentText.trim();
   return text ? `${text}\n\n${closing}` : closing;
 }

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireRole, toErrorResponse } from '@/lib/auth/account';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
-import { encrypt } from '@/lib/whatsapp/encryption';
+import { decrypt, encrypt } from '@/lib/whatsapp/encryption';
+import { maskSecret } from '@/lib/payments/mask-secret';
 import { cashfreeRequest } from '@/lib/payments/cashfree';
 
 export async function GET(request: Request) {
@@ -9,7 +10,7 @@ export async function GET(request: Request) {
     const { accountId } = await requireRole('agent');
     const { data, error } = await supabaseAdmin()
       .from('account_cashfree_connections')
-      .select('client_id, environment, enabled')
+      .select('client_id, environment, enabled, client_secret_encrypted')
       .eq('account_id', accountId)
       .maybeSingle();
     if (error) throw error;
@@ -19,6 +20,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       connected: Boolean(data?.enabled),
       keyId: data?.client_id ?? '',
+      keySecretMask: data?.client_secret_encrypted ? maskSecret(decrypt(data.client_secret_encrypted)) : '',
       environment: data?.environment ?? 'production',
       webhookUrl: `${origin}/api/payments/cashfree/webhook/${accountId}`,
     });

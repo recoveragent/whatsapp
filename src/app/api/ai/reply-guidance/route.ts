@@ -47,6 +47,47 @@ export async function POST(request: Request) {
     if (!messageId)
       return NextResponse.json({ error: 'Missing message.' }, { status: 400 });
 
+    if (body.source !== undefined && body.source !== 'website')
+      return NextResponse.json({ error: 'Invalid message source.' }, { status: 400 });
+
+    if (body.source === 'website') {
+      const { data: reply, error: replyErr } = await supabase
+        .from('website_chat_messages')
+        .select('id, session_id, content, role, created_at')
+        .eq('account_id', accountId)
+        .eq('id', messageId)
+        .maybeSingle();
+      if (replyErr) throw replyErr;
+      if (!reply || reply.role !== 'assistant')
+        return NextResponse.json({ error: 'Only AI replies can be trained.' }, { status: 404 });
+
+      const { data: customer, error: customerErr } = await supabase
+        .from('website_chat_messages')
+        .select('content')
+        .eq('account_id', accountId)
+        .eq('session_id', reply.session_id)
+        .eq('role', 'user')
+        .lt('created_at', reply.created_at)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (customerErr) throw customerErr;
+      const input = parseGuidanceInput({
+        instruction: parsed.instruction,
+        customer_message: customer?.content ?? '',
+        ai_reply: reply.content,
+      });
+      if ('error' in input)
+        return NextResponse.json({ error: input.error }, { status: 400 });
+      const { data, error } = await supabase
+        .from('ai_reply_guidance')
+        .insert({ account_id: accountId, ...input })
+        .select(REPLY_GUIDANCE_COLUMNS)
+        .single();
+      if (error) throw error;
+      return NextResponse.json({ guidance: data }, { status: 201 });
+    }
+
     const { data: reply, error: replyErr } = await supabase
       .from('messages')
       .select(

@@ -47,7 +47,7 @@ export function buildShopifyProductPageUrl(args: {
   const params = new URLSearchParams({
     variant: String(args.variantId),
     utm_source: 'whatsapp',
-    utm_medium: 'wacrm',
+    utm_medium: 'Recover_agent',
   });
   return `https://${shop}/products/${encodeURIComponent(args.handle)}?${params.toString()}`;
 }

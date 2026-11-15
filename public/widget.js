@@ -21,6 +21,7 @@
 
   var apiBase = new URL(script.src).origin;
   var storageKey = 'chat-widget:' + key;
+  var sessionKey = loadSessionKey();
   var MAX_INPUT = 1000;
   var MAX_TURNS = 20;
   var MAX_SENT_REPLY = 4000;
@@ -34,7 +35,21 @@
   var config = null;
   var items = loadItems();
   var sending = false;
+  var sessionVersion = 0;
   var refs = {};
+
+  function loadSessionKey(forceNew) {
+    var storageName = storageKey + ':session';
+    try {
+      var existing = sessionStorage.getItem(storageName);
+      if (!forceNew && existing && /^[0-9a-f]{64}$/.test(existing)) return existing;
+    } catch { /* Continue with an in-memory session. */ }
+    var bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    var value = Array.from(bytes, function (byte) { return byte.toString(16).padStart(2, '0'); }).join('');
+    try { sessionStorage.setItem(storageName, value); } catch { /* In-memory only. */ }
+    return value;
+  }
 
   function loadItems() {
     try {
@@ -133,6 +148,55 @@
     appendLinkified(bubble, item.content);
     row.appendChild(bubble);
 
+    if (item.phonePrompt && !item.saved) {
+      var phoneForm = el('form', 'phone-form');
+      var country = el('input', 'country-input');
+      country.type = 'tel';
+      country.value = '+91';
+      country.required = true;
+      country.pattern = '\\+[1-9][0-9]{0,2}';
+      country.setAttribute('aria-label', 'Country calling code');
+      var phone = el('input', 'phone-input');
+      phone.type = 'tel';
+      phone.inputMode = 'numeric';
+      phone.placeholder = '10-digit mobile number';
+      phone.setAttribute('aria-label', '10-digit mobile number');
+      phone.pattern = '[0-9]{10}';
+      phone.maxLength = 10;
+      phone.required = true;
+      var submitPhone = el('button', 'choice', 'Share number');
+      submitPhone.type = 'submit';
+      var phoneError = el('span', 'phone-error');
+      phoneError.setAttribute('role', 'alert');
+      phoneForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        if (!phoneForm.reportValidity()) return;
+        submitPhone.disabled = true;
+        var requestVersion = sessionVersion;
+        phoneError.textContent = '';
+        fetch(apiBase + '/api/widget/phone?key=' + encodeURIComponent(key), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit',
+          body: JSON.stringify({ session_key: sessionKey, country_code: country.value, phone: phone.value }),
+        }).then(function (response) {
+          if (!response.ok) throw new Error('Unable to save');
+          if (requestVersion !== sessionVersion) return;
+          item.saved = true;
+          item.content = 'Thanks! Our team can use your number to follow up on WhatsApp.';
+          saveItems();
+          render();
+        }).catch(function () {
+          if (requestVersion !== sessionVersion) return;
+          phoneError.textContent = 'Could not save your number. Please try again.';
+          submitPhone.disabled = false;
+        });
+      });
+      phoneForm.appendChild(country);
+      phoneForm.appendChild(phone);
+      phoneForm.appendChild(submitPhone);
+      phoneForm.appendChild(phoneError);
+      row.appendChild(phoneForm);
+    }
+
     (item.products || []).forEach(function (product) {
       var card = renderProduct(product);
       if (card) row.appendChild(card);
@@ -140,7 +204,15 @@
 
     var whatsapp = item.whatsappUrl && httpsUrl(item.whatsappUrl);
     if (whatsapp) {
-      row.appendChild(externalLink(whatsapp, 'whatsapp-cta', 'Continue on WhatsApp'));
+      if (item.handoff) {
+        row.appendChild(el('span', 'handoff-disclosure', 'Continuing shares this website conversation with our team on WhatsApp.'));
+        var handoffButton = el('button', 'whatsapp-cta', 'Continue on WhatsApp');
+        handoffButton.type = 'button';
+        handoffButton.addEventListener('click', function () { startHandoff(handoffButton); });
+        row.appendChild(handoffButton);
+      } else {
+        row.appendChild(externalLink(whatsapp, 'whatsapp-cta', 'Continue on WhatsApp'));
+      }
     }
 
     if (isLatest && item.quickReplies && item.quickReplies.length) {
@@ -148,6 +220,7 @@
       item.quickReplies.forEach(function (label) {
         var choice = el('button', 'choice', label);
         choice.type = 'button';
+        choice.disabled = needsPhone();
         choice.addEventListener('click', function () {
           send(label);
         });
@@ -161,9 +234,20 @@
   function render() {
     var log = refs.log;
     log.textContent = '';
-    log.appendChild(renderItem({ role: 'assistant', content: config.greeting }, false));
+    log.appendChild(renderItem({ role: 'assistant', content: items.some(function (item) { return !item.isError; }) && !items[0].nameEntry ? config.greeting : 'How can I call you?' }, false));
+    if (items.length && !sending && Array.isArray(config.suggested_questions) && config.suggested_questions.length && items.every(function (item) { return item.nameEntry; })) {
+      var starters = el('div', 'starters');
+      starters.appendChild(el('div', 'starters-label', 'Not sure where to start?'));
+      config.suggested_questions.slice(0, 5).forEach(function (label) {
+        var starter = el('button', 'starter', label + '  \u2197');
+        starter.type = 'button';
+        starter.addEventListener('click', function () { send(label); });
+        starters.appendChild(starter);
+      });
+      log.appendChild(starters);
+    }
     items.forEach(function (item, index) {
-      log.appendChild(renderItem(item, !sending && index === items.length - 1));
+      log.appendChild(renderItem(item, !sending && (index === items.length - 1 || (index === items.length - 2 && items[index + 1].phonePrompt))));
     });
     if (sending) {
       var typing = el('div', 'row row-bot');
@@ -176,16 +260,27 @@
       log.appendChild(typing);
     }
     log.scrollTop = log.scrollHeight;
-    refs.send.disabled = sending;
+    refs.send.disabled = sending || needsPhone();
+    refs.input.disabled = needsPhone();
+    refs.input.placeholder = needsPhone() ? 'Share your mobile number to continue' : !items.some(function (item) { return !item.isError; }) ? 'Enter your name...' : 'Ask me anything...';
+  }
+
+  function needsPhone() {
+    return items.some(function (item) { return item.phonePrompt && !item.saved; });
   }
 
   /** The transcript the server needs. Display-only fields stay in the browser. */
   function transcript() {
-    return items
+    var turns = items
       .filter(function (item) {
-        return !item.isError;
-      })
-      .slice(-MAX_TURNS)
+        return !item.isError && !item.phonePrompt;
+      });
+    if (turns.length > MAX_TURNS && turns[0].nameEntry && turns[1] && turns[1].nameEntry) {
+      turns = turns.slice(0, 2).concat(turns.slice(-(MAX_TURNS - 2)));
+    } else {
+      turns = turns.slice(-MAX_TURNS);
+    }
+    return turns
       .map(function (item) {
         var turn = {
           role: item.role,
@@ -200,11 +295,45 @@
       });
   }
 
+  function startHandoff(button) {
+    var turns = transcript();
+    while (turns.length && turns[turns.length - 1].role !== 'user') turns.pop();
+    if (!turns.length) return;
+    var popup = window.open('', '_blank');
+    if (!popup) {
+      button.textContent = 'Allow pop-ups to continue';
+      return;
+    }
+    popup.opener = null;
+    var requestVersion = sessionVersion;
+    button.disabled = true;
+    fetch(apiBase + '/api/widget/handoff?key=' + encodeURIComponent(key), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit',
+      body: JSON.stringify({ messages: turns }),
+    }).then(function (response) {
+      if (!response.ok) throw new Error('Handoff unavailable');
+      return response.json();
+    }).then(function (body) {
+      if (requestVersion !== sessionVersion) { popup.close(); return; }
+      var url = httpsUrl(body.url);
+      if (!url || new URL(url).hostname !== 'wa.me') throw new Error('Invalid handoff');
+      popup.location.href = url;
+      button.textContent = 'Continue on WhatsApp';
+    }).catch(function () {
+      popup.close();
+      button.textContent = 'Could not connect. Try again';
+    }).then(function () { button.disabled = false; });
+  }
+
   function send(raw) {
     var text = String(raw || '').trim().slice(0, MAX_INPUT);
-    if (!text || sending) return;
-    items.push({ role: 'user', content: text });
+    if (!text || sending || needsPhone()) return;
+    if (!items.some(function (item) { return !item.isError; })) items = [];
+    var isName = !items.length;
+    if (isName) text = text.slice(0, 100);
+    items.push({ role: 'user', content: text, nameEntry: isName });
     sending = true;
+    var requestVersion = sessionVersion;
     saveItems();
     render();
 
@@ -212,7 +341,7 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'omit',
-      body: JSON.stringify({ messages: transcript() }),
+      body: JSON.stringify({ messages: transcript(), session_key: sessionKey, name_entry: isName }),
     })
       .then(function (response) {
         return response.json().then(function (body) {
@@ -220,8 +349,10 @@
         });
       })
       .then(function (result) {
+        if (requestVersion !== sessionVersion) return;
         var body = result.body || {};
         if (!result.ok || typeof body.reply !== 'string') {
+          if (isName) items.pop();
           items.push({
             role: 'assistant',
             isError: true,
@@ -233,20 +364,39 @@
         items.push({
           role: 'assistant',
           content: body.reply,
+          nameEntry: isName,
           products: body.products || [],
           quickReplies: body.quick_replies || [],
           whatsappUrl: body.handoff ? body.whatsapp_url : null,
+          handoff: Boolean(body.handoff),
         });
+        if (!isName && !items.some(function (item) { return item.phonePrompt; })) {
+          items.push({ role: 'assistant', phonePrompt: true, content: 'If this chat closes, we can continue the conversation on WhatsApp. Please share your mobile number.' });
+        }
       })
       .catch(function () {
+        if (requestVersion !== sessionVersion) return;
+        if (isName) items.pop();
         items.push({ role: 'assistant', isError: true, content: DEFAULT_ERROR });
       })
       .then(function () {
+        if (requestVersion !== sessionVersion) return;
         sending = false;
         saveItems();
         render();
         if (refs.panel.classList.contains('open')) refs.input.focus();
       });
+  }
+
+  function resetChat() {
+    sessionVersion++;
+    sessionKey = loadSessionKey(true);
+    items = [];
+    sending = false;
+    refs.input.value = '';
+    saveItems();
+    render();
+    refs.input.focus();
   }
 
   function setOpen(open) {
@@ -283,7 +433,7 @@
     style.textContent = CSS;
     shadow.appendChild(style);
 
-    var root = el('div', 'root');
+    var root = el('div', 'root desktop-' + (config.desktop_position === 'left' ? 'left' : 'right') + ' mobile-' + (config.mobile_position === 'left' ? 'left' : 'right'));
     root.style.setProperty('--accent', config.accent_color);
     root.style.setProperty('--on-accent', contrastColor(config.accent_color));
 
@@ -304,7 +454,28 @@
     });
 
     var header = el('div', 'header');
-    header.appendChild(el('div', 'title', config.title));
+    var identity = el('div', 'identity');
+    var avatar = el('div', 'avatar', '\u2726');
+    var avatarUrl = config.avatar_url && httpsUrl(config.avatar_url);
+    if (avatarUrl) {
+      var avatarImage = el('img', 'avatar-image');
+      avatarImage.src = avatarUrl;
+      avatarImage.alt = '';
+      avatarImage.addEventListener('error', function () { avatarImage.remove(); });
+      avatar.appendChild(avatarImage);
+    }
+    identity.appendChild(avatar);
+    var identityText = el('div', 'identity-text');
+    identityText.appendChild(el('div', 'title', config.title));
+    identityText.appendChild(el('div', 'subtitle', 'Your virtual assistant'));
+    identity.appendChild(identityText);
+    header.appendChild(identity);
+    var headerActions = el('div', 'header-actions');
+    var reset = el('button', 'reset', 'Reset chat');
+    reset.type = 'button';
+    reset.setAttribute('aria-label', 'Reset chat');
+    reset.addEventListener('click', resetChat);
+    headerActions.appendChild(reset);
     var close = el('button', 'close');
     close.type = 'button';
     close.setAttribute('aria-label', 'Close chat');
@@ -312,7 +483,8 @@
     close.addEventListener('click', function () {
       setOpen(false);
     });
-    header.appendChild(close);
+    headerActions.appendChild(close);
+    header.appendChild(headerActions);
 
     var log = el('div', 'log');
     log.setAttribute('role', 'log');
@@ -322,8 +494,8 @@
     var input = el('textarea', 'input');
     input.rows = 1;
     input.maxLength = MAX_INPUT;
-    input.placeholder = 'Type your message';
-    input.setAttribute('aria-label', 'Type your message');
+    input.placeholder = 'Ask me anything...';
+    input.setAttribute('aria-label', 'Ask me anything');
     input.addEventListener('keydown', function (event) {
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
         event.preventDefault();
@@ -347,7 +519,7 @@
     panel.appendChild(header);
     panel.appendChild(log);
     var whatsapp = config.whatsapp_url && httpsUrl(config.whatsapp_url);
-    if (whatsapp) {
+    if (whatsapp && config.show_whatsapp_link !== false) {
       panel.appendChild(externalLink(whatsapp, 'footer-link', 'Prefer WhatsApp? Chat with us there'));
     }
     panel.appendChild(form);
@@ -371,23 +543,37 @@
     ':host{all:initial}',
     '*{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}',
     '.root{position:fixed;right:20px;bottom:20px;z-index:2147483000;color:#1f2328;font-size:14px;line-height:1.45}',
+    '@media (min-width:481px){.root.desktop-left{left:20px;right:auto}}',
     'svg{width:24px;height:24px;fill:currentColor;display:block}',
     'button{cursor:pointer;font:inherit}',
     'a:focus-visible,button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}',
     '.launcher{width:56px;height:56px;border:0;border-radius:50%;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(0,0,0,.25)}',
     '.launcher.hidden{display:none}',
-    '.panel{display:none;flex-direction:column;width:370px;height:560px;max-height:calc(100vh - 40px);background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.28)}',
+    '.panel{display:none;flex-direction:column;width:370px;height:560px;max-height:calc(100vh - 40px);background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 18px 55px rgba(24,35,42,.22)}',
     '.panel.open{display:flex}',
-    '.header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 12px 12px 16px;background:var(--accent);color:var(--on-accent)}',
+    '.header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px;background:var(--accent);color:var(--on-accent)}',
+    '.identity{display:flex;align-items:center;gap:10px;min-width:0}',
+    '.identity-text{min-width:0}',
+    '.avatar{display:grid;place-items:center;width:42px;height:42px;flex:none;border-radius:15px;background:rgba(255,255,255,.22);font-size:24px}',
+    '.avatar{position:relative;overflow:hidden}',
+    '.avatar-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}',
+    '.subtitle{font-size:12px;opacity:.85}',
     '.title{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.header-actions{display:flex;align-items:center;gap:4px;flex:none}',
+    '.reset{border:0;border-radius:8px;background:transparent;color:inherit;padding:6px 8px;font-size:12px}',
+    '.reset:hover,.close:hover{background:rgba(255,255,255,.14)}',
     '.close{width:32px;height:32px;padding:4px;border:0;border-radius:8px;background:transparent;color:inherit;flex:none}',
     '.close:focus-visible{outline-color:var(--on-accent)}',
-    '.log{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:16px;background:#f6f7f8;display:flex;flex-direction:column;gap:10px}',
+    '.log{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:20px 16px;background:#f7f8f7;display:flex;flex-direction:column;gap:12px}',
+    '.starters{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 4px}',
+    '.starters-label{width:100%;font-size:12px;color:#78837f}',
+    '.starter{padding:9px 12px;border:1px solid #dce5e1;border-radius:12px;background:#fff;color:#34443f;font-size:13px;text-align:left}',
+    '.starter:hover{border-color:var(--accent);color:var(--accent)}',
     '.row{display:flex;flex-direction:column;gap:6px;max-width:85%}',
     '.row-user{align-self:flex-end;align-items:flex-end}',
     '.row-bot{align-self:flex-start;align-items:flex-start}',
-    '.bubble{padding:9px 12px;border-radius:14px;white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;border:1px solid #e6e8eb}',
-    '.row-user .bubble{background:var(--accent);color:var(--on-accent);border-color:transparent}',
+    '.bubble{padding:11px 14px;border-radius:16px 16px 16px 5px;white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;border:1px solid #e8eeeb;box-shadow:0 2px 8px rgba(30,50,40,.03)}',
+    '.row-user .bubble{background:var(--accent);color:var(--on-accent);border-color:transparent;border-radius:16px 16px 5px 16px}',
     '.inline-link{color:inherit;text-decoration:underline}',
     '.product{display:flex;gap:10px;width:100%;min-width:240px;padding:8px;background:#fff;border:1px solid #e6e8eb;border-radius:12px;color:inherit;text-decoration:none}',
     '.product:hover{border-color:var(--accent)}',
@@ -397,9 +583,14 @@
     '.product-variant{color:#5b6470;font-size:13px}',
     '.product-price{font-size:13px}',
     '.product-cta{color:var(--accent);font-weight:600;font-size:13px;margin-top:2px}',
-    '.whatsapp-cta{display:inline-block;padding:9px 14px;border-radius:999px;background:#128c7e;color:#fff;font-weight:600;text-decoration:none}',
+    '.whatsapp-cta{display:inline-block;padding:9px 14px;border:0;border-radius:999px;background:#128c7e;color:#fff;font-weight:600;text-decoration:none}',
+    '.handoff-disclosure{font-size:12px;color:#5b6470}',
     '.choices{display:flex;flex-wrap:wrap;gap:6px}',
     '.choice{padding:7px 12px;border-radius:999px;border:1px solid var(--accent);background:#fff;color:#1f2328}',
+    '.phone-form{display:flex;flex-wrap:wrap;gap:6px;width:100%}',
+    '.country-input,.phone-input{min-width:0;padding:8px;border:1px solid #d5d9de;border-radius:8px;font-size:14px}',
+    '.country-input{width:62px}.phone-input{flex:1;min-width:145px}',
+    '.phone-error{width:100%;font-size:12px;color:#b42318}',
     '.typing{display:flex;gap:4px;padding:13px 12px}',
     '.typing span{width:6px;height:6px;border-radius:50%;background:#8a93a0;animation:pulse 1.2s infinite}',
     '.typing span:nth-child(2){animation-delay:.2s}',
@@ -407,13 +598,13 @@
     '@keyframes pulse{0%,60%,100%{opacity:.35}30%{opacity:1}}',
     '@media (prefers-reduced-motion:reduce){.typing span{animation:none}}',
     '.footer-link{display:block;padding:7px 12px;text-align:center;font-size:12px;color:#5b6470;background:#fff;border-top:1px solid #e6e8eb;text-decoration:underline}',
-    '.composer{display:flex;align-items:flex-end;gap:8px;padding:10px 12px;background:#fff;border-top:1px solid #e6e8eb}',
-    '.input{flex:1;min-width:0;resize:none;max-height:96px;padding:8px 10px;border:1px solid #d5d9de;border-radius:10px;font-size:14px;line-height:1.4;color:#1f2328;background:#fff}',
-    '.send{width:38px;height:38px;padding:9px;border:0;border-radius:10px;background:var(--accent);color:var(--on-accent);flex:none}',
+    '.composer{display:flex;align-items:flex-end;gap:8px;padding:12px 14px;background:#fff;border-top:1px solid #edf0ee}',
+    '.input{flex:1;min-width:0;resize:none;max-height:96px;padding:10px 12px;border:1px solid #e3e9e6;border-radius:13px;font-size:14px;line-height:1.4;color:#1f2328;background:#f8faf9}',
+    '.send{width:40px;height:40px;padding:10px;border:0;border-radius:13px;background:var(--accent);color:var(--on-accent);flex:none}',
     '.send svg{width:20px;height:20px}',
     '.send:disabled{opacity:.5;cursor:default}',
     // Full screen on phones. 16px input text stops iOS zooming in on focus.
-    '@media (max-width:480px){.root{right:16px;bottom:16px}.panel.open{position:fixed;inset:0;width:100%;height:100%;max-height:none;border-radius:0}.input{font-size:16px}.composer{padding-bottom:max(10px,env(safe-area-inset-bottom))}}',
+    '@media (max-width:480px){.root{right:16px;bottom:16px}.root.mobile-left{left:16px;right:auto}.root.mobile-right{left:auto;right:16px}.panel.open{position:fixed;inset:0;width:100%;height:100%;max-height:none;border-radius:0}.input{font-size:16px}.composer{padding-bottom:max(10px,env(safe-area-inset-bottom))}}',
   ].join('');
 
   // A wrong key or unlisted site gets a 404 with no CORS headers, which the

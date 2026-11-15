@@ -134,6 +134,7 @@ describe('toWidgetProducts', () => {
     const url = new URL(card.url);
     expect(url.pathname).toBe('/products/hoodie');
     expect(url.searchParams.get('utm_source')).toBe('website_widget');
+    expect(url.searchParams.get('utm_medium')).toBe('Recover_agent');
     expect(url.searchParams.get('variant')).toBe('101');
   });
 

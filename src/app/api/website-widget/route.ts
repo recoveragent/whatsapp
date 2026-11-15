@@ -6,14 +6,19 @@ import {
 } from '@/lib/website-widget/config';
 
 const SETTINGS_COLUMNS =
-  'public_key, enabled, allowed_domains, title, greeting, accent_color, whatsapp_number, daily_reply_limit, replies_today, replies_day';
+  'public_key, enabled, desktop_position, mobile_position, allowed_domains, title, greeting, avatar_url, show_whatsapp_link, suggested_questions, accent_color, whatsapp_number, daily_reply_limit, replies_today, replies_day';
 
 interface SettingsRow {
   public_key: string;
   enabled: boolean;
+  desktop_position: 'left' | 'right';
+  mobile_position: 'left' | 'right';
   allowed_domains: string[];
   title: string;
   greeting: string;
+  avatar_url: string | null;
+  show_whatsapp_link: boolean;
+  suggested_questions: string[];
   accent_color: string;
   whatsapp_number: string | null;
   daily_reply_limit: number;
@@ -61,6 +66,10 @@ export async function PATCH(request: Request) {
     if (!body || typeof body !== 'object') return invalid('Invalid request');
 
     if (typeof body.enabled !== 'boolean') return invalid('Invalid request');
+    const desktopPosition = body.desktop_position ?? 'right';
+    const mobilePosition = body.mobile_position ?? 'right';
+    if (!['left', 'right'].includes(desktopPosition) || !['left', 'right'].includes(mobilePosition))
+      return invalid('Invalid chat bubble position');
 
     if (!Array.isArray(body.allowed_domains)) return invalid('Invalid request');
     const domains = new Set<string>();
@@ -82,6 +91,19 @@ export async function PATCH(request: Request) {
     if (greeting.length < 1 || greeting.length > 300)
       return invalid('Greeting must be 1 to 300 characters');
 
+    const avatarUrl = typeof body.avatar_url === 'string' ? body.avatar_url.trim() : '';
+    if (avatarUrl) {
+      try {
+        if (new URL(avatarUrl).protocol !== 'https:') return invalid('Photo URL must use HTTPS');
+      } catch { return invalid('Enter a valid photo URL'); }
+      if (avatarUrl.length > 2048) return invalid('Photo URL is too long');
+    }
+    if (typeof body.show_whatsapp_link !== 'boolean') return invalid('Invalid WhatsApp link setting');
+    if (!Array.isArray(body.suggested_questions) || body.suggested_questions.length > 5 ||
+        body.suggested_questions.some((question: unknown) => typeof question !== 'string' || !question.trim() || question.trim().length > 100))
+      return invalid('Add up to 5 questions, each between 1 and 100 characters');
+    const suggestedQuestions = body.suggested_questions.map((question: string) => question.trim());
+
     const accent = body.accent_color;
     if (typeof accent !== 'string' || !/^#[0-9a-f]{6}$/i.test(accent))
       return invalid('Colour must look like #128C7E');
@@ -92,6 +114,8 @@ export async function PATCH(request: Request) {
         : '';
     if (whatsapp && !/^[0-9]{8,15}$/.test(whatsapp))
       return invalid('Enter the WhatsApp number with its country code');
+    if (body.enabled && !whatsapp)
+      return invalid('Add a WhatsApp number before turning the widget on');
 
     const limit = body.daily_reply_limit;
     if (!Number.isInteger(limit) || limit < 1 || limit > 100000)
@@ -103,9 +127,14 @@ export async function PATCH(request: Request) {
         {
           account_id: accountId,
           enabled: body.enabled,
+          desktop_position: desktopPosition,
+          mobile_position: mobilePosition,
           allowed_domains: [...domains],
           title,
           greeting,
+          avatar_url: avatarUrl || null,
+          show_whatsapp_link: body.show_whatsapp_link,
+          suggested_questions: suggestedQuestions,
           accent_color: accent,
           whatsapp_number: whatsapp || null,
           daily_reply_limit: limit,

@@ -936,6 +936,26 @@ async function processMessage(
     console.error('[webhook] pause cadence on reply failed:', err)
   }
 
+  // A website handoff reference is a one-use bearer token. Consume it only
+  // within this account and attach its context before any bot can reply.
+  const handoffMatch = (contentText ?? '').match(/\bWEB-([0-9a-f]{32})\b/i)
+  let websiteHandoff = false
+  if (handoffMatch) {
+    const { data, error } = await supabaseAdmin().rpc('consume_website_handoff', {
+      p_token: handoffMatch[1].toLowerCase(),
+      p_account_id: accountId,
+      p_conversation_id: conversation.id,
+      p_user_id: configOwnerUserId,
+    })
+    if (error) console.error('[webhook] website handoff failed:', error)
+    // Fail closed for handoff-shaped messages, even when the reference has
+    // expired or storage is unavailable: a human should receive the chat.
+    websiteHandoff = true
+    if (error || !data) {
+      await supabaseAdmin().from('conversations').update({ ai_autoreply_disabled: true, ai_handoff_summary: null }).eq('id', conversation.id).eq('account_id', accountId)
+    }
+  }
+
   // Run flows before inbox reopen so a template quick-reply path that
   // closes the conversation can suppress the reopen.
   const recoveryToken = message.button?.payload ?? message.interactive?.button_reply?.id
@@ -947,7 +967,7 @@ async function processMessage(
       console.error('[smart-retry] acceptance failed:', error)
     }
   }
-  const flowResult = recoveryReply ? { consumed: true, suppress_inbox_reopen: false } : await dispatchInboundToFlows({
+  const flowResult = recoveryReply || websiteHandoff ? { consumed: true, suppress_inbox_reopen: false } : await dispatchInboundToFlows({
     accountId,
     userId: configOwnerUserId,
     contactId: contactRecord.id,
@@ -1057,8 +1077,8 @@ async function processMessage(
   // customer message with no prior outbound from us (also catches
   // manually-imported contacts). We dispatch both so users can pick
   // whichever semantic they want.
-  if (!recoveryReply && contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
-  if (!recoveryReply && isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
+  if (!recoveryReply && !websiteHandoff && contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
+  if (!recoveryReply && !websiteHandoff && isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
   // Awaited — not fire-and-forget. We're inside the route's `after()`
   // block, which only keeps the function alive for promises it can see, so
   // a detached dispatch can be frozen part-way through: the log row is
