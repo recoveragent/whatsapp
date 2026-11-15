@@ -234,8 +234,8 @@
   function render() {
     var log = refs.log;
     log.textContent = '';
-    log.appendChild(renderItem({ role: 'assistant', content: items.some(function (item) { return !item.isError; }) && !items[0].nameEntry ? config.greeting : 'How can I call you?' }, false));
-    if (items.length && !sending && Array.isArray(config.suggested_questions) && config.suggested_questions.length && items.every(function (item) { return item.nameEntry; })) {
+    log.appendChild(renderItem({ role: 'assistant', content: config.greeting }, false));
+    if (!sending && Array.isArray(config.suggested_questions) && config.suggested_questions.length && items.every(function (item) { return item.nameEntry || item.isError; })) {
       var starters = el('div', 'starters');
       starters.appendChild(el('div', 'starters-label', 'Not sure where to start?'));
       config.suggested_questions.slice(0, 5).forEach(function (label) {
@@ -262,7 +262,7 @@
     log.scrollTop = log.scrollHeight;
     refs.send.disabled = sending || needsPhone();
     refs.input.disabled = needsPhone();
-    refs.input.placeholder = needsPhone() ? 'Share your mobile number to continue' : !items.some(function (item) { return !item.isError; }) ? 'Enter your name...' : 'Ask me anything...';
+    refs.input.placeholder = needsPhone() ? 'Share your mobile number to continue' : 'Ask me anything...';
   }
 
   function needsPhone() {
@@ -329,9 +329,7 @@
     var text = String(raw || '').trim().slice(0, MAX_INPUT);
     if (!text || sending || needsPhone()) return;
     if (!items.some(function (item) { return !item.isError; })) items = [];
-    var isName = !items.length;
-    if (isName) text = text.slice(0, 100);
-    items.push({ role: 'user', content: text, nameEntry: isName });
+    items.push({ role: 'user', content: text });
     sending = true;
     var requestVersion = sessionVersion;
     saveItems();
@@ -341,7 +339,7 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'omit',
-      body: JSON.stringify({ messages: transcript(), session_key: sessionKey, name_entry: isName }),
+      body: JSON.stringify({ messages: transcript(), session_key: sessionKey }),
     })
       .then(function (response) {
         return response.json().then(function (body) {
@@ -352,7 +350,6 @@
         if (requestVersion !== sessionVersion) return;
         var body = result.body || {};
         if (!result.ok || typeof body.reply !== 'string') {
-          if (isName) items.pop();
           items.push({
             role: 'assistant',
             isError: true,
@@ -364,19 +361,17 @@
         items.push({
           role: 'assistant',
           content: body.reply,
-          nameEntry: isName,
           products: body.products || [],
           quickReplies: body.quick_replies || [],
           whatsappUrl: body.handoff ? body.whatsapp_url : null,
           handoff: Boolean(body.handoff),
         });
-        if (!isName && !items.some(function (item) { return item.phonePrompt; })) {
+        if (!items.some(function (item) { return item.phonePrompt; })) {
           items.push({ role: 'assistant', phonePrompt: true, content: 'If this chat closes, we can continue the conversation on WhatsApp. Please share your mobile number.' });
         }
       })
       .catch(function () {
         if (requestVersion !== sessionVersion) return;
-        if (isName) items.pop();
         items.push({ role: 'assistant', isError: true, content: DEFAULT_ERROR });
       })
       .then(function () {
