@@ -104,8 +104,8 @@ export function WhatsAppEmbeddedSignupPanel({
       {showPin && (
         <div className="space-y-3 border-t border-border pt-4">
           <p className="text-sm text-muted-foreground">
-            Your number needs the two-step verification PIN from Meta WhatsApp
-            Manager to receive inbound messages.
+            Complete Cloud API registration for a new number using its six-digit
+            two-step verification PIN. If a PIN is already set, use that PIN.
           </p>
           <div className="space-y-2 max-w-xs">
             <Label htmlFor="wa-embedded-pin">Two-step verification PIN</Label>

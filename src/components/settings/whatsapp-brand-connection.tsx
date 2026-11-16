@@ -261,7 +261,7 @@ export function WhatsAppBrandConnection() {
   const registrationIncomplete =
     canEditSettings &&
     configured &&
-    connected &&
+    (connected || connection?.access === 'not_registered') &&
     connection?.registered === false;
 
   return (
@@ -285,6 +285,12 @@ export function WhatsAppBrandConnection() {
             onComplete={async () => { await refreshProfile(); await load(); }}
             registrationOnly={registrationIncomplete}
             reconnectExisting={showReconnect}
+          />
+        )}
+        {registrationIncomplete && showReconnect && (
+          <WhatsAppEmbeddedSignupPanel
+            onComplete={async () => { await refreshProfile(); await load(); }}
+            reconnectExisting
           />
         )}
 
@@ -340,7 +346,9 @@ export function WhatsAppBrandConnection() {
                     )}
                     <span className="block">
                       {canEditSettings
-                        ? 'Messages are not being sent or received. Use “Reconnect existing Business app number” above and select the same number — Meta will ask you to scan a QR code in WhatsApp Business on your phone. Do not disconnect first; your chats and templates stay in place.'
+                        ? connection?.access === 'not_registered'
+                          ? 'For a new number, complete registration with its six-digit PIN. If this number is already used in the WhatsApp Business app, reconnect the existing app number instead. Do not disconnect first.'
+                          : 'Use “Reconnect existing Business app number” above if this number is used in WhatsApp Business on your phone. Do not disconnect first.'
                         : 'Messages are not being sent or received. Ask your workspace admin to reconnect the number.'}
                     </span>
                   </span>

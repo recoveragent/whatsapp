@@ -120,7 +120,7 @@ export function useWhatsAppEmbeddedSignup({
         throw new Error(data.error ?? 'Failed to complete WhatsApp connection');
       }
 
-      if (data.registration_error) {
+      if (data.registration_error || data.registration_skipped) {
         setNeedsPin(true);
         pendingRef.current = {};
         await onComplete();

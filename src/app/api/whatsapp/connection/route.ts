@@ -116,7 +116,7 @@ export async function GET() {
       message: connected
         ? undefined
         : access === 'not_registered'
-          ? `Meta shows this number as not registered for the WhatsApp Cloud API (platform: ${phoneInfo?.platform_type}), so messages fail with “Account not registered”. The WhatsApp Business app link was not completed.`
+          ? `Meta reports this number is not on the WhatsApp Cloud API (platform: ${phoneInfo?.platform_type}). A new number may need registration; an existing Business app number may need to be reconnected.`
           : needsReconnect
           ? `${config.meta_disconnect_reason ?? 'Meta no longer gives Recover Agent access to this number.'}${codeLabel}`
           : `Meta did not confirm this number's status right now${codeLabel}. Messaging may still work — check again in a few minutes.`,
