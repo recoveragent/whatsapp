@@ -12,6 +12,7 @@ import type { Conversation, Message, Contact, ConversationStatus } from "@/types
 import { useRealtime } from "@/hooks/use-realtime";
 import { usePhoneDeepLink } from "@/hooks/use-phone-deep-link";
 import { useRecoverAgentEmbed } from "@/hooks/use-recover-agent-embed";
+import { useAuth } from "@/hooks/use-auth";
 import { isEmbedMode } from "@/lib/embed/query";
 import { notifyRecoverAgentConversationChanged, notifyRecoverAgentEmbedClose } from "@/lib/embed/recover-agent";
 import { pickValidE164Phone } from "@/lib/whatsapp/phone-utils";
@@ -55,6 +56,7 @@ function InboxPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const embedded = isEmbedMode(searchParams);
+  const { accountId, isAiAgentsEnabled } = useAuth();
   const lockedPhone = embedded
     ? pickValidE164Phone(searchParams.getAll("phone"))
     : null;
@@ -69,6 +71,26 @@ function InboxPageInner() {
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [showWebsiteChats, setShowWebsiteChats] = useState(false);
+  const [widgetStatus, setWidgetStatus] = useState<{ accountId: string; enabled: boolean } | null>(null);
+  const websiteWidgetEnabled = !!accountId && widgetStatus?.accountId === accountId && widgetStatus.enabled;
+
+  useEffect(() => {
+    if (!accountId || !isAiAgentsEnabled || embedded) return;
+    const controller = new AbortController();
+    fetch('/api/website-widget', { cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Failed to load website widget status');
+        const payload = await response.json();
+        setWidgetStatus({ accountId, enabled: payload.settings?.enabled === true });
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          console.error('[inbox] website widget status failed:', error);
+          setWidgetStatus({ accountId, enabled: false });
+        }
+      });
+    return () => controller.abort();
+  }, [accountId, isAiAgentsEnabled, embedded]);
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
@@ -1075,12 +1097,12 @@ function InboxPageInner() {
         </div>
       )}
 
-      {!embedded && <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 text-sm">
+      {!embedded && isAiAgentsEnabled && websiteWidgetEnabled && <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 text-sm">
         <Switch id="show-website-chats" checked={showWebsiteChats} onCheckedChange={setShowWebsiteChats} />
         <label htmlFor="show-website-chats">Show website chats</label>
         <span className="text-xs text-muted-foreground">{showWebsiteChats ? 'Website channel' : 'WhatsApp channel'}</span>
       </div>}
-      {showWebsiteChats && !embedded ? <WebsiteChatChannel onOpenWhatsApp={(phone) => {
+      {showWebsiteChats && websiteWidgetEnabled && isAiAgentsEnabled && !embedded ? <WebsiteChatChannel onOpenWhatsApp={(phone) => {
         setShowWebsiteChats(false);
         router.push(`/inbox?phone=${encodeURIComponent(phone)}`);
       }} /> : <div className="flex flex-1 overflow-hidden">
