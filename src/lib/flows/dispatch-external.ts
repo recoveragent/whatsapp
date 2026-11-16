@@ -65,6 +65,8 @@ export interface FlowDispatchInput {
   context?: FlowDispatchContext
   /** When set, only this flow is considered (webhook token lookup). */
   flowId?: string
+  /** Only prepaid order-placed flows may run from a payment update. */
+  wooPrepaidUpdate?: boolean
 }
 
 export interface FlowDispatchStarted {
@@ -85,6 +87,7 @@ export interface FlowDispatchSkipped {
     | 'start_failed'
     | 'duplicate_fulfillment_status'
     | 'recent_order'
+    | 'duplicate_prepaid_order'
 }
 
 export interface FlowDispatchOutcome {
@@ -261,6 +264,7 @@ export async function runFlowsForTrigger(
     }
 
     for (const flow of flows) {
+      if (input.wooPrepaidUpdate && woocommercePaymentTypeFilter(flow.trigger_config as Record<string, unknown>) !== 'prepaid') continue
       const paymentMismatch = orderPaymentMismatchReason(flow, input)
       if (paymentMismatch) {
         outcome.skipped.push({
@@ -407,7 +411,40 @@ export async function runFlowsForTrigger(
         }
       }
 
-      const result = await startFlowForExternalEvent({
+      // The fulfillment dispatch ledger already provides an atomic, persistent
+      // per-flow/order claim. Namespace WooCommerce keys to share it safely.
+      const prepaidOrder = input.triggerType === 'woocommerce_order_placed' &&
+        woocommercePaymentTypeFilter(flow.trigger_config as Record<string, unknown>) === 'prepaid'
+      const orderId = input.context?.vars?.woocommerce_order_id
+      const orderNumber = input.context?.vars?.order_number
+      const orderKey = orderId == null ? '' : `woocommerce-prepaid:${String(orderId).trim()}`
+      if (prepaidOrder) {
+        if (!orderId || !String(orderId).trim()) {
+          outcome.skipped.push({ flow_id: flow.id, flow_name: flow.name, reason: 'start_failed' })
+          continue
+        }
+        // Runs created before this safeguard have the old external key.
+        const legacyKey = `woocommerce:woocommerce_order_placed:${String(orderNumber || orderId).trim()}`
+        const { data: previous, error: lookupError } = await db.from('flow_runs')
+          .select('id').eq('account_id', input.accountId).eq('flow_id', flow.id)
+          .eq('external_idempotency_key', legacyKey).limit(1)
+        if (lookupError || (previous && previous.length > 0)) {
+          outcome.skipped.push({ flow_id: flow.id, flow_name: flow.name, reason: lookupError ? 'start_failed' : 'duplicate_prepaid_order' })
+          continue
+        }
+        const { error: claimError } = await db.from('shopify_flow_fulfillment_log').insert({
+          account_id: input.accountId, flow_id: flow.id, order_key: orderKey,
+          shipment_status_key: 'woocommerce_prepaid',
+        })
+        if (claimError) {
+          outcome.skipped.push({ flow_id: flow.id, flow_name: flow.name, reason: claimError.code === '23505' ? 'duplicate_prepaid_order' : 'start_failed' })
+          continue
+        }
+      }
+
+      let result: Awaited<ReturnType<typeof startFlowForExternalEvent>>
+      try {
+        result = await startFlowForExternalEvent({
         flow,
         contactId: input.contactId,
         conversationId,
@@ -419,8 +456,21 @@ export async function runFlowsForTrigger(
             : {}),
         },
         messageText: input.context?.message_text,
-      })
+        })
+      } catch (error) {
+        if (prepaidOrder) {
+          await db.from('shopify_flow_fulfillment_log').delete()
+            .eq('account_id', input.accountId).eq('flow_id', flow.id)
+            .eq('order_key', orderKey).eq('shipment_status_key', 'woocommerce_prepaid')
+        }
+        throw error
+      }
 
+      if (prepaidOrder && (!result.ok || !result.flow_run_id)) {
+        await db.from('shopify_flow_fulfillment_log').delete()
+          .eq('account_id', input.accountId).eq('flow_id', flow.id)
+          .eq('order_key', orderKey).eq('shipment_status_key', 'woocommerce_prepaid')
+      }
       if (result.ok && result.flow_run_id) {
         if (isShopifyFulfillmentFlowTrigger(input.triggerType)) {
           const orderKey = fulfillmentOrderKeyFromVars(input.context?.vars)

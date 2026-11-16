@@ -83,6 +83,16 @@ export async function handleWooCommerceWebhook(args: {
           context,
         });
         logFlowDispatch(args.topic, outcome);
+        // Online payment is often confirmed after order.created. Reconsider only
+        // prepaid order-placed flows; their persistent claim prevents duplicates.
+        if (args.topic === 'order.updated' && context.paymentType === 'prepaid' &&
+            !['cancelled', 'failed', 'refunded'].includes((order.status ?? '').toLowerCase())) {
+          const paidOutcome = await dispatchWooCommerceFlows({
+            db: args.db, accountId: config.account_id, ownerUserId: config.user_id,
+            triggerType: 'woocommerce_order_placed', context, prepaidUpdate: true,
+          });
+          logFlowDispatch('order.updated:prepaid', paidOutcome);
+        }
       } else {
         console.info('[woocommerce webhook] synced order', {
           topic: args.topic,

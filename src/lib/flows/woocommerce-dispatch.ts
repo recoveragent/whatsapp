@@ -64,6 +64,7 @@ export async function dispatchWooCommerceFlows(args: {
   ownerUserId: string;
   triggerType: FlowTriggerType;
   context: WooCommerceEventContext;
+  prepaidUpdate?: boolean;
 }): Promise<WooCommerceFlowDispatchOutcome> {
   const base = {
     order_number: args.context.orderNumber,
@@ -109,6 +110,7 @@ export async function dispatchWooCommerceFlows(args: {
   const dispatch = await runFlowsForTrigger({
     accountId: args.accountId,
     triggerType: args.triggerType,
+    wooPrepaidUpdate: args.prepaidUpdate,
     contactId: contact.id,
     conversationId: conversation.id,
     context: { vars: contextToVars(args.context) },

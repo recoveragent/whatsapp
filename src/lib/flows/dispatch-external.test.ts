@@ -5,11 +5,13 @@ const {
   contactQuery,
   startFlowForExternalEvent,
   contactHasRecentShopifyOrder,
+  claimPrepaid,
 } = vi.hoisted(() => ({
   flowsQuery: vi.fn(),
   contactQuery: vi.fn(),
   startFlowForExternalEvent: vi.fn(),
   contactHasRecentShopifyOrder: vi.fn(),
+  claimPrepaid: vi.fn().mockResolvedValue({ error: null }),
 }))
 
 vi.mock('./admin-client', () => ({
@@ -17,6 +19,11 @@ vi.mock('./admin-client', () => ({
     from: (table: string) => {
       if (table === 'contacts') return contactQuery()
       if (table === 'flows') return flowsQuery()
+      if (table === 'flow_runs') {
+        const chain = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), limit: vi.fn().mockResolvedValue({ data: [], error: null }) }
+        return chain
+      }
+      if (table === 'shopify_flow_fulfillment_log') return { insert: claimPrepaid }
       return {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
@@ -323,8 +330,24 @@ describe('runFlowsForTrigger — WooCommerce payment method filter', () => {
       triggerType: 'woocommerce_order_placed',
       contactId: 'contact-1',
       conversationId: 'conv-1',
-      context: { vars },
+      context: { vars: { woocommerce_order_id: '123', order_number: '#123', ...vars } },
     })
+
+  it('only considers prepaid flows when a payment update is dispatched', async () => {
+    mockFlowsChain([wooFlow({ payment_status: 'any', payment_type: 'any' }), wooFlow({ payment_status: 'any', payment_type: 'cod' }), wooFlow({ payment_status: 'any', payment_type: 'prepaid' })])
+    const result = await runFlowsForTrigger({ accountId: 'acc-1', triggerType: 'woocommerce_order_placed', contactId: 'contact-1', conversationId: 'conv-1', wooPrepaidUpdate: true, context: { vars: { woocommerce_order_id: '123', order_number: '#123', payment_type: 'prepaid' } } })
+    expect(result.started).toHaveLength(1)
+    expect(startFlowForExternalEvent).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not start a prepaid flow again after its order was claimed', async () => {
+    mockFlowsChain([wooFlow({ payment_status: 'any', payment_type: 'prepaid' })])
+    claimPrepaid.mockResolvedValueOnce({ error: { code: '23505' } })
+    const result = await dispatchWoo({ payment_type: 'prepaid' })
+    expect(result.started).toHaveLength(0)
+    expect(result.skipped).toEqual([expect.objectContaining({ reason: 'duplicate_prepaid_order' })])
+    expect(startFlowForExternalEvent).not.toHaveBeenCalled()
+  })
 
   it('Processing + COD starts only for COD processing orders', async () => {
     mockFlowsChain([wooFlow({ payment_status: 'processing', payment_type: 'cod' })])
