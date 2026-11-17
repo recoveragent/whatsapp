@@ -124,6 +124,7 @@ export function ConversationList({
   );
 
   const [search, setSearch] = useState('');
+  const [searchByOrder, setSearchByOrder] = useState(false);
   const [filter, setFilter] = useState<InboxFilter>('open');
   const [sort, setSort] = useState<InboxSortOrder>('newest');
   const [loading, setLoading] = useState(true);
@@ -147,7 +148,7 @@ export function ConversationList({
   const onPendingMessagesClearedRef = useRef(onPendingMessagesCleared);
   const onMissedMessagesRef = useRef(onMissedMessages);
   const activeConversationIdRef = useRef(activeConversationId);
-  const listViewParamsRef = useRef({ filter, search, sort });
+  const listViewParamsRef = useRef({ filter, search, sort, searchByOrder });
   const conversationsRef = useRef(conversations);
   const moreRequestRef = useRef<AbortController | null>(null);
   const listGenerationRef = useRef(0);
@@ -158,7 +159,7 @@ export function ConversationList({
     onPendingMessagesClearedRef.current = onPendingMessagesCleared;
     onMissedMessagesRef.current = onMissedMessages;
     activeConversationIdRef.current = activeConversationId;
-    listViewParamsRef.current = { filter, search, sort };
+    listViewParamsRef.current = { filter, search, sort, searchByOrder };
   });
   useEffect(() => {
     conversationsRef.current = conversations;
@@ -179,6 +180,7 @@ export function ConversationList({
         setNextCursor(null);
         const params = new URLSearchParams({ sort, filter });
         if (search.trim()) params.set('search', search.trim());
+        if (searchByOrder) params.set('searchBy', 'order');
         const response = await fetch(
           `/api/inbox/conversations/page?${params}`,
           {
@@ -224,7 +226,7 @@ export function ConversationList({
       controller.abort();
       moreRequestRef.current?.abort();
     };
-  }, [filter, refreshToken, search, sort]);
+  }, [filter, refreshToken, search, sort, searchByOrder]);
 
   // Background resync (tab refocus / WS reconnect): never replace the list —
   // that reset scroll and flashed a spinner every time the agent came back to
@@ -235,9 +237,10 @@ export function ConversationList({
     const controller = new AbortController();
     void (async () => {
       try {
-        const { filter, search, sort } = listViewParamsRef.current;
+        const { filter, search, sort, searchByOrder } = listViewParamsRef.current;
         const params = new URLSearchParams({ sort, filter });
         if (search.trim()) params.set('search', search.trim());
+        if (searchByOrder) params.set('searchBy', 'order');
         const response = await fetch(
           `/api/inbox/conversations/page?${params}`,
           { cache: 'no-store', signal: controller.signal }
@@ -300,6 +303,7 @@ export function ConversationList({
           pageSize: String(pageSize),
         });
         if (search.trim()) params.set('search', search.trim());
+        if (searchByOrder) params.set('searchBy', 'order');
         const response = await fetch(
           `/api/inbox/conversations/page?${params}`,
           {
@@ -345,7 +349,7 @@ export function ConversationList({
         if (generation === listGenerationRef.current) setLoadingMore(false);
       }
     },
-    [filter, hasMore, loading, loadingMore, nextCursor, search, sort]
+    [filter, hasMore, loading, loadingMore, nextCursor, search, sort, searchByOrder]
   );
 
   useEffect(() => {
@@ -421,13 +425,13 @@ export function ConversationList({
 
   const filtered = useMemo(() => {
     let result: Conversation[];
-    if (frozenActivity) {
+    if (frozenActivity && !searchByOrder) {
       // Sort by the snapshot times, then swap the live rows back in so
       // previews and badges stay current while positions hold still.
       const visible = filterInboxConversations(
         conversations.filter((c) => c.id in frozenActivity),
-        filter,
-        search
+        searchByOrder ? 'all' : filter,
+        searchByOrder ? '' : search
       );
       const byId = new Map(visible.map((c) => [c.id, c]));
       result = sortInboxConversations(
@@ -436,7 +440,7 @@ export function ConversationList({
       ).map((c) => byId.get(c.id)!);
     } else {
       result = sortInboxConversations(
-        filterInboxConversations(conversations, filter, search),
+        filterInboxConversations(conversations, searchByOrder ? 'all' : filter, searchByOrder ? '' : search),
         sort
       );
     }
@@ -463,6 +467,7 @@ export function ConversationList({
   }, [
     conversations,
     frozenActivity,
+    searchByOrder,
     filter,
     search,
     sort,
@@ -528,6 +533,7 @@ export function ConversationList({
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearch(e.target.value);
+      setSearchByOrder(false);
     },
     []
   );
@@ -871,8 +877,13 @@ export function ConversationList({
         ) : filtered.length === 0 ? (
           <div className="px-4 py-12 text-center">
             <p className="text-muted-foreground text-sm">
-              {t('noConversations')}
+              {searchByOrder ? t('noOrderConversations') : t('noConversations')}
             </p>
+            {search.trim() && !searchByOrder && (
+              <Button variant="link" size="sm" onClick={() => setSearchByOrder(true)} className="text-primary mt-2">
+                {t('searchByOrder')}
+              </Button>
+            )}
             {hasSearchMatchesInAll && (
               <Button
                 variant="link"

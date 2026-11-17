@@ -31,7 +31,38 @@ export async function GET(request: Request) {
       .not("last_message_at", "is", null)
       .order("last_message_at", { ascending: sort === "oldest" });
 
-    if (search) {
+    if (search && params.get("searchBy") === "order") {
+      // Order names are stored with their Shopify prefix; WooCommerce stores
+      // its displayed order number. Accept input with or without the leading #.
+      const number = search.slice(0, 100).replace(/^#/, "");
+      if (!number) return NextResponse.json({ conversations: [], hasMore: false });
+      const term = escapeIlikeTerm(number);
+      const results = await Promise.all(
+        ["shopify_orders", "woocommerce_orders"].map((table) =>
+          ctx.supabase.from(table).select("contact_id, customer_phone")
+            .eq("account_id", ctx.accountId)
+            .or(`order_number.ilike.${term},order_number.ilike.#${term}`),
+        ),
+      );
+      if (results.some(({ error }) => error)) {
+        console.error("Failed to search inbox orders:", results.map(({ error }) => error));
+        return NextResponse.json({ error: "Failed to search orders" }, { status: 500 });
+      }
+      const orders = results.flatMap(({ data }) => data ?? []);
+      const contactIds = new Set<string>(orders.flatMap((order) => order.contact_id ? [order.contact_id] : []));
+      // Orders can arrive before the customer's contact exists. Match those
+      // using the normalized full phone rather than a partial phone suffix.
+      const phones = [...new Set(orders.filter((order) => !order.contact_id && order.customer_phone)
+        .map((order) => String(order.customer_phone).replace(/\D/g, "")).filter(Boolean))];
+      if (phones.length) {
+        const { data: contacts, error } = await ctx.supabase.from("contacts")
+          .select("id").eq("account_id", ctx.accountId).in("phone_normalized", phones);
+        if (error) return NextResponse.json({ error: "Failed to search orders" }, { status: 500 });
+        for (const contact of contacts ?? []) contactIds.add(contact.id);
+      }
+      if (!contactIds.size) return NextResponse.json({ conversations: [], hasMore: false });
+      query = query.in("contact_id", [...contactIds]);
+    } else if (search) {
       // Search is intentionally global across statuses. The inbox used to
       // fetch only the first page and then search that client-side, which
       // made older conversations impossible to recover by phone or name.

@@ -157,6 +157,8 @@
       "clearAll": "Clear all",
       "loadMore": "Load more conversations",
       "loadingMore": "Loading conversations…",
+      "searchByOrder": "Search by order number",
+      "noOrderConversations": "No conversations found for this order",
       "noConversations": "No conversations found",
       "noMessagesYet": "No messages yet",
       "unknown": "Unknown"
