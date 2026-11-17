@@ -73,7 +73,7 @@ const DEFAULT_FORM: WidgetForm = {
   greeting: 'Hi! How can we help you today?',
   avatar_url: '',
   show_whatsapp_link: true,
-  suggested_questions: ['Help me find something', 'I have a question'],
+  suggested_questions: ['Track my order', 'Product information', 'Delivery & shipping'],
   accent_color: '#128C7E',
   whatsapp_number: '',
   daily_reply_limit: 500,
@@ -346,6 +346,21 @@ export function WebsiteWidgetSettings() {
                 </div>)}
                 <Button type="button" variant="outline" size="sm" disabled={disabled || form.suggested_questions.length >= 5} onClick={() => update('suggested_questions', [...form.suggested_questions, ''])}>Add question</Button>
               </div>
+              <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3" aria-label="Widget preview">
+                <p className="text-sm font-medium">Widget preview</p>
+                <div className="max-w-sm overflow-hidden rounded-xl border border-border bg-background shadow-sm">
+                  <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+                    {form.avatar_url ? <img src={form.avatar_url} alt="" className="size-9 rounded-full object-cover" /> : <span className="grid size-9 place-items-center rounded-full bg-muted text-lg">✦</span>}
+                    <div><p className="text-sm font-medium">{form.title || 'Chat with us'}</p><p className="text-xs text-muted-foreground">Your virtual assistant</p></div>
+                  </div>
+                  <div className="space-y-2 p-3 text-sm">
+                    <p className="whitespace-pre-wrap">{form.greeting || 'Hi! 👋 How can we help you today?'}</p>
+                    {form.suggested_questions.filter(Boolean).map((question, index) => <div key={index} className="rounded-lg border border-border px-3 py-2 text-xs">{question}</div>)}
+                    <div className="flex items-center gap-2 pt-1"><span className="flex-1 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">Ask me anything...</span><span className="size-8 rounded-lg" style={{ backgroundColor: /^#[0-9a-f]{6}$/i.test(form.accent_color) ? form.accent_color : '#128C7E' }} /></div>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex items-center justify-between gap-4 rounded-lg border border-border px-3 py-3">
                 <div className="space-y-1"><Label htmlFor="widget-whatsapp-link">Show WhatsApp link</Label><p className="text-xs text-muted-foreground">Show the WhatsApp link at the bottom of the chat.</p></div>
                 <Switch id="widget-whatsapp-link" checked={form.show_whatsapp_link} disabled={disabled} onCheckedChange={(checked) => update('show_whatsapp_link', checked)} />

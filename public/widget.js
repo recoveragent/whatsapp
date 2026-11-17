@@ -94,10 +94,13 @@
 
   /** Readable text colour for the merchant's accent. */
   function contrastColor(hex) {
-    var r = parseInt(hex.slice(1, 3), 16);
-    var g = parseInt(hex.slice(3, 5), 16);
-    var b = parseInt(hex.slice(5, 7), 16);
-    return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? '#111111' : '#ffffff';
+    if (!/^#[0-9a-f]{6}$/i.test(hex || '')) return '#ffffff';
+    var channels = [1, 3, 5].map(function (i) {
+      var value = parseInt(hex.slice(i, i + 2), 16) / 255;
+      return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+    });
+    var luminance = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+    return (luminance + 0.05) / 0.0556 >= 1.05 / (luminance + 0.05) ? '#111111' : '#ffffff';
   }
 
   /** Append text, turning https links into anchors and nothing else. */
@@ -220,7 +223,6 @@
       item.quickReplies.forEach(function (label) {
         var choice = el('button', 'choice', label);
         choice.type = 'button';
-        choice.disabled = needsPhone();
         choice.addEventListener('click', function () {
           send(label);
         });
@@ -234,8 +236,8 @@
   function render() {
     var log = refs.log;
     log.textContent = '';
-    log.appendChild(renderItem({ role: 'assistant', content: items.some(function (item) { return !item.isError; }) && !items[0].nameEntry ? config.greeting : 'How can I call you?' }, false));
-    if (items.length && !sending && Array.isArray(config.suggested_questions) && config.suggested_questions.length && items.every(function (item) { return item.nameEntry; })) {
+    log.appendChild(renderItem({ role: 'assistant', content: config.greeting || 'Hi! 👋 How can we help you today?' }, false));
+    if (!sending && Array.isArray(config.suggested_questions) && config.suggested_questions.length && items.every(function (item) { return item.nameEntry || item.isError; })) {
       var starters = el('div', 'starters');
       starters.appendChild(el('div', 'starters-label', 'Not sure where to start?'));
       config.suggested_questions.slice(0, 5).forEach(function (label) {
@@ -260,13 +262,9 @@
       log.appendChild(typing);
     }
     log.scrollTop = log.scrollHeight;
-    refs.send.disabled = sending || needsPhone();
-    refs.input.disabled = needsPhone();
-    refs.input.placeholder = needsPhone() ? 'Share your mobile number to continue' : !items.some(function (item) { return !item.isError; }) ? 'Enter your name...' : 'Ask me anything...';
-  }
-
-  function needsPhone() {
-    return items.some(function (item) { return item.phonePrompt && !item.saved; });
+    refs.send.disabled = sending;
+    refs.input.disabled = false;
+    refs.input.placeholder = 'Ask me anything...';
   }
 
   /** The transcript the server needs. Display-only fields stay in the browser. */
@@ -327,11 +325,9 @@
 
   function send(raw) {
     var text = String(raw || '').trim().slice(0, MAX_INPUT);
-    if (!text || sending || needsPhone()) return;
+    if (!text || sending) return;
     if (!items.some(function (item) { return !item.isError; })) items = [];
-    var isName = !items.length;
-    if (isName) text = text.slice(0, 100);
-    items.push({ role: 'user', content: text, nameEntry: isName });
+    items.push({ role: 'user', content: text });
     sending = true;
     var requestVersion = sessionVersion;
     saveItems();
@@ -341,7 +337,7 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'omit',
-      body: JSON.stringify({ messages: transcript(), session_key: sessionKey, name_entry: isName }),
+      body: JSON.stringify({ messages: transcript(), session_key: sessionKey }),
     })
       .then(function (response) {
         return response.json().then(function (body) {
@@ -352,7 +348,6 @@
         if (requestVersion !== sessionVersion) return;
         var body = result.body || {};
         if (!result.ok || typeof body.reply !== 'string') {
-          if (isName) items.pop();
           items.push({
             role: 'assistant',
             isError: true,
@@ -364,19 +359,17 @@
         items.push({
           role: 'assistant',
           content: body.reply,
-          nameEntry: isName,
           products: body.products || [],
           quickReplies: body.quick_replies || [],
           whatsappUrl: body.handoff ? body.whatsapp_url : null,
           handoff: Boolean(body.handoff),
         });
-        if (!isName && !items.some(function (item) { return item.phonePrompt; })) {
-          items.push({ role: 'assistant', phonePrompt: true, content: 'If this chat closes, we can continue the conversation on WhatsApp. Please share your mobile number.' });
+        if (!items.some(function (item) { return item.phonePrompt; })) {
+          items.push({ role: 'assistant', phonePrompt: true, content: 'For a WhatsApp follow-up, you can share your mobile number.' });
         }
       })
       .catch(function () {
         if (requestVersion !== sessionVersion) return;
-        if (isName) items.pop();
         items.push({ role: 'assistant', isError: true, content: DEFAULT_ERROR });
       })
       .then(function () {
@@ -384,7 +377,7 @@
         sending = false;
         saveItems();
         render();
-        if (refs.panel.classList.contains('open')) refs.input.focus();
+        if (refs.panel.classList.contains('open') && !window.matchMedia('(max-width:480px)').matches) refs.input.focus();
       });
   }
 
@@ -399,13 +392,24 @@
     refs.input.focus();
   }
 
+  function setExpanded(expanded) {
+    refs.panel.classList.toggle('expanded', expanded);
+    refs.panel.style.removeProperty('--drag-height');
+    refs.expand.setAttribute('aria-label', expanded ? 'Collapse chat' : 'Expand chat');
+    refs.expand.setAttribute('aria-expanded', String(expanded));
+    refs.log.scrollTop = refs.log.scrollHeight;
+  }
+
   function setOpen(open) {
     refs.panel.classList.toggle('open', open);
+    refs.backdrop.classList.toggle('open', open);
     refs.launcher.classList.toggle('hidden', open);
     refs.launcher.setAttribute('aria-expanded', String(open));
     if (open) {
+      setExpanded(false);
       refs.log.scrollTop = refs.log.scrollHeight;
-      refs.input.focus();
+      if (window.matchMedia('(max-width:480px)').matches) refs.close.focus({ preventScroll: true });
+      else refs.input.focus();
     } else {
       refs.launcher.focus();
     }
@@ -441,6 +445,8 @@
     root.style.setProperty('--desktop-bottom', offset(config.desktop_bottom_offset, 20));
     root.style.setProperty('--mobile-side', offset(config.mobile_side_offset, 16));
     root.style.setProperty('--mobile-bottom', offset(config.mobile_bottom_offset, 16));
+    root.style.setProperty('--chat-primary', config.accent_color);
+    root.style.setProperty('--chat-primary-contrast', contrastColor(config.accent_color));
     root.style.setProperty('--accent', config.accent_color);
     root.style.setProperty('--on-accent', contrastColor(config.accent_color));
 
@@ -453,12 +459,73 @@
       setOpen(true);
     });
 
+    var backdrop = el('div', 'backdrop');
+    backdrop.addEventListener('click', function () { setOpen(false); });
+
     var panel = el('div', 'panel');
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-label', config.title);
     panel.addEventListener('keydown', function (event) {
       if (event.key === 'Escape') setOpen(false);
     });
+
+    var expand = el('button', 'sheet-handle');
+    expand.type = 'button';
+    expand.setAttribute('aria-label', 'Expand chat');
+    expand.setAttribute('aria-expanded', 'false');
+    var drag = null;
+    var suppressClick = false;
+    expand.addEventListener('click', function () {
+      if (suppressClick) { suppressClick = false; return; }
+      setExpanded(!panel.classList.contains('expanded'));
+    });
+    expand.addEventListener('pointerdown', function (event) {
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      drag = { startY: event.clientY, startHeight: panel.getBoundingClientRect().height, lastY: event.clientY, lastTime: event.timeStamp, velocity: 0, moved: false };
+      expand.setPointerCapture(event.pointerId);
+      panel.classList.add('dragging');
+    });
+    expand.addEventListener('pointermove', function (event) {
+      if (!drag) return;
+      var delta = event.clientY - drag.startY;
+      if (Math.abs(delta) > 5) drag.moved = true;
+      var viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      var height = Math.max(viewportHeight * 0.5, Math.min(viewportHeight, drag.startHeight - delta));
+      panel.style.setProperty('--drag-height', height + 'px');
+      var elapsed = event.timeStamp - drag.lastTime;
+      if (elapsed > 0) drag.velocity = (event.clientY - drag.lastY) / elapsed;
+      drag.lastY = event.clientY;
+      drag.lastTime = event.timeStamp;
+    });
+    function finishDrag(event) {
+      if (!drag) return;
+      var moved = drag.moved;
+      var distance = event.clientY - drag.startY;
+      var velocity = drag.velocity;
+      var wasExpanded = panel.classList.contains('expanded');
+      drag = null;
+      panel.classList.remove('dragging');
+      if (moved && event.type !== 'pointercancel') {
+        suppressClick = true;
+        setTimeout(function () { suppressClick = false; }, 0);
+        setExpanded(Math.abs(velocity) > 0.35 ? velocity < 0 : (Math.abs(distance) > 50 ? distance < 0 : wasExpanded));
+      } else {
+        panel.style.removeProperty('--drag-height');
+      }
+    }
+    expand.addEventListener('pointerup', finishDrag);
+    expand.addEventListener('pointercancel', finishDrag);
+
+    function syncViewport() {
+      if (!window.visualViewport) return;
+      root.style.setProperty('--visible-height', window.visualViewport.height + 'px');
+      root.style.setProperty('--keyboard-inset', Math.max(0, window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop) + 'px');
+    }
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', syncViewport);
+      window.visualViewport.addEventListener('scroll', syncViewport);
+      syncViewport();
+    }
 
     var header = el('div', 'header');
     var identity = el('div', 'identity');
@@ -503,6 +570,9 @@
     input.maxLength = MAX_INPUT;
     input.placeholder = 'Ask me anything...';
     input.setAttribute('aria-label', 'Ask me anything');
+    input.addEventListener('focus', function () {
+      if (window.matchMedia('(max-width:480px)').matches) setExpanded(true);
+    });
     input.addEventListener('keydown', function (event) {
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
         event.preventDefault();
@@ -523,6 +593,7 @@
       send(value);
     });
 
+    panel.appendChild(expand);
     panel.appendChild(header);
     panel.appendChild(log);
     var whatsapp = config.whatsapp_url && httpsUrl(config.whatsapp_url);
@@ -531,12 +602,13 @@
     }
     panel.appendChild(form);
 
+    root.appendChild(backdrop);
     root.appendChild(panel);
     root.appendChild(launcher);
     shadow.appendChild(root);
     document.body.appendChild(host);
 
-    refs = { panel: panel, launcher: launcher, log: log, input: input, send: submit };
+    refs = { panel: panel, backdrop: backdrop, launcher: launcher, close: close, expand: expand, log: log, input: input, send: submit };
     render();
   }
 
@@ -547,17 +619,18 @@
   var SEND_ICON = 'M3 20.5v-6.2l12-2.3-12-2.3V3.5L22 12z';
 
   var CSS = [
-    ':host{all:initial}',
+    ':host{all:initial;--chat-background:#f7f8f7;--chat-surface:#fff;--chat-text:#1f2328;--chat-text-muted:#5b6470;--chat-border:#e3e9e6;--chat-radius:24px}',
     '*{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}',
-    '.root{position:fixed;right:var(--desktop-side);bottom:var(--desktop-bottom);z-index:2147483000;color:#1f2328;font-size:14px;line-height:1.45}',
+    '.root{position:fixed;right:var(--desktop-side);bottom:var(--desktop-bottom);z-index:2147483000;color:var(--chat-text);font-size:14px;line-height:1.45}',
     '@media (min-width:481px){.root.desktop-left{left:var(--desktop-side);right:auto}}',
     'svg{width:24px;height:24px;fill:currentColor;display:block}',
     'button{cursor:pointer;font:inherit}',
     'a:focus-visible,button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}',
-    '.launcher{width:56px;height:56px;border:0;border-radius:50%;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(0,0,0,.25)}',
+    '.launcher{width:56px;height:56px;border:0;border-radius:50%;background:var(--chat-primary);color:var(--chat-primary-contrast);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(0,0,0,.25)}',
     '.launcher.hidden{display:none}',
-    '.panel{display:none;flex-direction:column;width:370px;height:560px;max-height:calc(100vh - var(--desktop-bottom) - 20px);background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 18px 55px rgba(24,35,42,.22)}',
+    '.panel{display:none;flex-direction:column;width:400px;max-width:calc(100vw - 40px);height:600px;max-height:calc(100vh - var(--desktop-bottom) - 20px);background:var(--chat-surface);border-radius:var(--chat-radius);overflow:hidden;box-shadow:0 18px 55px rgba(24,35,42,.22)}',
     '.panel.open{display:flex}',
+    '.backdrop,.sheet-handle{display:none}',
     '.header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px;background:var(--accent);color:var(--on-accent)}',
     '.identity{display:flex;align-items:center;gap:10px;min-width:0}',
     '.identity-text{min-width:0}',
@@ -571,7 +644,7 @@
     '.reset:hover,.close:hover{background:rgba(255,255,255,.14)}',
     '.close{width:32px;height:32px;padding:4px;border:0;border-radius:8px;background:transparent;color:inherit;flex:none}',
     '.close:focus-visible{outline-color:var(--on-accent)}',
-    '.log{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:20px 16px;background:#f7f8f7;display:flex;flex-direction:column;gap:12px}',
+    '.log{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:20px 16px;background:var(--chat-background);display:flex;flex-direction:column;gap:12px}',
     '.starters{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 4px}',
     '.starters-label{width:100%;font-size:12px;color:#78837f}',
     '.starter{padding:9px 12px;border:1px solid #dce5e1;border-radius:12px;background:#fff;color:#34443f;font-size:13px;text-align:left}',
@@ -606,12 +679,13 @@
     '@media (prefers-reduced-motion:reduce){.typing span{animation:none}}',
     '.footer-link{display:block;padding:7px 12px;text-align:center;font-size:12px;color:#5b6470;background:#fff;border-top:1px solid #e6e8eb;text-decoration:underline}',
     '.composer{display:flex;align-items:flex-end;gap:8px;padding:12px 14px;background:#fff;border-top:1px solid #edf0ee}',
-    '.input{flex:1;min-width:0;resize:none;max-height:96px;padding:10px 12px;border:1px solid #e3e9e6;border-radius:13px;font-size:14px;line-height:1.4;color:#1f2328;background:#f8faf9}',
+    '.input{flex:1;min-width:0;resize:none;max-height:96px;padding:10px 12px;border:1px solid var(--chat-border);border-radius:13px;font-size:14px;line-height:1.4;color:#1f2328;background:#f8faf9}',
     '.send{width:40px;height:40px;padding:10px;border:0;border-radius:13px;background:var(--accent);color:var(--on-accent);flex:none}',
     '.send svg{width:20px;height:20px}',
     '.send:disabled{opacity:.5;cursor:default}',
-    // Full screen on phones. 16px input text stops iOS zooming in on focus.
-    '@media (max-width:480px){.root{right:var(--mobile-side);bottom:var(--mobile-bottom)}.root.mobile-left{left:var(--mobile-side);right:auto}.root.mobile-right{left:auto;right:var(--mobile-side)}.panel.open{position:fixed;inset:0;width:100%;height:100%;max-height:none;border-radius:0}.input{font-size:16px}.composer{padding-bottom:max(10px,env(safe-area-inset-bottom))}}',
+    // The launcher follows merchant offsets; the open sheet follows the visual viewport.
+    '@media (max-width:480px){.root{right:var(--mobile-side);bottom:var(--mobile-bottom)}.root.mobile-left{left:var(--mobile-side);right:auto}.root.mobile-right{left:auto;right:var(--mobile-side)}.backdrop.open{display:block;position:fixed;inset:0;background:rgba(17,24,39,.35)}.panel.open{position:fixed;inset:auto 0 var(--keyboard-inset,0px);width:100%;max-width:none;height:var(--drag-height,calc(var(--visible-height,100dvh) * .5));max-height:var(--visible-height,100dvh);border-radius:var(--chat-radius) var(--chat-radius) 0 0;transition:height .24s ease}.panel.open.expanded{height:var(--drag-height,var(--visible-height,100dvh));border-radius:0}.panel.dragging{transition:none}.sheet-handle{display:block;position:relative;flex:none;width:100%;height:24px;border:0;background:var(--chat-surface);touch-action:none}.sheet-handle:after{content:"";position:absolute;top:10px;left:calc(50% - 18px);width:36px;height:4px;border-radius:4px;background:#c5ccc9}.header{flex:none;padding:2px 16px 10px;background:var(--chat-surface);color:var(--chat-text)}.avatar{width:38px;height:38px;background:#e8f4ee;color:var(--accent)}.subtitle{color:var(--chat-text-muted)}.reset:hover,.close:hover{background:#f0f4f2}.close:focus-visible{outline-color:var(--accent)}.log{padding:12px 16px;background:var(--chat-surface);gap:10px}.log>.row:first-child{max-width:100%}.log>.row:first-child .bubble{padding:0;border:0;box-shadow:none;border-radius:0}.starters{flex-direction:column;flex-wrap:nowrap}.starters-label{font-weight:600;color:#34443f}.starter{width:100%}.input,.country-input,.phone-input{font-size:16px}.composer{flex:none;padding-bottom:max(10px,env(safe-area-inset-bottom))}.footer-link{flex:none}}',
+    '@media (prefers-reduced-motion:reduce){.panel.open{transition:none}}',
   ].join('');
 
   // A wrong key or unlisted site gets a 404 with no CORS headers, which the
