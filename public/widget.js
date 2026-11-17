@@ -203,10 +203,31 @@
       row.appendChild(phoneForm);
     }
 
-    (item.products || []).forEach(function (product) {
-      var card = renderProduct(product);
-      if (card) row.appendChild(card);
-    });
+    var cards = (item.products || []).map(renderProduct).filter(Boolean);
+    if (cards.length) {
+      row.classList.add('has-products');
+      var productSection = el('div', 'product-section');
+      var productList = el('div', 'product-list');
+      productList.setAttribute('role', 'region');
+      productList.setAttribute('aria-label', 'Recommended products');
+      productList.setAttribute('tabindex', '0');
+      cards.forEach(function (card) { productList.appendChild(card); });
+      productSection.appendChild(productList);
+      if (cards.length > 1) {
+        var productNav = el('div', 'product-nav');
+        [['Previous products', '‹', -1], ['Next products', '›', 1]].forEach(function (control) {
+          var button = el('button', 'product-nav-button', control[1]);
+          button.type = 'button';
+          button.setAttribute('aria-label', control[0]);
+          button.addEventListener('click', function () {
+            productList.scrollBy({ left: control[2] * 200, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+          });
+          productNav.appendChild(button);
+        });
+        productSection.appendChild(productNav);
+      }
+      row.appendChild(productSection);
+    }
 
     var whatsapp = item.whatsappUrl && httpsUrl(item.whatsappUrl);
     if (whatsapp) {
@@ -332,6 +353,14 @@
     return match ? match[1].toLowerCase() : null;
   }
 
+  function currentVariantId() {
+    if (!currentProductHandle()) return null;
+    var form = document.querySelector('form[action*="/cart/add"]');
+    var field = form && form.querySelector('[name="id"]');
+    var id = (field && field.value) || new URLSearchParams(window.location.search).get('variant');
+    return id && /^[1-9][0-9]{0,19}$/.test(id) ? id : null;
+  }
+
   function send(raw) {
     var text = String(raw || '').trim().slice(0, MAX_INPUT);
     if (!text || sending) return;
@@ -346,7 +375,7 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'omit',
-      body: JSON.stringify({ messages: transcript(), session_key: sessionKey, product_handle: currentProductHandle() }),
+      body: JSON.stringify({ messages: transcript(), session_key: sessionKey, product_handle: currentProductHandle(), variant_id: currentVariantId() }),
     })
       .then(function (response) {
         return response.json().then(function (body) {
@@ -652,7 +681,7 @@
     '@media (min-width:481px){.root.desktop-left{left:var(--desktop-side);right:auto}}',
     'svg{width:24px;height:24px;fill:currentColor;display:block}',
     'button{cursor:pointer;font:inherit}',
-    'a:focus-visible,button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}',
+    'a:focus-visible,button:focus-visible,textarea:focus-visible,.product-list:focus-visible{outline:2px solid var(--accent);outline-offset:2px}',
     '.launcher{width:56px;height:56px;border:0;border-radius:50%;background:var(--chat-primary);color:var(--chat-primary-contrast);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(0,0,0,.25)}',
     '.launcher.hidden{display:none}',
     '.panel{display:none;flex-direction:column;width:400px;max-width:calc(100vw - 40px);height:600px;max-height:calc(100vh - var(--desktop-bottom) - 20px);background:var(--chat-surface);border-radius:var(--chat-radius);overflow:hidden;box-shadow:0 18px 55px rgba(24,35,42,.22)}',
@@ -682,9 +711,15 @@
     '.bubble{padding:11px 14px;border-radius:16px 16px 16px 5px;white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;border:1px solid #e8eeeb;box-shadow:0 2px 8px rgba(30,50,40,.03)}',
     '.row-user .bubble{background:var(--accent);color:var(--on-accent);border-color:transparent;border-radius:16px 16px 5px 16px}',
     '.inline-link{color:inherit;text-decoration:underline}',
-    '.product{display:flex;gap:10px;width:100%;min-width:240px;padding:8px;background:#fff;border:1px solid #e6e8eb;border-radius:12px;color:inherit;text-decoration:none}',
+    '.row.has-products{width:100%;max-width:100%;min-width:0}',
+    '.product-section{width:100%;min-width:0}',
+    '.product-list{display:flex;gap:10px;width:100%;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;padding:3px 3px 8px;scrollbar-width:thin;scrollbar-color:#bac8c0 transparent}',
+    '.product{display:flex;flex-direction:column;flex:0 0 172px;width:172px;min-width:0;gap:8px;padding:8px;background:#fff;border:1px solid #e6e8eb;border-radius:12px;color:inherit;text-decoration:none;scroll-snap-align:start}',
+    '.product-nav{display:flex;justify-content:flex-end;gap:6px;padding-top:3px}',
+    '.product-nav-button{display:grid;place-items:center;width:30px;height:30px;border:1px solid #dce5e1;border-radius:50%;background:#fff;color:#34443f;font-size:22px;line-height:1}',
+    '.product-nav-button:hover{border-color:var(--accent)}',
     '.product:hover{border-color:var(--accent)}',
-    '.product-image{width:64px;height:64px;object-fit:cover;border-radius:8px;flex:none;background:#eef0f2}',
+    '.product-image{width:100%;height:120px;object-fit:cover;border-radius:8px;flex:none;background:#eef0f2}',
     '.product-body{display:flex;flex-direction:column;min-width:0;gap:1px}',
     '.product-title{font-weight:600;overflow-wrap:anywhere}',
     '.product-variant{color:#5b6470;font-size:13px}',

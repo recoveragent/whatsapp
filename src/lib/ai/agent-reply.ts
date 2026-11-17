@@ -1,3 +1,4 @@
+import type { CurrentProduct } from '@/lib/website-widget/current-product';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ShopifyCatalogProduct } from '@/lib/shopify/product-store';
 import type { AiConfig, AiUsage, ChatMessage } from './types';
@@ -46,7 +47,7 @@ export interface AgentReplyArgs {
   /** Where the customer is chatting. Defaults to WhatsApp. */
   channel?: 'whatsapp' | 'website';
   /** Verified current storefront product, or null if lookup was unavailable. */
-  currentProduct?: { title: string; description: string } | null;
+  currentProduct?: CurrentProduct | null;
   brandCategory?: 'lead_gen' | 'ecommerce';
 }
 
