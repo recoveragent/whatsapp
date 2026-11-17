@@ -54,7 +54,9 @@
   function loadItems() {
     try {
       var saved = JSON.parse(sessionStorage.getItem(storageKey) || '[]');
-      return Array.isArray(saved) ? saved : [];
+      return Array.isArray(saved) ? saved.filter(function (item, index) {
+        return !item.phonePrompt || item.saved || (index > 0 && saved[index - 1].handoff);
+      }) : [];
     } catch {
       return [];
     }
@@ -370,7 +372,7 @@
           whatsappUrl: body.handoff ? body.whatsapp_url : null,
           handoff: Boolean(body.handoff),
         });
-        if (!items.some(function (item) { return item.phonePrompt; })) {
+        if (body.handoff && !items.some(function (item) { return item.phonePrompt; })) {
           items.push({ role: 'assistant', phonePrompt: true, content: 'For a WhatsApp follow-up, you can share your mobile number.' });
         }
       })
