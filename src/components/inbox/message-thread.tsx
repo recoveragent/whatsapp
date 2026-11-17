@@ -1276,6 +1276,7 @@ export function MessageThread({
   const senderLabelFor = useCallback(
     (m: Message): string => {
       if (m.sender_type === 'customer') return contactDisplayName;
+      if (m.ai_generated) return 'AI Agent';
       if (m.sender_type === 'bot') return 'Automation';
       if (m.sender_id) {
         const name = displayNameForUser(m.sender_id);
