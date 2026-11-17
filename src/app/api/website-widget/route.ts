@@ -6,11 +6,15 @@ import {
 } from '@/lib/website-widget/config';
 
 const SETTINGS_COLUMNS =
-  'public_key, enabled, desktop_position, mobile_position, allowed_domains, title, greeting, avatar_url, show_whatsapp_link, suggested_questions, accent_color, whatsapp_number, daily_reply_limit, replies_today, replies_day';
+  'public_key, enabled, desktop_side_offset, desktop_bottom_offset, mobile_side_offset, mobile_bottom_offset, desktop_position, mobile_position, allowed_domains, title, greeting, avatar_url, show_whatsapp_link, suggested_questions, accent_color, whatsapp_number, daily_reply_limit, replies_today, replies_day';
 
 interface SettingsRow {
   public_key: string;
   enabled: boolean;
+  desktop_side_offset: number;
+  desktop_bottom_offset: number;
+  mobile_side_offset: number;
+  mobile_bottom_offset: number;
   desktop_position: 'left' | 'right';
   mobile_position: 'left' | 'right';
   allowed_domains: string[];
@@ -71,6 +75,15 @@ export async function PATCH(request: Request) {
     if (!['left', 'right'].includes(desktopPosition) || !['left', 'right'].includes(mobilePosition))
       return invalid('Invalid chat bubble position');
 
+    const offsets = {
+      desktop_side_offset: body.desktop_side_offset ?? 20,
+      desktop_bottom_offset: body.desktop_bottom_offset ?? 20,
+      mobile_side_offset: body.mobile_side_offset ?? 16,
+      mobile_bottom_offset: body.mobile_bottom_offset ?? 16,
+    };
+    if (Object.values(offsets).some((offset) => !Number.isInteger(offset) || (offset as number) < 0 || (offset as number) > 200))
+      return invalid('Bubble offsets must be whole numbers from 0 to 200 pixels');
+
     if (!Array.isArray(body.allowed_domains)) return invalid('Invalid request');
     const domains = new Set<string>();
     for (const raw of body.allowed_domains) {
@@ -127,6 +140,7 @@ export async function PATCH(request: Request) {
         {
           account_id: accountId,
           enabled: body.enabled,
+          ...offsets,
           desktop_position: desktopPosition,
           mobile_position: mobilePosition,
           allowed_domains: [...domains],

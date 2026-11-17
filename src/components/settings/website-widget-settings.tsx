@@ -22,6 +22,10 @@ import { uploadAccountMedia } from '@/lib/storage/upload-media';
 
 interface WidgetForm {
   enabled: boolean;
+  desktop_side_offset: number;
+  desktop_bottom_offset: number;
+  mobile_side_offset: number;
+  mobile_bottom_offset: number;
   desktop_position: 'left' | 'right';
   mobile_position: 'left' | 'right';
   domains: string;
@@ -38,6 +42,10 @@ interface WidgetForm {
 interface WidgetSettings {
   public_key: string;
   enabled: boolean;
+  desktop_side_offset: number;
+  desktop_bottom_offset: number;
+  mobile_side_offset: number;
+  mobile_bottom_offset: number;
   desktop_position: 'left' | 'right';
   mobile_position: 'left' | 'right';
   allowed_domains: string[];
@@ -54,6 +62,10 @@ interface WidgetSettings {
 
 const DEFAULT_FORM: WidgetForm = {
   enabled: false,
+  desktop_side_offset: 20,
+  desktop_bottom_offset: 20,
+  mobile_side_offset: 16,
+  mobile_bottom_offset: 16,
   desktop_position: 'right',
   mobile_position: 'right',
   domains: '',
@@ -61,7 +73,7 @@ const DEFAULT_FORM: WidgetForm = {
   greeting: 'Hi! How can we help you today?',
   avatar_url: '',
   show_whatsapp_link: true,
-  suggested_questions: ['Help me find something', 'I have a question'],
+  suggested_questions: ['Track my order', 'Product information', 'Delivery & shipping'],
   accent_color: '#128C7E',
   whatsapp_number: '',
   daily_reply_limit: 500,
@@ -70,6 +82,10 @@ const DEFAULT_FORM: WidgetForm = {
 function toForm(settings: WidgetSettings): WidgetForm {
   return {
     enabled: settings.enabled,
+    desktop_side_offset: settings.desktop_side_offset ?? 20,
+    desktop_bottom_offset: settings.desktop_bottom_offset ?? 20,
+    mobile_side_offset: settings.mobile_side_offset ?? 16,
+    mobile_bottom_offset: settings.mobile_bottom_offset ?? 16,
     desktop_position: settings.desktop_position ?? 'right',
     mobile_position: settings.mobile_position ?? 'right',
     domains: settings.allowed_domains.join('\n'),
@@ -132,6 +148,10 @@ export function WebsiteWidgetSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           enabled: form.enabled,
+          desktop_side_offset: form.desktop_side_offset,
+          desktop_bottom_offset: form.desktop_bottom_offset,
+          mobile_side_offset: form.mobile_side_offset,
+          mobile_bottom_offset: form.mobile_bottom_offset,
           desktop_position: form.desktop_position,
           mobile_position: form.mobile_position,
           allowed_domains: form.domains
@@ -234,13 +254,23 @@ export function WebsiteWidgetSettings() {
 
               <fieldset className="space-y-3 rounded-lg border border-border p-3">
                 <legend className="px-1 text-sm font-medium">Chat bubble position</legend>
-                <p className="text-xs text-muted-foreground">Choose which bottom corner displays the chat bubble on each device.</p>
+                <p className="text-xs text-muted-foreground">Choose a bottom corner and its distance from the edges (0-200 px).</p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {(['desktop', 'mobile'] as const).map((device) => {
                     const field = `${device}_position` as const;
                     return <div key={device} className="space-y-2"><p className="text-sm font-medium capitalize">{device}</p><div className="flex gap-2">
                       {(['left', 'right'] as const).map((position) => <label key={position} className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm capitalize ${form[field] === position ? 'border-primary bg-primary/10 text-primary' : 'border-border'} ${disabled ? 'cursor-default opacity-60' : ''}`}><input type="radio" name={field} value={position} checked={form[field] === position} disabled={disabled} onChange={() => update(field, position)} />{position}</label>)}
-                    </div></div>;
+                    </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(['side', 'bottom'] as const).map((edge) => {
+                          const offsetField = `${device}_${edge}_offset` as const;
+                          return <div key={edge} className="space-y-1.5">
+                            <Label htmlFor={`widget-${offsetField}`}>{edge === 'side' ? 'From side' : 'From bottom'} (px)</Label>
+                            <Input id={`widget-${offsetField}`} type="number" min={0} max={200} step={1} value={form[offsetField]} disabled={disabled} onChange={(event) => update(offsetField, event.target.value === '' ? 0 : Number(event.target.value))} />
+                          </div>;
+                        })}
+                      </div>
+                    </div>;
                   })}
                 </div>
               </fieldset>
@@ -316,6 +346,21 @@ export function WebsiteWidgetSettings() {
                 </div>)}
                 <Button type="button" variant="outline" size="sm" disabled={disabled || form.suggested_questions.length >= 5} onClick={() => update('suggested_questions', [...form.suggested_questions, ''])}>Add question</Button>
               </div>
+              <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3" aria-label="Widget preview">
+                <p className="text-sm font-medium">Widget preview</p>
+                <div className="max-w-sm overflow-hidden rounded-xl border border-border bg-background shadow-sm">
+                  <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+                    {form.avatar_url ? <img src={form.avatar_url} alt="" className="size-9 rounded-full object-cover" /> : <span className="grid size-9 place-items-center rounded-full bg-muted text-lg">✦</span>}
+                    <div><p className="text-sm font-medium">{form.title || 'Chat with us'}</p><p className="text-xs text-muted-foreground">Your virtual assistant</p></div>
+                  </div>
+                  <div className="space-y-2 p-3 text-sm">
+                    <p className="whitespace-pre-wrap">{form.greeting || 'Hi! 👋 How can we help you today?'}</p>
+                    {form.suggested_questions.filter(Boolean).map((question, index) => <div key={index} className="rounded-lg border border-border px-3 py-2 text-xs">{question}</div>)}
+                    <div className="flex items-center gap-2 pt-1"><span className="flex-1 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">Ask me anything...</span><span className="size-8 rounded-lg" style={{ backgroundColor: /^#[0-9a-f]{6}$/i.test(form.accent_color) ? form.accent_color : '#128C7E' }} /></div>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex items-center justify-between gap-4 rounded-lg border border-border px-3 py-3">
                 <div className="space-y-1"><Label htmlFor="widget-whatsapp-link">Show WhatsApp link</Label><p className="text-xs text-muted-foreground">Show the WhatsApp link at the bottom of the chat.</p></div>
                 <Switch id="widget-whatsapp-link" checked={form.show_whatsapp_link} disabled={disabled} onCheckedChange={(checked) => update('show_whatsapp_link', checked)} />
