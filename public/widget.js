@@ -37,6 +37,7 @@
   var sending = false;
   var sessionVersion = 0;
   var refs = {};
+  var historyMarker = '__chatWidgetOpen';
 
   function loadSessionKey(forceNew) {
     var storageName = storageKey + ':session';
@@ -408,7 +409,21 @@
     refs.log.scrollTop = refs.log.scrollHeight;
   }
 
-  function setOpen(open) {
+  function setOpen(open, fromHistory) {
+    var wasOpen = refs.panel.classList.contains('open');
+    if (open === wasOpen) return;
+    if (!fromHistory) {
+      if (open) {
+        try {
+          var state = window.history.state;
+          var chatState = state && typeof state === 'object' ? Object.assign({}, state) : {};
+          chatState[historyMarker] = true;
+          window.history.pushState(chatState, '', window.location.href);
+        } catch { /* Chat remains usable if the browser blocks history changes. */ }
+      } else if (window.history.state && window.history.state[historyMarker]) {
+        window.history.back();
+      }
+    }
     refs.panel.classList.toggle('open', open);
     refs.backdrop.classList.toggle('open', open);
     refs.launcher.classList.toggle('hidden', open);
@@ -422,6 +437,10 @@
       refs.launcher.focus();
     }
   }
+
+  window.addEventListener('popstate', function () {
+    if (refs.panel && refs.panel.classList.contains('open')) setOpen(false, true);
+  });
 
   function icon(path) {
     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
