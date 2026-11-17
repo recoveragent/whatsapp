@@ -323,6 +323,12 @@
     }).then(function () { button.disabled = false; });
   }
 
+  // Only send the product handle, never a URL or its query string.
+  function currentProductHandle() {
+    var match = window.location.pathname.match(/(?:^|\/)products\/([a-z0-9][a-z0-9-]{0,254})\/?$/i);
+    return match ? match[1].toLowerCase() : null;
+  }
+
   function send(raw) {
     var text = String(raw || '').trim().slice(0, MAX_INPUT);
     if (!text || sending) return;
@@ -337,7 +343,7 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'omit',
-      body: JSON.stringify({ messages: transcript(), session_key: sessionKey }),
+      body: JSON.stringify({ messages: transcript(), session_key: sessionKey, product_handle: currentProductHandle() }),
     })
       .then(function (response) {
         return response.json().then(function (body) {

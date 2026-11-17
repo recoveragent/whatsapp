@@ -15,11 +15,12 @@ export const TRAINING_SHOP_PRODUCTS_QUERY = `query TrainingShopProducts {
   }
 }`;
 
-async function queryShop<T>(
+export async function queryShop<T>(
   domain: string,
   token: string,
   query: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  variables?: Record<string, unknown>
 ): Promise<T> {
   const response = await fetch(
     `https://${domain}/admin/api/${TRAINING_SHOPIFY_API_VERSION}/graphql.json`,
@@ -32,7 +33,7 @@ async function queryShop<T>(
         'X-Shopify-Access-Token': token,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query, ...(variables ? { variables } : {}) }),
     }
   );
   if (!response.ok)

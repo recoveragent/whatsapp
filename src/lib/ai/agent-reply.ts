@@ -45,6 +45,8 @@ export interface AgentReplyArgs {
   flowGoal?: string | null;
   /** Where the customer is chatting. Defaults to WhatsApp. */
   channel?: 'whatsapp' | 'website';
+  /** Verified current storefront product, or null if lookup was unavailable. */
+  currentProduct?: { title: string; description: string } | null;
   brandCategory?: 'lead_gen' | 'ecommerce';
 }
 
@@ -89,6 +91,7 @@ export async function generateAgentReply(
     flowGoal,
     channel,
     brandCategory,
+    currentProduct,
   } = args;
 
   const latestQuestion = knowledgeSearchText(messages);
@@ -169,6 +172,7 @@ export async function generateAgentReply(
     brandCategory,
     knowledge,
     shopifyContext,
+    currentProduct,
     productRecommendations,
     productDelivery: hasProductCards ? 'carousel' : 'text',
     productPreferences: wantsProductCarousel

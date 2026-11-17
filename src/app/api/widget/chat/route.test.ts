@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
   generateAgentReply: vi.fn(),
+  loadCurrentProduct: vi.fn(),
   loadAiConfig: vi.fn(),
   logAiUsage: vi.fn(),
   fetchAccount: vi.fn(),
@@ -22,6 +23,10 @@ vi.mock('@/lib/ai/admin-client', () => ({
       return chain;
     },
   }),
+}));
+vi.mock('@/lib/website-widget/current-product', () => ({
+  parseProductHandle: (raw: unknown) => typeof raw === 'string' && /^[a-z0-9-]+$/.test(raw) ? raw : null,
+  loadCurrentProduct: h.loadCurrentProduct,
 }));
 vi.mock('@/lib/ai/agent-reply', () => ({
   generateAgentReply: h.generateAgentReply,
@@ -89,6 +94,7 @@ beforeEach(() => {
   h.loadAiConfig.mockResolvedValue({ provider: 'openai', model: 'test' });
   h.rpc.mockResolvedValue({ data: true, error: null });
   h.generateAgentReply.mockResolvedValue(generated());
+  h.loadCurrentProduct.mockResolvedValue({ title: 'Frame', description: 'Made of oak' });
 });
 
 describe('POST /api/widget/chat', () => {
@@ -98,6 +104,13 @@ describe('POST /api/widget/chat', () => {
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe(ORIGIN);
     expect(res.headers.get('Access-Control-Allow-Credentials')).toBeNull();
     expect((await res.json()).reply).toBe('We open at 9.');
+  });
+
+  it('passes the current page product to the correct account agent', async () => {
+    const body = JSON.stringify({ messages: [{ role: 'user', content: 'What material is this?' }], product_handle: 'oak-frame' });
+    expect((await POST(request({ body }))).status).toBe(200);
+    expect(h.loadCurrentProduct).toHaveBeenCalledWith(expect.anything(), 'acct-1', 'oak-frame');
+    expect(h.generateAgentReply.mock.calls[0][0].currentProduct).toEqual({ title: 'Frame', description: 'Made of oak' });
   });
 
   it('never gives the agent a contact, so order data is unreachable', async () => {
