@@ -66,11 +66,12 @@ export async function PUT(request: Request) {
       .or('config->>provider.eq.razorpay,config->>provider.is.null')
       .in('status', ['creating', 'pending']);
     if (pendingError) throw pendingError;
-    if (count)
+    if (count && body.replaceWithPending !== true)
       return NextResponse.json(
         {
           error:
             'Finish pending payment collections before replacing the connection.',
+          code: 'pending_collections',
         },
         { status: 409 }
       );

@@ -45,7 +45,7 @@ function PaymentConnection({
       .then(async (r) => {
         const data = await r.json();
         if (!r.ok)
-          throw new Error(data.error || 'Could not load Razorpay connection.');
+          throw new Error(data.error || `Could not load ${label} connection.`);
         if (mounted) {
           setConnection(data);
           setKeyId(data.keyId);
@@ -58,27 +58,38 @@ function PaymentConnection({
     return () => {
       mounted = false;
     };
-  }, [provider]);
-  async function connect() {
+  }, [provider, label]);
+  async function connect(replaceWithPending = false) {
     setBusy(true);
     setError('');
     try {
       const response = await fetch(`/api/payments/${provider}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyId, keySecret, webhookSecret, environment }),
+        body: JSON.stringify({ keyId, keySecret, webhookSecret, environment, replaceWithPending }),
       });
       const result = await response.json();
+      if (response.status === 409 && result.code === 'pending_collections') {
+        if (window.confirm(
+          `There are pending ${label} payment collections. Replacing this connection may prevent existing payment links from being checked and their payments from being recorded automatically. Replace the connection anyway?`
+        )) {
+          await connect(true);
+        }
+        return;
+      }
       if (!response.ok)
-        throw new Error(result.error || 'Could not connect Razorpay.');
+        throw new Error(result.error || `Could not connect ${label}.`);
       setConnection((previous) =>
-        previous ? { ...previous, connected: true, keyId, keySecretMask: maskSecret(keySecret.trim()), webhookSecretMask: maskSecret(webhookSecret.trim()) } : previous
+        previous ? { ...previous, connected: true, keyId: keyId.trim(), keySecretMask: maskSecret(keySecret.trim()), webhookSecretMask: maskSecret(webhookSecret.trim()) } : previous
       );
+      setKeyId(keyId.trim());
       setKeySecret('');
       setWebhookSecret('');
       toast.success(`${label} connected for this brand.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Connection failed.');
+      const message = err instanceof Error ? err.message : 'Connection failed.';
+      setError(message);
+      toast.error(`${label} connection was not saved. ${message}`);
     } finally {
       setBusy(false);
     }
@@ -98,7 +109,7 @@ function PaymentConnection({
               : 'Loading…'}
         </span>
       </div>
-      {error && (
+      {error && !connection && (
         <p role="alert" className="text-destructive text-xs">
           {error}
         </p>
@@ -123,6 +134,11 @@ function PaymentConnection({
                 autoComplete="off"
                 placeholder={cashfree ? 'Cashfree App ID' : 'rzp_live_…'}
               />
+              {connection.connected && keyId.trim() !== connection.keyId && (
+                <span className="text-muted-foreground">
+                  Unsaved change · currently connected key: {connection.keyId}
+                </span>
+              )}
             </label>
             <label className="block text-xs">
               {cashfree ? 'Secret Key' : 'Key Secret'}
@@ -169,6 +185,12 @@ function PaymentConnection({
             <p className="bg-muted rounded p-2 text-xs break-all select-all">
               {connection.webhookUrl}
             </p>
+            {error && (
+              <p role="alert" className="text-destructive text-xs">
+                Connection not saved. {error}{' '}
+                {connection.connected && 'The existing connection remains active.'}
+              </p>
+            )}
             <Button
               type="button"
               size="sm"
