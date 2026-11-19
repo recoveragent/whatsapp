@@ -1,5 +1,6 @@
 import { recordDeliveryStatus } from '@/lib/whatsapp/delivery-diagnostics'
 import { acceptRecovery, handleRecoveryStatus, isRecoveryPayload } from '@/lib/whatsapp/smart-retry'
+import { handleRateLimitStatus } from '@/lib/whatsapp/rate-limit-retry'
 import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
@@ -318,6 +319,11 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }, delivery
             await handleRecoveryStatus(supabaseAdmin(), value.metadata.phone_number_id, status)
           } catch (error) {
             console.error('[smart-retry] status processing failed:', error)
+          }
+          try {
+            await handleRateLimitStatus(supabaseAdmin(), value.metadata.phone_number_id, status)
+          } catch (error) {
+            console.error('[rate-limit-retry] status processing failed:', error)
           }
         }
       }

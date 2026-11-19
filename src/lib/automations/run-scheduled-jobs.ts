@@ -8,6 +8,7 @@ import { processDueCadences } from '@/lib/leads/engine'
 import { pollLeadSources } from '@/lib/leads/poll-sources'
 import { processDueAbandonedCheckouts } from '@/lib/shopify/handle-webhook'
 import { processScheduledBroadcasts } from '@/lib/whatsapp/broadcast-scheduled'
+import { processDueRateLimitRetries } from '@/lib/whatsapp/rate-limit-retry'
 
 export interface ScheduledAutomationJobsResult {
   processed: number
@@ -19,6 +20,7 @@ export interface ScheduledAutomationJobsResult {
   flow_outbound_reconciliation: unknown
   errors: string[]
   broadcasts: number
+  rate_limit_retries: number
 }
 
 function settledValue<T>(
@@ -91,6 +93,7 @@ export async function runScheduledAutomationJobs(): Promise<ScheduledAutomationJ
     abandonedCheckoutsResult,
     flowOutboundReconciliationResult,
     broadcastsResult,
+    rateLimitRetriesResult,
   ] = await Promise.allSettled([
     pollGoogleSheetFlows(admin),
     pollLeadSources(admin),
@@ -99,6 +102,7 @@ export async function runScheduledAutomationJobs(): Promise<ScheduledAutomationJ
     processDueAbandonedCheckouts(admin),
     reconcileRecentFlowOutboundMessages({ db: admin }),
     processScheduledBroadcasts(admin),
+    processDueRateLimitRetries(admin),
   ])
 
   return {
@@ -117,5 +121,7 @@ export async function runScheduledAutomationJobs(): Promise<ScheduledAutomationJ
     ),
     errors,
     broadcasts: settledValue(broadcastsResult, 'broadcasts', errors) ?? 0,
+    rate_limit_retries:
+      settledValue(rateLimitRetriesResult, 'rate_limit_retries', errors) ?? 0,
   }
 }

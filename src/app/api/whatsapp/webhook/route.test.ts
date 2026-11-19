@@ -34,6 +34,9 @@ const h = vi.hoisted(() => ({
   },
 }))
 
+vi.mock('@/lib/whatsapp/rate-limit-retry', () => ({
+  handleRateLimitStatus: vi.fn(),
+}))
 vi.mock('@/lib/whatsapp/smart-retry', () => ({
   acceptRecovery: h.acceptRecovery,
   handleRecoveryStatus: vi.fn(),

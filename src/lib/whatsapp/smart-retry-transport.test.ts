@@ -4,6 +4,9 @@ import { sendTemplateMessage } from './recoverable-template-send';
 import { trackRecoverableTemplate } from './smart-retry';
 
 vi.mock('./smart-retry', () => ({ trackRecoverableTemplate: vi.fn() }));
+vi.mock('./rate-limit-retry', () => ({
+  trackTemplateForRateLimitRetry: vi.fn(),
+}));
 
 const args = {
   phoneNumberId: 'number',

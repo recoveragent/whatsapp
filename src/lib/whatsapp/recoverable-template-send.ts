@@ -6,6 +6,7 @@ import {
   type MetaSendResult,
 } from './meta-api';
 import { trackRecoverableTemplate } from './smart-retry';
+import { trackTemplateForRateLimitRetry } from './rate-limit-retry';
 
 async function record(
   args: SendTemplateMessageArgs,
@@ -27,6 +28,16 @@ async function record(
   } catch (error) {
     // An already accepted send must never become a caller-visible send failure.
     console.error('[smart-retry] unable to record template send:', error);
+  }
+  if (!messageId) return;
+  try {
+    await trackTemplateForRateLimitRetry(
+      args.phoneNumberId,
+      buildTemplateMessagePayload(args),
+      messageId
+    );
+  } catch (error) {
+    console.error('[rate-limit-retry] unable to record template send:', error);
   }
 }
 
