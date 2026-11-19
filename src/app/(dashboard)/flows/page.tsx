@@ -19,6 +19,7 @@ import {
   FileText,
   ClipboardList,
   Bot,
+  ChevronDown,
 } from "lucide-react";
 
 import { useTranslations } from "next-intl";
@@ -29,7 +30,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -134,7 +134,7 @@ export default function FlowsPage() {
   }, []);
 
   async function handleCreate() {
-    if (!newName.trim()) return;
+    if (!newName.trim() || creating) return;
     setCreating(true);
     try {
       const res = await fetch("/api/flows", {
@@ -282,11 +282,7 @@ export default function FlowsPage() {
       )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        {/* `sm:max-w-4xl` not `max-w-4xl` — shadcn's DialogContent has
-            `sm:max-w-sm` baked into its default classes. Without the
-            sm: prefix our override applies at base only and the
-            sm-scoped 384px wins at every real desktop breakpoint. */}
-        <DialogContent className="sm:max-w-4xl bg-popover text-popover-foreground">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto bg-popover text-popover-foreground sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{t("createTitle")}</DialogTitle>
             <DialogDescription className="text-muted-foreground">
@@ -294,12 +290,34 @@ export default function FlowsPage() {
             </DialogDescription>
           </DialogHeader>
 
+          <form
+            className="flex flex-col gap-3 sm:flex-row"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleCreate();
+            }}
+          >
+            <Input
+              aria-label={t("placeholderName")}
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder={t("placeholderName")}
+              className="bg-muted"
+              disabled={creating}
+            />
+            <Button type="submit" disabled={!newName.trim() || creating}>
+              {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+              {t("createBlank")}
+            </Button>
+          </form>
+
           {templates.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            <details className="group border-t border-border pt-4">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium text-foreground [&::-webkit-details-marker]:hidden">
                 {t("startTemplate")}
-              </p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {templates.map((template) => {
                   const Icon = TEMPLATE_ICONS[template.icon] ?? FileText;
                   return (
@@ -324,37 +342,8 @@ export default function FlowsPage() {
                   );
                 })}
               </div>
-            </div>
+            </details>
           )}
-
-          <div className="space-y-2 border-t border-border pt-4">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              {t("startBlank")}
-            </p>
-            <Input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder={t("placeholderName")}
-              className="bg-muted"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreate();
-              }}
-            />
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="ghost"
-              onClick={() => setCreateOpen(false)}
-              disabled={creating}
-            >
-              {t("cancel")}
-            </Button>
-            <Button onClick={handleCreate} disabled={!newName.trim() || creating}>
-              {creating && <Loader2 className="h-4 w-4 animate-spin" />}
-              {t("createBlank")}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
