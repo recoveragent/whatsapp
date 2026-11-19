@@ -368,7 +368,18 @@ export function FlowEditorProvider({
   const [dirty, setDirty] = useState(false);
   const setState = useCallback<typeof setStateRaw>((updaterOrValue) => {
     setDirty(true);
-    setStateRaw(updaterOrValue);
+    setStateRaw((previous) => {
+      const next = typeof updaterOrValue === "function"
+        ? updaterOrValue(previous)
+        : updaterOrValue;
+      // Trigger forms can replace their entire config when the type changes.
+      // Canvas placement belongs to the flow, so retain it across those edits.
+      if (previous.trigger_config.canvas_position !== undefined &&
+          next.trigger_config.canvas_position === undefined) {
+        return { ...next, trigger_config: { ...next.trigger_config, canvas_position: previous.trigger_config.canvas_position } };
+      }
+      return next;
+    });
   }, []);
 
   // Cross-view "look here" signal (see FlowEditorContextValue docs).

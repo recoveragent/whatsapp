@@ -518,7 +518,6 @@ function FlowCanvasInner() {
     setState,
     issues,
     updateNodeConfig,
-    updateNodePosition,
     updateNodePositions,
     removeNode,
     duplicateNode,
@@ -614,6 +613,13 @@ function FlowCanvasInner() {
   }, [builderNodes, triggerLinks, triggerNodeHeight]);
 
   const triggerPosition = useMemo(() => {
+    const saved = state.trigger_config.canvas_position;
+    if (saved && typeof saved === "object" &&
+        "x" in saved && "y" in saved &&
+        typeof saved.x === "number" && Number.isFinite(saved.x) &&
+        typeof saved.y === "number" && Number.isFinite(saved.y)) {
+      return { x: saved.x, y: saved.y };
+    }
     const fromLayout = autoLayoutPositions?.get(TRIGGER_NODE_ID);
     if (fromLayout) return fromLayout;
 
@@ -630,7 +636,7 @@ function FlowCanvasInner() {
     }
 
     return { x: 40, y: 40 };
-  }, [autoLayoutPositions, builderNodes, triggerLinks, triggerNodeHeight]);
+  }, [autoLayoutPositions, builderNodes, triggerLinks, triggerNodeHeight, state.trigger_config.canvas_position]);
 
   // If dagre had to place an all-zero flow, persist the generated
   // positions into editor state once. Otherwise the next drag would
@@ -683,7 +689,7 @@ function FlowCanvasInner() {
       id: TRIGGER_NODE_ID,
       type: "trigger",
       position: triggerPosition,
-      draggable: false,
+      draggable: true,
       selectable: true,
       data: {
         label: triggerLabel,
@@ -799,9 +805,21 @@ function FlowCanvasInner() {
   // the drag) keeps state updates cheap on long drags.
   const handleNodeDragStop = useCallback<OnNodeDrag<RfNode>>(
     (_event, node) => {
-      updateNodePosition(node.id, node.position.x, node.position.y);
+      const position = node.id === TRIGGER_NODE_ID ? node.position : triggerPosition;
+      setState((s) => ({
+        ...s,
+        trigger_config: {
+          ...s.trigger_config,
+          canvas_position: { x: Math.round(position.x), y: Math.round(position.y) },
+        },
+        nodes: node.id === TRIGGER_NODE_ID ? s.nodes : s.nodes.map((n) =>
+          n.node_key === node.id
+            ? { ...n, position_x: Math.round(node.position.x), position_y: Math.round(node.position.y) }
+            : n,
+        ),
+      }));
     },
-    [updateNodePosition]
+    [setState, triggerPosition]
   );
 
   // Pan to the flashed node when the validator panel requests one.

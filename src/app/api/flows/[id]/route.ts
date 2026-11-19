@@ -219,6 +219,10 @@ export async function PUT(
     ) {
       cfg = mergeAbandonedCheckoutSkipTriggerConfig(cfg, cfg)
     }
+    // Trigger-specific normalizers may discard editor-only canvas metadata.
+    if (body.trigger_config?.canvas_position !== undefined) {
+      cfg = { ...cfg, canvas_position: body.trigger_config.canvas_position }
+    }
     flowPatch.trigger_config = cfg
   }
   if (body.exit_config !== undefined) flowPatch.exit_config = body.exit_config
