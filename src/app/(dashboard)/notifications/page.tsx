@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { alertCode, alertInGroup, describeAlertGroup, plural } from "@/lib/whatsapp/delivery-alerts";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import type { Notification } from "@/types";
@@ -18,15 +19,36 @@ const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
   whatsapp_disconnected: Unplug,
 };
 
+// `useSearchParams` (the `?code=` deep link from the delivery alerts menu)
+// needs a Suspense boundary or the production build fails.
 export default function NotificationsPage() {
+  return (
+    <Suspense fallback={null}>
+      <NotificationsPageInner />
+    </Suspense>
+  );
+}
+
+/** Readable title for a delivery failure; other notifications keep theirs. */
+function displayTitle(n: Notification): string {
+  return n.type === "message_failed" ? describeAlertGroup(alertCode(n) ?? "other", [n]).title : n.title;
+}
+
+function NotificationsPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { accountId } = useAuth();
   const [notifications, setNotifications] = useState<Notification[] | null>(
     null,
   );
   const [error, setError] = useState<string | null>(null);
   const [markingAll, setMarkingAll] = useState(false);
-  const [filter, setFilter] = useState('all');
+  const codeParam = searchParams.get("code");
+  const [filter, setFilter] = useState(codeParam ? `code:${codeParam}` : "all");
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (codeParam) setFilter(`code:${codeParam}`);
+  }, [codeParam]);
 
   const load = useCallback(async () => {
     if (!accountId) return;
@@ -128,6 +150,42 @@ export default function NotificationsPage() {
   );
 
   const unreadIds = notifications?.filter((n) => !n.read_at).map((n) => n.id) ?? [];
+  const visible = useMemo(
+    () =>
+      (notifications ?? []).filter((n) =>
+        filter === "all" ||
+        (filter.startsWith("code:")
+          ? alertInGroup(n, filter.slice(5))
+          : filter === "unread"
+            ? !n.read_at
+            : filter === "payment"
+              ? alertInGroup(n, "131042")
+              : n.type === filter),
+      ),
+    [notifications, filter],
+  );
+  const codeGroup = filter.startsWith("code:") ? filter.slice(5) : null;
+  const visibleUnread = visible.filter((n) => !n.read_at).map((n) => n.id);
+
+  const markVisibleRead = useCallback(async () => {
+    if (visibleUnread.length === 0) return;
+    const now = new Date().toISOString();
+    const ids = new Set(visibleUnread);
+    setNotifications((prev) => prev?.map((n) => (ids.has(n.id) && !n.read_at ? { ...n, read_at: now } : n)) ?? prev);
+    const supabase = createClient();
+    for (let i = 0; i < visibleUnread.length; i += 100) {
+      const { error: updateErr } = await supabase
+        .from("notifications")
+        .update({ read_at: now })
+        .in("id", visibleUnread.slice(i, i + 100))
+        .is("read_at", null);
+      if (updateErr) {
+        toast.error("Failed to mark notifications as read");
+        load();
+        return;
+      }
+    }
+  }, [visibleUnread, load]);
 
   const markAllRead = useCallback(async () => {
     if (unreadIds.length === 0) return;
@@ -193,8 +251,12 @@ export default function NotificationsPage() {
         </Button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3">
       <label className="flex items-center gap-2 text-sm">Show
-        <select value={filter} onChange={(event) => setFilter(event.target.value)} className="rounded-md border bg-background px-3 py-2">
+        <select value={filter} onChange={(event) => { setFilter(event.target.value); if (codeParam) router.replace("/notifications"); }} className="rounded-md border bg-background px-3 py-2">
+          {codeGroup && (
+            <option value={filter}>{describeAlertGroup(codeGroup, visible).title}</option>
+          )}
           <option value="all">All notifications</option>
           <option value="message_failed">Message failures</option>
           <option value="payment">Meta payment issues</option>
@@ -202,7 +264,19 @@ export default function NotificationsPage() {
           <option value="unread">Unread</option>
         </select>
       </label>
-      {notifications.filter((n) => filter === 'all' || (filter === 'unread' ? !n.read_at : filter === 'payment' ? n.type === 'message_failed' && n.body?.includes('[131042]') : n.type === filter)).length === 0 ? (
+        {filter !== "all" && filter !== "unread" && visibleUnread.length > 0 && (
+          <Button variant="outline" size="sm" onClick={markVisibleRead}>
+            <CheckCheck className="h-4 w-4" />
+            Mark {plural(visibleUnread.length, "shown alert")} as read
+          </Button>
+        )}
+      </div>
+      {codeGroup && visible.length > 0 && (
+        <p className="text-sm text-muted-foreground">
+          {describeAlertGroup(codeGroup, visible).hint}
+        </p>
+      )}
+      {visible.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/40">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
             <Bell className="h-6 w-6 text-primary" />
@@ -216,7 +290,7 @@ export default function NotificationsPage() {
         </div>
       ) : (
         <ul className="space-y-2">
-          {notifications.filter((n) => filter === 'all' || (filter === 'unread' ? !n.read_at : filter === 'payment' ? n.type === 'message_failed' && n.body?.includes('[131042]') : n.type === filter)).map((n) => {
+          {visible.map((n) => {
             const Icon = TYPE_ICON[n.type] ?? Bell;
             const isUnread = !n.read_at;
             return (
@@ -253,7 +327,7 @@ export default function NotificationsPage() {
                           isUnread ? "text-foreground" : "text-muted-foreground",
                         )}
                       >
-                        {n.title}
+                        {displayTitle(n)}
                       </span>
                       {isUnread && (
                         <span
