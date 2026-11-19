@@ -12,6 +12,7 @@ import {
   type AdminFlowPresetView,
 } from '@/lib/flows/admin-flow-preset-store';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { listFlowTemplates } from '@/lib/flows/templates';
 
 /**
  * GET /api/admin/flows
@@ -104,6 +105,13 @@ export async function GET() {
         flows: flowsByBrand[brand.id] ?? [],
       })),
       presets,
+      creationPresets: listFlowTemplates().map((template) => ({
+        slug: template.slug,
+        name: template.name,
+        description: template.description,
+        trigger_type: template.trigger_type,
+        node_count: template.nodes.length,
+      })),
     });
   } catch (err) {
     return toErrorResponse(err);

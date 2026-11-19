@@ -60,6 +60,14 @@ interface PushResultRow {
   flowName?: string;
 }
 
+interface CreationPreset {
+  slug: string;
+  name: string;
+  description: string;
+  trigger_type: string;
+  node_count: number;
+}
+
 function humanizeTrigger(type: string): string {
   return type.replace(/_/g, ' ');
 }
@@ -69,6 +77,7 @@ export function AdminFlowPushPanel() {
   const [loading, setLoading] = useState(true);
   const [brands, setBrands] = useState<BrandFlowOption[]>([]);
   const [presets, setPresets] = useState<AdminFlowPresetView[]>([]);
+  const [creationPresets, setCreationPresets] = useState<CreationPreset[]>([]);
   const [sourceBrandId, setSourceBrandId] = useState('');
   const [sourceFlowId, setSourceFlowId] = useState('');
   const [selectedPresetSlug, setSelectedPresetSlug] = useState<string | null>(
@@ -101,6 +110,7 @@ export function AdminFlowPushPanel() {
       const presetRows = (body.presets ?? []) as AdminFlowPresetView[];
       setBrands(brandRows);
       setPresets(presetRows);
+      setCreationPresets((body.creationPresets ?? []) as CreationPreset[]);
       setSelected(new Set());
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load flows');
@@ -292,6 +302,31 @@ export function AdminFlowPushPanel() {
 
   return (
     <div className="space-y-6">
+      <Card className="border-border">
+        <CardHeader>
+          <CardTitle className="text-base">New flow presets</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            These presets appear in the New flow dialog. They are built into the
+            application and are separate from the global flows below.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {creationPresets.map((preset) => (
+              <div key={preset.slug} className="rounded-lg border border-border p-4">
+                <p className="text-sm font-semibold">{preset.name}</p>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                  {preset.description}
+                </p>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {preset.node_count} {preset.node_count === 1 ? 'node' : 'nodes'} ·{' '}
+                  {humanizeTrigger(preset.trigger_type)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
       <Card className="border-border">
         <CardHeader>
           <CardTitle className="text-base">Save flow from a brand</CardTitle>
