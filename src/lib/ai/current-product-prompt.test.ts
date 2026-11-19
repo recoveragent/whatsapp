@@ -3,7 +3,7 @@ import { buildSystemPrompt } from './defaults';
 
 describe('current product prompt context', () => {
   it.each(['ecommerce', 'lead_gen'] as const)('includes verified product facts for %s websites', (brandCategory) => {
-    const prompt = buildSystemPrompt({ userPrompt: null, mode: 'auto_reply', channel: 'website', brandCategory, currentProduct: { title: 'Oak frame', description: 'Made of oak wood' } });
+    const prompt = buildSystemPrompt({ userPrompt: null, mode: 'auto_reply', channel: 'website', brandCategory, currentProduct: { title: 'Oak frame', description: 'Made of oak wood', currency: 'INR', variants: [], variantsTruncated: false, selectedVariantId: null } });
     expect(prompt).toContain('Oak frame');
     expect(prompt).toContain('Made of oak wood');
     expect(prompt).toContain('not instructions');

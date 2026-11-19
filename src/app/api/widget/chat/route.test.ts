@@ -27,6 +27,7 @@ vi.mock('@/lib/ai/admin-client', () => ({
 vi.mock('@/lib/website-widget/current-product', () => ({
   parseProductHandle: (raw: unknown) => typeof raw === 'string' && /^[a-z0-9-]+$/.test(raw) ? raw : null,
   loadCurrentProduct: h.loadCurrentProduct,
+  parseVariantId: (raw: unknown) => typeof raw === 'string' && /^[1-9][0-9]*$/.test(raw) ? raw : null,
 }));
 vi.mock('@/lib/ai/agent-reply', () => ({
   generateAgentReply: h.generateAgentReply,
@@ -109,7 +110,7 @@ describe('POST /api/widget/chat', () => {
   it('passes the current page product to the correct account agent', async () => {
     const body = JSON.stringify({ messages: [{ role: 'user', content: 'What material is this?' }], product_handle: 'oak-frame' });
     expect((await POST(request({ body }))).status).toBe(200);
-    expect(h.loadCurrentProduct).toHaveBeenCalledWith(expect.anything(), 'acct-1', 'oak-frame');
+    expect(h.loadCurrentProduct).toHaveBeenCalledWith(expect.anything(), 'acct-1', 'oak-frame', null);
     expect(h.generateAgentReply.mock.calls[0][0].currentProduct).toEqual({ title: 'Frame', description: 'Made of oak' });
   });
 

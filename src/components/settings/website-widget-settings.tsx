@@ -31,6 +31,10 @@ interface WidgetForm {
   domains: string;
   title: string;
   greeting: string;
+  launcher_greeting_enabled: boolean;
+  launcher_greeting_text: string;
+  launcher_greeting_delay: number;
+  launcher_indicator: 'dot' | 'number';
   avatar_url: string;
   show_whatsapp_link: boolean;
   suggested_questions: string[];
@@ -51,6 +55,10 @@ interface WidgetSettings {
   allowed_domains: string[];
   title: string;
   greeting: string;
+  launcher_greeting_enabled: boolean;
+  launcher_greeting_text: string;
+  launcher_greeting_delay: number;
+  launcher_indicator: 'dot' | 'number';
   avatar_url: string | null;
   show_whatsapp_link: boolean;
   suggested_questions: string[];
@@ -71,6 +79,10 @@ const DEFAULT_FORM: WidgetForm = {
   domains: '',
   title: 'Chat with us',
   greeting: 'Hi! How can we help you today?',
+  launcher_greeting_enabled: false,
+  launcher_greeting_text: 'Hi! How can I help?',
+  launcher_greeting_delay: 5,
+  launcher_indicator: 'dot',
   avatar_url: '',
   show_whatsapp_link: true,
   suggested_questions: ['Track my order', 'Product information', 'Delivery & shipping'],
@@ -91,6 +103,10 @@ function toForm(settings: WidgetSettings): WidgetForm {
     domains: settings.allowed_domains.join('\n'),
     title: settings.title,
     greeting: settings.greeting,
+    launcher_greeting_enabled: settings.launcher_greeting_enabled ?? false,
+    launcher_greeting_text: settings.launcher_greeting_text ?? 'Hi! How can I help?',
+    launcher_greeting_delay: settings.launcher_greeting_delay ?? 5,
+    launcher_indicator: settings.launcher_indicator ?? 'dot',
     avatar_url: settings.avatar_url ?? '',
     show_whatsapp_link: settings.show_whatsapp_link ?? true,
     suggested_questions: settings.suggested_questions ?? [],
@@ -160,6 +176,10 @@ export function WebsiteWidgetSettings() {
             .filter(Boolean),
           title: form.title,
           greeting: form.greeting,
+          launcher_greeting_enabled: form.launcher_greeting_enabled,
+          launcher_greeting_text: form.launcher_greeting_text,
+          launcher_greeting_delay: form.launcher_greeting_delay,
+          launcher_indicator: form.launcher_indicator,
           avatar_url: form.avatar_url,
           show_whatsapp_link: form.show_whatsapp_link,
           suggested_questions: form.suggested_questions.map((question) => question.trim()).filter(Boolean),
@@ -337,6 +357,11 @@ export function WebsiteWidgetSettings() {
                 </div>
                 <p className="text-xs text-muted-foreground">JPG, PNG or WebP, up to 5 MB. {uploading ? 'Uploading...' : 'Save to apply your photo.'}</p>
               </div>
+              <div className="space-y-4 rounded-lg border border-border p-3">
+                <div className="flex items-center justify-between gap-4"><div><Label htmlFor="launcher-greeting-enabled">Show launcher greeting</Label><p className="text-xs text-muted-foreground">Show once after the page loads, then hide after 5 seconds.</p></div><Switch id="launcher-greeting-enabled" checked={form.launcher_greeting_enabled} disabled={disabled} onCheckedChange={(checked) => update('launcher_greeting_enabled', checked)} /></div>
+                {form.launcher_greeting_enabled && <><div className="space-y-1.5"><Label htmlFor="launcher-greeting-text">Launcher greeting text</Label><Input id="launcher-greeting-text" maxLength={120} value={form.launcher_greeting_text} disabled={disabled} onChange={(event) => update('launcher_greeting_text', event.target.value)} /></div><div className="space-y-1.5"><Label htmlFor="launcher-greeting-delay">Show after (seconds)</Label><Input id="launcher-greeting-delay" type="number" min={0} max={300} value={form.launcher_greeting_delay} disabled={disabled} onChange={(event) => update('launcher_greeting_delay', event.target.valueAsNumber)} /></div></>}
+                <fieldset className="space-y-2"><legend className="text-sm font-medium">Launcher indicator</legend><div className="flex gap-4">{(['dot', 'number'] as const).map((value) => <label key={value} className="flex items-center gap-2 text-sm"><input type="radio" name="launcher-indicator" value={value} checked={form.launcher_indicator === value} disabled={disabled} onChange={() => update('launcher_indicator', value)} />{value === 'dot' ? 'Green dot' : 'Number 1'}</label>)}</div></fieldset>
+              </div>
               <div className="space-y-2">
                 <Label>Suggested questions</Label>
                 <p className="text-xs text-muted-foreground">Optional. Add up to 5 conversation starters.</p>
@@ -348,6 +373,10 @@ export function WebsiteWidgetSettings() {
               </div>
               <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3" aria-label="Widget preview">
                 <p className="text-sm font-medium">Widget preview</p>
+                <div className="flex max-w-sm flex-col items-end gap-2 rounded-xl bg-muted/50 p-4" aria-label="Launcher preview">
+                  {form.launcher_greeting_enabled && <div className="flex max-w-full items-center gap-3 rounded-2xl bg-background px-3 py-2 shadow-md">{form.avatar_url ? <img src={form.avatar_url} alt="" className="size-12 shrink-0 rounded-full object-cover" /> : <span className="grid size-12 shrink-0 place-items-center rounded-full bg-muted text-lg">✦</span>}<span className="break-words text-sm">{form.launcher_greeting_text}</span></div>}
+                  {(() => { const accent = /^#[0-9a-f]{6}$/i.test(form.accent_color) ? form.accent_color : '#128C7E'; return <div className="relative grid size-[62px] place-items-center rounded-full text-white ring-1 ring-inset ring-white/30" style={{ background: `radial-gradient(120% 120% at 30% 15%, color-mix(in srgb, ${accent} 70%, #fff) 0%, ${accent} 45%, color-mix(in srgb, ${accent} 78%, #000) 100%)`, boxShadow: `0 12px 30px -6px color-mix(in srgb, ${accent} 60%, transparent), 0 4px 12px rgba(15,23,42,.18), inset 0 1px 0 rgba(255,255,255,.35)` }}><svg viewBox="0 0 24 24" aria-hidden="true" className="size-7" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinejoin="round"><path d="M12 3.75c-4.83 0-8.75 3.36-8.75 7.5 0 2.13 1.04 4.05 2.71 5.42-.2 1.33-.82 2.5-1.71 3.43 1.86.1 3.55-.5 4.86-1.44.92.24 1.89.36 2.89.36 4.83 0 8.75-3.36 8.75-7.5S16.83 3.75 12 3.75z" />{[8, 12, 16].map((cx) => <circle key={cx} cx={cx} cy={11.25} r={1.25} fill="currentColor" stroke="none" />)}</svg>{form.launcher_indicator === 'number' ? <span className="absolute -right-0.5 -top-0.5 grid size-5 place-items-center rounded-full border-2 border-white bg-red-500 text-[11px] font-bold text-white">1</span> : <span className="absolute right-0.5 top-0.5 size-4 rounded-full border-2 border-white bg-green-500" />}</div>; })()}
+                </div>
                 <div className="max-w-sm overflow-hidden rounded-xl border border-border bg-background shadow-sm">
                   <div className="flex items-center gap-2 border-b border-border px-3 py-2">
                     {form.avatar_url ? <img src={form.avatar_url} alt="" className="size-9 rounded-full object-cover" /> : <span className="grid size-9 place-items-center rounded-full bg-muted text-lg">✦</span>}

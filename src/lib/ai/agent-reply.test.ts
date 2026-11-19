@@ -76,7 +76,7 @@ describe('generateAgentReply', () => {
     await generateAgentReply({ ...baseArgs, channel: 'website' });
 
     const { systemPrompt } = h.generateReply.mock.calls[0][0];
-    expect(systemPrompt).not.toMatch(/whatsapp/i);
+    expect(systemPrompt).toContain('prefers to continue on WhatsApp');
     expect(systemPrompt).toContain('chat widget');
     expect(systemPrompt).toContain('do not ask for an order number');
   });

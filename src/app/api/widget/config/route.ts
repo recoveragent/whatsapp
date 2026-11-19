@@ -43,6 +43,10 @@ export async function GET(request: Request) {
     {
       title: widget.title,
       greeting: widget.greeting,
+      launcher_greeting_enabled: widget.launcher_greeting_enabled,
+      launcher_greeting_text: widget.launcher_greeting_text,
+      launcher_greeting_delay: widget.launcher_greeting_delay,
+      launcher_indicator: widget.launcher_indicator,
       avatar_url: widget.avatar_url,
       show_whatsapp_link: widget.show_whatsapp_link,
       suggested_questions: widget.suggested_questions,

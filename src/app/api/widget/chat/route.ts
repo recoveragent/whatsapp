@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { loadCurrentProduct, parseProductHandle } from '@/lib/website-widget/current-product';
+import { loadCurrentProduct, parseProductHandle, parseVariantId } from '@/lib/website-widget/current-product';
 import { supabaseAdmin } from '@/lib/ai/admin-client';
 import { generateAgentReply } from '@/lib/ai/agent-reply';
 import { loadAiConfig } from '@/lib/ai/config';
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
 
   const raw = await request.text().catch(() => '');
   if (raw.length > MAX_BODY_BYTES) return fail(413, 'too_large');
-  let body: { messages?: unknown; session_key?: unknown; product_handle?: unknown } | null = null;
+  let body: { messages?: unknown; session_key?: unknown; product_handle?: unknown; variant_id?: unknown } | null = null;
   try {
     body = JSON.parse(raw);
   } catch {
@@ -128,7 +128,7 @@ export async function POST(request: Request) {
 
     const productHandle = parseProductHandle(body?.product_handle);
     const currentProduct = productHandle
-      ? await loadCurrentProduct(db, widget.account_id, productHandle)
+      ? await loadCurrentProduct(db, widget.account_id, productHandle, parseVariantId(body?.variant_id))
       : undefined;
 
     const outcome = await generateAgentReply({

@@ -20,10 +20,27 @@ describe('current product context', () => {
   it('looks up the handle only in the widget account connected shop', async () => {
     const { db, eq } = database({ status: 'connected', shop_domain: 'merchant.myshopify.com', access_token: 'encrypted' });
     mocks.queryShop.mockResolvedValue({ productByIdentifier: { title: 'Frame', description: 'Made of oak', status: 'ACTIVE', onlineStoreUrl: 'https://store.test/products/frame' } });
-    expect(await loadCurrentProduct(db, 'account-a', 'frame')).toEqual({ title: 'Frame', description: 'Made of oak' });
+    expect(await loadCurrentProduct(db, 'account-a', 'frame')).toEqual({ title: 'Frame', description: 'Made of oak', currency: null, variants: [], variantsTruncated: false, selectedVariantId: null });
     expect(eq).toHaveBeenCalledWith('account_id', 'account-a');
     expect(mocks.queryShop).toHaveBeenCalledWith('merchant.myshopify.com', 'token', expect.any(String), expect.any(AbortSignal), { identifier: { handle: 'frame' } });
   });
+  it('returns Shopify variant availability and verifies the selected variant belongs to this product', async () => {
+    const { db } = database({ status: 'connected', shop_domain: 'merchant.myshopify.com', access_token: 'encrypted' });
+    mocks.queryShop.mockResolvedValue({ shop: { currencyCode: 'INR' }, productByIdentifier: {
+      title: 'Wallet', description: 'Vegan leather', status: 'ACTIVE', onlineStoreUrl: 'https://store.test/products/wallet',
+      variants: { nodes: [
+        { id: 'gid://shopify/ProductVariant/101', title: 'Blue', price: '690.00', availableForSale: true, selectedOptions: [{ name: 'Color', value: 'Blue' }] },
+        { id: 'gid://shopify/ProductVariant/102', title: 'Brown', price: '690.00', availableForSale: false, selectedOptions: [{ name: 'Color', value: 'Brown' }] },
+      ], pageInfo: { hasNextPage: true } },
+    } });
+    const result = await loadCurrentProduct(db, 'account-a', 'wallet', '102');
+    expect(result).toMatchObject({ currency: 'INR', selectedVariantId: '102', variantsTruncated: true, variants: [
+      { id: '101', availableForSale: true, options: [{ name: 'Color', value: 'Blue' }] },
+      { id: '102', availableForSale: false, options: [{ name: 'Color', value: 'Brown' }] },
+    ] });
+    expect((await loadCurrentProduct(db, 'account-a', 'wallet', '999'))?.selectedVariantId).toBeNull();
+  });
+
   it.each([
     { status: 'DRAFT', onlineStoreUrl: 'https://store.test/products/frame' },
     { status: 'ACTIVE', onlineStoreUrl: null },
