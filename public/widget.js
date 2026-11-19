@@ -35,6 +35,11 @@
   var config = null;
   var items = loadItems();
   var sending = false;
+  // The newest AI reply types itself out once; any other render shows it whole.
+  var typingItem = null;
+  var typingStarted = false;
+  var typingFrame = 0;
+  var justTyped = null;
   var sessionVersion = 0;
   var refs = {};
   var historyMarker = '__chatWidgetOpen';
@@ -174,6 +179,14 @@
     var bubble = el('div', 'bubble');
     appendFormatted(bubble, item.content);
     row.appendChild(bubble);
+    if (item === typingItem) {
+      // Extras (products, buttons) wait until the text has finished typing.
+      bubble.classList.add('typing-out');
+      bubble.setAttribute('aria-hidden', 'true');
+      row.appendChild(el('span', 'sr-only', item.content));
+      return row;
+    }
+    if (item === justTyped) row.classList.add('just-typed');
 
     if (item.phonePrompt && !item.saved) {
       var phoneForm = el('form', 'phone-form');
@@ -278,8 +291,57 @@
     return row;
   }
 
+  /** Reveal a rendered bubble's text over time, keeping its bold and links. */
+  function typeOut(bubble) {
+    var nodes = [];
+    var walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
+    var total = 0;
+    while (walker.nextNode()) {
+      nodes.push({ node: walker.currentNode, text: walker.currentNode.data });
+      total += walker.currentNode.data.length;
+      walker.currentNode.data = '';
+    }
+    var caret = el('span', 'type-caret');
+    bubble.appendChild(caret);
+    // ~70 chars/s, but never longer than 2.5s however long the reply is.
+    var speed = Math.max(0.07, total / 2500);
+    var start = null;
+    function finish() {
+      typingFrame = 0;
+      justTyped = typingItem;
+      typingItem = null;
+      render();
+      justTyped = null;
+    }
+    function step() {
+      var now = Date.now();
+      if (start === null) start = now;
+      var shown = Math.min(total, Math.floor((now - start) * speed));
+      var left = shown;
+      for (var i = 0; i < nodes.length; i++) {
+        var part = Math.min(left, nodes[i].text.length);
+        nodes[i].node.data = nodes[i].text.slice(0, part);
+        left -= part;
+        if (part < nodes[i].text.length) {
+          nodes[i].node.parentNode.insertBefore(caret, nodes[i].node.nextSibling);
+          break;
+        }
+      }
+      refs.log.scrollTop = refs.log.scrollHeight;
+      if (shown >= total) return finish();
+      typingFrame = setTimeout(step, 30);
+    }
+    typingFrame = setTimeout(step, 0);
+  }
+
   function render() {
     var log = refs.log;
+    if (typingFrame) {
+      clearTimeout(typingFrame);
+      typingFrame = 0;
+    }
+    // Something else re-rendered mid-typing: show the reply whole.
+    if (typingItem && typingStarted) typingItem = null;
     log.textContent = '';
     log.appendChild(renderItem({ role: 'assistant', content: config.greeting || 'Hi! 👋 How can we help you today?' }, false));
     if (!sending && Array.isArray(config.suggested_questions) && config.suggested_questions.length && items.every(function (item) { return item.nameEntry || item.isError; })) {
@@ -293,9 +355,15 @@
       });
       log.appendChild(starters);
     }
+    var typingIndex = typingItem ? items.indexOf(typingItem) : -1;
     items.forEach(function (item, index) {
+      if (typingIndex !== -1 && index > typingIndex) return;
       log.appendChild(renderItem(item, !sending && (index === items.length - 1 || (index === items.length - 2 && items[index + 1].phonePrompt))));
     });
+    if (typingIndex !== -1) {
+      typingStarted = true;
+      typeOut(log.querySelector('.typing-out'));
+    } else typingItem = null;
     if (sending) {
       var typing = el('div', 'row row-bot');
       var dots = el('div', 'bubble typing');
@@ -415,14 +483,19 @@
           });
           return;
         }
-        items.push({
+        var reply = {
           role: 'assistant',
           content: body.reply,
           products: body.products || [],
           quickReplies: body.quick_replies || [],
           whatsappUrl: body.handoff ? body.whatsapp_url : null,
           handoff: Boolean(body.handoff),
-        });
+        };
+        items.push(reply);
+        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          typingItem = reply;
+          typingStarted = false;
+        }
         if (body.handoff && !items.some(function (item) { return item.phonePrompt; })) {
           items.push({ role: 'assistant', phonePrompt: true, content: 'For a WhatsApp follow-up, you can share your mobile number.' });
         }
@@ -442,6 +515,7 @@
 
   function resetChat() {
     sessionVersion++;
+    typingItem = null;
     sessionKey = loadSessionKey(true);
     items = [];
     sending = false;
@@ -508,6 +582,34 @@
     return svg;
   }
 
+  // Outlined bubble with typing dots: reads as "chat" at any accent colour.
+  function launcherIcon() {
+    var ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('class', 'launcher-icon');
+    var bubble = document.createElementNS(ns, 'path');
+    bubble.setAttribute('d', 'M12 3.75c-4.83 0-8.75 3.36-8.75 7.5 0 2.13 1.04 4.05 2.71 5.42-.2 1.33-.82 2.5-1.71 3.43 1.86.1 3.55-.5 4.86-1.44.92.24 1.89.36 2.89.36 4.83 0 8.75-3.36 8.75-7.5S16.83 3.75 12 3.75z');
+    svg.appendChild(bubble);
+    [8, 12, 16].forEach(function (cx, i) {
+      var dot = document.createElementNS(ns, 'circle');
+      dot.setAttribute('cx', String(cx));
+      dot.setAttribute('cy', '11.25');
+      dot.setAttribute('r', '1.25');
+      dot.setAttribute('class', 'launcher-dot launcher-dot-' + i);
+      svg.appendChild(dot);
+    });
+    return svg;
+  }
+
+  /** White glyph unless the accent is genuinely light; a glossy bubble wants white. */
+  function launcherContrast(hex) {
+    if (!/^#[0-9a-f]{6}$/i.test(hex || '')) return '#ffffff';
+    var r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    return (r * 299 + g * 587 + b * 114) / 1000 > 190 ? '#111111' : '#ffffff';
+  }
+
   function mount() {
     // Not a div: everything lives in the shadow root, so the host matches
     // :empty, and Shopify themes commonly ship `div:empty { display: none }`.
@@ -529,7 +631,7 @@
     root.style.setProperty('--mobile-side', offset(config.mobile_side_offset, 16));
     root.style.setProperty('--mobile-bottom', offset(config.mobile_bottom_offset, 16));
     root.style.setProperty('--chat-primary', config.accent_color);
-    root.style.setProperty('--chat-primary-contrast', contrastColor(config.accent_color));
+    root.style.setProperty('--chat-primary-contrast', launcherContrast(config.accent_color));
     root.style.setProperty('--accent', config.accent_color);
     root.style.setProperty('--on-accent', contrastColor(config.accent_color));
 
@@ -537,7 +639,7 @@
     launcher.type = 'button';
     launcher.setAttribute('aria-label', 'Open chat');
     launcher.setAttribute('aria-expanded', 'false');
-    launcher.appendChild(icon(CHAT_ICON));
+    launcher.appendChild(launcherIcon());
     var indicator = el('span', 'launcher-indicator', config.launcher_indicator === 'number' ? '1' : '');
     indicator.setAttribute('aria-hidden', 'true');
     launcher.appendChild(indicator);
@@ -808,6 +910,11 @@
     '.country-input{width:62px}.phone-input{flex:1;min-width:145px}',
     '.phone-error{width:100%;font-size:12px;color:#b42318}',
     '.typing{display:flex;gap:4px;padding:13px 12px}',
+    '.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}',
+    '.type-caret{display:inline-block;width:2px;height:1em;margin-left:1px;vertical-align:-2px;border-radius:1px;background:currentColor;opacity:.55;animation:caret-blink .9s steps(1) infinite}',
+    '@keyframes caret-blink{50%{opacity:0}}',
+    '.just-typed>:not(.bubble){animation:reveal-up .35s ease both}',
+    '@keyframes reveal-up{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}',
     '.typing span{width:6px;height:6px;border-radius:50%;background:#8a93a0;animation:pulse 1.2s infinite}',
     '.typing span:nth-child(2){animation-delay:.2s}',
     '.typing span:nth-child(3){animation-delay:.4s}',
@@ -844,6 +951,26 @@
     '@media (max-width:480px){.panel.open{border:0;border-radius:26px 26px 0 0}.panel.open.expanded{border-radius:0}.header{padding:4px 18px 14px}.avatar{width:40px;height:40px;background:var(--accent);color:var(--on-accent)}.log{padding:18px;gap:12px;background:#f7f8f6}.log>.row:first-child .bubble{padding:13px 15px;border:1px solid #e9eeeb;border-radius:18px 18px 18px 6px;box-shadow:0 3px 12px rgba(29,43,35,.035)}.starters{flex-direction:row;flex-wrap:wrap}.starter{width:auto}.composer{margin:10px 14px max(12px,env(safe-area-inset-bottom));padding:6px 6px 6px 10px}.footer-link{padding-top:10px}}',
     '@media (prefers-reduced-motion:reduce){.launcher,.starter,.send,.composer{transition:none}.launcher:hover,.starter:hover,.send:not(:disabled):hover{transform:none}}',
     '@media (prefers-reduced-motion:reduce){.panel.open{transition:none}}',
+    // Modern launcher: accent gradient, glossy rim, accent-tinted glow, pop-in.
+    '.launcher{width:62px;height:62px;overflow:visible;isolation:isolate;background:radial-gradient(120% 120% at 30% 15%,color-mix(in srgb,var(--chat-primary) 70%,#fff) 0%,var(--chat-primary) 45%,color-mix(in srgb,var(--chat-primary) 78%,#000) 100%);box-shadow:0 12px 30px -6px color-mix(in srgb,var(--chat-primary) 60%,transparent),0 4px 12px rgba(15,23,42,.18),inset 0 1px 0 rgba(255,255,255,.35),inset 0 -2px 6px rgba(0,0,0,.18);transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s ease;animation:launcher-in .5s cubic-bezier(.34,1.56,.64,1) both}',
+    '.launcher:before{content:"";position:absolute;inset:0;border-radius:50%;border:1px solid rgba(255,255,255,.28);pointer-events:none}',
+    '.launcher:after{content:"";position:absolute;inset:0;z-index:-1;border-radius:50%;background:var(--chat-primary);opacity:0;animation:launcher-ring 2.4s ease-out 1s 2}',
+    '.launcher:hover{transform:translateY(-3px) scale(1.05);box-shadow:0 18px 36px -8px color-mix(in srgb,var(--chat-primary) 70%,transparent),0 6px 16px rgba(15,23,42,.2),inset 0 1px 0 rgba(255,255,255,.4),inset 0 -2px 6px rgba(0,0,0,.18)}',
+    '.launcher:active{transform:scale(.95)}',
+    '.launcher .launcher-icon{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linejoin:round;filter:drop-shadow(0 1px 1px rgba(0,0,0,.15));transition:transform .3s cubic-bezier(.34,1.56,.64,1)}',
+    '.launcher:hover .launcher-icon{transform:rotate(-8deg) scale(1.06)}',
+    '.launcher .launcher-dot{fill:currentColor;stroke:none}',
+    '.launcher:hover .launcher-dot{animation:launcher-dots 1s ease-in-out infinite}',
+    '.launcher:hover .launcher-dot-1{animation-delay:.15s}.launcher:hover .launcher-dot-2{animation-delay:.3s}',
+    '.launcher-indicator{right:1px;top:1px;width:16px;height:16px;border:2.5px solid #fff;background:#22c55e;box-shadow:0 2px 6px rgba(34,197,94,.45)}',
+    '.launcher-indicator:empty:after{content:"";position:absolute;inset:-2.5px;border-radius:50%;background:#22c55e;animation:launcher-ping 2s cubic-bezier(0,0,.2,1) infinite;z-index:-1}',
+    '.launcher-indicator:not(:empty){width:20px;height:20px;right:-2px;top:-2px;background:#ef4444;box-shadow:0 2px 6px rgba(239,68,68,.45);font-size:11px}',
+    '@keyframes launcher-in{0%{opacity:0;transform:scale(.4) translateY(12px)}100%{opacity:1;transform:none}}',
+    '@keyframes launcher-ring{0%{opacity:.45;transform:scale(1)}100%{opacity:0;transform:scale(1.6)}}',
+    '@keyframes launcher-ping{0%{opacity:.7;transform:scale(1)}75%,100%{opacity:0;transform:scale(2.1)}}',
+    '@keyframes launcher-dots{0%,100%{transform:translateY(0)}40%{transform:translateY(-1.5px)}}',
+    '.launcher-dot{transform-box:fill-box;transform-origin:center}',
+    '@media (prefers-reduced-motion:reduce){.launcher,.launcher:after,.launcher-indicator:after,.launcher .launcher-icon,.launcher-dot{animation:none!important;transition:none}.launcher:hover,.launcher:hover .launcher-icon{transform:none}}',
   ].join('');
 
   // A wrong key or unlisted site gets a 404 with no CORS headers, which the

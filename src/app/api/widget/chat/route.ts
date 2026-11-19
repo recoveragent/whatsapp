@@ -83,22 +83,6 @@ export async function POST(request: Request) {
   const messages = parseWidgetMessages(body?.messages);
   if (!messages) return fail(400, 'invalid_request');
 
-  if (body?.name_entry === true) {
-    const name = latestUserMessage(messages).trim();
-    if (messages.length !== 1 || !name || name.length > 100 ||
-        typeof body.session_key !== 'string' || !/^[0-9a-f]{64}$/.test(body.session_key))
-      return fail(400, 'invalid_request');
-    try {
-      await saveWebsiteTurn(db, widget.account_id, body.session_key, 'user', name);
-      const reply = `Nice to meet you, ${name}! How can I help you today?`;
-      await saveWebsiteTurn(db, widget.account_id, body.session_key, 'assistant', reply);
-      return NextResponse.json({ reply, quick_replies: [], handoff: false, products: [] }, { headers });
-    } catch (error) {
-      console.error('[website widget] name save failed:', error);
-      return fail(503, 'unavailable');
-    }
-  }
-
   // A separate bucket from WhatsApp auto-reply, so a flood of web traffic
   // can't stop the brand's existing customers from getting answers.
   const accountLimit = checkRateLimit(
