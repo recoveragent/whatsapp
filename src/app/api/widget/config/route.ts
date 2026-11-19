@@ -8,6 +8,7 @@ import {
   widgetClientIp,
   widgetCorsHeaders,
 } from '@/lib/website-widget/config';
+import { coercePageRules } from '@/lib/website-widget/page-rules';
 
 /** Preflight carries no key, so real checks happen on the request itself. */
 export function OPTIONS(request: Request) {
@@ -58,6 +59,7 @@ export async function GET(request: Request) {
       desktop_position: widget.desktop_position,
       mobile_position: widget.mobile_position,
       whatsapp_url: buildWhatsAppUrl(widget.whatsapp_number),
+      page_rules: coercePageRules(widget.page_rules),
     },
     { headers: widgetCorsHeaders(origin) }
   );

@@ -46,6 +46,76 @@
   var greetingTimer;
   var greetingHideTimer;
   var greetingCancelled = false;
+  var lastCheckedUrl = null;
+
+  // page-rules:start — mirrors src/lib/website-widget/page-rules.ts; the test
+  // there runs the same cases against this copy.
+  function pageRuleMatches(rule, href) {
+    var url;
+    try { url = new URL(href, 'https://example.invalid'); } catch { return false; }
+    var path = url.pathname.toLowerCase();
+    if (path.length > 1) path = path.replace(/\/+$/, '') || '/';
+    var value = String(rule.value || '');
+    var target = rule.type === 'regex' || value.indexOf('?') !== -1 ? path + url.search.toLowerCase() : path;
+    switch (rule.type) {
+      case 'contains': return target.indexOf(value) !== -1;
+      case 'exact': return target === value;
+      case 'starts_with': return target.indexOf(value) === 0;
+      case 'pattern':
+        return new RegExp('^' + value.split('*').map(function (part) {
+          return part.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+        }).join('.*') + '$').test(target);
+      case 'regex':
+        try { return new RegExp(value, 'i').test(target); } catch { return false; }
+      default: return false;
+    }
+  }
+
+  function pageRulesAllow(rules, href) {
+    if (!rules || typeof rules !== 'object') return true;
+    var matches = function (rule) { return rule && pageRuleMatches(rule, href); };
+    if (Array.isArray(rules.exclude) && rules.exclude.some(matches)) return false;
+    if (rules.show !== 'only') return true;
+    return Array.isArray(rules.include) && rules.include.some(matches);
+  }
+  // page-rules:end
+
+  /**
+   * Show or hide the whole widget for the current page. An open chat is never
+   * cut off: it stays until the visitor closes it, then this runs again.
+   */
+  function applyPageRules() {
+    if (!refs.host) return;
+    lastCheckedUrl = window.location.href;
+    var allowed = pageRulesAllow(config.page_rules, lastCheckedUrl);
+    if (!allowed && refs.panel.classList.contains('open')) return;
+    refs.host.style.setProperty('display', allowed ? 'block' : 'none', 'important');
+    if (!allowed) {
+      clearTimeout(greetingTimer);
+      clearTimeout(greetingHideTimer);
+      refs.launcherGreeting.hidden = true;
+    }
+  }
+
+  /** Single-page storefronts change the URL without reloading this script. */
+  function watchNavigation() {
+    var check = function () {
+      // Defer so the new URL is in place, and skip our own history entries.
+      setTimeout(function () {
+        if (window.location.href !== lastCheckedUrl) applyPageRules();
+      }, 0);
+    };
+    ['pushState', 'replaceState'].forEach(function (name) {
+      var original = window.history[name];
+      if (typeof original !== 'function') return;
+      window.history[name] = function () {
+        var result = original.apply(this, arguments);
+        check();
+        return result;
+      };
+    });
+    window.addEventListener('popstate', check);
+  }
 
   function loadSessionKey(forceNew) {
     var storageName = storageKey + ':session';
@@ -564,7 +634,8 @@
       if (window.matchMedia('(max-width:480px)').matches) refs.close.focus({ preventScroll: true });
       else refs.input.focus();
     } else {
-      refs.launcher.focus();
+      applyPageRules();
+      if (refs.host.style.display !== 'none') refs.launcher.focus();
     }
   }
 
@@ -814,8 +885,10 @@
     shadow.appendChild(root);
     document.body.appendChild(host);
 
-    refs = { panel: panel, backdrop: backdrop, launcher: launcher, launcherGreeting: launcherGreeting, close: close, expand: expand, log: log, input: input, send: submit };
+    refs = { host: host, panel: panel, backdrop: backdrop, launcher: launcher, launcherGreeting: launcherGreeting, close: close, expand: expand, log: log, input: input, send: submit };
     render();
+    applyPageRules();
+    watchNavigation();
     if (config.launcher_greeting_enabled) {
       var scheduleGreeting = function () {
         if (greetingCancelled) return;
@@ -824,7 +897,7 @@
         var elapsed = navigation && navigation.loadEventEnd ? Math.max(0, window.performance.now() - navigation.loadEventEnd) : 0;
         if (elapsed >= delay + 5000) return;
         greetingTimer = setTimeout(function () {
-          if (greetingCancelled) return;
+          if (greetingCancelled || host.style.display === 'none') return;
           launcherGreeting.hidden = false;
           greetingHideTimer = setTimeout(function () { launcherGreeting.hidden = true; }, 5000);
         }, Math.max(0, delay - elapsed));

@@ -19,6 +19,8 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { SettingsPanelHead } from './settings-panel-head';
 import { uploadAccountMedia } from '@/lib/storage/upload-media';
+import { DEFAULT_PAGE_RULES, type PageRules } from '@/lib/website-widget/page-rules';
+import { WidgetPageRules } from './widget-page-rules';
 
 interface WidgetForm {
   enabled: boolean;
@@ -41,6 +43,7 @@ interface WidgetForm {
   accent_color: string;
   whatsapp_number: string;
   daily_reply_limit: number;
+  page_rules: PageRules;
 }
 
 interface WidgetSettings {
@@ -65,6 +68,7 @@ interface WidgetSettings {
   accent_color: string;
   whatsapp_number: string | null;
   daily_reply_limit: number;
+  page_rules: PageRules;
   replies_used_today: number;
 }
 
@@ -89,6 +93,7 @@ const DEFAULT_FORM: WidgetForm = {
   accent_color: '#128C7E',
   whatsapp_number: '',
   daily_reply_limit: 500,
+  page_rules: DEFAULT_PAGE_RULES,
 };
 
 function toForm(settings: WidgetSettings): WidgetForm {
@@ -113,6 +118,7 @@ function toForm(settings: WidgetSettings): WidgetForm {
     accent_color: settings.accent_color,
     whatsapp_number: settings.whatsapp_number ?? '',
     daily_reply_limit: settings.daily_reply_limit,
+    page_rules: settings.page_rules ?? DEFAULT_PAGE_RULES,
   };
 }
 
@@ -186,6 +192,11 @@ export function WebsiteWidgetSettings() {
           accent_color: form.accent_color,
           whatsapp_number: form.whatsapp_number,
           daily_reply_limit: form.daily_reply_limit,
+          page_rules: {
+            show: form.page_rules.show,
+            include: form.page_rules.include.filter((rule) => rule.value.trim()),
+            exclude: form.page_rules.exclude.filter((rule) => rule.value.trim()),
+          },
         }),
       });
       const payload = await res.json();
@@ -310,6 +321,12 @@ export function WebsiteWidgetSettings() {
                   subdomains need their own line.
                 </p>
               </div>
+
+              <WidgetPageRules
+                value={form.page_rules}
+                disabled={disabled}
+                onChange={(rules) => update('page_rules', rules)}
+              />
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">

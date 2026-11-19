@@ -3,6 +3,7 @@ import { buildProductCardUrl } from '@/lib/shopify/product-checkout-url';
 import type { ShopifyCatalogProduct } from '@/lib/shopify/product-store';
 import { formatShopifyProductPrice } from '@/lib/shopify/send-product-card';
 import type { ChatMessage } from '@/lib/ai/types';
+import type { PageRules } from './page-rules';
 
 export const WIDGET_MAX_TURNS = 20;
 export const WIDGET_MAX_MESSAGE_CHARS = 1000;
@@ -34,10 +35,11 @@ export interface WidgetConfigRow {
   accent_color: string;
   whatsapp_number: string | null;
   daily_reply_limit: number;
+  page_rules: PageRules;
 }
 
 const WIDGET_COLUMNS =
-  'account_id, public_key, enabled, desktop_side_offset, desktop_bottom_offset, mobile_side_offset, mobile_bottom_offset, desktop_position, mobile_position, allowed_domains, title, greeting, launcher_greeting_enabled, launcher_greeting_text, launcher_greeting_delay, launcher_indicator, avatar_url, show_whatsapp_link, suggested_questions, accent_color, whatsapp_number, daily_reply_limit';
+  'account_id, public_key, enabled, desktop_side_offset, desktop_bottom_offset, mobile_side_offset, mobile_bottom_offset, desktop_position, mobile_position, allowed_domains, title, greeting, launcher_greeting_enabled, launcher_greeting_text, launcher_greeting_delay, launcher_indicator, avatar_url, show_whatsapp_link, suggested_questions, accent_color, whatsapp_number, daily_reply_limit, page_rules';
 
 /** An enabled widget by its public key, or null. Never distinguishes why. */
 export async function loadEnabledWidget(

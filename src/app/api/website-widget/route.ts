@@ -4,9 +4,14 @@ import {
   normalizeWidgetDomain,
   WIDGET_MAX_DOMAINS,
 } from '@/lib/website-widget/config';
+import {
+  coercePageRules,
+  parsePageRules,
+  type PageRules,
+} from '@/lib/website-widget/page-rules';
 
 const SETTINGS_COLUMNS =
-  'public_key, enabled, desktop_side_offset, desktop_bottom_offset, mobile_side_offset, mobile_bottom_offset, desktop_position, mobile_position, allowed_domains, title, greeting, launcher_greeting_enabled, launcher_greeting_text, launcher_greeting_delay, launcher_indicator, avatar_url, show_whatsapp_link, suggested_questions, accent_color, whatsapp_number, daily_reply_limit, replies_today, replies_day';
+  'public_key, enabled, desktop_side_offset, desktop_bottom_offset, mobile_side_offset, mobile_bottom_offset, desktop_position, mobile_position, allowed_domains, title, greeting, launcher_greeting_enabled, launcher_greeting_text, launcher_greeting_delay, launcher_indicator, avatar_url, show_whatsapp_link, suggested_questions, accent_color, whatsapp_number, daily_reply_limit, page_rules, replies_today, replies_day';
 
 interface SettingsRow {
   public_key: string;
@@ -30,6 +35,7 @@ interface SettingsRow {
   accent_color: string;
   whatsapp_number: string | null;
   daily_reply_limit: number;
+  page_rules: PageRules;
   replies_today: number;
   replies_day: string | null;
 }
@@ -38,7 +44,7 @@ interface SettingsRow {
 function toPayload(row: SettingsRow) {
   const { replies_today, replies_day, ...settings } = row;
   const today = new Date().toISOString().slice(0, 10);
-  return { ...settings, replies_used_today: replies_day === today ? replies_today : 0 };
+  return { ...settings, page_rules: coercePageRules(settings.page_rules), replies_used_today: replies_day === today ? replies_today : 0 };
 }
 
 const invalid = (error: string) =>
@@ -147,6 +153,9 @@ export async function PATCH(request: Request) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100000)
       return invalid('Daily reply limit must be between 1 and 100000');
 
+    const pageRules = parsePageRules(body.page_rules);
+    if (typeof pageRules === 'string') return invalid(pageRules);
+
     const { data, error } = await supabase
       .from('website_widget_config')
       .upsert(
@@ -169,6 +178,7 @@ export async function PATCH(request: Request) {
           accent_color: accent,
           whatsapp_number: whatsapp || null,
           daily_reply_limit: limit,
+          page_rules: pageRules,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'account_id' }
