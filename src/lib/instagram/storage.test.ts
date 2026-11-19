@@ -7,7 +7,7 @@ describe('Instagram message storage', () => {
     const db = new PGlite();
     try {
       await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role; CREATE TABLE public.accounts(id uuid PRIMARY KEY); CREATE FUNCTION public.is_account_member(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT true';`);
-      await db.exec(readFileSync('supabase/migrations/20261119170052_instagram_messaging.sql', 'utf8'));
+      await db.exec(readFileSync('supabase/migrations/20261119173500_instagram_messaging.sql', 'utf8'));
       const account = '00000000-0000-0000-0000-000000000001';
       const connection = '00000000-0000-0000-0000-000000000002';
       await db.query('INSERT INTO accounts(id) VALUES ($1)', [account]);
