@@ -27,6 +27,7 @@ import { DealsSettings } from '@/components/settings/deals-settings';
 import { MembersTab } from '@/components/settings/members-tab';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
 import { WebsiteWidgetSettings } from '@/components/settings/website-widget-settings';
+import { InstagramSettings } from '@/components/settings/instagram-settings';
 import {
   resolveSection,
   isSettingsSectionVisible,
@@ -88,6 +89,7 @@ function SettingsPageInner() {
     security: <SecurityPanel />,
     appearance: <AppearancePanel />,
     whatsapp: <WhatsAppBrandConnection />,
+    instagram: <InstagramSettings />,
     website_widget: <WebsiteWidgetSettings />,
     shopify: <ShopifyBrandConnection />,
     woocommerce: <WooCommerceBrandConnection />,

@@ -39,6 +39,7 @@ export const SETTINGS_SECTIONS = [
   'security',
   'appearance',
   'whatsapp',
+  'instagram',
   'website_widget',
   'shopify',
   'woocommerce',
@@ -71,6 +72,7 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   security: { id: 'security', label: 'Login & security', icon: Shield, group: 'account' },
   appearance: { id: 'appearance', label: 'Appearance', icon: Palette, group: 'account' },
   whatsapp: { id: 'whatsapp', label: 'WhatsApp number', icon: PlugZap, group: 'workspace' },
+  instagram: { id: 'instagram', label: 'Instagram', icon: MessageCircle, group: 'workspace' },
   website_widget: {
     id: 'website_widget',
     label: 'Website widget',
