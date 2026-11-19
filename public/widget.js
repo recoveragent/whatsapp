@@ -128,6 +128,24 @@
     parent.appendChild(document.createTextNode(text.slice(last)));
   }
 
+  /**
+   * Append message text, rendering **bold** / *bold* as <strong> and
+   * linkifying https URLs. Built from text nodes only — no innerHTML.
+   */
+  function appendFormatted(parent, text) {
+    var pattern = /\*\*([^*\n]+?)\*\*|\*([^*\s\n](?:[^*\n]*?[^*\s\n])?)\*/g;
+    var last = 0;
+    var match;
+    while ((match = pattern.exec(text))) {
+      appendLinkified(parent, text.slice(last, match.index));
+      var strong = el('strong');
+      appendLinkified(strong, match[1] != null ? match[1] : match[2]);
+      parent.appendChild(strong);
+      last = match.index + match[0].length;
+    }
+    appendLinkified(parent, text.slice(last));
+  }
+
   function renderProduct(product) {
     var href = httpsUrl(product.url);
     if (!href) return null;
@@ -154,7 +172,7 @@
   function renderItem(item, isLatest) {
     var row = el('div', 'row ' + (item.role === 'user' ? 'row-user' : 'row-bot'));
     var bubble = el('div', 'bubble');
-    appendLinkified(bubble, item.content);
+    appendFormatted(bubble, item.content);
     row.appendChild(bubble);
 
     if (item.phonePrompt && !item.saved) {
