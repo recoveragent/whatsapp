@@ -6,7 +6,7 @@ import {
 } from '@/lib/website-widget/config';
 
 const SETTINGS_COLUMNS =
-  'public_key, enabled, desktop_side_offset, desktop_bottom_offset, mobile_side_offset, mobile_bottom_offset, desktop_position, mobile_position, allowed_domains, title, greeting, avatar_url, show_whatsapp_link, suggested_questions, accent_color, whatsapp_number, daily_reply_limit, replies_today, replies_day';
+  'public_key, enabled, desktop_side_offset, desktop_bottom_offset, mobile_side_offset, mobile_bottom_offset, desktop_position, mobile_position, allowed_domains, title, greeting, launcher_greeting_enabled, launcher_greeting_text, launcher_greeting_delay, launcher_indicator, avatar_url, show_whatsapp_link, suggested_questions, accent_color, whatsapp_number, daily_reply_limit, replies_today, replies_day';
 
 interface SettingsRow {
   public_key: string;
@@ -20,6 +20,10 @@ interface SettingsRow {
   allowed_domains: string[];
   title: string;
   greeting: string;
+  launcher_greeting_enabled: boolean;
+  launcher_greeting_text: string;
+  launcher_greeting_delay: number;
+  launcher_indicator: 'dot' | 'number';
   avatar_url: string | null;
   show_whatsapp_link: boolean;
   suggested_questions: string[];
@@ -104,6 +108,15 @@ export async function PATCH(request: Request) {
     if (greeting.length < 1 || greeting.length > 300)
       return invalid('Greeting must be 1 to 300 characters');
 
+    const launcherGreetingEnabled = body.launcher_greeting_enabled ?? false;
+    const launcherGreetingText = typeof body.launcher_greeting_text === 'string' ? body.launcher_greeting_text.trim() : 'Hi! How can I help?';
+    const launcherGreetingDelay = body.launcher_greeting_delay ?? 5;
+    const launcherIndicator = body.launcher_indicator ?? 'dot';
+    if (typeof launcherGreetingEnabled !== 'boolean') return invalid('Invalid greeting setting');
+    if (launcherGreetingText.length < 1 || launcherGreetingText.length > 120) return invalid('Launcher greeting must be 1 to 120 characters');
+    if (!Number.isInteger(launcherGreetingDelay) || launcherGreetingDelay < 0 || launcherGreetingDelay > 300) return invalid('Greeting delay must be between 0 and 300 seconds');
+    if (!['dot', 'number'].includes(launcherIndicator)) return invalid('Invalid launcher indicator');
+
     const avatarUrl = typeof body.avatar_url === 'string' ? body.avatar_url.trim() : '';
     if (avatarUrl) {
       try {
@@ -146,6 +159,10 @@ export async function PATCH(request: Request) {
           allowed_domains: [...domains],
           title,
           greeting,
+          launcher_greeting_enabled: launcherGreetingEnabled,
+          launcher_greeting_text: launcherGreetingText,
+          launcher_greeting_delay: launcherGreetingDelay,
+          launcher_indicator: launcherIndicator,
           avatar_url: avatarUrl || null,
           show_whatsapp_link: body.show_whatsapp_link,
           suggested_questions: suggestedQuestions,

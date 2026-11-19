@@ -38,6 +38,9 @@
   var sessionVersion = 0;
   var refs = {};
   var historyMarker = '__chatWidgetOpen';
+  var greetingTimer;
+  var greetingHideTimer;
+  var greetingCancelled = false;
 
   function loadSessionKey(forceNew) {
     var storageName = storageKey + ':session';
@@ -456,6 +459,12 @@
     refs.panel.classList.toggle('open', open);
     refs.backdrop.classList.toggle('open', open);
     refs.launcher.classList.toggle('hidden', open);
+    if (open) {
+      greetingCancelled = true;
+      clearTimeout(greetingTimer);
+      clearTimeout(greetingHideTimer);
+      refs.launcherGreeting.hidden = true;
+    }
     refs.launcher.setAttribute('aria-expanded', String(open));
     if (open) {
       setExpanded(false);
@@ -511,6 +520,26 @@
     launcher.setAttribute('aria-label', 'Open chat');
     launcher.setAttribute('aria-expanded', 'false');
     launcher.appendChild(icon(CHAT_ICON));
+    var indicator = el('span', 'launcher-indicator', config.launcher_indicator === 'number' ? '1' : '');
+    indicator.setAttribute('aria-hidden', 'true');
+    launcher.appendChild(indicator);
+
+    var launcherGreeting = el('button', 'launcher-greeting');
+    launcherGreeting.type = 'button';
+    launcherGreeting.hidden = true;
+    launcherGreeting.setAttribute('aria-label', 'Open chat');
+    var greetingAvatar = el('span', 'launcher-greeting-avatar', '\u2726');
+    var greetingAvatarUrl = config.avatar_url && httpsUrl(config.avatar_url);
+    if (greetingAvatarUrl) {
+      var greetingImage = el('img');
+      greetingImage.src = greetingAvatarUrl;
+      greetingImage.alt = '';
+      greetingImage.addEventListener('error', function () { greetingImage.remove(); });
+      greetingAvatar.appendChild(greetingImage);
+    }
+    launcherGreeting.appendChild(greetingAvatar);
+    launcherGreeting.appendChild(el('span', 'launcher-greeting-text', config.launcher_greeting_text || 'Hi! How can I help?'));
+    launcherGreeting.addEventListener('click', function () { setOpen(true); });
     launcher.addEventListener('click', function () {
       setOpen(true);
     });
@@ -661,11 +690,28 @@
     root.appendChild(backdrop);
     root.appendChild(panel);
     root.appendChild(launcher);
+    root.appendChild(launcherGreeting);
     shadow.appendChild(root);
     document.body.appendChild(host);
 
-    refs = { panel: panel, backdrop: backdrop, launcher: launcher, close: close, expand: expand, log: log, input: input, send: submit };
+    refs = { panel: panel, backdrop: backdrop, launcher: launcher, launcherGreeting: launcherGreeting, close: close, expand: expand, log: log, input: input, send: submit };
     render();
+    if (config.launcher_greeting_enabled) {
+      var scheduleGreeting = function () {
+        if (greetingCancelled) return;
+        var delay = Math.max(0, Math.min(300, Number(config.launcher_greeting_delay) || 0)) * 1000;
+        var navigation = window.performance && window.performance.getEntriesByType && window.performance.getEntriesByType('navigation')[0];
+        var elapsed = navigation && navigation.loadEventEnd ? Math.max(0, window.performance.now() - navigation.loadEventEnd) : 0;
+        if (elapsed >= delay + 5000) return;
+        greetingTimer = setTimeout(function () {
+          if (greetingCancelled) return;
+          launcherGreeting.hidden = false;
+          greetingHideTimer = setTimeout(function () { launcherGreeting.hidden = true; }, 5000);
+        }, Math.max(0, delay - elapsed));
+      };
+      if (document.readyState === 'complete') scheduleGreeting();
+      else window.addEventListener('load', scheduleGreeting, { once: true });
+    }
   }
 
   var CHAT_ICON =
@@ -684,6 +730,16 @@
     'a:focus-visible,button:focus-visible,textarea:focus-visible,.product-list:focus-visible{outline:2px solid var(--accent);outline-offset:2px}',
     '.launcher{width:56px;height:56px;border:0;border-radius:50%;background:var(--chat-primary);color:var(--chat-primary-contrast);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(0,0,0,.25)}',
     '.launcher.hidden{display:none}',
+    '.launcher{position:relative}',
+    '.launcher-indicator{position:absolute;right:-2px;top:-2px;display:grid;place-items:center;width:19px;height:19px;border:3px solid white;border-radius:50%;background:#25c83b;color:#fff;font-size:10px;font-weight:700;line-height:1}',
+    '.launcher-greeting{position:absolute;right:0;bottom:76px;display:flex;align-items:center;gap:12px;width:max-content;max-width:min(330px,calc(100vw - 32px));min-height:62px;padding:9px 16px 9px 8px;border:0;border-radius:38px;background:#fff9fa;color:#171927;text-align:left;box-shadow:0 10px 30px rgba(74,31,53,.2)}',
+    '.launcher-greeting[hidden]{display:none}',
+    '.launcher-greeting:after{content:"";position:absolute;right:19px;bottom:-9px;border-width:10px 0 0 16px;border-style:solid;border-color:transparent transparent transparent #fff9fa}',
+    '.launcher-greeting-avatar{position:relative;display:grid;place-items:center;overflow:hidden;flex:none;width:48px;height:48px;border:3px solid white;border-radius:50%;background:#f9d8ce;color:#8d3155;font-size:22px}',
+    '.launcher-greeting-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}',
+    '.launcher-greeting-text{overflow-wrap:anywhere;font-size:15px;font-weight:600;line-height:1.3}',
+    '@media (min-width:481px){.root.desktop-left .launcher-greeting{left:0;right:auto}.root.desktop-left .launcher-greeting:after{left:19px;right:auto;transform:scaleX(-1)}}',
+    '@media (max-width:480px){.root.mobile-left .launcher-greeting{left:0;right:auto}.root.mobile-left .launcher-greeting:after{left:19px;right:auto;transform:scaleX(-1)}}',
     '.panel{display:none;flex-direction:column;width:400px;max-width:calc(100vw - 40px);height:600px;max-height:calc(100vh - var(--desktop-bottom) - 20px);background:var(--chat-surface);border-radius:var(--chat-radius);overflow:hidden;box-shadow:0 18px 55px rgba(24,35,42,.22)}',
     '.panel.open{display:flex}',
     '.backdrop,.sheet-handle{display:none}',
