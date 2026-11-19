@@ -114,7 +114,8 @@ export function groupDeliveryAlerts(alerts: Notification[]): DeliveryAlertGroup[
       conversations: new Set(items.map((item) => item.conversation_id).filter(Boolean)).size,
       latestAt: items.reduce((latest, item) => (item.created_at > latest ? item.created_at : latest), items[0].created_at),
     }))
-    .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || b.alerts.length - a.alerts.length);
+    // Newest activity first; severity only breaks ties.
+    .sort((a, b) => Date.parse(b.latestAt) - Date.parse(a.latestAt) || SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
 }
 
 /** True when this notification belongs to the group key used in links (`?code=`). */
@@ -122,6 +123,12 @@ export function alertInGroup(alert: Notification, key: string): boolean {
   if (key === 'connection') return alert.type === 'whatsapp_disconnected';
   if (alert.type !== 'message_failed') return false;
   return (alertCode(alert) ?? 'other') === key;
+}
+
+/** Contact name the database trigger puts before the first `:` of the body. */
+export function alertContact(alert: Notification): string | null {
+  const name = alert.body?.match(/^([^:[\n]{1,80}):/)?.[1]?.trim();
+  return name || null;
 }
 
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;

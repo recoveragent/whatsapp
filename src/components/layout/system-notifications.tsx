@@ -13,8 +13,9 @@ import {
 } from '@/components/ui/popover';
 import type { Notification } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
-import { alertCode, describeAlertGroup, groupDeliveryAlerts, metaPaymentMessage, paymentIssueUrl, plural, type AlertSeverity, type DeliveryAlertGroup } from '@/lib/whatsapp/delivery-alerts';
+import { alertCode, alertContact, describeAlertGroup, groupDeliveryAlerts, metaPaymentMessage, paymentIssueUrl, plural, type AlertSeverity, type DeliveryAlertGroup } from '@/lib/whatsapp/delivery-alerts';
 import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 export function SystemNotifications() {
@@ -29,6 +30,18 @@ function DeliveryNotifications({ accountId, userId }: { accountId: string; userI
   const [count, setCount] = useState(0);
   const [error, setError] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  // Per-viewer preference: grouped by category (default) or one row per alert.
+  const [grouped, setGrouped] = useState(true);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (localStorage.getItem(GROUPED_KEY) === 'off') setGrouped(false);
+    } catch { /* Storage unavailable; keep the default. */ }
+  }, []);
+  const changeGrouped = (on: boolean) => {
+    setGrouped(on);
+    try { localStorage.setItem(GROUPED_KEY, on ? 'on' : 'off'); } catch { /* ignore */ }
+  };
   const load = useCallback(
     async (isCurrent: () => boolean = () => true) => {
       if (!accountId) return;
@@ -103,8 +116,7 @@ function DeliveryNotifications({ accountId, userId }: { accountId: string; userI
   }, [accountId, load]);
 
   const groups = groupDeliveryAlerts(alerts);
-  const markGroupRead = async (group: DeliveryAlertGroup) => {
-    const ids = group.alerts.map((item) => item.id);
+  const markRead = async (ids: string[]) => {
     const now = new Date().toISOString();
     setAlerts((prev) => prev.filter((item) => !ids.includes(item.id)));
     setCount((prev) => Math.max(0, prev - ids.length));
@@ -153,9 +165,13 @@ function DeliveryNotifications({ accountId, userId }: { accountId: string; userI
           <p className="text-sm font-semibold">Delivery alerts</p>
           <p className="text-muted-foreground text-xs">
             {count
-              ? `${plural(count, 'unread alert')} in ${plural(groups.length, 'group')}, most urgent first`
+              ? `${plural(count, 'unread alert')}${grouped ? ` in ${plural(groups.length, 'group')}` : ''}, newest first`
               : 'WhatsApp messages and connection issues that need attention'}
           </p>
+          <label className="mt-2 flex cursor-pointer items-center justify-between gap-2 text-xs">
+            <span>Show by category</span>
+            <Switch checked={grouped} onCheckedChange={changeGrouped} aria-label="Show alerts by category" />
+          </label>
         </div>
         <div className="max-h-80 overflow-y-auto">
           {error ? (
@@ -169,15 +185,31 @@ function DeliveryNotifications({ accountId, userId }: { accountId: string; userI
             <p className="text-muted-foreground p-4 text-xs">
               No unread delivery alerts
             </p>
-          ) : (
+          ) : grouped ? (
             groups.map((group) => (
               <AlertGroupRow
                 key={group.key}
                 group={group}
                 onOpenPayment={() => setPaymentOpen(true)}
-                onMarkRead={() => void markGroupRead(group).then(() => load())}
+                onMarkRead={() => void markRead(group.alerts.map((item) => item.id)).then(() => load())}
               />
             ))
+          ) : (
+            <>
+              {alerts.slice(0, INDIVIDUAL_LIMIT).map((alert) => (
+                <AlertRow
+                  key={alert.id}
+                  alert={alert}
+                  onOpenPayment={() => setPaymentOpen(true)}
+                  onMarkRead={() => void markRead([alert.id]).then(() => load())}
+                />
+              ))}
+              {alerts.length > INDIVIDUAL_LIMIT && (
+                <p className="text-muted-foreground p-3 text-center text-[11px]">
+                  Showing the {INDIVIDUAL_LIMIT} newest of {alerts.length} alerts
+                </p>
+              )}
+            </>
           )}
         </div>
         <Link
@@ -190,6 +222,9 @@ function DeliveryNotifications({ accountId, userId }: { accountId: string; userI
     </Popover></>
   );
 }
+
+const GROUPED_KEY = 'delivery-alerts-grouped';
+const INDIVIDUAL_LIMIT = 50;
 
 const SEVERITY_STYLE: Record<AlertSeverity, { dot: string; label: string }> = {
   critical: { dot: 'bg-destructive', label: 'Blocks sending' },
@@ -239,6 +274,48 @@ function AlertGroupRow({ group, onOpenPayment, onMarkRead }: {
         onClick={onMarkRead}
         className="text-muted-foreground hover:text-foreground absolute top-2.5 right-2 rounded px-1.5 py-0.5 text-[11px] hover:underline"
         aria-label={`Mark ${group.title} alerts as read`}
+      >
+        Mark read
+      </button>
+    </div>
+  );
+}
+
+function AlertRow({ alert, onOpenPayment, onMarkRead }: {
+  alert: Notification;
+  onOpenPayment: () => void;
+  onMarkRead: () => void;
+}) {
+  const key = alert.type === 'whatsapp_disconnected' ? 'connection' : alertCode(alert) ?? 'other';
+  const info = describeAlertGroup(key, [alert]);
+  const contact = alert.type === 'whatsapp_disconnected' ? null : alertContact(alert);
+  const href = key === 'connection'
+    ? '/settings?tab=whatsapp'
+    : alert.conversation_id ? `/inbox?c=${alert.conversation_id}` : '/notifications';
+  const body = (
+    <div className="flex items-start gap-2">
+      <span aria-hidden className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', SEVERITY_STYLE[info.severity].dot)} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{contact ?? info.title}</p>
+        {contact && <p className="text-muted-foreground mt-0.5 text-xs break-words">{info.title}</p>}
+        <p className="text-muted-foreground mt-1 text-[11px]">
+          {formatDistanceToNow(new Date(alert.created_at), { addSuffix: true })}
+        </p>
+      </div>
+    </div>
+  );
+  return (
+    <div className="relative border-b">
+      {key === '131042' ? (
+        <button type="button" onClick={onOpenPayment} className="hover:bg-muted block w-full p-3 pr-20 text-left">{body}</button>
+      ) : (
+        <Link href={href} onClick={onMarkRead} className="hover:bg-muted block p-3 pr-20">{body}</Link>
+      )}
+      <button
+        type="button"
+        onClick={onMarkRead}
+        className="text-muted-foreground hover:text-foreground absolute top-2.5 right-2 rounded px-1.5 py-0.5 text-[11px] hover:underline"
+        aria-label={`Mark alert${contact ? ` for ${contact}` : ''} as read`}
       >
         Mark read
       </button>
