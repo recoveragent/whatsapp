@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
@@ -30,6 +30,17 @@ function DeliveryNotifications({ accountId, userId }: { accountId: string; userI
   const [count, setCount] = useState(0);
   const [error, setError] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const dismissedPaymentIds = useRef<Set<string> | null>(null);
+  const paymentStorageKey = `payment-alert-dismissed-${accountId}-${userId}`;
+  const getDismissedPaymentIds = useCallback(() => {
+    if (dismissedPaymentIds.current === null) {
+      try {
+        const saved: unknown = JSON.parse(localStorage.getItem(paymentStorageKey) ?? '[]');
+        dismissedPaymentIds.current = new Set(Array.isArray(saved) ? saved.filter((id): id is string => typeof id === 'string') : []);
+      } catch { dismissedPaymentIds.current = new Set(); }
+    }
+    return dismissedPaymentIds.current;
+  }, [paymentStorageKey]);
   // Per-viewer preference: grouped by category (default) or one row per alert.
   const [grouped, setGrouped] = useState(true);
   useEffect(() => {
@@ -62,14 +73,13 @@ function DeliveryNotifications({ accountId, userId }: { accountId: string; userI
       if (!queryError) {
         setAlerts(data ?? []);
         setCount((data ?? []).length);
-        if ((data ?? []).some((item: Notification) => alertCode(item) === '131042') &&
-            !sessionStorage.getItem(`payment-alert-${accountId}-${userId}`)) {
+        const dismissed = getDismissedPaymentIds();
+        if ((data ?? []).some((item: Notification) => alertCode(item) === '131042' && !dismissed.has(item.id))) {
           setPaymentOpen(true);
-          sessionStorage.setItem(`payment-alert-${accountId}-${userId}`, 'shown');
         }
       }
     },
-    [accountId, userId]
+    [accountId, getDismissedPaymentIds]
   );
 
   useEffect(() => {
@@ -130,9 +140,19 @@ function DeliveryNotifications({ accountId, userId }: { accountId: string; userI
   };
   const paymentAlert = alerts.find((alert) => alertCode(alert) === '131042' && paymentIssueUrl(alert)) ?? alerts.find((alert) => alertCode(alert) === '131042');
   const paymentUrl = paymentAlert ? paymentIssueUrl(paymentAlert) : null;
+  const changePaymentOpen = (open: boolean) => {
+    if (!open) {
+      const dismissed = getDismissedPaymentIds();
+      for (const alert of alerts) {
+        if (alertCode(alert) === '131042') dismissed.add(alert.id);
+      }
+      try { localStorage.setItem(paymentStorageKey, JSON.stringify([...dismissed])); } catch { /* Keep the dismissal in memory. */ }
+    }
+    setPaymentOpen(open);
+  };
 
   return (<>
-    <Dialog open={paymentOpen && !!paymentAlert} onOpenChange={setPaymentOpen}>
+    <Dialog open={paymentOpen && !!paymentAlert} onOpenChange={changePaymentOpen}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Meta payment issue</DialogTitle>
@@ -143,7 +163,7 @@ function DeliveryNotifications({ accountId, userId }: { accountId: string; userI
           <p>{paymentAlert && metaPaymentMessage(paymentAlert)}</p>
         </div>
         {paymentUrl && <a href={paymentUrl} target="_blank" rel="noopener noreferrer" className="bg-primary text-primary-foreground rounded-md p-3 text-center text-sm font-semibold">Resolve payment issue</a>}
-        <Link href="/notifications?code=131042" onClick={() => setPaymentOpen(false)} className="rounded-md border p-3 text-center text-sm font-medium">View affected messages</Link>
+        <Link href="/notifications?code=131042" onClick={() => changePaymentOpen(false)} className="rounded-md border p-3 text-center text-sm font-medium">View affected messages</Link>
       </DialogContent>
     </Dialog>
     <Popover>
