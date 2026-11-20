@@ -28,8 +28,10 @@ export function canonicalContactPhone(phone: string): string {
   const n = normalizePhone(phone)
   if (!n) return n
 
-  // Already canonical — do not shorten via mistaken country-code splits.
-  if (/^91[6-9]\d{9}$/.test(n)) return n
+  // Indian national numbers have no country code to split. Zeros within
+  // the ten-digit number are subscriber digits, never trunk prefixes.
+  if (/^[6-9]\d{9}$/.test(n) || /^91[6-9]\d{9}$/.test(n)) return n
+  if (/^910[6-9]\d{9}$/.test(n)) return `91${n.slice(3)}`
 
   const candidates = phoneVariants(n)
   const minLen = Math.min(n.length, ...candidates.map((v) => v.length))
@@ -73,6 +75,18 @@ export function phonesMatch(phone1: string, phone2: string): boolean {
   const n1 = normalizePhone(phone1)
   const n2 = normalizePhone(phone2)
   if (n1 === n2) return true
+
+  // Never match an Indian mobile using only eight trailing digits: that
+  // can join different people or reattach an old truncated contact.
+  const indianMobile = (n: string) => {
+    if (/^[6-9]\d{9}$/.test(n)) return n
+    if (/^91[6-9]\d{9}$/.test(n)) return n.slice(2)
+    if (/^910[6-9]\d{9}$/.test(n)) return n.slice(3)
+    return null
+  }
+  const india1 = indianMobile(n1)
+  const india2 = indianMobile(n2)
+  if (india1 || india2) return !!india1 && india1 === india2
 
   const c1 = canonicalContactPhone(n1)
   const c2 = canonicalContactPhone(n2)

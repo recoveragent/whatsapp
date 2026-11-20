@@ -42,6 +42,12 @@ describe("normalizePhone", () => {
 });
 
 describe("phonesMatch", () => {
+  it("matches complete Indian numbers and rejects truncated or different numbers", () => {
+    expect(phonesMatch("7065651465", "+917065651465")).toBe(true);
+    expect(phonesMatch("+917065651465", "765651465")).toBe(false);
+    expect(phonesMatch("7065651465", "7165651465")).toBe(false);
+    expect(phonesMatch("9021165802", "921165802")).toBe(false);
+  });
   it("returns true for exact digit matches", () => {
     expect(phonesMatch("+37063949836", "37063949836")).toBe(true);
   });
@@ -75,6 +81,11 @@ describe("phonesMatch", () => {
 });
 
 describe("canonicalContactPhone", () => {
+  it("preserves zeros inside ten-digit Indian mobile numbers", () => {
+    expect(canonicalContactPhone("7065651465")).toBe("7065651465");
+    expect(canonicalContactPhone("9021165802")).toBe("9021165802");
+    expect(canonicalContactPhone("+917065651465")).toBe("917065651465");
+  });
   it("removes trunk 0 inserted after country code 91", () => {
     expect(canonicalContactPhone("9109036103346")).toBe("919036103346");
     expect(canonicalContactPhone("919036103346")).toBe("919036103346");
