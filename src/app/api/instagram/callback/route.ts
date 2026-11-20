@@ -36,8 +36,9 @@ export async function GET(request: Request) {
     const ig = accounts.data[0];
     if (!/^\d+$/.test(ig.id) || typeof ig.username !== 'string') return done('failed');
     const admin = supabaseAdmin();
-    const { data: existing, error: lookupError } = await admin.from('instagram_connections').select('account_id').eq('instagram_id', ig.id).maybeSingle();
-    if (lookupError || (existing && existing.account_id !== ctx.accountId)) return done('failed');
+    const { data: existing, error: lookupError } = await admin.from('instagram_connections').select('id').eq('instagram_id', ig.id).eq('account_id', ctx.accountId).maybeSingle();
+    const { data: active, error: activeError } = await admin.from('instagram_connections').select('account_id').eq('instagram_id', ig.id).not('access_token', 'is', null).maybeSingle();
+    if (lookupError || activeError || (active && active.account_id !== ctx.accountId)) return done('failed');
     const subscribe = await fetch(`https://graph.facebook.com/v27.0/${ig.id}/subscribed_apps`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ subscribed_fields: ['messages'] }) });
     const sub = await subscribe.json();
     if (!subscribe.ok || !sub.success) return done('failed');
