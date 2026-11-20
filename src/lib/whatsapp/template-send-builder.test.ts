@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildSendComponents } from './template-send-builder';
+import { buildSendTimeParamsFromVariables } from '@/lib/flows/template-send-params';
 import type { MessageTemplate } from '@/types';
 
 function row(overrides: Partial<MessageTemplate> = {}): MessageTemplate {
@@ -311,6 +312,27 @@ describe('buildSendComponents — buttons', () => {
     );
     expect((components[0] as { parameters: { coupon_code: string }[] })
       .parameters[0].coupon_code).toBe('PERSONAL_CODE');
+  });
+
+  it('uses a flow discount code for the correct button and falls back when blank', () => {
+    const template = row({
+      buttons: [
+        { type: 'QUICK_REPLY', text: 'Reply' },
+        { type: 'COPY_CODE', text: 'Copy offer code', example: 'DEFAULT' },
+      ],
+    });
+    const send = (value: string) => buildSendComponents(
+      template,
+      buildSendTimeParamsFromVariables({ button_1: value }, (raw) => raw),
+    );
+    expect(send('SAVE20')).toContainEqual({
+      type: 'button', sub_type: 'copy_code', index: '1',
+      parameters: [{ type: 'coupon_code', coupon_code: 'SAVE20' }],
+    });
+    expect(send('')).toContainEqual({
+      type: 'button', sub_type: 'copy_code', index: '1',
+      parameters: [{ type: 'coupon_code', coupon_code: 'DEFAULT' }],
+    });
   });
 
   it('skips PHONE_NUMBER buttons entirely (no send-time params allowed)', () => {

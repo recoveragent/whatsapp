@@ -813,6 +813,30 @@ export function SendTemplateFields({
               </span>
             </label>
           )}
+          {normalizeTemplateButtons(selectedTemplate.buttons).map((button, index) =>
+            button.type === "COPY_CODE" ? (
+              <div key={`copy_code_${index}`} className="space-y-1">
+                <label htmlFor={`copy-code-${index}`} className="text-xs font-medium text-foreground">
+                  Discount code for “{button.text}”
+                </label>
+                <Input
+                  id={`copy-code-${index}`}
+                  value={variables[`button_${index}`] ?? ""}
+                  onChange={(event) =>
+                    onChange({
+                      template_name: templateName,
+                      language: lang,
+                      variables: { ...variables, [`button_${index}`]: event.target.value },
+                    })
+                  }
+                  placeholder={button.example || "Enter a discount code"}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Leave blank to use the code saved in the template.
+                </p>
+              </div>
+            ) : null,
+          )}
           {placeholders.length > 0 && (
             <div className={flowLayout ? "space-y-3" : VARIABLE_FIELDS_LAYOUT}>
               <div className="min-w-0 space-y-2">
