@@ -18,6 +18,7 @@ import { notifyRecoverAgentConversationChanged, notifyRecoverAgentEmbedClose } f
 import { pickValidE164Phone } from "@/lib/whatsapp/phone-utils";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { WebsiteChatChannel } from "@/components/inbox/website-chat-channel";
+import { InstagramChannel } from "@/components/inbox/instagram-channel";
 import { Switch } from "@/components/ui/switch";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
@@ -71,6 +72,7 @@ function InboxPageInner() {
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [showWebsiteChats, setShowWebsiteChats] = useState(false);
+  const [showInstagram, setShowInstagram] = useState(false);
   const [widgetStatus, setWidgetStatus] = useState<{ accountId: string; enabled: boolean } | null>(null);
   const websiteWidgetEnabled = !!accountId && widgetStatus?.accountId === accountId && widgetStatus.enabled;
 
@@ -1088,7 +1090,7 @@ function InboxPageInner() {
     >
       {/* WhatsApp connection banner — in the flex column, not absolute,
           so it pushes the panels down instead of overlapping them. */}
-      {whatsappConnected === false && (
+      {whatsappConnected === false && !showInstagram && (
         <div className="flex shrink-0 items-center justify-center gap-2 border-b border-warn/40 bg-warn/10 px-4 py-2">
           <WifiOff className="h-4 w-4 text-amber-700" />
           <p className="text-xs text-amber-700">
@@ -1097,12 +1099,13 @@ function InboxPageInner() {
         </div>
       )}
 
-      {!embedded && isAiAgentsEnabled && websiteWidgetEnabled && <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 text-sm">
+      {!embedded && <div className="flex shrink-0 gap-3 border-b px-4 py-2 text-sm"><button type="button" onClick={() => setShowInstagram(false)} className={!showInstagram ? 'font-semibold' : 'text-muted-foreground'}>WhatsApp</button><button type="button" onClick={() => { setShowInstagram(true); setShowWebsiteChats(false); }} className={showInstagram ? 'font-semibold' : 'text-muted-foreground'}>Instagram</button></div>}
+      {!embedded && !showInstagram && isAiAgentsEnabled && websiteWidgetEnabled && <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 text-sm">
         <Switch id="show-website-chats" checked={showWebsiteChats} onCheckedChange={setShowWebsiteChats} />
         <label htmlFor="show-website-chats">Show website chats</label>
         <span className="text-xs text-muted-foreground">{showWebsiteChats ? 'Website channel' : 'WhatsApp channel'}</span>
       </div>}
-      {showWebsiteChats && websiteWidgetEnabled && isAiAgentsEnabled && !embedded ? <WebsiteChatChannel onOpenWhatsApp={(phone) => {
+      {showInstagram && !embedded ? <InstagramChannel /> : showWebsiteChats && websiteWidgetEnabled && isAiAgentsEnabled && !embedded ? <WebsiteChatChannel onOpenWhatsApp={(phone) => {
         setShowWebsiteChats(false);
         router.push(`/inbox?phone=${encodeURIComponent(phone)}`);
       }} /> : <div className="flex flex-1 overflow-hidden">
