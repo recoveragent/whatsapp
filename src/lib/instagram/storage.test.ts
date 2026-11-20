@@ -20,6 +20,13 @@ describe('Instagram message storage', () => {
       const threads = await db.query('SELECT last_message_text FROM instagram_threads');
       expect(messages.rows).toEqual([{ count: 2 }]);
       expect(threads.rows).toEqual([{ last_message_text: 'new' }]);
+      await db.exec(readFileSync('supabase/migrations/20261120012205_instagram_disconnect.sql', 'utf8'));
+      await db.query('UPDATE instagram_connections SET access_token = NULL WHERE id = $1', [connection]);
+      expect((await db.query('SELECT count(*)::int AS count FROM instagram_messages')).rows).toEqual([{ count: 2 }]);
+      const other = '00000000-0000-0000-0000-000000000003';
+      await db.query('INSERT INTO accounts(id) VALUES ($1)', [other]);
+      await db.query("INSERT INTO instagram_connections(account_id,instagram_id,username,client_business_id,access_token) VALUES ($1,'123','store','321','encrypted')", [other]);
+      await expect(db.query("UPDATE instagram_connections SET access_token = 'encrypted' WHERE id = $1", [connection])).rejects.toThrow();
     } finally { await db.close(); }
   }, 20000);
 });

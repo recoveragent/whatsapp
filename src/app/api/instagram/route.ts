@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   try {
     const ctx = await getCurrentAccount();
     const admin = supabaseAdmin();
-    const { data: connections, error } = await admin.from('instagram_connections').select('id,username').eq('account_id', ctx.accountId);
+    const { data: connections, error } = await admin.from('instagram_connections').select('id,username').eq('account_id', ctx.accountId).not('access_token', 'is', null);
     if (error) throw error;
     const threadId = new URL(request.url).searchParams.get('thread');
     if (threadId) {
@@ -20,6 +20,18 @@ export async function GET(request: Request) {
     const { data: threads, error: threadError } = await ctx.supabase.from('instagram_threads').select('id,connection_id,participant_id,last_message_text,last_message_at,last_inbound_at').eq('account_id', ctx.accountId).order('last_message_at', { ascending: false }).limit(100);
     if (threadError) throw threadError;
     return NextResponse.json({ connections, threads });
+  } catch (error) { return toErrorResponse(error); }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const ctx = await requireRole('admin');
+    const { id } = await request.json();
+    if (typeof id !== 'string' || !/^[0-9a-f-]{36}$/i.test(id)) return NextResponse.json({ error: 'Invalid connection' }, { status: 400 });
+    const { data, error } = await supabaseAdmin().from('instagram_connections').update({ access_token: null }).eq('account_id', ctx.accountId).eq('id', id).not('access_token', 'is', null).select('id').maybeSingle();
+    if (error) throw error;
+    if (!data) return NextResponse.json({ error: 'Connection not found' }, { status: 404 });
+    return NextResponse.json({ ok: true });
   } catch (error) { return toErrorResponse(error); }
 }
 
@@ -39,7 +51,7 @@ export async function POST(request: Request) {
     const admin = supabaseAdmin();
     const { data: connection, error: configError } = await admin.from('instagram_connections').select('id,instagram_id,access_token').eq('account_id', ctx.accountId).eq('id', thread.connection_id).maybeSingle();
     if (configError) throw configError;
-    if (!connection) return NextResponse.json({ error: 'Instagram is disconnected.' }, { status: 400 });
+    if (!connection?.access_token) return NextResponse.json({ error: 'Instagram is disconnected.' }, { status: 400 });
     let response: Response;
     try {
       response = await fetch(`https://graph.facebook.com/v27.0/${encodeURIComponent(connection.instagram_id)}/messages`, { method: 'POST', headers: { Authorization: `Bearer ${decrypt(connection.access_token)}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ recipient: { id: thread.participant_id }, message: { text } }) });

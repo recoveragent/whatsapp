@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   try { payload = JSON.parse(raw); } catch { return new Response('Bad request', { status: 400 }); }
   const admin = supabaseAdmin();
   for (const event of parseInstagramEvents(payload)) {
-    const { data: connection, error } = await admin.from('instagram_connections').select('id').eq('instagram_id', event.accountId).maybeSingle();
+    const { data: connection, error } = await admin.from('instagram_connections').select('id').eq('instagram_id', event.accountId).not('access_token', 'is', null).maybeSingle();
     if (error) return new Response('Retry', { status: 500 });
     if (!connection) continue;
     const result = await admin.rpc('instagram_record_message', { p_connection: connection.id, p_participant: event.participantId, p_meta_id: event.messageId, p_direction: event.direction, p_content: event.text, p_at: event.at });
