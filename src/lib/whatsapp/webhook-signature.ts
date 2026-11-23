@@ -21,8 +21,8 @@ import crypto from 'node:crypto'
 export function verifyMetaWebhookSignature(
   rawBody: string,
   signatureHeader: string | null,
-  secret: string | undefined = process.env.META_APP_SECRET,
 ): boolean {
+  const secret = process.env.META_APP_SECRET
   if (!secret) {
     console.error(
       '[webhook] META_APP_SECRET is not set — rejecting request. ' +
