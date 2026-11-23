@@ -361,8 +361,28 @@ function ConditionRow({
             keywords={condition.keywords ?? []}
             onChange={(keywords) => onPatch({ keywords })}
           />
+          <label className="mb-1 mt-3 block text-xs text-muted-foreground">
+            Match type
+          </label>
+          <Select
+            value={condition.match_type ?? "contains"}
+            onValueChange={(value) => {
+              if (value === "exact" || value === "contains") {
+                onPatch({ match_type: value });
+              }
+            }}
+          >
+            <SelectTrigger className="w-full bg-background" aria-label="Exit keyword match type">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="exact">Exactly matches</SelectItem>
+              <SelectItem value="contains">Contains</SelectItem>
+            </SelectContent>
+          </Select>
           <p className="mt-1 text-[10px] text-muted-foreground">
-            Case-insensitive. Ends the run if the customer sends one of these.
+            Case-insensitive. Exactly matches requires the whole message to match a keyword.
+            Contains also matches keywords inside words and longer messages.
           </p>
         </div>
       )}
