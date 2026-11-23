@@ -9,6 +9,7 @@ import { pollLeadSources } from '@/lib/leads/poll-sources'
 import { processDueAbandonedCheckouts } from '@/lib/shopify/handle-webhook'
 import { processScheduledBroadcasts } from '@/lib/whatsapp/broadcast-scheduled'
 import { processDueRateLimitRetries } from '@/lib/whatsapp/rate-limit-retry'
+import { syncInstagramConversations } from '@/lib/instagram/sync'
 
 export interface ScheduledAutomationJobsResult {
   processed: number
@@ -21,6 +22,7 @@ export interface ScheduledAutomationJobsResult {
   errors: string[]
   broadcasts: number
   rate_limit_retries: number
+  instagram_sync: unknown
 }
 
 function settledValue<T>(
@@ -94,6 +96,7 @@ export async function runScheduledAutomationJobs(): Promise<ScheduledAutomationJ
     flowOutboundReconciliationResult,
     broadcastsResult,
     rateLimitRetriesResult,
+    instagramSyncResult,
   ] = await Promise.allSettled([
     pollGoogleSheetFlows(admin),
     pollLeadSources(admin),
@@ -103,6 +106,7 @@ export async function runScheduledAutomationJobs(): Promise<ScheduledAutomationJ
     reconcileRecentFlowOutboundMessages({ db: admin }),
     processScheduledBroadcasts(admin),
     processDueRateLimitRetries(admin),
+    syncInstagramConversations(admin),
   ])
 
   return {
@@ -123,5 +127,6 @@ export async function runScheduledAutomationJobs(): Promise<ScheduledAutomationJ
     broadcasts: settledValue(broadcastsResult, 'broadcasts', errors) ?? 0,
     rate_limit_retries:
       settledValue(rateLimitRetriesResult, 'rate_limit_retries', errors) ?? 0,
+    instagram_sync: settledValue(instagramSyncResult, 'instagram_sync', errors),
   }
 }

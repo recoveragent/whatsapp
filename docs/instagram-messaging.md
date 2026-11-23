@@ -10,3 +10,5 @@ This integration uses the Instagram API with Unified Login and the existing Meta
 6. Send a test DM from another account, verify its appearance in Inbox > Instagram, and reply within 24 hours. Repeat a webhook notification to verify it does not create a duplicate. Meta App Review and Advanced Access are needed before customers without app roles can connect.
 
 The migration keeps encrypted tokens in a service-role-only table. Inbox rows use workspace membership policies. The 24-hour restriction is conservative; other Meta messaging windows are not implemented. A failed or ambiguous send must be checked in Instagram before retrying.
+
+Message webhooks are the primary delivery path. As a fallback (Meta may not deliver `messages` webhooks while `instagram_manage_messages` has only Standard Access), the scheduled-jobs cron also reads each connected account's recently updated conversations through the Graph API every minute (`src/lib/instagram/sync.ts`) and stores new messages through the same idempotent `instagram_record_message` function. It never imports messages older than 24 hours or older than the connection.
