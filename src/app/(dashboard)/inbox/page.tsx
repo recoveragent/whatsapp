@@ -1108,7 +1108,8 @@ function InboxPageInner() {
       {showInstagram && !embedded ? <InstagramChannel /> : showWebsiteChats && websiteWidgetEnabled && isAiAgentsEnabled && !embedded ? <WebsiteChatChannel onOpenWhatsApp={(phone) => {
         setShowWebsiteChats(false);
         router.push(`/inbox?phone=${encodeURIComponent(phone)}`);
-      }} /> : <div className="flex flex-1 overflow-hidden">
+      }} /> : null}
+      <div className={cn("flex-1 overflow-hidden", (showInstagram || (showWebsiteChats && websiteWidgetEnabled && isAiAgentsEnabled)) && !embedded ? "hidden" : "flex")}>
         {/* Left panel: Conversation list — hidden in Recover Agent embed. */}
         {!embedded && (
         <div
@@ -1181,7 +1182,7 @@ function InboxPageInner() {
             />
           </div>
         )}
-      </div>}
+      </div>
 
       <ContactDetailView
         open={contactDetailOpen}

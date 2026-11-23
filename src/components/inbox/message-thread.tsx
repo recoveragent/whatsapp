@@ -268,6 +268,8 @@ export function MessageThread({
   }, [accountId, directSendConversationId, directSendConfigId, directSendKey, resyncToken]);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const followLatestRef = useRef(true);
+  const scrolledConversationRef = useRef<string | null>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [flowModalOpen, setFlowModalOpen] = useState(false);
   const [productModalOpen, setProductModalOpen] = useState(false);
@@ -755,13 +757,20 @@ export function MessageThread({
       });
   }, [conversationId, hasUnread]);
 
-  // Auto-scroll to bottom on new messages or private notes
+  // Keep readers at their current position during refreshes and new activity.
+  // A newly opened conversation still starts at the latest message.
   useEffect(() => {
-    if (scrollRef.current) {
-      const el = scrollRef.current;
+    const el = scrollRef.current;
+    if (!el || !conversationId) return;
+    if (scrolledConversationRef.current !== conversationId) {
+      followLatestRef.current = true;
+      if (loading || !messages.some((message) => message.conversation_id === conversationId)) return;
+      scrolledConversationRef.current = conversationId;
+    }
+    if (followLatestRef.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages, privateNotes]);
+  }, [conversationId, loading, messages, privateNotes]);
 
   const handleSend = useCallback(
     async (text: string, replyToId?: string, category?: 'utility') => {
@@ -1689,6 +1698,12 @@ export function MessageThread({
       {/* Messages Area */}
       <div
         ref={scrollRef}
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          if (el.clientHeight > 0) {
+            followLatestRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          }
+        }}
         onTouchStart={handleSwipeStart}
         onTouchEnd={handleSwipeEnd}
         onTouchCancel={handleSwipeCancel}
