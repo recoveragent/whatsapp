@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { conversationsToEvents, parseGraphTime } from './sync';
+import { conversationUsernames, conversationsToEvents, parseGraphTime } from './sync';
 
 const NOW = Date.parse('2026-11-23T17:00:00Z');
 const opts = { now: NOW, notBefore: NOW - 24 * 60 * 60_000 };
@@ -21,6 +21,15 @@ describe('Instagram API sync', () => {
       { accountId: '123', participantId: '456', messageId: 'm1', direction: 'inbound', text: 'Hello', at: '2026-11-23T16:54:00.000Z' },
       { accountId: '123', participantId: '456', messageId: 'm0', direction: 'inbound', text: '[Attachment]', at: '2026-11-23T16:53:00.000Z' },
     ]);
+  });
+
+  it('collects customer usernames and ignores the business account and invalid names', () => {
+    const names = conversationUsernames('123', [{ messages: { data: [
+      { id: 'a', from: { id: '456', username: 'simran.k' }, to: { data: [{ id: '123', username: 'giftingstudio.in' }] } },
+      { id: 'b', from: { id: '123', username: 'giftingstudio.in' }, to: { data: [{ id: '789', username: 'bad name!' }] } },
+    ] } }]);
+    expect([...names]).toEqual([['456', 'simran.k']]);
+    expect(conversationUsernames('123', null).size).toBe(0);
   });
 
   it('skips stale conversations, old messages, and messages not involving the account', () => {

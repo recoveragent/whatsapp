@@ -17,7 +17,7 @@ export async function GET(request: Request) {
       if (messagesError) throw messagesError;
       return NextResponse.json({ messages: (data ?? []).reverse() });
     }
-    const { data: threads, error: threadError } = await ctx.supabase.from('instagram_threads').select('id,connection_id,participant_id,last_message_text,last_message_at,last_inbound_at').eq('account_id', ctx.accountId).order('last_message_at', { ascending: false }).limit(100);
+    const { data: threads, error: threadError } = await ctx.supabase.from('instagram_threads').select('id,connection_id,participant_id,participant_username,last_message_text,last_message_at,last_inbound_at').eq('account_id', ctx.accountId).order('last_message_at', { ascending: false }).limit(100);
     if (threadError) throw threadError;
     return NextResponse.json({ connections, threads });
   } catch (error) { return toErrorResponse(error); }
