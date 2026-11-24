@@ -210,7 +210,7 @@ describe('migration', () => {
       await db.query('INSERT INTO accounts(id) VALUES ($1)', [account]);
       await db.query("INSERT INTO instagram_connections(id,account_id,instagram_id,username,client_business_id,access_token) VALUES ($1,$2,'123','store','321','x')", [conn, account]);
       await db.query("INSERT INTO instagram_comment_rules(account_id,connection_id,reply_text) VALUES ($1,$2,'Hi')", [account, conn]);
-      await run('20261124180000_instagram_comment_cards');
+      await run('20261124174202_instagram_comment_cards');
       const { rows } = await db.query<Row>('SELECT * FROM instagram_comment_rules');
       expect(rows[0]).toMatchObject({ delivery: 'text', product_ids: [], reminder_text: null, reminder_minutes: 600 });
       const ins = await db.query<Row>("INSERT INTO instagram_comment_replies(account_id,connection_id,rule_id,comment_id,media_id,commenter_key,status,delivery,tapped_at) VALUES ($1,$2,$3,'k','m','p','sent','tap',now()) RETURNING id", [account, conn, rows[0].id]);

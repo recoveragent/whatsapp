@@ -34,7 +34,7 @@ export function parseCommentRuleInput(body: unknown): { error: string } | { valu
   const limit = input.public_reply_limit ?? 100;
   if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 1000) return { error: 'The public reply limit must be between 1 and 1,000.' };
   const text = typeof input.reply_text === 'string' ? input.reply_text.trim() : '';
-  if (!text) return { error: 'Enter the message to send.' };
+  if (!text) return { error: (input.delivery ?? 'text') === 'text' ? 'Enter the message to send.' : 'Enter the backup text. It is sent if a card cannot be shown.' };
   // Instagram's limit is measured in UTF-8 bytes, so emoji and Indian scripts count for more than one.
   if (new TextEncoder().encode(text).length > 1000) return { error: 'The message is too long for Instagram. Shorten it.' };
   const delivery = input.delivery ?? 'text';

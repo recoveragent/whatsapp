@@ -3,11 +3,13 @@ import { getCurrentAccount, requireRole, toErrorResponse } from '@/lib/auth/acco
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { graphError } from '@/lib/instagram/comments';
 import { parseCommentRuleInput } from '@/lib/instagram/comment-rule-input';
-import { getShopifyCatalogProductsForProductIds, searchShopifyProducts } from '@/lib/shopify/product-store';
+import { cardImage, formatPrice } from '@/lib/instagram/cards';
+import { getShopifyCatalogProductsForProductIds, searchShopifyProducts, type ShopifyCatalogProduct } from '@/lib/shopify/product-store';
 import { decrypt } from '@/lib/whatsapp/encryption';
 
 const UUID = /^[0-9a-f-]{36}$/i;
 const FIELDS = 'id,connection_id,media_id,keywords,exclude_keywords,match_mode,skip_mentions,public_replies,public_reply_limit,reply_text,delivery,product_ids,tap_title,tap_subtitle,tap_button,reminder_text,reminder_minutes,active_since,last_checked_at,last_error,created_at';
+const summary = (p: ShopifyCatalogProduct) => ({ id: p.shopify_product_id, title: p.title, image: cardImage(p.image_url) ?? null, price: formatPrice(p.price, p.currency) || null });
 const bad = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
 export async function GET(request: Request) {
@@ -19,7 +21,7 @@ export async function GET(request: Request) {
       const { data: connection, error } = await supabaseAdmin().from('instagram_connections').select('instagram_id,access_token').eq('account_id', ctx.accountId).eq('id', mediaFor).not('access_token', 'is', null).maybeSingle();
       if (error) throw error;
       if (!connection) return bad('Instagram is disconnected.', 404);
-      const url = `https://graph.facebook.com/v27.0/${encodeURIComponent(connection.instagram_id)}/media?fields=id,caption,media_type,timestamp&limit=25`;
+      const url = `https://graph.facebook.com/v27.0/${encodeURIComponent(connection.instagram_id)}/media?fields=id,caption,media_type,timestamp,media_url,thumbnail_url,permalink&limit=25`;
       const response = await fetch(url, { headers: { Authorization: `Bearer ${decrypt(connection.access_token)}` }, cache: 'no-store' });
       const body = await response.json().catch(() => null);
       if (!response.ok || !Array.isArray(body?.data)) return bad(`Could not load posts: ${graphError(body?.error ?? {})}`, 502);
@@ -30,7 +32,7 @@ export async function GET(request: Request) {
       const ctx = await requireRole('admin');
       const found = await searchShopifyProducts({ db: supabaseAdmin(), accountId: ctx.accountId, query: search.slice(0, 80), limit: 50 });
       // The catalogue has one row per variant; the picker needs one per product.
-      const products = [...new Map(found.filter((p) => p.handle).map((p) => [p.shopify_product_id, { id: p.shopify_product_id, title: p.title }])).values()].slice(0, 15);
+      const products = [...new Map(found.filter((p) => p.handle).map((p) => [p.shopify_product_id, summary(p)])).values()].slice(0, 15);
       return NextResponse.json({ products });
     }
     const ctx = await getCurrentAccount();
@@ -45,7 +47,7 @@ export async function GET(request: Request) {
     if (pauses.error) throw pauses.error;
     if (stats.error) throw stats.error;
     const ids = [...new Set((rules.data ?? []).flatMap((r) => r.product_ids as number[]))];
-    const products = (await getShopifyCatalogProductsForProductIds({ db: supabaseAdmin(), accountId: ctx.accountId, productIds: ids })).map((p) => ({ id: p.shopify_product_id, title: p.title }));
+    const products = (await getShopifyCatalogProductsForProductIds({ db: supabaseAdmin(), accountId: ctx.accountId, productIds: ids })).map(summary);
     return NextResponse.json({ rules: rules.data, replies: replies.data, pauses: pauses.data, stats: stats.data, products });
   } catch (error) { return toErrorResponse(error); }
 }

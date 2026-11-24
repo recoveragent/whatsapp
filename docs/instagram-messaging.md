@@ -27,6 +27,6 @@ Instagram logins from the current configuration last 60 days. Once a day the sch
 
 ## Product cards
 
-Apply `20261124180000_instagram_comment_cards.sql` before deploying. A rule can send text (the default), product cards straight away, or one card with a button and then product cards after the customer taps it. Live tests on 24 November 2026 showed Meta accepts a generic template as a private reply, including to an account with no earlier messages, and that a tap arrives as an ordinary message containing the button label. Taps are therefore found by the conversation sync, and products follow within about two minutes.
+Apply `20261124174202_instagram_comment_cards.sql` before deploying. A rule can send text (the default), product cards straight away, or one card with a button and then product cards after the customer taps it. Live tests on 24 November 2026 showed Meta accepts a generic template as a private reply, including to an account with no earlier messages, and that a tap arrives as an ordinary message containing the button label. Taps are therefore found by the conversation sync, and products follow within about two minutes.
 
 If Meta refuses the card itself (error 100) the rule text is sent instead. Any other refusal, or no answer, sends nothing more. Cards use current Shopify prices and leave out sold-out products. Product links go through `/l/<token>`, which counts visits. A reminder is sent at most once, between 10 minutes and 23 hours after the tap, and is skipped if the customer writes or the team replies.
