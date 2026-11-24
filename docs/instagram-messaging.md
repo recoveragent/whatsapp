@@ -15,7 +15,7 @@ Message webhooks are the primary delivery path. As a fallback (Meta may not deli
 
 ## Comment to DM
 
-Rules in Settings > Instagram send one private reply to a matching comment. Apply `20261124030000_instagram_comment_to_dm.sql` before deploying. The login configuration must also request `instagram_manage_comments`, and existing accounts must reconnect. Rules start off and ignore comments made before they were switched on. A reply is reserved before sending and is never retried automatically, so a person gets at most one DM per post. Comment webhooks are used when delivered; otherwise the minute scheduler reads the newest 50 comments on each chosen post, or on the 10 most recent posts, and sends up to 20 DMs per account per run.
+Rules in Settings > Instagram send one private reply to a matching comment. Apply `20261124061642_instagram_comment_to_dm.sql` before deploying. The login configuration must also request `instagram_manage_comments`, and existing accounts must reconnect. Rules start off and ignore comments made before they were switched on. A reply is reserved before sending and is never retried automatically, so a person gets at most one DM per post. Comment webhooks are used when delivered; otherwise the minute scheduler reads the newest 50 comments on each chosen post, or on the 10 most recent posts, and sends up to 20 DMs per account per run.
 
 Rules can block words, skip comments that tag someone else, match whole words or anywhere in the comment, and post one random public reply after the DM is confirmed, up to a limit per post. Editing a rule that is on restarts its clock, so earlier comments are never reached.
 

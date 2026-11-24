@@ -247,7 +247,7 @@ describe('migration', () => {
     const db = new PGlite();
     try {
       await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role; CREATE TABLE public.accounts(id uuid PRIMARY KEY); CREATE FUNCTION public.is_account_member(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT true';`);
-      for (const file of ['20261119173500_instagram_messaging', '20261120012205_instagram_disconnect', '20261124030000_instagram_comment_to_dm']) await db.exec(readFileSync(`supabase/migrations/${file}.sql`, 'utf8'));
+      for (const file of ['20261119173500_instagram_messaging', '20261120012205_instagram_disconnect', '20261124061642_instagram_comment_to_dm']) await db.exec(readFileSync(`supabase/migrations/${file}.sql`, 'utf8'));
       const [account, conn] = ['00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002'];
       await db.query('INSERT INTO accounts(id) VALUES ($1)', [account]);
       await db.query("INSERT INTO instagram_connections(id,account_id,instagram_id,username,client_business_id,access_token) VALUES ($1,$2,'123','store','321','x')", [conn, account]);
