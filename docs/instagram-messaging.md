@@ -16,3 +16,11 @@ Message webhooks are the primary delivery path. As a fallback (Meta may not deli
 ## Comment to DM
 
 Rules in Settings > Instagram send one private reply to a matching comment. Apply `20261124030000_instagram_comment_to_dm.sql` before deploying. The login configuration must also request `instagram_manage_comments`, and existing accounts must reconnect. Rules start off and ignore comments made before they were switched on. A reply is reserved before sending and is never retried automatically, so a person gets at most one DM per post. Comment webhooks are used when delivered; otherwise the minute scheduler reads the newest 50 comments on each chosen post, or on the 10 most recent posts, and sends up to 20 DMs per account per run.
+
+Rules can block words, skip comments that tag someone else, match whole words or anywhere in the comment, and post one random public reply after the DM is confirmed, up to a limit per post. Editing a rule that is on restarts its clock, so earlier comments are never reached.
+
+Sends stay under 600 per account per hour (Meta allows 750). Comment to DM pauses for 24 hours on a policy block, an invalid login or five failures in a row, and for one hour on a rate limit. A public reply rate limit or five failed public replies pauses public replies only. Comments made during a full pause are not answered.
+
+## Login renewal
+
+Instagram logins from the current configuration last 60 days. Once a day the scheduler records each expiry and, within 20 days of it, exchanges the token. The new token is kept only if Meta reports it as valid, longer lasting and holding the same permissions; otherwise Settings > Instagram asks for a reconnect. Renewal has not been tested against Meta yet.

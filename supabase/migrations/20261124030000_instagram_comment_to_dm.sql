@@ -7,6 +7,11 @@ CREATE TABLE public.instagram_comment_rules (
   connection_id uuid NOT NULL,
   media_id text,
   keywords text[] NOT NULL DEFAULT '{}',
+  exclude_keywords text[] NOT NULL DEFAULT '{}',
+  match_mode text NOT NULL DEFAULT 'word' CHECK (match_mode IN ('word', 'contains')),
+  skip_mentions boolean NOT NULL DEFAULT true,
+  public_replies text[] NOT NULL DEFAULT '{}',
+  public_reply_limit int NOT NULL DEFAULT 100 CHECK (public_reply_limit BETWEEN 1 AND 1000),
   reply_text text NOT NULL CHECK (octet_length(reply_text) BETWEEN 1 AND 1000),
   active_since timestamptz,
   last_checked_at timestamptz,
@@ -31,12 +36,26 @@ CREATE TABLE public.instagram_comment_replies (
   commenter_username text,
   status text NOT NULL DEFAULT 'sending' CHECK (status IN ('sending', 'sent', 'failed', 'unknown')),
   error text,
+  public_status text CHECK (public_status IN ('sent', 'failed', 'unknown')),
+  public_error text,
   created_at timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY (connection_id, account_id) REFERENCES public.instagram_connections(id, account_id) ON DELETE CASCADE,
   UNIQUE (connection_id, comment_id),
   UNIQUE (connection_id, media_id, commenter_key)
 );
+CREATE INDEX instagram_comment_replies_connection_idx ON public.instagram_comment_replies(connection_id, created_at DESC);
 CREATE INDEX instagram_comment_replies_recent_idx ON public.instagram_comment_replies(account_id, created_at DESC);
+
+-- Pauses protect the account when Meta rejects sends. Comments made before
+-- comments_ignore_before are never answered, so ending a pause cannot cause a burst.
+ALTER TABLE public.instagram_connections
+  ADD COLUMN comments_paused_until timestamptz,
+  ADD COLUMN comments_pause_reason text,
+  ADD COLUMN comments_ignore_before timestamptz,
+  ADD COLUMN public_replies_paused_until timestamptz,
+  ADD COLUMN token_expires_at timestamptz,
+  ADD COLUMN token_checked_at timestamptz,
+  ADD COLUMN token_error text;
 
 ALTER TABLE public.instagram_comment_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.instagram_comment_replies ENABLE ROW LEVEL SECURITY;

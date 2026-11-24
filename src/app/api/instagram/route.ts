@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   try {
     const ctx = await getCurrentAccount();
     const admin = supabaseAdmin();
-    const { data: connections, error } = await admin.from('instagram_connections').select('id,username').eq('account_id', ctx.accountId).not('access_token', 'is', null);
+    const { data: connections, error } = await admin.from('instagram_connections').select('id,username,token_expires_at,token_error').eq('account_id', ctx.accountId).not('access_token', 'is', null);
     if (error) throw error;
     const threadId = new URL(request.url).searchParams.get('thread');
     if (threadId) {

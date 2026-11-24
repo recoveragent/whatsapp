@@ -46,7 +46,14 @@ export async function GET(request: Request) {
     };
     // Comments need instagram_manage_comments. Without it, messaging must still connect.
     if (!(await subscribe(['messages', 'comments'])) && !(await subscribe(['messages']))) return done('failed');
-    const values = { username: ig.username, client_business_id: business.client_business_id, access_token: encrypt(token) };
+    const expiresIn = Number(tokenData.expires_in);
+    const values = {
+      username: ig.username, client_business_id: business.client_business_id, access_token: encrypt(token),
+      token_expires_at: Number.isFinite(expiresIn) && expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : null,
+      token_checked_at: null, token_error: null,
+      // Reconnecting ends any pause, without answering comments made while it was paused.
+      comments_paused_until: null, comments_pause_reason: null, public_replies_paused_until: null, comments_ignore_before: new Date().toISOString(),
+    };
     const { error } = existing
       ? await admin.from('instagram_connections').update(values).eq('instagram_id', ig.id).eq('account_id', ctx.accountId)
       : await admin.from('instagram_connections').insert({ ...values, account_id: ctx.accountId, instagram_id: ig.id });

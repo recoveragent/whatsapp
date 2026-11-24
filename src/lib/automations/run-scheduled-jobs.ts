@@ -11,6 +11,7 @@ import { processScheduledBroadcasts } from '@/lib/whatsapp/broadcast-scheduled'
 import { processDueRateLimitRetries } from '@/lib/whatsapp/rate-limit-retry'
 import { syncInstagramConversations } from '@/lib/instagram/sync'
 import { checkInstagramComments } from '@/lib/instagram/comments'
+import { maintainInstagramTokens } from '@/lib/instagram/token'
 
 export interface ScheduledAutomationJobsResult {
   processed: number
@@ -25,6 +26,7 @@ export interface ScheduledAutomationJobsResult {
   rate_limit_retries: number
   instagram_sync: unknown
   instagram_comments: unknown
+  instagram_tokens: unknown
 }
 
 function settledValue<T>(
@@ -100,6 +102,7 @@ export async function runScheduledAutomationJobs(): Promise<ScheduledAutomationJ
     rateLimitRetriesResult,
     instagramSyncResult,
     instagramCommentsResult,
+    instagramTokensResult,
   ] = await Promise.allSettled([
     pollGoogleSheetFlows(admin),
     pollLeadSources(admin),
@@ -111,6 +114,7 @@ export async function runScheduledAutomationJobs(): Promise<ScheduledAutomationJ
     processDueRateLimitRetries(admin),
     syncInstagramConversations(admin),
     checkInstagramComments(admin),
+    maintainInstagramTokens(admin),
   ])
 
   return {
@@ -133,5 +137,6 @@ export async function runScheduledAutomationJobs(): Promise<ScheduledAutomationJ
       settledValue(rateLimitRetriesResult, 'rate_limit_retries', errors) ?? 0,
     instagram_sync: settledValue(instagramSyncResult, 'instagram_sync', errors),
     instagram_comments: settledValue(instagramCommentsResult, 'instagram_comments', errors),
+    instagram_tokens: settledValue(instagramTokensResult, 'instagram_tokens', errors),
   }
 }
