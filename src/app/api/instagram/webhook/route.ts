@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature';
 import { parseInstagramEvents } from '@/lib/instagram/webhook';
+import { activeRules, parseCommentEvents, replyToComments } from '@/lib/instagram/comments';
 
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
@@ -27,6 +28,15 @@ export async function POST(request: Request) {
     const result = await admin.rpc('instagram_record_message', { p_connection: connection.id, p_participant: event.participantId, p_meta_id: event.messageId, p_direction: event.direction, p_content: event.text, p_at: event.at });
     if (result.error) { console.error('[instagram webhook] message storage failed', result.error.code); return new Response('Retry', { status: 500 }); }
     console.info('[instagram webhook] message recorded');
+  }
+  for (const comment of parseCommentEvents(payload)) {
+    // Comment replies never fail the delivery: each is reserved before sending, and the minute check covers misses.
+    try {
+      const { data: connection, error } = await admin.from('instagram_connections').select('id,account_id,instagram_id,username,access_token').eq('instagram_id', comment.accountId).not('access_token', 'is', null).maybeSingle();
+      if (error || !connection) continue;
+      const rules = await activeRules(admin, connection.id);
+      if (rules.length > 0) await replyToComments(admin, connection, rules, [comment]);
+    } catch { console.error('[instagram webhook] comment reply failed'); }
   }
   return NextResponse.json({ ok: true });
 }

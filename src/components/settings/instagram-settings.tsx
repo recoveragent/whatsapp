@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { InstagramCommentRules } from './instagram-comment-rules';
 
 export function InstagramSettings() {
   const [connections, setConnections] = useState<{ id: string; username: string }[]>([]);
@@ -21,5 +22,5 @@ export function InstagramSettings() {
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not disconnect Instagram.'); }
     finally { setBusy(false); }
   };
-  return <section className="space-y-4"><h2 className="text-lg font-semibold">Instagram messaging</h2><p className="text-sm text-muted-foreground">Connect a professional Instagram account to receive and reply to direct messages. Meta will ask for access to your Instagram account and messaging.</p>{connections.map(connection => <div key={connection.id} className="flex items-center gap-4"><p className="text-sm">Connected: @{connection.username}</p><button type="button" onClick={() => void disconnect(connection)} disabled={busy} className="rounded-md border px-4 py-2 text-sm disabled:opacity-50">Disconnect</button></div>)}<button type="button" onClick={connect} disabled={busy} className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50">{busy ? 'Please wait…' : 'Connect Instagram'}</button>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}</section>;
+  return <section className="space-y-4"><h2 className="text-lg font-semibold">Instagram messaging</h2><p className="text-sm text-muted-foreground">Connect a professional Instagram account to receive and reply to direct messages. Meta will ask for access to your Instagram account and messaging.</p>{connections.map(connection => <div key={connection.id} className="flex items-center gap-4"><p className="text-sm">Connected: @{connection.username}</p><button type="button" onClick={() => void disconnect(connection)} disabled={busy} className="rounded-md border px-4 py-2 text-sm disabled:opacity-50">Disconnect</button></div>)}<button type="button" onClick={connect} disabled={busy} className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50">{busy ? 'Please wait…' : 'Connect Instagram'}</button>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<InstagramCommentRules connections={connections} /></section>;
 }

@@ -39,9 +39,13 @@ export async function GET(request: Request) {
     const { data: existing, error: lookupError } = await admin.from('instagram_connections').select('id').eq('instagram_id', ig.id).eq('account_id', ctx.accountId).maybeSingle();
     const { data: active, error: activeError } = await admin.from('instagram_connections').select('account_id').eq('instagram_id', ig.id).not('access_token', 'is', null).maybeSingle();
     if (lookupError || activeError || (active && active.account_id !== ctx.accountId)) return done('failed');
-    const subscribe = await fetch(`https://graph.facebook.com/v27.0/${ig.id}/subscribed_apps`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ subscribed_fields: ['messages'] }) });
-    const sub = await subscribe.json();
-    if (!subscribe.ok || !sub.success) return done('failed');
+    const subscribe = async (subscribed_fields: string[]) => {
+      const response = await fetch(`https://graph.facebook.com/v27.0/${ig.id}/subscribed_apps`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ subscribed_fields }) });
+      const body = await response.json().catch(() => null);
+      return response.ok && Boolean(body?.success);
+    };
+    // Comments need instagram_manage_comments. Without it, messaging must still connect.
+    if (!(await subscribe(['messages', 'comments'])) && !(await subscribe(['messages']))) return done('failed');
     const values = { username: ig.username, client_business_id: business.client_business_id, access_token: encrypt(token) };
     const { error } = existing
       ? await admin.from('instagram_connections').update(values).eq('instagram_id', ig.id).eq('account_id', ctx.accountId)
