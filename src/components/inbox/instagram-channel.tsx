@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Thread = { id: string; participant_id: string; participant_username: string | null; last_message_text: string; last_message_at: string; last_inbound_at: string | null };
 type Message = { id: string; direction: 'inbound' | 'outbound'; content: string; created_at: string };
-const threadName = (t: Thread) => (t.participant_username ? `@${t.participant_username}` : `Instagram user ${t.participant_id}`);
+const threadName = (t: Thread) => t.participant_username ?? `Instagram user ${t.participant_id}`;
 export function InstagramChannel() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [connected, setConnected] = useState<boolean | null>(null);
