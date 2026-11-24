@@ -11,6 +11,7 @@ import { processScheduledBroadcasts } from '@/lib/whatsapp/broadcast-scheduled'
 import { processDueRateLimitRetries } from '@/lib/whatsapp/rate-limit-retry'
 import { syncInstagramConversations } from '@/lib/instagram/sync'
 import { checkInstagramComments } from '@/lib/instagram/comments'
+import { processCommentFlows } from '@/lib/instagram/comment-flows'
 import { maintainInstagramTokens } from '@/lib/instagram/token'
 
 export interface ScheduledAutomationJobsResult {
@@ -42,6 +43,14 @@ function settledValue<T>(
   errors.push(`${label}: ${message}`)
   console.error(`[automations-cron] ${label} failed:`, result.reason)
   return null
+}
+
+/** Taps arrive through the conversation sync, so follow-ups run straight after it, even if it failed. */
+async function syncInstagramAndFlows(admin: ReturnType<typeof supabaseAdmin>) {
+  const [sync] = await Promise.allSettled([syncInstagramConversations(admin)])
+  const flows = await processCommentFlows(admin)
+  if (sync.status === 'rejected') throw sync.reason
+  return { ...sync.value, flows }
 }
 
 /**
@@ -112,7 +121,7 @@ export async function runScheduledAutomationJobs(): Promise<ScheduledAutomationJ
     reconcileRecentFlowOutboundMessages({ db: admin }),
     processScheduledBroadcasts(admin),
     processDueRateLimitRetries(admin),
-    syncInstagramConversations(admin),
+    syncInstagramAndFlows(admin),
     checkInstagramComments(admin),
     maintainInstagramTokens(admin),
   ])

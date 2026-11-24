@@ -3,10 +3,11 @@ import { getCurrentAccount, requireRole, toErrorResponse } from '@/lib/auth/acco
 import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { graphError } from '@/lib/instagram/comments';
 import { parseCommentRuleInput } from '@/lib/instagram/comment-rule-input';
+import { getShopifyCatalogProductsForProductIds, searchShopifyProducts } from '@/lib/shopify/product-store';
 import { decrypt } from '@/lib/whatsapp/encryption';
 
 const UUID = /^[0-9a-f-]{36}$/i;
-const FIELDS = 'id,connection_id,media_id,keywords,exclude_keywords,match_mode,skip_mentions,public_replies,public_reply_limit,reply_text,active_since,last_checked_at,last_error,created_at';
+const FIELDS = 'id,connection_id,media_id,keywords,exclude_keywords,match_mode,skip_mentions,public_replies,public_reply_limit,reply_text,delivery,product_ids,tap_title,tap_subtitle,tap_button,reminder_text,reminder_minutes,active_since,last_checked_at,last_error,created_at';
 const bad = (error: string, status = 400) => NextResponse.json({ error }, { status });
 
 export async function GET(request: Request) {
@@ -24,16 +25,28 @@ export async function GET(request: Request) {
       if (!response.ok || !Array.isArray(body?.data)) return bad(`Could not load posts: ${graphError(body?.error ?? {})}`, 502);
       return NextResponse.json({ media: body.data });
     }
+    const search = new URL(request.url).searchParams.get('products');
+    if (search !== null) {
+      const ctx = await requireRole('admin');
+      const found = await searchShopifyProducts({ db: supabaseAdmin(), accountId: ctx.accountId, query: search.slice(0, 80), limit: 50 });
+      // The catalogue has one row per variant; the picker needs one per product.
+      const products = [...new Map(found.filter((p) => p.handle).map((p) => [p.shopify_product_id, { id: p.shopify_product_id, title: p.title }])).values()].slice(0, 15);
+      return NextResponse.json({ products });
+    }
     const ctx = await getCurrentAccount();
-    const [rules, replies, pauses] = await Promise.all([
+    const [rules, replies, pauses, stats] = await Promise.all([
       ctx.supabase.from('instagram_comment_rules').select(FIELDS).eq('account_id', ctx.accountId).order('created_at'),
-      ctx.supabase.from('instagram_comment_replies').select('id,rule_id,commenter_username,status,error,public_status,public_error,created_at').eq('account_id', ctx.accountId).order('created_at', { ascending: false }).limit(20),
+      ctx.supabase.from('instagram_comment_replies').select('id,rule_id,commenter_username,status,error,public_status,public_error,delivery,tapped_at,products_status,products_error,reminder_status,reminder_error,created_at').eq('account_id', ctx.accountId).order('created_at', { ascending: false }).limit(20),
       supabaseAdmin().from('instagram_connections').select('id,comments_paused_until,comments_pause_reason,public_replies_paused_until').eq('account_id', ctx.accountId).not('access_token', 'is', null),
+      supabaseAdmin().rpc('instagram_comment_stats', { p_account: ctx.accountId }),
     ]);
     if (rules.error) throw rules.error;
     if (replies.error) throw replies.error;
     if (pauses.error) throw pauses.error;
-    return NextResponse.json({ rules: rules.data, replies: replies.data, pauses: pauses.data });
+    if (stats.error) throw stats.error;
+    const ids = [...new Set((rules.data ?? []).flatMap((r) => r.product_ids as number[]))];
+    const products = (await getShopifyCatalogProductsForProductIds({ db: supabaseAdmin(), accountId: ctx.accountId, productIds: ids })).map((p) => ({ id: p.shopify_product_id, title: p.title }));
+    return NextResponse.json({ rules: rules.data, replies: replies.data, pauses: pauses.data, stats: stats.data, products });
   } catch (error) { return toErrorResponse(error); }
 }
 

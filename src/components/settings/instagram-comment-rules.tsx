@@ -2,15 +2,19 @@
 import { useCallback, useEffect, useState } from 'react';
 
 type Connection = { id: string; username: string };
-type RuleFields = { media_id: string | null; keywords: string[]; exclude_keywords: string[]; match_mode: 'word' | 'contains'; skip_mentions: boolean; public_replies: string[]; public_reply_limit: number; reply_text: string };
+type Delivery = 'text' | 'products' | 'tap';
+type Product = { id: number; title: string };
+type Stats = { rule_id: string; sent: number; tapped: number; clicked: number; reminded: number };
+type Step = 'sending' | 'sent' | 'failed' | 'unknown' | 'skipped';
+type RuleFields = { media_id: string | null; keywords: string[]; exclude_keywords: string[]; match_mode: 'word' | 'contains'; skip_mentions: boolean; public_replies: string[]; public_reply_limit: number; reply_text: string; delivery: Delivery; product_ids: number[]; tap_title: string; tap_subtitle: string; tap_button: string; reminder_text: string | null; reminder_minutes: number };
 type Rule = RuleFields & { id: string; connection_id: string; active_since: string | null; last_checked_at: string | null; last_error: string | null };
-type Reply = { id: string; commenter_username: string | null; status: 'sending' | 'sent' | 'failed' | 'unknown'; error: string | null; public_status: 'sent' | 'failed' | 'unknown' | null; public_error: string | null; created_at: string };
+type Reply = { id: string; commenter_username: string | null; status: 'sending' | 'sent' | 'failed' | 'unknown'; error: string | null; public_status: 'sent' | 'failed' | 'unknown' | null; public_error: string | null; delivery: Delivery; tapped_at: string | null; products_status: Step | null; products_error: string | null; reminder_status: Step | null; reminder_error: string | null; created_at: string };
 type Pause = { id: string; comments_paused_until: string | null; comments_pause_reason: string | null; public_replies_paused_until: string | null };
 type Media = { id: string; caption?: string; media_type?: string; timestamp?: string };
-type Form = { id: string | null; mediaId: string; keywords: string; exclude: string; mode: 'word' | 'contains'; skipMentions: boolean; publicReplies: string; limit: string; text: string };
+type Form = { id: string | null; mediaId: string; keywords: string; exclude: string; mode: 'word' | 'contains'; skipMentions: boolean; publicReplies: string; limit: string; text: string; delivery: Delivery; products: Product[]; tapTitle: string; tapSubtitle: string; tapButton: string; reminder: string; reminderHours: string };
 
-const EMPTY: Form = { id: null, mediaId: '', keywords: '', exclude: '', mode: 'word', skipMentions: true, publicReplies: '', limit: '100', text: '' };
-const STATUS = { sending: 'Sending', sent: 'Sent', failed: 'Failed', unknown: 'Not confirmed' } as const;
+const EMPTY: Form = { id: null, mediaId: '', keywords: '', exclude: '', mode: 'word', skipMentions: true, publicReplies: '', limit: '100', text: '', delivery: 'text', products: [], tapTitle: '', tapSubtitle: '', tapButton: 'View products', reminder: '', reminderHours: '10' };
+const STATUS = { sending: 'Sending', sent: 'Sent', failed: 'Failed', unknown: 'Not confirmed', skipped: 'Skipped' } as const;
 const mediaLabel = (m: Media) => `${m.caption?.replace(/\s+/g, ' ').slice(0, 60) || m.media_type || 'Post'}${m.timestamp ? ` (${m.timestamp.slice(0, 10)})` : ''}`;
 const split = (value: string, by: string) => value.split(by).map((v) => v.trim()).filter(Boolean);
 const inFuture = (value: string | null): value is string => value !== null && Date.parse(value) > Date.now();
@@ -28,6 +32,10 @@ export function InstagramCommentRules({ connections }: { connections: Connection
   const [replies, setReplies] = useState<Reply[]>([]);
   const [pauses, setPauses] = useState<Pause[]>([]);
   const [media, setMedia] = useState<Media[]>([]);
+  const [stats, setStats] = useState<Stats[]>([]);
+  const [known, setKnown] = useState<Product[]>([]);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Product[]>([]);
   const [form, setForm] = useState<Form>(EMPTY);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -38,6 +46,8 @@ export function InstagramCommentRules({ connections }: { connections: Connection
     setRules(data.rules);
     setReplies(data.replies);
     setPauses(data.pauses);
+    setStats(data.stats);
+    setKnown(data.products);
   }, []);
   useEffect(() => { load().catch((e: Error) => setError(e.message)); }, [load]);
   useEffect(() => {
@@ -52,12 +62,18 @@ export function InstagramCommentRules({ connections }: { connections: Connection
     try { await action(); await load(); return true; } catch (e) { setError(e instanceof Error ? e.message : 'Something went wrong.'); return false; } finally { setBusy(false); }
   };
   const save = async () => {
-    const fields: RuleFields = { media_id: form.mediaId || null, keywords: split(form.keywords, ','), exclude_keywords: split(form.exclude, ','), match_mode: form.mode, skip_mentions: form.skipMentions, public_replies: split(form.publicReplies, '\n'), public_reply_limit: Number(form.limit), reply_text: form.text };
+    const fields: RuleFields = { media_id: form.mediaId || null, keywords: split(form.keywords, ','), exclude_keywords: split(form.exclude, ','), match_mode: form.mode, skip_mentions: form.skipMentions, public_replies: split(form.publicReplies, '\n'), public_reply_limit: Number(form.limit), reply_text: form.text, delivery: form.delivery, product_ids: form.products.map((p) => p.id), tap_title: form.tapTitle, tap_subtitle: form.tapSubtitle, tap_button: form.tapButton, reminder_text: form.reminder, reminder_minutes: Math.round(Number(form.reminderHours) * 60) };
     const editing = rules.find((r) => r.id === form.id);
     if (editing?.active_since && !window.confirm('This rule is on. Your changes apply to new comments straight away. Save them?')) return;
     if (await run(() => (form.id ? call('PUT', { id: form.id, ...fields }) : call('POST', { connection_id: connectionId, ...fields })))) setForm(EMPTY);
   };
-  const edit = (rule: Rule) => setForm({ id: rule.id, mediaId: rule.media_id ?? '', keywords: rule.keywords.join(', '), exclude: rule.exclude_keywords.join(', '), mode: rule.match_mode, skipMentions: rule.skip_mentions, publicReplies: rule.public_replies.join('\n'), limit: String(rule.public_reply_limit), text: rule.reply_text });
+  const edit = (rule: Rule) => setForm({ id: rule.id, mediaId: rule.media_id ?? '', keywords: rule.keywords.join(', '), exclude: rule.exclude_keywords.join(', '), mode: rule.match_mode, skipMentions: rule.skip_mentions, publicReplies: rule.public_replies.join('\n'), limit: String(rule.public_reply_limit), text: rule.reply_text, delivery: rule.delivery, products: rule.product_ids.map((id) => known.find((p) => p.id === id) ?? { id, title: `Unavailable product ${id}` }), tapTitle: rule.tap_title, tapSubtitle: rule.tap_subtitle, tapButton: rule.tap_button || EMPTY.tapButton, reminder: rule.reminder_text ?? '', reminderHours: String(rule.reminder_minutes / 60) });
+  const findProducts = async () => {
+    setError('');
+    try { setResults((await call('GET', undefined, `?products=${encodeURIComponent(query)}`)).products); } catch (e) { setError(e instanceof Error ? e.message : 'Could not search products.'); }
+  };
+  const addProduct = (product: Product) => { if (form.products.length < 10 && !form.products.some((p) => p.id === product.id)) set({ products: [...form.products, product] }); };
+  const describeDelivery = (rule: Rule) => (rule.delivery === 'products' ? `Sends ${rule.product_ids.length} product card(s)` : rule.delivery === 'tap' ? `Sends a card with a "${rule.tap_button}" button, then ${rule.product_ids.length} product card(s)${rule.reminder_text ? ` and a reminder after ${rule.reminder_minutes / 60} hours` : ''}` : null);
   const describe = (rule: Rule) => {
     const found = media.find((m) => m.id === rule.media_id);
     const post = rule.media_id === null ? 'your 10 most recent posts' : found ? `"${mediaLabel(found)}"` : `post ${rule.media_id}`;
@@ -65,7 +81,7 @@ export function InstagramCommentRules({ connections }: { connections: Connection
   };
   const toggle = (rule: Rule) => {
     const publicNote = rule.public_replies.length ? `\n\nA public reply is also posted, up to ${rule.public_reply_limit} per post.` : '';
-    if (!rule.active_since && !window.confirm(`Turn on this rule?\n\n${describe(rule)} will get this DM:\n\n${rule.reply_text}${publicNote}\n\nOnly new comments are included.`)) return;
+    if (!rule.active_since && !window.confirm(`Turn on this rule?\n\n${describe(rule)} will get this DM:\n\n${describeDelivery(rule) ? `${describeDelivery(rule)}. If cards cannot be sent:\n\n` : ''}${rule.reply_text}${publicNote}\n\nOnly new comments are included.`)) return;
     void run(() => call('PATCH', { id: rule.id, active: !rule.active_since }));
   };
   const remove = (rule: Rule) => {
@@ -106,6 +122,8 @@ export function InstagramCommentRules({ connections }: { connections: Connection
             </div>
           </div>
           <p className="whitespace-pre-wrap text-muted-foreground">{rule.reply_text}</p>
+          {describeDelivery(rule) && <p>{describeDelivery(rule)}</p>}
+          {stats.filter((s) => s.rule_id === rule.id).map((s) => <p key={s.rule_id}>Sent {s.sent}{rule.delivery === 'tap' ? `, tapped ${s.tapped}` : ''}{rule.delivery === 'text' ? '' : `, opened a product ${s.clicked}`}{rule.reminder_text ? `, reminded ${s.reminded}` : ''}</p>)}
           {rule.exclude_keywords.length > 0 && <p>Never replies to: {rule.exclude_keywords.join(', ')}</p>}
           {rule.public_replies.length > 0 && <p>Public replies: {rule.public_replies.length}, up to {rule.public_reply_limit} per post</p>}
           <p>{rule.active_since ? `On${rule.last_checked_at ? `, last checked ${new Date(rule.last_checked_at).toLocaleTimeString()}` : ''}` : 'Off'}</p>
@@ -135,7 +153,36 @@ export function InstagramCommentRules({ connections }: { connections: Connection
             </select>
           </label>
           <label className="flex items-center gap-2"><input type="checkbox" checked={form.skipMentions} onChange={(e) => set({ skipMentions: e.target.checked })} /><span>Skip comments that tag someone else</span></label>
-          <label className="block space-y-1"><span>Message to send</span>
+          <label className="block space-y-1"><span>How to send it</span>
+            <select className={field} value={form.delivery} onChange={(e) => set({ delivery: e.target.value as Delivery })}>
+              <option value="text">Text message</option>
+              <option value="products">Product cards straight away</option>
+              <option value="tap">A card with a button, then product cards after they tap</option>
+            </select>
+          </label>
+          {form.delivery !== 'text' && (
+            <div className="space-y-2 rounded-md border p-3">
+              <p>Products, shown in this order (up to 10)</p>
+              {form.products.map((p) => <div key={p.id} className="flex items-center justify-between gap-2"><span>{p.title}</span><button type="button" onClick={() => set({ products: form.products.filter((x) => x.id !== p.id) })} className={button}>Remove</button></div>)}
+              <div className="flex gap-2">
+                <input aria-label="Search products" className={field} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void findProducts(); } }} placeholder="Search products" />
+                <button type="button" onClick={() => void findProducts()} className={button}>Search</button>
+              </div>
+              {results.map((p) => <button key={p.id} type="button" onClick={() => addProduct(p)} className="block w-full rounded-md border px-3 py-1 text-left">Add {p.title}</button>)}
+              <p className="text-muted-foreground">Sold-out products are left out. Links are counted when someone opens them.</p>
+            </div>
+          )}
+          {form.delivery === 'tap' && (
+            <div className="space-y-2 rounded-md border p-3">
+              <label className="block space-y-1"><span>Card title</span><input className={field} maxLength={80} value={form.tapTitle} onChange={(e) => set({ tapTitle: e.target.value })} /></label>
+              <label className="block space-y-1"><span>Card subtitle (optional)</span><input className={field} maxLength={80} value={form.tapSubtitle} onChange={(e) => set({ tapSubtitle: e.target.value })} /></label>
+              <label className="block space-y-1"><span>Button label</span><input className={field} maxLength={20} value={form.tapButton} onChange={(e) => set({ tapButton: e.target.value })} /></label>
+              <label className="block space-y-1"><span>Reminder (optional). Skipped if they write to you or your team replies. Include a discount code here if you want one.</span><textarea className={field} rows={2} value={form.reminder} onChange={(e) => set({ reminder: e.target.value })} /></label>
+              <label className="block space-y-1"><span>Send the reminder this many hours after the tap (up to 23)</span><input className={field} type="number" min={0.5} max={23} step={0.5} value={form.reminderHours} onChange={(e) => set({ reminderHours: e.target.value })} /></label>
+              <p className="text-muted-foreground">Products follow the tap within about two minutes.</p>
+            </div>
+          )}
+          <label className="block space-y-1"><span>{form.delivery === 'text' ? 'Message to send' : 'Text to send if cards cannot be sent'}</span>
             <textarea className={field} rows={4} value={form.text} onChange={(e) => set({ text: e.target.value })} />
           </label>
           <label className="block space-y-1"><span>Public replies, one per line (optional). One is picked at random after the DM is sent. Vary the wording so Instagram does not treat it as spam.</span>
@@ -153,7 +200,7 @@ export function InstagramCommentRules({ connections }: { connections: Connection
       {replies.length > 0 && (
         <div className="space-y-1 text-sm">
           <h3 className="font-medium">Recent messages</h3>
-          {replies.map((r) => <p key={r.id}>{new Date(r.created_at).toLocaleString()} {r.commenter_username ?? 'Instagram user'}: {STATUS[r.status]}{r.error ? ` (${r.error})` : ''}{r.public_status ? `, public reply: ${STATUS[r.public_status]}${r.public_error ? ` (${r.public_error})` : ''}` : ''}</p>)}
+          {replies.map((r) => <p key={r.id}>{new Date(r.created_at).toLocaleString()} {r.commenter_username ?? 'Instagram user'}: {STATUS[r.status]}{r.error ? ` (${r.error})` : ''}{r.public_status ? `, public reply: ${STATUS[r.public_status]}${r.public_error ? ` (${r.public_error})` : ''}` : ''}{r.delivery === 'tap' ? (r.tapped_at ? ', tapped' : ', not tapped yet') : ''}{r.products_status ? `, products: ${STATUS[r.products_status]}${r.products_error ? ` (${r.products_error})` : ''}` : ''}{r.reminder_status ? `, reminder: ${STATUS[r.reminder_status]}${r.reminder_error ? ` (${r.reminder_error})` : ''}` : ''}</p>)}
         </div>
       )}
     </section>

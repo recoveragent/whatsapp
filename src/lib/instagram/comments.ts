@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { decrypt } from '@/lib/whatsapp/encryption';
+import { buildProductCards, buildTapCard, CARD_PLACEHOLDER, cardMessage } from './cards';
 import { parseGraphTime } from './sync';
 
 const GRAPH = 'https://graph.facebook.com/v27.0';
@@ -17,9 +18,11 @@ const COMMENTS_PER_MEDIA = 50;
 
 export type InstagramComment = { commentId: string; mediaId: string; commenterId: string | null; username: string | null; text: string; at: string; isReply: boolean };
 export type MatchMode = 'word' | 'contains';
+export type Delivery = 'text' | 'products' | 'tap';
 export type CommentRule = {
   id: string; media_id: string | null; keywords: string[]; exclude_keywords: string[]; match_mode: MatchMode; skip_mentions: boolean;
   public_replies: string[]; public_reply_limit: number; reply_text: string; active_since: string | null; created_at: string;
+  delivery: Delivery; product_ids: number[]; tap_title: string; tap_subtitle: string; tap_button: string; reminder_text: string | null; reminder_minutes: number;
 };
 export type CommentConnection = {
   id: string; account_id: string; instagram_id: string; username: string; access_token: string;
@@ -27,7 +30,7 @@ export type CommentConnection = {
 };
 /** Columns every caller must load for a CommentConnection. */
 export const CONNECTION_FIELDS = 'id,account_id,instagram_id,username,access_token,comments_paused_until,comments_ignore_before,public_replies_paused_until';
-const RULE_FIELDS = 'id,media_id,keywords,exclude_keywords,match_mode,skip_mentions,public_replies,public_reply_limit,reply_text,active_since,created_at';
+const RULE_FIELDS = 'id,media_id,keywords,exclude_keywords,match_mode,skip_mentions,public_replies,public_reply_limit,reply_text,active_since,created_at,delivery,product_ids,tap_title,tap_subtitle,tap_button,reminder_text,reminder_minutes';
 
 const tidy = (value: string) => value.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
 
@@ -111,7 +114,7 @@ export function graphError(error: GraphErrorBody): string {
   return `${str(error.message) ?? 'Meta rejected the request'}${codes ? ` (${codes})` : ''}`.slice(0, 300);
 }
 
-async function graphPost(token: string, path: string, body: unknown): Promise<Attempt> {
+export async function graphPost(token: string, path: string, body: unknown): Promise<Attempt> {
   try {
     const response = await fetch(`${GRAPH}/${path}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(20_000) });
     const result = await response.json().catch(() => null);
@@ -131,9 +134,9 @@ export function pauseFor(code: number | null): { ms: number; reason: string } | 
   return null;
 }
 
-const isPaused = (until: string | null, now: number) => until !== null && Date.parse(until) > now;
+export const isPaused = (until: string | null, now: number) => until !== null && Date.parse(until) > now;
 
-async function pauseComments(admin: SupabaseClient, connection: CommentConnection, until: string, reason: string) {
+export async function pauseComments(admin: SupabaseClient, connection: CommentConnection, until: string, reason: string) {
   connection.comments_paused_until = until;
   connection.comments_ignore_before = until;
   const { error } = await admin.from('instagram_connections').update({ comments_paused_until: until, comments_ignore_before: until, comments_pause_reason: reason.slice(0, 400) }).eq('id', connection.id);
@@ -170,6 +173,26 @@ async function sendPublicReply(admin: SupabaseClient, connection: CommentConnect
 
 const latest = (a: string | null, b: string | null) => (a && b ? (Date.parse(a) > Date.parse(b) ? a : b) : a ?? b);
 
+/** The first DM for a rule. Falls back to the rule's text when no chosen product can be shown. */
+async function firstMessage(admin: SupabaseClient, connection: CommentConnection, rule: CommentRule, replyId: string): Promise<{ kind: Delivery; message: unknown; inboxText: string }> {
+  const text = { kind: 'text' as const, message: { text: rule.reply_text }, inboxText: rule.reply_text };
+  if (rule.delivery === 'text') return text;
+  try {
+    if (rule.delivery === 'products') {
+      const cards = await buildProductCards(admin, connection.account_id, rule.product_ids, replyId);
+      return cards.length > 0 ? { kind: 'products', message: cardMessage(cards), inboxText: CARD_PLACEHOLDER } : text;
+    }
+    const card = await buildTapCard(admin, connection.account_id, rule);
+    return card ? { kind: 'tap', message: cardMessage([card]), inboxText: CARD_PLACEHOLDER } : text;
+  } catch {
+    console.error('[instagram comments] could not build cards; sending text');
+    return text;
+  }
+}
+
+/** Meta's "invalid parameter": the card itself was refused, so nothing was delivered and text can be tried. */
+const CARD_REFUSED = 100;
+
 async function sendPrivateReply(admin: SupabaseClient, connection: CommentConnection, token: string, rule: CommentRule, comment: InstagramComment, now: number): Promise<Status | 'skipped'> {
   // Reserve first. A unique violation means this comment, or this person on this post, is already handled.
   const { data: claim, error: claimError } = await admin.from('instagram_comment_replies').insert({
@@ -179,11 +202,20 @@ async function sendPrivateReply(admin: SupabaseClient, connection: CommentConnec
   if (claimError?.code === '23505') return 'skipped';
   if (claimError || !claim) throw new Error('Could not reserve comment reply');
 
-  const attempt = await graphPost(token, `${encodeURIComponent(connection.instagram_id)}/messages`, { recipient: { comment_id: comment.commentId }, message: { text: rule.reply_text } });
+  const send = (message: unknown) => graphPost(token, `${encodeURIComponent(connection.instagram_id)}/messages`, { recipient: { comment_id: comment.commentId }, message });
+  let first = await firstMessage(admin, connection, rule, claim.id);
+  let attempt = await send(first.message);
+  if (attempt.status === 'failed' && attempt.code === CARD_REFUSED && first.kind !== 'text') {
+    first = { kind: 'text', message: { text: rule.reply_text }, inboxText: rule.reply_text };
+    attempt = await send(first.message);
+  }
   const messageId = str(attempt.body?.message_id);
   const recipient = str(attempt.body?.recipient_id);
   if (attempt.status === 'sent' && !messageId) { attempt.status = 'unknown'; attempt.detail = 'Meta did not confirm the message.'; }
-  const { error: saveError } = await admin.from('instagram_comment_replies').update({ status: attempt.status, error: attempt.detail }).eq('id', claim.id);
+  const { error: saveError } = await admin.from('instagram_comment_replies').update({
+    status: attempt.status, error: attempt.detail, delivery: first.kind, recipient_id: recipient,
+    ...(first.kind === 'tap' ? { product_ids: rule.product_ids, fallback_text: rule.reply_text, tap_label: rule.tap_button, reminder_text: rule.reminder_text, reminder_minutes: rule.reminder_minutes } : {}),
+  }).eq('id', claim.id);
   if (saveError) console.error('[instagram comments] could not save outcome', saveError.code);
 
   if (attempt.status !== 'sent') {
@@ -193,7 +225,7 @@ async function sendPrivateReply(admin: SupabaseClient, connection: CommentConnec
     return attempt.status;
   }
   if (recipient && messageId) {
-    const saved = await admin.rpc('instagram_record_message', { p_connection: connection.id, p_participant: recipient, p_meta_id: messageId, p_direction: 'outbound', p_content: rule.reply_text, p_at: new Date().toISOString() });
+    const saved = await admin.rpc('instagram_record_message', { p_connection: connection.id, p_participant: recipient, p_meta_id: messageId, p_direction: 'outbound', p_content: first.inboxText, p_at: new Date().toISOString() });
     if (saved.error) console.error('[instagram comments] could not add reply to inbox', saved.error.code);
     else if (comment.username) await admin.from('instagram_threads').update({ participant_username: comment.username }).eq('connection_id', connection.id).eq('participant_id', recipient).is('participant_username', null);
   }

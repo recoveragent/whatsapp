@@ -11,7 +11,7 @@ afterEach(() => vi.unstubAllGlobals());
 const NOW = Date.parse('2026-11-24T10:00:00Z');
 const business = { instagram_id: '123', username: 'store', comments_ignore_before: null };
 const connection = (over: Partial<CommentConnection> = {}): CommentConnection => ({ id: 'c1', account_id: 'a1', access_token: 'token', ...business, comments_paused_until: null, public_replies_paused_until: null, ...over });
-const rule = (over: Partial<CommentRule> = {}): CommentRule => ({ id: 'r1', media_id: null, keywords: ['price'], exclude_keywords: [], match_mode: 'word', skip_mentions: true, public_replies: [], public_reply_limit: 100, reply_text: 'Here you go', active_since: '2026-11-24T09:00:00Z', created_at: '2026-11-24T08:00:00Z', ...over });
+const rule = (over: Partial<CommentRule> = {}): CommentRule => ({ id: 'r1', media_id: null, keywords: ['price'], exclude_keywords: [], match_mode: 'word', skip_mentions: true, public_replies: [], public_reply_limit: 100, reply_text: 'Here you go', delivery: 'text', product_ids: [], tap_title: '', tap_subtitle: '', tap_button: '', reminder_text: null, reminder_minutes: 600, active_since: '2026-11-24T09:00:00Z', created_at: '2026-11-24T08:00:00Z', ...over });
 const comment = (over: Partial<InstagramComment> = {}): InstagramComment => ({ commentId: 'k1', mediaId: 'm1', commenterId: '456', username: 'alice', text: 'Price please', at: '2026-11-24T09:30:00Z', isReply: false, ...over });
 const people = (n: number) => Array.from({ length: n }, (_, i) => comment({ commentId: `k${i}`, commenterId: `p${i}`, at: new Date(NOW - 60_000 + i).toISOString() }));
 
@@ -234,11 +234,22 @@ describe('public replies', () => {
 
 describe('rule input', () => {
   it('cleans valid rules and fills defaults', () => {
-    expect(parseCommentRuleInput({ media_id: '', keywords: [' Price ', 'price', ''], reply_text: ' Hi ' })).toEqual({ value: { media_id: null, keywords: ['Price'], exclude_keywords: [], match_mode: 'word', skip_mentions: true, public_replies: [], public_reply_limit: 100, reply_text: 'Hi' } });
+    expect(parseCommentRuleInput({ media_id: '', keywords: [' Price ', 'price', ''], reply_text: ' Hi ' })).toEqual({ value: { media_id: null, keywords: ['Price'], exclude_keywords: [], match_mode: 'word', skip_mentions: true, public_replies: [], public_reply_limit: 100, reply_text: 'Hi', delivery: 'text', product_ids: [], tap_title: '', tap_subtitle: '', tap_button: '', reminder_text: null, reminder_minutes: 600 } });
   });
   it('rejects bad rules', () => {
     const base = { keywords: [], reply_text: 'a' };
     for (const bad of [null, { ...base, keywords: 'x' }, { ...base, reply_text: ' ' }, { ...base, media_id: '../x' }, { ...base, keywords: ['x'.repeat(51)] }, { ...base, reply_text: '😊'.repeat(251) }, { ...base, exclude_keywords: [1] }, { ...base, match_mode: 'fuzzy' }, { ...base, skip_mentions: 'yes' }, { ...base, public_replies: ['x'.repeat(301)] }, { ...base, public_reply_limit: 0 }, { ...base, public_reply_limit: Number.NaN }]) expect(parseCommentRuleInput(bad)).toHaveProperty('error');
+  });
+});
+
+describe('card rule input', () => {
+  const tap = { keywords: [], reply_text: 'a', delivery: 'tap', product_ids: [5, 5, 6], tap_title: ' Thanks ', tap_button: 'View', reminder_text: ' Hi ', reminder_minutes: 60 };
+  it('accepts cards and keeps reminders for tap rules only', () => {
+    expect(parseCommentRuleInput(tap)).toMatchObject({ value: { product_ids: [5, 6], tap_title: 'Thanks', reminder_text: 'Hi', reminder_minutes: 60 } });
+    expect(parseCommentRuleInput({ ...tap, delivery: 'products' })).toMatchObject({ value: { reminder_text: null } });
+  });
+  it('rejects incomplete or oversized cards', () => {
+    for (const bad of [{ delivery: 'video' }, { product_ids: [] }, { product_ids: ['5'] }, { product_ids: Array.from({ length: 11 }, (_, i) => i + 1) }, { tap_title: ' ' }, { tap_button: '' }, { tap_button: 'x'.repeat(21) }, { tap_subtitle: 'x'.repeat(81) }, { reminder_minutes: 1381 }, { reminder_minutes: 5 }, { reminder_text: '😊'.repeat(251) }]) expect(parseCommentRuleInput({ ...tap, ...bad })).toHaveProperty('error');
   });
 });
 

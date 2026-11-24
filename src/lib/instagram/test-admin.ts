@@ -12,11 +12,13 @@ export function testAdmin(tables: Record<string, Row[]>, { now = '2026-11-24T10:
     const filters: ((r: Row) => boolean)[] = [];
     let action: 'select' | 'insert' | 'update' = 'select';
     let values: Row = {};
+    let many: Row[] = [];
     let counting = false;
     let order: [string, boolean] | null = null;
     let limit = Infinity;
     const execute = () => {
       if (action === 'insert') {
+        if (many.length > 0) { rows.push(...many); return { data: many, error: null, count: many.length }; }
         const clash = (unique[table] ?? []).some((keys) => rows.some((r) => keys.every((k) => r[k] === values[k])));
         if (clash) return { data: [], error: { code: '23505', message: 'duplicate' }, count: null };
         const row: Row = { id: `row${nextId++}`, created_at: now, status: 'sending', public_status: null, ...values };
@@ -32,11 +34,12 @@ export function testAdmin(tables: Record<string, Row[]>, { now = '2026-11-24T10:
     const single = () => { const r = execute(); return { ...r, data: r.data?.[0] ?? null }; };
     const q = {
       select: (_columns?: string, options?: { head?: boolean }) => { counting = options?.head === true; return q; },
-      insert: (v: Row) => { action = 'insert'; values = v; return q; },
+      insert: (v: Row | Row[]) => { action = 'insert'; if (Array.isArray(v)) many = v; else values = v; return q; },
       update: (v: Row) => { action = 'update'; values = v; return q; },
       eq: (k: string, v: unknown) => { filters.push((r) => r[k] === v); return q; },
       in: (k: string, v: unknown[]) => { filters.push((r) => v.includes(r[k])); return q; },
-      gte: (k: string, v: string) => { filters.push((r) => Date.parse(r[k] as string) >= Date.parse(v)); return q; },
+      gt: (k: string, v: string) => { filters.push((r) => r[k] != null && Date.parse(r[k] as string) > Date.parse(v)); return q; },
+      gte: (k: string, v: string) => { filters.push((r) => r[k] != null && Date.parse(r[k] as string) >= Date.parse(v)); return q; },
       is: (k: string, v: null) => { filters.push((r) => (r[k] ?? null) === v); return q; },
       not: (k: string, _op: string, v: null) => { filters.push((r) => (r[k] ?? null) !== v); return q; },
       or: (text: string) => {
