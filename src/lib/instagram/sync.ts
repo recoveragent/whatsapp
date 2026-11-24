@@ -48,11 +48,20 @@ export function conversationsToEvents(accountId: string, conversations: unknown,
 
 const OUTBOUND_MATCH_WINDOW_MS = 5 * 60_000;
 
-async function isKnownOutbound(admin: SupabaseClient, accountId: string, event: InstagramEvent): Promise<boolean> {
+/**
+ * True when an outbound event is already stored in the same conversation under
+ * a different ID. Stored rows whose ID Meta also lists (`listedIds`) are separate
+ * messages, so a genuine repeat of the same text is not mistaken for a duplicate.
+ */
+export async function isKnownOutbound(admin: SupabaseClient, connectionId: string, event: InstagramEvent, listedIds: ReadonlySet<string>): Promise<boolean> {
+  const { data: thread, error: threadError } = await admin.from('instagram_threads').select('id').eq('connection_id', connectionId).eq('participant_id', event.participantId).maybeSingle();
+  if (threadError) throw new Error(threadError.message);
+  if (!thread) return false;
   const at = Date.parse(event.at);
-  const { data } = await admin.from('instagram_messages').select('id').eq('account_id', accountId).eq('direction', 'outbound').eq('content', event.text)
-    .gte('created_at', new Date(at - OUTBOUND_MATCH_WINDOW_MS).toISOString()).lte('created_at', new Date(at + OUTBOUND_MATCH_WINDOW_MS).toISOString()).limit(1);
-  return Boolean(data?.length);
+  const { data, error } = await admin.from('instagram_messages').select('meta_message_id').eq('thread_id', thread.id).eq('direction', 'outbound').eq('content', event.text)
+    .gte('created_at', new Date(at - OUTBOUND_MATCH_WINDOW_MS).toISOString()).lte('created_at', new Date(at + OUTBOUND_MATCH_WINDOW_MS).toISOString());
+  if (error) throw new Error(error.message);
+  return (data ?? []).some((row) => !listedIds.has(row.meta_message_id));
 }
 
 const USERNAME_PATTERN = /^[A-Za-z0-9._]{1,30}$/;
@@ -131,12 +140,12 @@ async function recordEvents(admin: SupabaseClient, connection: { id: string; acc
   const { data: known, error: knownError } = await admin.from('instagram_messages').select('meta_message_id').eq('account_id', connection.account_id).in('meta_message_id', events.map((e) => e.messageId));
   if (knownError) { result.errors++; return; }
   const seen = new Set((known ?? []).map((row) => row.meta_message_id));
+  const listedIds = new Set(events.map((e) => e.messageId));
   // Oldest first so thread previews end on the newest message.
   for (const event of events.filter((e) => !seen.has(e.messageId)).sort((a, b) => a.at.localeCompare(b.at))) {
     // Replies sent from our inbox are stored under the Send API's message_id, which may not
-    // match the ID this endpoint reports. Treat an outbound message with the same text sent
-    // within a few minutes as the same message.
-    if (event.direction === 'outbound' && (await isKnownOutbound(admin, connection.account_id, event))) continue;
+    // match the ID this endpoint reports, so also compare recent text in the same conversation.
+    if (event.direction === 'outbound' && (await isKnownOutbound(admin, connection.id, event, listedIds))) continue;
     const saved = await admin.rpc('instagram_record_message', { p_connection: connection.id, p_participant: event.participantId, p_meta_id: event.messageId, p_direction: event.direction, p_content: event.text, p_at: event.at });
     if (saved.error) { result.errors++; console.error('[instagram sync] message storage failed', saved.error.code); continue; }
     result.recorded++;

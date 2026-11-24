@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { conversationUsernames, conversationsToEvents, parseGraphTime } from './sync';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { conversationUsernames, conversationsToEvents, isKnownOutbound, parseGraphTime } from './sync';
+import type { InstagramEvent } from './webhook';
 
 const NOW = Date.parse('2026-11-23T17:00:00Z');
 const opts = { now: NOW, notBefore: NOW - 24 * 60 * 60_000 };
@@ -42,5 +44,52 @@ describe('Instagram API sync', () => {
       ] } },
     ], opts)).toEqual([]);
     expect(conversationsToEvents('123', null, opts)).toEqual([]);
+  });
+});
+
+type Row = Record<string, string>;
+/** Minimal in-memory stand-in that applies the filters the query sets. */
+function fakeAdmin(tables: Record<string, Row[]>, failOn?: string): SupabaseClient {
+  return { from(table: string) {
+    const filters: ((r: Row) => boolean)[] = [];
+    const rows = () => (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
+    const error = failOn === table ? { message: 'db down' } : null;
+    const q = {
+      select: () => q,
+      eq: (k: string, v: string) => { filters.push((r) => r[k] === v); return q; },
+      gte: (k: string, v: string) => { filters.push((r) => r[k] >= v); return q; },
+      lte: (k: string, v: string) => { filters.push((r) => r[k] <= v); return q; },
+      maybeSingle: async () => ({ data: error ? null : rows()[0] ?? null, error }),
+      then: (resolve: (v: unknown) => void) => resolve({ data: error ? null : rows(), error }),
+    };
+    return q;
+  } } as unknown as SupabaseClient;
+}
+
+describe('outbound duplicate guard', () => {
+  const threads = [{ id: 't1', connection_id: 'c1', participant_id: 'alice' }, { id: 't2', connection_id: 'c1', participant_id: 'bob' }];
+  const stored = (thread_id: string, meta_message_id: string, created_at = '2026-11-23T16:55:00.000Z') => ({ thread_id, meta_message_id, direction: 'outbound', content: 'Thanks!', created_at });
+  const reply = (participantId: string, messageId: string): InstagramEvent => ({ accountId: '123', participantId, messageId, direction: 'outbound', text: 'Thanks!', at: '2026-11-23T16:56:00.000Z' });
+
+  it('keeps the same reply sent to a different customer', async () => {
+    const admin = fakeAdmin({ instagram_threads: threads, instagram_messages: [stored('t1', 'send-id')] });
+    expect(await isKnownOutbound(admin, 'c1', reply('bob', 'm2'), new Set(['m2']))).toBe(false);
+  });
+
+  it('recognises a reply already stored in the same conversation under another ID', async () => {
+    const admin = fakeAdmin({ instagram_threads: threads, instagram_messages: [stored('t1', 'send-id')] });
+    expect(await isKnownOutbound(admin, 'c1', reply('alice', 'm1'), new Set(['m1']))).toBe(true);
+  });
+
+  it('keeps a genuine repeat in the same conversation', async () => {
+    const admin = fakeAdmin({ instagram_threads: threads, instagram_messages: [stored('t1', 'm1')] });
+    expect(await isKnownOutbound(admin, 'c1', reply('alice', 'm2'), new Set(['m1', 'm2']))).toBe(false);
+  });
+
+  it('ignores old matches and new conversations, and reports database errors', async () => {
+    const tables = { instagram_threads: threads, instagram_messages: [stored('t1', 'send-id', '2026-11-23T16:40:00.000Z')] };
+    expect(await isKnownOutbound(fakeAdmin(tables), 'c1', reply('alice', 'm1'), new Set(['m1']))).toBe(false);
+    expect(await isKnownOutbound(fakeAdmin(tables), 'c1', reply('carol', 'm1'), new Set(['m1']))).toBe(false);
+    await expect(isKnownOutbound(fakeAdmin(tables, 'instagram_messages'), 'c1', reply('alice', 'm1'), new Set(['m1']))).rejects.toThrow('db down');
   });
 });
