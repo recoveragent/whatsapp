@@ -6,6 +6,7 @@ import {
   toErrorResponse,
 } from '@/lib/auth/account';
 import { canSendMessages } from '@/lib/auth/roles';
+import { reopenClosedConversationOnAgentReply } from '@/lib/conversations/reopen';
 import {
   buildTemplateMessageSnapshot,
   templateDisplayPayload,
@@ -312,6 +313,12 @@ export async function POST(request: Request) {
         updated_at: new Date().toISOString(),
       })
       .eq('id', conversationId);
+
+    await reopenClosedConversationOnAgentReply(
+      ctx.supabase,
+      conversation,
+      ctx.userId,
+    );
 
     try {
       await admin

@@ -36,6 +36,7 @@ import {
   buildTemplateMessageSnapshot,
   templateDisplayPayload,
 } from '@/lib/inbox/template-message-display';
+import { reopenClosedConversationOnAgentReply } from '@/lib/conversations/reopen';
 import { isServiceWindowOpen } from '@/lib/inbox/service-window';
 import {
   sendMessageToConversation,
@@ -193,6 +194,7 @@ export async function POST(request: Request) {
       .select(
         `
         id,
+        status,
         whatsapp_config_id,
         assigned_agent_id,
         last_customer_message_at,
@@ -249,6 +251,7 @@ export async function POST(request: Request) {
           interactivePayload: interactive_payload,
           replyToMessageId: reply_to_message_id,
         });
+        await reopenClosedConversationOnAgentReply(supabase, conversation, userId);
         return NextResponse.json({
           success: true,
           message_id: result.messageId,
@@ -596,6 +599,8 @@ export async function POST(request: Request) {
         updated_at: new Date().toISOString(),
       })
       .eq('id', conversationId);
+
+    await reopenClosedConversationOnAgentReply(supabase, conversation, userId);
 
     return NextResponse.json({
       success: true,

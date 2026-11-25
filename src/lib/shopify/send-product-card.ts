@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { supabaseAdmin } from '@/lib/automations/admin-client';
+import { reopenClosedConversationOnAgentReply } from '@/lib/conversations/reopen';
 import type { SendProductNodeConfig } from '@/lib/flows/types';
 import { sendInteractiveCtaUrl } from '@/lib/whatsapp/meta-api';
 import { decrypt } from '@/lib/whatsapp/encryption';
@@ -141,7 +142,7 @@ export async function sendShopifyProductCard(
 
   const { data: conversation, error: conversationError } = await args.db
     .from('conversations')
-    .select('id, contact_id, assigned_agent_id, contact:contacts(id, phone)')
+    .select('id, status, contact_id, assigned_agent_id, contact:contacts(id, phone)')
     .eq('id', args.conversationId)
     .eq('account_id', args.accountId)
     .single();
@@ -317,6 +318,16 @@ export async function sendShopifyProductCard(
       updated_at: new Date().toISOString(),
     })
     .eq('id', args.conversationId);
+
+  // Only a person replying from the inbox reopens the chat; flow, AI and
+  // recovery sends skip the assignee check and leave the status alone.
+  if (!args.flowRunId && !args.skipAssigneeCheck) {
+    await reopenClosedConversationOnAgentReply(
+      args.db,
+      conversation,
+      args.userId
+    );
+  }
 
   const { data: productSendRow, error: productSendError } = await args.db
     .from('whatsapp_product_sends')

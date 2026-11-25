@@ -207,6 +207,13 @@ vi.mock('@/lib/whatsapp/meta-api', () => ({
   sendMediaMessage: vi.fn(),
 }));
 
+const { reopenOnAgentReply } = vi.hoisted(() => ({
+  reopenOnAgentReply: vi.fn(async () => true),
+}));
+vi.mock('@/lib/conversations/reopen', () => ({
+  reopenClosedConversationOnAgentReply: reopenOnAgentReply,
+}));
+
 import { POST } from './route';
 
 function postContactTemplate(overrides: Record<string, unknown> = {}) {
@@ -320,6 +327,33 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
     expect(messageInserts[0]).toMatchObject({
       conversation_id: 'conv-existing',
     });
+  });
+
+  it('reopens a closed chat after the agent reply is sent', async () => {
+    existingConversation = {
+      id: 'conv-existing',
+      status: 'closed',
+      account_id: 'acct-1',
+      contact_id: 'contact-1',
+      whatsapp_config_id: 'cfg-1',
+      assigned_agent_id: 'user-1',
+      contact: CONTACT,
+    };
+
+    expect((await postContactTemplate()).status).toBe(200);
+    expect(reopenOnAgentReply).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: 'conv-existing', status: 'closed' }),
+      'user-1'
+    );
+  });
+
+  it('does not reopen the chat when Meta rejects the send', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    sendTemplateMessage.mockRejectedValueOnce(new Error('rejected'));
+
+    expect((await postContactTemplate()).status).toBe(502);
+    expect(reopenOnAgentReply).not.toHaveBeenCalled();
   });
 
   it('404s when the contact is not in the caller account', async () => {

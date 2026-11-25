@@ -1,5 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import {
+  insertConversationStatusMessage,
+  resolveAgentDisplayName,
+} from '@/lib/inbox/status-system-message'
+
 /**
  * Re-open a closed conversation because the customer wrote again
  * (issue #409).
@@ -42,4 +47,51 @@ export async function reopenClosedConversation(
   }
 
   return true
+}
+
+/**
+ * Re-open a closed conversation because an agent replied from the inbox,
+ * and record "Chat opened by <agent>" in the timeline. Follow-up and
+ * pending threads keep their status: an agent chose those deliberately.
+ *
+ * `conversation.status` must be the status read before sending. If the chat
+ * was open then, a close that landed while the send was in flight wins.
+ *
+ * Best-effort and never throws: the message has already reached the
+ * customer, so a failure here must not report the send as failed.
+ */
+export async function reopenClosedConversationOnAgentReply(
+  db: SupabaseClient,
+  conversation: { id: string; status?: string | null },
+  agentUserId: string,
+): Promise<boolean> {
+  if (conversation.status !== 'closed') return false
+
+  try {
+    const { data, error } = await db
+      .from('conversations')
+      .update({ status: 'open', updated_at: new Date().toISOString() })
+      .eq('id', conversation.id)
+      .eq('status', 'closed')
+      .select('id')
+
+    if (error) {
+      console.error('Error re-opening conversation on agent reply:', error)
+      return false
+    }
+    // Someone else reopened it first; don't log a second timeline entry.
+    if (!data?.length) return false
+
+    const name = await resolveAgentDisplayName(db, agentUserId)
+    await insertConversationStatusMessage({
+      db,
+      conversationId: conversation.id,
+      status: 'open',
+      actor: { kind: 'agent', name, userId: agentUserId },
+    })
+    return true
+  } catch (err) {
+    console.error('Error re-opening conversation on agent reply:', err)
+    return false
+  }
 }

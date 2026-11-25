@@ -1,6 +1,18 @@
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { reopenClosedConversation } from './reopen'
+import {
+  insertConversationStatusMessage,
+  resolveAgentDisplayName,
+} from '@/lib/inbox/status-system-message'
+import {
+  reopenClosedConversation,
+  reopenClosedConversationOnAgentReply,
+} from './reopen'
+
+vi.mock('@/lib/inbox/status-system-message', () => ({
+  insertConversationStatusMessage: vi.fn(async () => null),
+  resolveAgentDisplayName: vi.fn(async () => 'Priya'),
+}))
 
 /**
  * Regression cover for issue #409's "closed conversation lockout": an
@@ -107,5 +119,88 @@ describe('reopenClosedConversation', () => {
 
     expect(spy).toHaveBeenCalled()
     spy.mockRestore()
+  })
+})
+
+describe('reopenClosedConversationOnAgentReply', () => {
+  const insertMessage = vi.mocked(insertConversationStatusMessage)
+
+  function stub(result: { data: { id: string }[] | null; error: unknown }) {
+    const eq = vi.fn()
+    const builder = {
+      update: vi.fn(() => builder),
+      eq: eq.mockImplementation(() => builder),
+      select: vi.fn(async () => result),
+    }
+    const from = vi.fn(() => builder)
+    return { db: { from } as unknown as SupabaseClient, from, builder }
+  }
+
+  beforeEach(() => {
+    insertMessage.mockClear()
+  })
+
+  it('reopens a closed chat and logs who opened it', async () => {
+    const { db, builder } = stub({ data: [{ id: 'conv-1' }], error: null })
+
+    const reopened = await reopenClosedConversationOnAgentReply(
+      db,
+      { id: 'conv-1', status: 'closed' },
+      'user-1',
+    )
+
+    expect(reopened).toBe(true)
+    expect(builder.update).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'open' }),
+    )
+    expect(builder.eq).toHaveBeenCalledWith('status', 'closed')
+    expect(insertMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-1',
+        status: 'open',
+        actor: { kind: 'agent', name: 'Priya', userId: 'user-1' },
+      }),
+    )
+  })
+
+  it.each(['open', 'followup', 'pending'])('leaves a %s chat alone', async (status) => {
+    const { db, from } = stub({ data: [], error: null })
+
+    expect(
+      await reopenClosedConversationOnAgentReply(db, { id: 'conv-1', status }, 'user-1'),
+    ).toBe(false)
+    expect(from).not.toHaveBeenCalled()
+    expect(insertMessage).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['another request reopened it first', { data: [], error: null }],
+    ['the update fails', { data: null, error: { message: 'boom' } }],
+  ])('logs nothing in the timeline when %s', async (_label, result) => {
+    const { db } = stub(result)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    expect(
+      await reopenClosedConversationOnAgentReply(
+        db,
+        { id: 'conv-1', status: 'closed' },
+        'user-1',
+      ),
+    ).toBe(false)
+    expect(insertMessage).not.toHaveBeenCalled()
+  })
+
+  it('never throws once the message has been sent', async () => {
+    const { db } = stub({ data: [{ id: 'conv-1' }], error: null })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(resolveAgentDisplayName).mockRejectedValueOnce(new Error('network'))
+
+    await expect(
+      reopenClosedConversationOnAgentReply(
+        db,
+        { id: 'conv-1', status: 'closed' },
+        'user-1',
+      ),
+    ).resolves.toBe(false)
   })
 })
