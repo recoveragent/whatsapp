@@ -11,7 +11,9 @@ import {
 import { toast } from 'sonner';
 import {
   AlertCircle,
+  Check,
   CheckCircle2,
+  ChevronDown,
   FileText,
   Globe,
   Loader2,
@@ -21,6 +23,7 @@ import {
   Plus,
   RotateCcw,
   Save,
+  Search,
   ShoppingBag,
   ShoppingCart,
   Trash2,
@@ -41,6 +44,11 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -174,16 +182,120 @@ function fillSamples(text: string, samples: string[]): string {
   });
 }
 
-function normalizeHeaderType(
-  type: string | null,
-): 'text' | 'image' | 'video' | 'document' | null {
-  const lower = type?.toLowerCase();
-  return lower === 'text' ||
-    lower === 'image' ||
-    lower === 'video' ||
-    lower === 'document'
-    ? lower
-    : null;
+/** Searchable, alphabetical picker for a brand's existing templates. */
+function BrandTemplatePicker({
+  templates,
+  selectedId,
+  disabled,
+  placeholder,
+  onSelect,
+}: {
+  templates: BrandTemplateOption[];
+  selectedId: string;
+  disabled: boolean;
+  placeholder: string;
+  onSelect: (template: BrandTemplateOption) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const selected = templates.find((t) => t.id === selectedId) ?? null;
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return templates;
+    return templates.filter(
+      (t) =>
+        t.name.toLowerCase().includes(q) ||
+        t.language.toLowerCase().includes(q) ||
+        t.body_text.toLowerCase().includes(q),
+    );
+  }, [templates, query]);
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) setQuery('');
+        setOpen(next);
+      }}
+    >
+      <PopoverTrigger
+        disabled={disabled}
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 w-full justify-between gap-2 px-3 text-left font-normal"
+          />
+        }
+      >
+        {selected ? (
+          <span className="min-w-0 flex-1 truncate text-sm">
+            {selected.name} · {selected.language}
+          </span>
+        ) : (
+          <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+            {placeholder}
+          </span>
+        )}
+        <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-[min(480px,calc(100vw-2rem))] gap-0 p-0"
+      >
+        <div className="border-b border-border p-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by name, language, or body…"
+              className="h-8 pl-8 text-xs"
+              autoFocus
+            />
+          </div>
+        </div>
+        <div className="max-h-72 overflow-y-auto p-1" role="listbox">
+          {filtered.length === 0 ? (
+            <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+              No templates match your search.
+            </p>
+          ) : (
+            filtered.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="option"
+                aria-selected={t.id === selectedId}
+                onClick={() => {
+                  onSelect(t);
+                  setOpen(false);
+                  setQuery('');
+                }}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted',
+                  t.id === selectedId && 'bg-muted',
+                )}
+              >
+                <Check
+                  className={cn(
+                    'size-3.5 shrink-0 text-primary',
+                    t.id === selectedId ? 'opacity-100' : 'opacity-0',
+                  )}
+                />
+                <span className="min-w-0 flex-1 truncate">{t.name}</span>
+                <span className="shrink-0 text-[11px] text-muted-foreground">
+                  {t.language}
+                  {t.status ? ` · ${t.status.toLowerCase()}` : ''}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 function brandTemplateToForm(template: BrandTemplateOption): TemplateFormData {
@@ -344,25 +456,39 @@ export function AdminTemplatePushPanel() {
     setGalleryDescription(snapshot.description);
     setEditorSnapshot(snapshot);
     setResults(null);
+    setSourceTemplateId('');
   };
 
   const sourceBrand = brands.find((b) => b.id === sourceBrandId) ?? null;
-  const sourceTemplates = sourceBrand?.templates ?? [];
+  const sourceTemplates = useMemo(
+    () =>
+      [...(sourceBrand?.templates ?? [])].sort(
+        (a, b) =>
+          a.name.localeCompare(b.name) || a.language.localeCompare(b.language),
+      ),
+    [sourceBrand],
+  );
   const sourceTemplate =
     sourceTemplates.find((t) => t.id === sourceTemplateId) ?? null;
+  /** A brand template is loaded and is being edited in the brand card. */
+  const brandEditing = sourceTemplate !== null && selectedPresetSlug === null;
 
-  /** Load a brand's template into the editor and open the save-to-gallery dialog. */
-  const saveBrandTemplateAsGlobal = () => {
-    if (!sourceTemplate || !sourceBrand) return;
-    const nextForm = brandTemplateToForm(sourceTemplate);
+  /** Load a brand's template into the editor beside its live preview. */
+  const loadBrandTemplate = (template: BrandTemplateOption) => {
+    setSourceTemplateId(template.id);
     setSelectedPresetSlug(null);
-    setForm(nextForm);
+    setForm(brandTemplateToForm(template));
     setGalleryTitle('');
     setGalleryDescription('');
     setEditorSnapshot(null);
     setResults(null);
+  };
+
+  /** Open the save-to-gallery dialog for the (possibly edited) brand template. */
+  const saveBrandTemplateAsGlobal = () => {
+    if (!sourceTemplate || !sourceBrand) return;
     setNewGalleryTitle(
-      nextForm.name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+      form.name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
     );
     setNewGalleryDescription(`From ${sourceBrand.name}`);
     setSaveDialogOpen(true);
@@ -412,6 +538,7 @@ export function AdminTemplatePushPanel() {
     setGalleryDescription('');
     setEditorSnapshot(null);
     setResults(null);
+    setSourceTemplateId('');
   };
 
   const activePreset = selectedPresetSlug
@@ -706,319 +833,9 @@ export function AdminTemplatePushPanel() {
     );
   }
 
-  return (
-    <form onSubmit={handlePush} className="space-y-6">
-      <fieldset disabled={savingPreset} className="space-y-6">
-      <Card className="border-border">
-        <CardHeader>
-          <CardTitle className="text-base">Template library</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Pick a built-in or saved template, edit if needed, select brands,
-            then push to Meta.
-          </p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {presets.map((preset) => {
-              const Icon = PRESET_ICONS[preset.icon] ?? FileText;
-              const isActive = selectedPresetSlug === preset.slug;
-              const isDefault = defaultSlugs.has(preset.slug);
-              return (
-                <div key={preset.slug} className="relative">
-                <button
-                  type="button"
-                  onClick={() => applyPreset(preset)}
-                  className={cn(
-                    'flex h-full w-full flex-col gap-2 rounded-lg border p-4 text-left transition-colors',
-                    isActive
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border bg-background hover:border-primary/40 hover:bg-muted/50',
-                  )}
-                >
-                  <div className="flex items-center gap-2 pr-24">
-                    <Icon className="size-5 shrink-0 text-primary" />
-                    {preset.is_custom ? (
-                      <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400">
-                        Custom
-                      </span>
-                    ) : preset.has_override ? (
-                      <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                        Edited
-                      </span>
-                    ) : null}
-                  </div>
-                  <span className="text-sm font-semibold text-foreground">
-                    {preset.title}
-                  </span>
-                  <span className="text-xs leading-relaxed text-muted-foreground">
-                    {preset.description}
-                  </span>
-                  <span className="mt-auto pt-2 font-mono text-[11px] text-muted-foreground">
-                    {preset.name}
-                  </span>
-                </button>
-                <label
-                  className="absolute right-3 top-3 flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-muted-foreground"
-                  title="Default templates appear in every brand's Template library, waiting for review"
-                >
-                  Default
-                  <Switch
-                    checked={isDefault}
-                    disabled={togglingDefault === preset.slug}
-                    onCheckedChange={(checked) =>
-                      void handleToggleDefault(preset.slug, checked)
-                    }
-                    aria-label={`Mark ${preset.title} as default template`}
-                  />
-                </label>
-                </div>
-              );
-            })}
-            <button
-              type="button"
-              onClick={startCustomTemplate}
-              className={cn(
-                'flex flex-col gap-2 rounded-lg border border-dashed p-4 text-left transition-colors',
-                selectedPresetSlug === null && form.name === '' && form.body_text === ''
-                  ? 'border-primary bg-primary/5'
-                  : 'border-border bg-background hover:border-primary/40 hover:bg-muted/50',
-              )}
-            >
-              <PenLine className="size-5 text-primary" />
-              <span className="text-sm font-semibold text-foreground">
-                Custom template
-              </span>
-              <span className="text-xs leading-relaxed text-muted-foreground">
-                Start from scratch with your own name, body, and buttons.
-              </span>
-            </button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="border-border">
-        <CardHeader>
-          <CardTitle className="text-base">Save template from a brand</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Pick any template from any brand in your org and save it as a global
-            template you can submit to other brands.
-          </p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Source brand</Label>
-              <Select
-                value={sourceBrandId || undefined}
-                onValueChange={(val) => {
-                  if (!val) return;
-                  setSourceBrandId(val);
-                  setSourceTemplateId('');
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue>
-                    {() =>
-                      sourceBrand ? (
-                        sourceBrand.name
-                      ) : (
-                        <span className="text-muted-foreground">
-                          Select brand…
-                        </span>
-                      )
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {brands.map((brand) => (
-                    <SelectItem key={brand.id} value={brand.id}>
-                      {brand.name} ({brand.templates.length})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Source template</Label>
-              <Select
-                value={sourceTemplateId || undefined}
-                onValueChange={(val) => {
-                  if (val) setSourceTemplateId(val);
-                }}
-                disabled={!sourceBrandId || sourceTemplates.length === 0}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue>
-                    {() =>
-                      sourceTemplate ? (
-                        `${sourceTemplate.name} · ${sourceTemplate.language}`
-                      ) : (
-                        <span className="text-muted-foreground">
-                          {sourceBrandId && sourceTemplates.length === 0
-                            ? 'No templates in this brand'
-                            : 'Select template…'}
-                        </span>
-                      )
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {sourceTemplates.map((template) => (
-                    <SelectItem key={template.id} value={template.id}>
-                      {template.name} · {template.language}
-                      {template.status
-                        ? ` (${template.status.toLowerCase()})`
-                        : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          {sourceTemplate ? (
-            <div className="space-y-3 rounded-md border border-border bg-muted/30 p-4">
-              <p className="text-center text-xs text-muted-foreground">
-                {sourceTemplate.category} · {sourceTemplate.language}
-                {sourceTemplate.header_type
-                  ? ` · ${sourceTemplate.header_type.toLowerCase()} header`
-                  : ''}
-                {sourceTemplate.buttons.length > 0
-                  ? ` · ${sourceTemplate.buttons.length} button${sourceTemplate.buttons.length === 1 ? '' : 's'}`
-                  : ''}
-              </p>
-              <TemplateMobilePreview
-                bodyText={fillSamples(
-                  sourceTemplate.body_text,
-                  sourceTemplate.sample_values?.body ?? [],
-                )}
-                headerType={normalizeHeaderType(sourceTemplate.header_type)}
-                headerContent={
-                  sourceTemplate.header_content
-                    ? fillSamples(
-                        sourceTemplate.header_content,
-                        sourceTemplate.sample_values?.header ?? [],
-                      )
-                    : null
-                }
-                headerMediaUrl={sourceTemplate.header_media_url}
-                footerText={sourceTemplate.footer_text}
-                buttons={sourceTemplate.buttons}
-                businessName={sourceBrand?.name}
-              />
-            </div>
-          ) : null}
-          <Button
-            type="button"
-            variant="outline"
-            onClick={saveBrandTemplateAsGlobal}
-            disabled={!sourceTemplate || savingPreset}
-          >
-            <Globe className="size-4" />
-            Save as global template
-          </Button>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <Card className="border-border">
-          <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <FileText className="size-4" />
-              {activePreset ? activePreset.title : 'Template details'}
-            </CardTitle>
-            {activePreset ? (
-              <div className="flex shrink-0 items-center gap-2">
-                {activePreset.is_custom ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleDeleteCustomPreset}
-                    disabled={savingPreset}
-                    className="text-red-500 hover:text-red-400"
-                  >
-                    <Trash2 className="size-3.5" />
-                    Delete
-                  </Button>
-                ) : activePreset.has_override ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleResetPreset}
-                    disabled={savingPreset}
-                  >
-                    {savingPreset ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <RotateCcw className="size-3.5" />
-                    )}
-                    Reset
-                  </Button>
-                ) : null}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSavePreset}
-                  disabled={savingPreset || !isPresetDirty}
-                >
-                  {savingPreset ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <Save className="size-3.5" />
-                  )}
-                  Save
-                </Button>
-              </div>
-            ) : canSaveAsNew ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={openSaveAsNewDialog}
-                disabled={savingPreset}
-              >
-                {savingPreset ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Save className="size-3.5" />
-                )}
-                Save as template
-              </Button>
-            ) : null}
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {activePreset && isPresetDirty ? (
-              <p className="text-xs text-muted-foreground">
-                You have unsaved changes to this template.
-              </p>
-            ) : null}
-            {activePreset?.media_note ? (
-              <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                {activePreset.media_note}
-              </p>
-            ) : null}
-            {activePreset?.is_custom ? (
-              <>
-                <div className="space-y-2">
-                  <Label>Gallery title</Label>
-                  <Input
-                    value={galleryTitle}
-                    onChange={(e) => setGalleryTitle(e.target.value)}
-                    placeholder="e.g. Weekend promo"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Gallery description (optional)</Label>
-                  <Input
-                    value={galleryDescription}
-                    onChange={(e) => setGalleryDescription(e.target.value)}
-                    placeholder="Short note for your team"
-                  />
-                </div>
-              </>
-            ) : null}
+  // Editor fields, shared by the brand card and the Template details card.
+  const templateFields = (
+    <div className="space-y-4">
             <div className="space-y-2">
               <Label>Template name</Label>
               <Input
@@ -1309,6 +1126,305 @@ export function AdminTemplatePushPanel() {
                 </div>
               ))}
             </div>
+    </div>
+  );
+
+  return (
+    <form onSubmit={handlePush} className="space-y-6">
+      <fieldset disabled={savingPreset} className="space-y-6">
+      <Card className="border-border">
+        <CardHeader>
+          <CardTitle className="text-base">Template library</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Pick a built-in or saved template, edit if needed, select brands,
+            then push to Meta.
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {presets.map((preset) => {
+              const Icon = PRESET_ICONS[preset.icon] ?? FileText;
+              const isActive = selectedPresetSlug === preset.slug;
+              const isDefault = defaultSlugs.has(preset.slug);
+              return (
+                <div key={preset.slug} className="relative">
+                <button
+                  type="button"
+                  onClick={() => applyPreset(preset)}
+                  className={cn(
+                    'flex h-full w-full flex-col gap-2 rounded-lg border p-4 text-left transition-colors',
+                    isActive
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border bg-background hover:border-primary/40 hover:bg-muted/50',
+                  )}
+                >
+                  <div className="flex items-center gap-2 pr-24">
+                    <Icon className="size-5 shrink-0 text-primary" />
+                    {preset.is_custom ? (
+                      <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400">
+                        Custom
+                      </span>
+                    ) : preset.has_override ? (
+                      <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                        Edited
+                      </span>
+                    ) : null}
+                  </div>
+                  <span className="text-sm font-semibold text-foreground">
+                    {preset.title}
+                  </span>
+                  <span className="text-xs leading-relaxed text-muted-foreground">
+                    {preset.description}
+                  </span>
+                  <span className="mt-auto pt-2 font-mono text-[11px] text-muted-foreground">
+                    {preset.name}
+                  </span>
+                </button>
+                <label
+                  className="absolute right-3 top-3 flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-muted-foreground"
+                  title="Default templates appear in every brand's Template library, waiting for review"
+                >
+                  Default
+                  <Switch
+                    checked={isDefault}
+                    disabled={togglingDefault === preset.slug}
+                    onCheckedChange={(checked) =>
+                      void handleToggleDefault(preset.slug, checked)
+                    }
+                    aria-label={`Mark ${preset.title} as default template`}
+                  />
+                </label>
+                </div>
+              );
+            })}
+            <button
+              type="button"
+              onClick={startCustomTemplate}
+              className={cn(
+                'flex flex-col gap-2 rounded-lg border border-dashed p-4 text-left transition-colors',
+                selectedPresetSlug === null && form.name === '' && form.body_text === ''
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border bg-background hover:border-primary/40 hover:bg-muted/50',
+              )}
+            >
+              <PenLine className="size-5 text-primary" />
+              <span className="text-sm font-semibold text-foreground">
+                Custom template
+              </span>
+              <span className="text-xs leading-relaxed text-muted-foreground">
+                Start from scratch with your own name, body, and buttons.
+              </span>
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border">
+        <CardHeader>
+          <CardTitle className="text-base">Save template from a brand</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Pick any template from any brand in your org and save it as a global
+            template you can submit to other brands.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Source brand</Label>
+              <Select
+                value={sourceBrandId || undefined}
+                onValueChange={(val) => {
+                  if (!val) return;
+                  setSourceBrandId(val);
+                  setSourceTemplateId('');
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {() =>
+                      sourceBrand ? (
+                        sourceBrand.name
+                      ) : (
+                        <span className="text-muted-foreground">
+                          Select brand…
+                        </span>
+                      )
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {brands.map((brand) => (
+                    <SelectItem key={brand.id} value={brand.id}>
+                      {brand.name} ({brand.templates.length})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Source template</Label>
+              <BrandTemplatePicker
+                templates={sourceTemplates}
+                selectedId={sourceTemplateId}
+                disabled={!sourceBrandId || sourceTemplates.length === 0}
+                placeholder={
+                  sourceBrandId && sourceTemplates.length === 0
+                    ? 'No templates in this brand'
+                    : 'Select template…'
+                }
+                onSelect={loadBrandTemplate}
+              />
+            </div>
+          </div>
+          {brandEditing ? (
+            <div className="grid gap-6 rounded-md border border-border bg-muted/20 p-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="min-w-0">{templateFields}</div>
+              <div className="lg:sticky lg:top-4 lg:self-start">
+                <p className="mb-3 text-center text-xs text-muted-foreground">
+                  Live preview · {form.category} · {form.language || 'en_US'}
+                </p>
+                <TemplateMobilePreview
+                  bodyText={fillSamples(form.body_text, form.body_samples)}
+                  headerType={
+                    form.header_format === 'none' ? null : form.header_format
+                  }
+                  headerContent={
+                    form.header_format === 'text'
+                      ? fillSamples(form.header_content, [form.header_sample])
+                      : null
+                  }
+                  headerMediaUrl={
+                    form.header_format !== 'none' && form.header_format !== 'text'
+                      ? form.header_media_url || null
+                      : null
+                  }
+                  footerText={form.footer_text || null}
+                  buttons={form.buttons}
+                  businessName={sourceBrand?.name}
+                />
+              </div>
+            </div>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={saveBrandTemplateAsGlobal}
+            disabled={!brandEditing || savingPreset}
+          >
+            <Globe className="size-4" />
+            Save as global template
+          </Button>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <Card className="border-border">
+          <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <FileText className="size-4" />
+              {activePreset ? activePreset.title : 'Template details'}
+            </CardTitle>
+            {activePreset ? (
+              <div className="flex shrink-0 items-center gap-2">
+                {activePreset.is_custom ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDeleteCustomPreset}
+                    disabled={savingPreset}
+                    className="text-red-500 hover:text-red-400"
+                  >
+                    <Trash2 className="size-3.5" />
+                    Delete
+                  </Button>
+                ) : activePreset.has_override ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetPreset}
+                    disabled={savingPreset}
+                  >
+                    {savingPreset ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="size-3.5" />
+                    )}
+                    Reset
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSavePreset}
+                  disabled={savingPreset || !isPresetDirty}
+                >
+                  {savingPreset ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Save className="size-3.5" />
+                  )}
+                  Save
+                </Button>
+              </div>
+            ) : canSaveAsNew ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={openSaveAsNewDialog}
+                disabled={savingPreset}
+              >
+                {savingPreset ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Save className="size-3.5" />
+                )}
+                Save as template
+              </Button>
+            ) : null}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {activePreset && isPresetDirty ? (
+              <p className="text-xs text-muted-foreground">
+                You have unsaved changes to this template.
+              </p>
+            ) : null}
+            {activePreset?.media_note ? (
+              <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                {activePreset.media_note}
+              </p>
+            ) : null}
+            {activePreset?.is_custom ? (
+              <>
+                <div className="space-y-2">
+                  <Label>Gallery title</Label>
+                  <Input
+                    value={galleryTitle}
+                    onChange={(e) => setGalleryTitle(e.target.value)}
+                    placeholder="e.g. Weekend promo"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Gallery description (optional)</Label>
+                  <Input
+                    value={galleryDescription}
+                    onChange={(e) => setGalleryDescription(e.target.value)}
+                    placeholder="Short note for your team"
+                  />
+                </div>
+              </>
+            ) : null}
+            {brandEditing ? (
+              <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+                Editing <span className="font-mono">{form.name}</span> from{' '}
+                {sourceBrand?.name} in “Save template from a brand” above.
+              </p>
+            ) : (
+              templateFields
+            )}
           </CardContent>
         </Card>
 
