@@ -65,6 +65,7 @@ import {
 } from '@/lib/whatsapp/admin-template-preset-store';
 import { cn } from '@/lib/utils';
 import { TemplateHeaderMediaField } from '@/components/shared/template-header-media-field';
+import { TemplateMobilePreview } from '@/components/shared/template-mobile-preview';
 import type { MessageTemplate, TemplateButton, TemplateSampleValues } from '@/types';
 
 const CATEGORIES = ['Marketing', 'Utility'] as const;
@@ -162,6 +163,26 @@ function emptyButton(type: TemplateButton['type']): TemplateButton {
     case 'COPY_CODE':
       return { type: 'COPY_CODE', text: '', example: '' };
   }
+}
+
+/** Replace {{n}} with the template's saved sample values for preview. */
+function fillSamples(text: string, samples: string[]): string {
+  return text.replace(/\{\{(\d+)\}\}/g, (match, n) => {
+    const value = samples[Number(n) - 1]?.trim();
+    return value || match;
+  });
+}
+
+function normalizeHeaderType(
+  type: string | null,
+): 'text' | 'image' | 'video' | 'document' | null {
+  const lower = type?.toLowerCase();
+  return lower === 'text' ||
+    lower === 'image' ||
+    lower === 'video' ||
+    lower === 'document'
+    ? lower
+    : null;
 }
 
 function brandTemplateToForm(template: BrandTemplateOption): TemplateFormData {
@@ -268,7 +289,11 @@ export function AdminTemplatePushPanel() {
       if (!res.ok) throw new Error(body.error ?? 'Failed to load brands');
       const rows = ((body.brands ?? []) as BrandOption[]).map((b) => ({
         ...b,
-        templates: b.templates ?? [],
+        // Meta's auto_generated_* templates are system copies, not
+        // something worth promoting to the global gallery.
+        templates: (b.templates ?? []).filter(
+          (t) => !t.name.toLowerCase().startsWith('auto_generated_'),
+        ),
       }));
       const presetRows = (body.presets ?? []) as AdminTemplatePresetView[];
       setBrands(rows);
@@ -735,7 +760,17 @@ export function AdminTemplatePushPanel() {
                 }}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select brand…" />
+                  <SelectValue>
+                    {() =>
+                      sourceBrand ? (
+                        sourceBrand.name
+                      ) : (
+                        <span className="text-muted-foreground">
+                          Select brand…
+                        </span>
+                      )
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {brands.map((brand) => (
@@ -756,13 +791,19 @@ export function AdminTemplatePushPanel() {
                 disabled={!sourceBrandId || sourceTemplates.length === 0}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue
-                    placeholder={
-                      sourceBrandId && sourceTemplates.length === 0
-                        ? 'No templates in this brand'
-                        : 'Select template…'
+                  <SelectValue>
+                    {() =>
+                      sourceTemplate ? (
+                        `${sourceTemplate.name} · ${sourceTemplate.language}`
+                      ) : (
+                        <span className="text-muted-foreground">
+                          {sourceBrandId && sourceTemplates.length === 0
+                            ? 'No templates in this brand'
+                            : 'Select template…'}
+                        </span>
+                      )
                     }
-                  />
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {sourceTemplates.map((template) => (
@@ -778,8 +819,8 @@ export function AdminTemplatePushPanel() {
             </div>
           </div>
           {sourceTemplate ? (
-            <div className="space-y-1 rounded-md border border-border bg-muted/30 p-3">
-              <p className="text-xs text-muted-foreground">
+            <div className="space-y-3 rounded-md border border-border bg-muted/30 p-4">
+              <p className="text-center text-xs text-muted-foreground">
                 {sourceTemplate.category} · {sourceTemplate.language}
                 {sourceTemplate.header_type
                   ? ` · ${sourceTemplate.header_type.toLowerCase()} header`
@@ -788,9 +829,25 @@ export function AdminTemplatePushPanel() {
                   ? ` · ${sourceTemplate.buttons.length} button${sourceTemplate.buttons.length === 1 ? '' : 's'}`
                   : ''}
               </p>
-              <p className="line-clamp-3 whitespace-pre-wrap text-sm text-foreground">
-                {sourceTemplate.body_text}
-              </p>
+              <TemplateMobilePreview
+                bodyText={fillSamples(
+                  sourceTemplate.body_text,
+                  sourceTemplate.sample_values?.body ?? [],
+                )}
+                headerType={normalizeHeaderType(sourceTemplate.header_type)}
+                headerContent={
+                  sourceTemplate.header_content
+                    ? fillSamples(
+                        sourceTemplate.header_content,
+                        sourceTemplate.sample_values?.header ?? [],
+                      )
+                    : null
+                }
+                headerMediaUrl={sourceTemplate.header_media_url}
+                footerText={sourceTemplate.footer_text}
+                buttons={sourceTemplate.buttons}
+                businessName={sourceBrand?.name}
+              />
             </div>
           ) : null}
           <Button
