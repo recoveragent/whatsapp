@@ -13,7 +13,12 @@ import {
   Copy,
   RotateCcw,
   FileText,
+  Library,
 } from 'lucide-react';
+import {
+  TemplateLibraryDialog,
+  type LibraryTemplateItem,
+} from './template-library-dialog';
 import { cn } from '@/lib/utils';
 import { TemplateCtaSuggestions } from './template-cta-suggestions';
 import { CTA_LABELS, buttonCtaPurpose, isCtaPurpose, type CtaPurpose } from '@/lib/whatsapp/template-cta';
@@ -169,6 +174,9 @@ export function TemplateManager() {
   const [syncConfigId, setSyncConfigId] = useState('');
   const [form, setForm] = useState<TemplateFormData>(emptyForm);
   const [creationPurpose, setCreationPurpose] = useState<CtaPurpose>('custom');
+  const [libraryItems, setLibraryItems] = useState<LibraryTemplateItem[]>([]);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [approvingSlug, setApprovingSlug] = useState<string | null>(null);
   useEffect(() => {
     const purpose = new URLSearchParams(window.location.search).get('templatePurpose');
     if (isCtaPurpose(purpose)) {
@@ -247,6 +255,7 @@ export function TemplateManager() {
       return;
     }
     void fetchTemplates(accountId);
+    void fetchLibrary();
     void supabase
       .from('whatsapp_config')
       .select('id, reference_name, phone_number_id')
@@ -286,30 +295,84 @@ export function TemplateManager() {
     }
   }
 
-  function buildSubmitPayload() {
-    const sample_values: TemplateSampleValues = {};
-    if (form.body_samples.some((v) => v.trim())) {
-      sample_values.body = form.body_samples.map((v) => v.trim());
+  async function fetchLibrary() {
+    try {
+      const res = await fetch('/api/whatsapp/templates/library');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      setLibraryItems((data.templates ?? []) as LibraryTemplateItem[]);
+    } catch (err) {
+      // The library is an extra — never block the templates page on it.
+      console.error('Failed to load template library:', err);
     }
-    if (form.header_format === 'text' && form.header_sample.trim()) {
-      sample_values.header = [form.header_sample.trim()];
+  }
+
+  function libraryItemToForm(item: LibraryTemplateItem): TemplateFormData {
+    const { payload } = item;
+    return {
+      ...payload,
+      body_samples: [...payload.body_samples],
+      buttons: payload.buttons.map((button) => ({ ...button })),
+    };
+  }
+
+  /** Open the normal editor prefilled with a library template. */
+  function editLibraryTemplate(item: LibraryTemplateItem) {
+    setLibraryOpen(false);
+    setEditingId(null);
+    setCreationPurpose('custom');
+    setForm(libraryItemToForm(item));
+    setDialogOpen(true);
+  }
+
+  /** Submit a library template to Meta exactly as published. */
+  async function approveLibraryTemplate(item: LibraryTemplateItem) {
+    setApprovingSlug(item.slug);
+    try {
+      const res = await fetch('/api/whatsapp/templates/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildSubmitPayload(libraryItemToForm(item))),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || `Submit failed (HTTP ${res.status})`);
+      }
+      toast.success(data.dry_run ? t('toastSaveNewDry') : t('libraryApproved'));
+      if (accountId) await fetchTemplates(accountId);
+      await fetchLibrary();
+    } catch (err) {
+      console.error('Library submit error:', err);
+      toast.error(err instanceof Error ? err.message : t('toastSubmitFailed'));
+    } finally {
+      setApprovingSlug(null);
+    }
+  }
+
+  function buildSubmitPayload(source: TemplateFormData = form) {
+    const sample_values: TemplateSampleValues = {};
+    if (source.body_samples.some((v) => v.trim())) {
+      sample_values.body = source.body_samples.map((v) => v.trim());
+    }
+    if (source.header_format === 'text' && source.header_sample.trim()) {
+      sample_values.header = [source.header_sample.trim()];
     }
 
     return {
-      name: form.name.trim(),
-      category: form.category,
-      language: form.language.trim() || 'en_US',
-      header_type: form.header_format === 'none' ? undefined : form.header_format,
+      name: source.name.trim(),
+      category: source.category,
+      language: source.language.trim() || 'en_US',
+      header_type: source.header_format === 'none' ? undefined : source.header_format,
       header_content:
-        form.header_format === 'text' ? form.header_content.trim() : undefined,
+        source.header_format === 'text' ? source.header_content.trim() : undefined,
       header_media_url:
-        form.header_format !== 'none' && form.header_format !== 'text'
-          ? form.header_media_url.trim() || undefined
+        source.header_format !== 'none' && source.header_format !== 'text'
+          ? source.header_media_url.trim() || undefined
           : undefined,
-      body_text: form.body_text.trim(),
+      body_text: source.body_text.trim(),
       whatsapp_config_id: syncConfigId || undefined,
-      footer_text: form.footer_text.trim() || undefined,
-      buttons: form.buttons.length > 0 ? form.buttons : undefined,
+      footer_text: source.footer_text.trim() || undefined,
+      buttons: source.buttons.length > 0 ? source.buttons : undefined,
       sample_values:
         Object.keys(sample_values).length > 0 ? sample_values : undefined,
     };
@@ -382,6 +445,7 @@ export function TemplateManager() {
       // Refresh first, then close — re-opening the dialog
       // immediately should not show a stale list.
       if (accountId) await fetchTemplates(accountId);
+      void fetchLibrary();
       toast.success(
         data.draft ? t('toastDraftSaved') : data.dry_run
           ? isEdit
@@ -600,6 +664,19 @@ export function TemplateManager() {
               <RefreshCw className={cn('size-4', syncing && 'animate-spin')} />
               {syncing ? t('syncing') : t('syncFromMeta')}
             </Button>
+            <Button
+              variant="outline"
+              onClick={() => setLibraryOpen(true)}
+              className={glassButtonOutline}
+            >
+              <Library className="size-4" />
+              {t('library')}
+              {libraryItems.length > 0 ? (
+                <span className="rounded-full bg-amber-500/15 px-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                  {libraryItems.length}
+                </span>
+              ) : null}
+            </Button>
             <Button onClick={openCreate} className={glassButtonPrimary}>
               <Plus className="size-4" />
               {t('newTemplate')}
@@ -607,6 +684,22 @@ export function TemplateManager() {
           </div>
         }
       />
+
+      {libraryItems.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <p className="flex items-center gap-2 text-sm text-amber-800 dark:text-amber-200">
+            <Library className="size-4 shrink-0" />
+            {t('libraryPendingBanner', { count: libraryItems.length })}
+          </p>
+          <Button
+            size="sm"
+            onClick={() => setLibraryOpen(true)}
+            className={cn(glassButtonPrimary, 'h-8')}
+          >
+            {t('libraryReview')}
+          </Button>
+        </div>
+      ) : null}
 
       {templates.length === 0 ? (
         <Card className={cn(glassSurface, 'border-0 py-0 shadow-none')}>
@@ -1287,6 +1380,15 @@ export function TemplateManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TemplateLibraryDialog
+        open={libraryOpen}
+        onOpenChange={setLibraryOpen}
+        items={libraryItems}
+        approvingSlug={approvingSlug}
+        onApprove={(item) => void approveLibraryTemplate(item)}
+        onEdit={editLibraryTemplate}
+      />
 
       {/* Confirm-delete dialog. Surfacing the meta_template_id case
           separately so users understand a real Meta delete is happening,

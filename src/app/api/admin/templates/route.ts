@@ -9,6 +9,7 @@ import { listOrganizationBrands } from '@/lib/auth/brand-accounts'
 import { requireSuperAdmin } from '@/lib/auth/super-admin'
 import { listAdminTemplatePresets } from '@/lib/whatsapp/admin-template-presets'
 import { listMergedAdminTemplatePresets } from '@/lib/whatsapp/admin-template-preset-store'
+import { listDefaultTemplateSlugs } from '@/lib/whatsapp/admin-template-defaults'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 
 interface BrandTemplateOption {
@@ -118,8 +119,16 @@ export async function GET() {
       }))
     }
 
+    let defaultSlugs: string[] = []
+    try {
+      defaultSlugs = await listDefaultTemplateSlugs(supabase, organizationId)
+    } catch (defaultsErr) {
+      console.error('[GET /api/admin/templates] defaults', defaultsErr)
+    }
+
     return NextResponse.json({
       presets,
+      defaultSlugs,
       brands: brands.map((brand) => {
         const config = configByAccount.get(brand.id)
         const whatsappReady = Boolean(

@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -248,6 +249,8 @@ export function AdminTemplatePushPanel() {
   const [pushing, setPushing] = useState(false);
   const [savingPreset, setSavingPreset] = useState(false);
   const [results, setResults] = useState<PushResultRow[] | null>(null);
+  const [defaultSlugs, setDefaultSlugs] = useState<Set<string>>(new Set());
+  const [togglingDefault, setTogglingDefault] = useState<string | null>(null);
   const [sourceBrandId, setSourceBrandId] = useState('');
   const [sourceTemplateId, setSourceTemplateId] = useState('');
   const didClearContext = useRef(false);
@@ -298,6 +301,7 @@ export function AdminTemplatePushPanel() {
       const presetRows = (body.presets ?? []) as AdminTemplatePresetView[];
       setBrands(rows);
       setPresets(presetRows);
+      setDefaultSlugs(new Set((body.defaultSlugs ?? []) as string[]));
       setSelected(new Set());
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load brands');
@@ -362,6 +366,43 @@ export function AdminTemplatePushPanel() {
     );
     setNewGalleryDescription(`From ${sourceBrand.name}`);
     setSaveDialogOpen(true);
+  };
+
+  const handleToggleDefault = async (slug: string, isDefault: boolean) => {
+    setTogglingDefault(slug);
+    setDefaultSlugs((prev) => {
+      const next = new Set(prev);
+      if (isDefault) next.add(slug);
+      else next.delete(slug);
+      return next;
+    });
+    try {
+      const res = await fetch('/api/admin/templates/defaults', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug, isDefault }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'Failed to update default');
+      setDefaultSlugs(new Set((body.defaultSlugs ?? []) as string[]));
+      toast.success(
+        isDefault
+          ? 'Added to every brand’s template library'
+          : 'Removed from brand template libraries',
+      );
+    } catch (err) {
+      setDefaultSlugs((prev) => {
+        const next = new Set(prev);
+        if (isDefault) next.delete(slug);
+        else next.add(slug);
+        return next;
+      });
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to update default',
+      );
+    } finally {
+      setTogglingDefault(null);
+    }
   };
 
   const startCustomTemplate = () => {
@@ -681,19 +722,20 @@ export function AdminTemplatePushPanel() {
             {presets.map((preset) => {
               const Icon = PRESET_ICONS[preset.icon] ?? FileText;
               const isActive = selectedPresetSlug === preset.slug;
+              const isDefault = defaultSlugs.has(preset.slug);
               return (
+                <div key={preset.slug} className="relative">
                 <button
-                  key={preset.slug}
                   type="button"
                   onClick={() => applyPreset(preset)}
                   className={cn(
-                    'flex flex-col gap-2 rounded-lg border p-4 text-left transition-colors',
+                    'flex h-full w-full flex-col gap-2 rounded-lg border p-4 text-left transition-colors',
                     isActive
                       ? 'border-primary bg-primary/5'
                       : 'border-border bg-background hover:border-primary/40 hover:bg-muted/50',
                   )}
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 pr-24">
                     <Icon className="size-5 shrink-0 text-primary" />
                     {preset.is_custom ? (
                       <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400">
@@ -715,6 +757,21 @@ export function AdminTemplatePushPanel() {
                     {preset.name}
                   </span>
                 </button>
+                <label
+                  className="absolute right-3 top-3 flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-muted-foreground"
+                  title="Default templates appear in every brand's Template library, waiting for review"
+                >
+                  Default
+                  <Switch
+                    checked={isDefault}
+                    disabled={togglingDefault === preset.slug}
+                    onCheckedChange={(checked) =>
+                      void handleToggleDefault(preset.slug, checked)
+                    }
+                    aria-label={`Mark ${preset.title} as default template`}
+                  />
+                </label>
+                </div>
               );
             })}
             <button
