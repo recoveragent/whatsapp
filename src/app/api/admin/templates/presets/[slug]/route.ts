@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 
 import { requireSuperAdmin } from '@/lib/auth/super-admin';
+import { setDefaultTemplate } from '@/lib/whatsapp/admin-template-defaults';
 import { toAdminPresetErrorResponse } from '@/lib/whatsapp/admin-template-preset-errors';
 import {
   deleteAdminTemplatePresetOverride,
@@ -95,7 +96,7 @@ export async function DELETE(
 ) {
   try {
     const { slug } = await params;
-    const { supabase, organizationId } = await requireSuperAdmin();
+    const { supabase, organizationId, userId } = await requireSuperAdmin();
 
     const result = await deleteAdminTemplatePresetOverride(
       supabase,
@@ -104,6 +105,8 @@ export async function DELETE(
     );
 
     if (result === 'custom_deleted') {
+      // A deleted template can no longer be a default for brands.
+      await setDefaultTemplate(supabase, organizationId, userId, slug, false);
       return NextResponse.json({ deleted: true, slug });
     }
 
