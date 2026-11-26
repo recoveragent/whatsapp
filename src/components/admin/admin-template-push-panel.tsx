@@ -13,6 +13,7 @@ import {
   AlertCircle,
   CheckCircle2,
   FileText,
+  Globe,
   Loader2,
   Package,
   PenLine,
@@ -58,7 +59,6 @@ import type { AdminTemplatePresetIcon } from '@/lib/whatsapp/admin-template-pres
 import {
   editorSnapshotsEqual,
   presetToEditorSnapshot,
-  presetViewToFormData,
   type AdminTemplatePresetPayload,
   type AdminTemplatePresetView,
   type PresetEditorSnapshot,
@@ -101,12 +101,28 @@ const COMMON_LANGUAGE_CODES = [
   'hi',
 ];
 
+interface BrandTemplateOption {
+  id: string;
+  name: string;
+  category: string;
+  language: string;
+  status: string | null;
+  header_type: string | null;
+  header_content: string | null;
+  header_media_url: string | null;
+  body_text: string;
+  footer_text: string | null;
+  buttons: TemplateButton[];
+  sample_values: TemplateSampleValues | null;
+}
+
 interface BrandOption {
   id: string;
   name: string;
   owner_user_id: string | null;
   whatsapp_ready: boolean;
   whatsapp_reason: string | null;
+  templates: BrandTemplateOption[];
 }
 
 interface PushResultRow {
@@ -148,6 +164,36 @@ function emptyButton(type: TemplateButton['type']): TemplateButton {
   }
 }
 
+function brandTemplateToForm(template: BrandTemplateOption): TemplateFormData {
+  const headerType = template.header_type?.toLowerCase();
+  const headerFormat: HeaderFormat =
+    headerType === 'text' ||
+    headerType === 'image' ||
+    headerType === 'video' ||
+    headerType === 'document'
+      ? headerType
+      : 'none';
+  return {
+    name: template.name,
+    category:
+      template.category?.toLowerCase() === 'marketing' ? 'Marketing' : 'Utility',
+    language: template.language || 'en_US',
+    header_format: headerFormat,
+    header_content: headerFormat === 'text' ? template.header_content ?? '' : '',
+    header_media_url:
+      headerFormat !== 'none' && headerFormat !== 'text'
+        ? template.header_media_url ?? ''
+        : '',
+    header_sample: template.sample_values?.header?.[0] ?? '',
+    body_text: template.body_text ?? '',
+    body_samples: [...(template.sample_values?.body ?? [])],
+    footer_text: template.footer_text ?? '',
+    buttons: Array.isArray(template.buttons)
+      ? template.buttons.map((b) => ({ ...b }))
+      : [],
+  };
+}
+
 function reasonLabel(reason: string | null): string {
   switch (reason) {
     case 'not_configured':
@@ -181,6 +227,8 @@ export function AdminTemplatePushPanel() {
   const [pushing, setPushing] = useState(false);
   const [savingPreset, setSavingPreset] = useState(false);
   const [results, setResults] = useState<PushResultRow[] | null>(null);
+  const [sourceBrandId, setSourceBrandId] = useState('');
+  const [sourceTemplateId, setSourceTemplateId] = useState('');
   const didClearContext = useRef(false);
 
   const bodyVarCount = useMemo(
@@ -218,7 +266,10 @@ export function AdminTemplatePushPanel() {
       const res = await fetch('/api/admin/templates');
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? 'Failed to load brands');
-      const rows = (body.brands ?? []) as BrandOption[];
+      const rows = ((body.brands ?? []) as BrandOption[]).map((b) => ({
+        ...b,
+        templates: b.templates ?? [],
+      }));
       const presetRows = (body.presets ?? []) as AdminTemplatePresetView[];
       setBrands(rows);
       setPresets(presetRows);
@@ -264,6 +315,28 @@ export function AdminTemplatePushPanel() {
     setGalleryDescription(snapshot.description);
     setEditorSnapshot(snapshot);
     setResults(null);
+  };
+
+  const sourceBrand = brands.find((b) => b.id === sourceBrandId) ?? null;
+  const sourceTemplates = sourceBrand?.templates ?? [];
+  const sourceTemplate =
+    sourceTemplates.find((t) => t.id === sourceTemplateId) ?? null;
+
+  /** Load a brand's template into the editor and open the save-to-gallery dialog. */
+  const saveBrandTemplateAsGlobal = () => {
+    if (!sourceTemplate || !sourceBrand) return;
+    const nextForm = brandTemplateToForm(sourceTemplate);
+    setSelectedPresetSlug(null);
+    setForm(nextForm);
+    setGalleryTitle('');
+    setGalleryDescription('');
+    setEditorSnapshot(null);
+    setResults(null);
+    setNewGalleryTitle(
+      nextForm.name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+    );
+    setNewGalleryDescription(`From ${sourceBrand.name}`);
+    setSaveDialogOpen(true);
   };
 
   const startCustomTemplate = () => {
@@ -569,6 +642,7 @@ export function AdminTemplatePushPanel() {
 
   return (
     <form onSubmit={handlePush} className="space-y-6">
+      <fieldset disabled={savingPreset} className="space-y-6">
       <Card className="border-border">
         <CardHeader>
           <CardTitle className="text-base">Template library</CardTitle>
@@ -637,6 +711,97 @@ export function AdminTemplatePushPanel() {
               </span>
             </button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border">
+        <CardHeader>
+          <CardTitle className="text-base">Save template from a brand</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Pick any template from any brand in your org and save it as a global
+            template you can submit to other brands.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Source brand</Label>
+              <Select
+                value={sourceBrandId || undefined}
+                onValueChange={(val) => {
+                  if (!val) return;
+                  setSourceBrandId(val);
+                  setSourceTemplateId('');
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select brand…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {brands.map((brand) => (
+                    <SelectItem key={brand.id} value={brand.id}>
+                      {brand.name} ({brand.templates.length})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Source template</Label>
+              <Select
+                value={sourceTemplateId || undefined}
+                onValueChange={(val) => {
+                  if (val) setSourceTemplateId(val);
+                }}
+                disabled={!sourceBrandId || sourceTemplates.length === 0}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue
+                    placeholder={
+                      sourceBrandId && sourceTemplates.length === 0
+                        ? 'No templates in this brand'
+                        : 'Select template…'
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {sourceTemplates.map((template) => (
+                    <SelectItem key={template.id} value={template.id}>
+                      {template.name} · {template.language}
+                      {template.status
+                        ? ` (${template.status.toLowerCase()})`
+                        : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          {sourceTemplate ? (
+            <div className="space-y-1 rounded-md border border-border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">
+                {sourceTemplate.category} · {sourceTemplate.language}
+                {sourceTemplate.header_type
+                  ? ` · ${sourceTemplate.header_type.toLowerCase()} header`
+                  : ''}
+                {sourceTemplate.buttons.length > 0
+                  ? ` · ${sourceTemplate.buttons.length} button${sourceTemplate.buttons.length === 1 ? '' : 's'}`
+                  : ''}
+              </p>
+              <p className="line-clamp-3 whitespace-pre-wrap text-sm text-foreground">
+                {sourceTemplate.body_text}
+              </p>
+            </div>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={saveBrandTemplateAsGlobal}
+            disabled={!sourceTemplate || savingPreset}
+          >
+            <Globe className="size-4" />
+            Save as global template
+          </Button>
         </CardContent>
       </Card>
 
@@ -1152,6 +1317,7 @@ export function AdminTemplatePushPanel() {
         </div>
       </div>
 
+      </fieldset>
       <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -1163,6 +1329,24 @@ export function AdminTemplatePushPanel() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            <div className="space-y-2">
+              <Label>Template name</Label>
+              <Input
+                value={form.name}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    name: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+                  }))
+                }
+                placeholder="e.g. weekend_promo"
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Lowercase letters, digits, and underscores. Must be unique in
+                the gallery.
+              </p>
+            </div>
             <div className="space-y-2">
               <Label>Gallery title</Label>
               <Input
