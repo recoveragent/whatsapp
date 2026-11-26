@@ -1397,7 +1397,7 @@ export function AdminTemplatePushPanel() {
                 {activePreset.media_note}
               </p>
             ) : null}
-            {activePreset?.is_custom ? (
+            {activePreset ? (
               <>
                 <div className="space-y-2">
                   <Label>Gallery title</Label>
