@@ -363,6 +363,9 @@ export function AdminTemplatePushPanel() {
   const [results, setResults] = useState<PushResultRow[] | null>(null);
   const [defaultSlugs, setDefaultSlugs] = useState<Set<string>>(new Set());
   const [togglingDefault, setTogglingDefault] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] =
+    useState<AdminTemplatePresetView | null>(null);
+  const [deletingPreset, setDeletingPreset] = useState(false);
   const [sourceBrandId, setSourceBrandId] = useState('');
   const [sourceTemplateId, setSourceTemplateId] = useState('');
   const didClearContext = useRef(false);
@@ -669,31 +672,36 @@ export function AdminTemplatePushPanel() {
     }
   };
 
-  const handleDeleteCustomPreset = async () => {
-    if (!activePreset?.is_custom) return;
-    const yes = window.confirm(
-      `Delete "${activePreset.title}" from the gallery? This cannot be undone.`,
-    );
-    if (!yes) return;
+  /** Runs after the admin confirms in the delete dialog. */
+  const handleConfirmDeletePreset = async () => {
+    const target = pendingDelete;
+    if (!target?.is_custom) return;
 
-    setSavingPreset(true);
+    setDeletingPreset(true);
     try {
       const res = await fetch(
-        `/api/admin/templates/presets/${activePreset.slug}`,
+        `/api/admin/templates/presets/${encodeURIComponent(target.slug)}`,
         { method: 'DELETE' },
       );
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? 'Failed to delete template');
 
-      setPresets((prev) => prev.filter((p) => p.slug !== activePreset.slug));
-      startCustomTemplate();
-      toast.success('Template deleted');
+      setPresets((prev) => prev.filter((p) => p.slug !== target.slug));
+      setDefaultSlugs((prev) => {
+        if (!prev.has(target.slug)) return prev;
+        const next = new Set(prev);
+        next.delete(target.slug);
+        return next;
+      });
+      if (selectedPresetSlug === target.slug) startCustomTemplate();
+      setPendingDelete(null);
+      toast.success(`"${target.title}" deleted`);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : 'Failed to delete template',
       );
     } finally {
-      setSavingPreset(false);
+      setDeletingPreset(false);
     }
   };
 
@@ -1176,10 +1184,27 @@ export function AdminTemplatePushPanel() {
                   <span className="text-xs leading-relaxed text-muted-foreground">
                     {preset.description}
                   </span>
-                  <span className="mt-auto pt-2 font-mono text-[11px] text-muted-foreground">
+                  <span
+                    className={cn(
+                      'mt-auto pt-2 font-mono text-[11px] text-muted-foreground',
+                      preset.is_custom && 'pr-8',
+                    )}
+                  >
                     {preset.name}
                   </span>
                 </button>
+                {preset.is_custom ? (
+                  <button
+                    type="button"
+                    onClick={() => setPendingDelete(preset)}
+                    disabled={deletingPreset}
+                    className="absolute bottom-3 right-3 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"
+                    title="Delete from gallery"
+                    aria-label={`Delete ${preset.title} from gallery`}
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                ) : null}
                 <label
                   className="absolute right-3 top-3 flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-muted-foreground"
                   title="Default templates appear in every brand's Template library, waiting for review"
@@ -1331,8 +1356,8 @@ export function AdminTemplatePushPanel() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={handleDeleteCustomPreset}
-                    disabled={savingPreset}
+                    onClick={() => setPendingDelete(activePreset)}
+                    disabled={savingPreset || deletingPreset}
                     className="text-red-500 hover:text-red-400"
                   >
                     <Trash2 className="size-3.5" />
@@ -1617,6 +1642,51 @@ export function AdminTemplatePushPanel() {
               ) : (
                 'Save template'
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingPreset) setPendingDelete(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete template?</DialogTitle>
+            <DialogDescription>
+              &ldquo;{pendingDelete?.title}&rdquo; (
+              <span className="font-mono">{pendingDelete?.name}</span>) will be
+              removed from the gallery
+              {pendingDelete && defaultSlugs.has(pendingDelete.slug)
+                ? ' and from every brand’s default Template library'
+                : ''}
+              . Templates already pushed to brands on Meta stay as they are.
+              This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setPendingDelete(null)}
+              disabled={deletingPreset}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void handleConfirmDeletePreset()}
+              disabled={deletingPreset}
+            >
+              {deletingPreset ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Trash2 className="size-4" />
+              )}
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>
