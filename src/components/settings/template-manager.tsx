@@ -671,11 +671,6 @@ export function TemplateManager() {
             >
               <Library className="size-4" />
               {t('library')}
-              {libraryItems.length > 0 ? (
-                <span className="rounded-full bg-amber-500/15 px-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
-                  {libraryItems.length}
-                </span>
-              ) : null}
             </Button>
             <Button onClick={openCreate} className={glassButtonPrimary}>
               <Plus className="size-4" />
@@ -684,22 +679,6 @@ export function TemplateManager() {
           </div>
         }
       />
-
-      {libraryItems.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
-          <p className="flex items-center gap-2 text-sm text-amber-800 dark:text-amber-200">
-            <Library className="size-4 shrink-0" />
-            {t('libraryPendingBanner', { count: libraryItems.length })}
-          </p>
-          <Button
-            size="sm"
-            onClick={() => setLibraryOpen(true)}
-            className={cn(glassButtonPrimary, 'h-8')}
-          >
-            {t('libraryReview')}
-          </Button>
-        </div>
-      ) : null}
 
       {templates.length === 0 ? (
         <Card className={cn(glassSurface, 'border-0 py-0 shadow-none')}>
